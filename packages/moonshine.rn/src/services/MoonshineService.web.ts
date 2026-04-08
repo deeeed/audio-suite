@@ -14,6 +14,7 @@ import type {
   MoonshineTranscriptionResult,
   MoonshineTranscribeOptions,
 } from '../types/interfaces';
+import { MOONSHINE_WEB_TRANSCRIBER_OPTION_NAMES } from '../constants/webTranscriberOptions';
 import {
   normalizeMoonshineWebModelArch,
   resolveMoonshineWebModelBasePath,
@@ -818,8 +819,14 @@ export class MoonshineService {
     candidatePath: string | undefined
   ): Promise<{ model: MoonshineWebModel; modelBasePath: string }> {
     const normalizedArch = normalizeMoonshineWebModelArch(config.modelArch);
-    const webEncoderUrl = getTranscriberOptionValue(config, 'web_encoder_url');
-    const webDecoderUrl = getTranscriberOptionValue(config, 'web_decoder_url');
+    const webEncoderUrl = getTranscriberOptionValue(
+      config,
+      MOONSHINE_WEB_TRANSCRIBER_OPTION_NAMES.encoderUrl
+    );
+    const webDecoderUrl = getTranscriberOptionValue(
+      config,
+      MOONSHINE_WEB_TRANSCRIBER_OPTION_NAMES.decoderUrl
+    );
     const modelBasePath =
       webEncoderUrl && webDecoderUrl
         ? '[web-url-source]'
@@ -1138,14 +1145,14 @@ export class MoonshineService {
     };
     const progressModelBasePath = getTranscriberOptionValue(
       state.config,
-      'web_progress_model_base_path'
+      MOONSHINE_WEB_TRANSCRIBER_OPTION_NAMES.progressModelBasePath
     );
     if (progressModelBasePath) {
       progressConfig.transcriberOptions =
         state.config.transcriberOptions?.filter(
           (option) =>
-            option.name !== 'web_encoder_url' &&
-            option.name !== 'web_decoder_url'
+            option.name !== MOONSHINE_WEB_TRANSCRIBER_OPTION_NAMES.encoderUrl &&
+            option.name !== MOONSHINE_WEB_TRANSCRIBER_OPTION_NAMES.decoderUrl
         );
     }
     const { model: progressModel } = await this.getOrCreateWebModel(
