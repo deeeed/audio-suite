@@ -191,12 +191,6 @@ yarn release:beta:preflight
 yarn validate:offline:contract <model-id> [device-filter]
 ```
 
-Additional docs:
-
-- [`./BETA_RELEASE_PLAN.md`](./BETA_RELEASE_PLAN.md)
-- [`./OFFLINE_PROGRESS_AND_WORD_TIMESTAMPS.md`](./OFFLINE_PROGRESS_AND_WORD_TIMESTAMPS.md)
-- [`../../docs/ANDROID_ORT_ALIGNMENT.md`](../../docs/ANDROID_ORT_ALIGNMENT.md)
-
 ## Known limitations
 
 - `MicTranscriber` is not wrapped directly; apps are expected to own microphone
