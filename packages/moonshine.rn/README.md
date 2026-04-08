@@ -221,8 +221,6 @@ Beta release / external validation:
   - `~/dev/demo-audiolab`
 - Release preparation and checklist:
   - [`./BETA_RELEASE_PLAN.md`](./BETA_RELEASE_PLAN.md)
-- Pasteable external-consumer validation prompt:
-  - [`./EXTERNAL_VALIDATION_PROMPT.md`](./EXTERNAL_VALIDATION_PROMPT.md)
 
 Useful package-local preflight:
 
