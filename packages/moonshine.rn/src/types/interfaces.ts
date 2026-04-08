@@ -41,6 +41,11 @@ export interface MoonshineLoadConfigBase {
   language?: string;
   modelArch: MoonshineModelArch | number;
   options?: MoonshineModelOptions;
+  // Web-only overrides for custom ONNX sources or a separate progress model.
+  // These avoid stringly-typed transcriberOptions in normal consumers.
+  webDecoderUrl?: string;
+  webEncoderUrl?: string;
+  webProgressModelBasePath?: string;
   transcriberOptions?: MoonshineTranscriberOption[];
   updateIntervalMs?: number;
 }

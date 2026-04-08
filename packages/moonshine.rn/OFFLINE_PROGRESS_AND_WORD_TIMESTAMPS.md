@@ -11,10 +11,17 @@ The harness drives a real offline file transcription through the playground app
 runtime, listens for `MoonshineTranscriptEvent`s, and reports:
 
 When a web consumer needs to wire explicit model URLs or a separate progress
-model base path, use the public constants subpath:
+model base path, pass typed fields on the load config instead:
 
 ```ts
-import { MOONSHINE_WEB_TRANSCRIBER_OPTION_NAMES } from '@siteed/moonshine.rn/constants/webTranscriberOptions'
+await Moonshine.createTranscriberFromFiles({
+  modelArch: 'tiny',
+  modelPath: '/ignored-on-web-when-urls-are-explicit',
+  options: { wordTimestamps: true },
+  webEncoderUrl: 'https://example.com/encoder_model.ort',
+  webDecoderUrl: 'https://example.com/decoder_with_attention.ort',
+  webProgressModelBasePath: 'https://download.moonshine.ai/model/tiny-en/quantized',
+})
 ```
 
 - whether any intermediate progress-like events were emitted
