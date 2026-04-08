@@ -12,7 +12,10 @@ import type {
 } from './types/interfaces';
 
 export interface NativeMoonshineModule {
-  addAudio(sampleRate: number, samples: number[]): Promise<{ success: boolean }>;
+  addAudio(
+    sampleRate: number,
+    samples: number[]
+  ): Promise<{ success: boolean }>;
   addAudioForTranscriber(
     transcriberId: string,
     sampleRate: number,
@@ -55,7 +58,9 @@ export interface NativeMoonshineModule {
   loadFromAssets(
     config: MoonshineAssetModelConfig
   ): Promise<MoonshineInitializeResult>;
-  loadFromFiles(config: MoonshineModelConfig): Promise<MoonshineInitializeResult>;
+  loadFromFiles(
+    config: MoonshineModelConfig
+  ): Promise<MoonshineInitializeResult>;
   loadFromMemory(
     config: MoonshineMemoryModelConfig
   ): Promise<MoonshineInitializeResult>;
@@ -109,12 +114,14 @@ export interface NativeMoonshineModule {
   ): Promise<MoonshineTranscriptionResult>;
   transcribeWithoutStreaming(
     sampleRate: number,
-    samples: number[]
+    samples: number[],
+    options?: MoonshineTranscribeOptions
   ): Promise<MoonshineTranscriptionResult>;
   transcribeWithoutStreamingForTranscriber(
     transcriberId: string,
     sampleRate: number,
-    samples: number[]
+    samples: number[],
+    options?: MoonshineTranscribeOptions
   ): Promise<MoonshineTranscriptionResult>;
   unregisterIntent(
     intentRecognizerId: string,
@@ -131,7 +138,10 @@ const NativeMoonshine = NativeModules.Moonshine as
 export const MOONSHINE_EVENT_NAME = 'MoonshineTranscriptEvent';
 
 export function isMoonshineNativeAvailable(): boolean {
-  return (Platform.OS === 'android' || Platform.OS === 'ios') && Boolean(NativeMoonshine);
+  return (
+    (Platform.OS === 'android' || Platform.OS === 'ios') &&
+    Boolean(NativeMoonshine)
+  );
 }
 
 export function getMoonshineUnavailableReason(): string | undefined {
@@ -147,7 +157,8 @@ export function getMoonshineUnavailableReason(): string | undefined {
 export function requireNativeMoonshineModule(): NativeMoonshineModule {
   if (!NativeMoonshine) {
     throw new Error(
-      getMoonshineUnavailableReason() ?? 'Moonshine native module is unavailable'
+      getMoonshineUnavailableReason() ??
+        'Moonshine native module is unavailable'
     );
   }
   return NativeMoonshine;

@@ -148,13 +148,13 @@ describe('MoonshineService', () => {
     expect(result.match?.triggerPhrase).toBe('turn on the lights');
   });
 
-  it('emits offline transcript lifecycle events from the wrapper', async () => {
+  it('emits offline transcript lifecycle events from the native offline path', async () => {
     mockNativeModule.createTranscriberFromFiles.mockResolvedValue({
       success: true,
       transcriberId: 'transcriber-1',
     });
-    mockNativeModule.transcribeFromSamplesForTranscriber.mockImplementation(
-      async () => {
+    mockNativeModule.transcribeWithoutStreamingForTranscriber.mockImplementation(
+      async (_transcriberId, _sampleRate, _samples, _options) => {
         const emit = mockEventListeners.get(MOONSHINE_EVENT_NAME);
         emit?.({
           line: {
@@ -222,6 +222,9 @@ describe('MoonshineService', () => {
     );
 
     expect(result.text).toBe('Hello world');
+    expect(
+      mockNativeModule.transcribeWithoutStreamingForTranscriber
+    ).toHaveBeenCalledWith('transcriber-1', 16000, [0, 0, 0], undefined);
     expect(listener).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({

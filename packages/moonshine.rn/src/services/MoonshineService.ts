@@ -25,8 +25,6 @@ import type {
 
 type MoonshineListener = (event: MoonshineTranscriptEvent) => void;
 
-const DEFAULT_OFFLINE_CHUNK_DURATION_MS = 200;
-
 export class MoonshineTranscriber {
   public constructor(
     private readonly service: MoonshineService,
@@ -515,15 +513,11 @@ export class MoonshineService {
     samples: number[],
     options?: MoonshineTranscribeOptions
   ): Promise<MoonshineTranscriptionResult> {
-    return this.transcribeFromSamplesForTranscriber(
+    return requireNativeMoonshineModule().transcribeWithoutStreamingForTranscriber(
       transcriberId,
       sampleRate,
       samples,
-      {
-        ...options,
-        chunkDurationMs:
-          options?.chunkDurationMs ?? DEFAULT_OFFLINE_CHUNK_DURATION_MS,
-      }
+      options
     );
   }
 

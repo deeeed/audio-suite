@@ -579,10 +579,11 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
   fun transcribeWithoutStreaming(
     sampleRate: Int,
     samples: ReadableArray,
+    options: ReadableMap?,
     promise: Promise
   ) {
-    withDefaultTranscriber(promise) { _, state ->
-      transcribeWithoutStreamingInternal(state, sampleRate, samples, promise)
+    withDefaultTranscriber(promise) { transcriberId, state ->
+      transcribeWithoutStreamingInternal(transcriberId, state, sampleRate, samples, options, promise)
     }
   }
 
@@ -591,10 +592,11 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
     transcriberId: String,
     sampleRate: Int,
     samples: ReadableArray,
+    options: ReadableMap?,
     promise: Promise
   ) {
-    withTranscriber(transcriberId, promise) { _, state ->
-      transcribeWithoutStreamingInternal(state, sampleRate, samples, promise)
+    withTranscriber(transcriberId, promise) { resolvedId, state ->
+      transcribeWithoutStreamingInternal(resolvedId, state, sampleRate, samples, options, promise)
     }
   }
 
@@ -1258,15 +1260,21 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
   }
 
   private fun transcribeWithoutStreamingInternal(
+    transcriberId: String,
     state: TranscriberState,
     sampleRate: Int,
     samples: ReadableArray,
+    options: ReadableMap?,
     promise: Promise
   ) {
-    val audio = readableArrayToFloatArray(samples)
-    val transcript = MoonshineDirectJni.transcribeWithoutStreaming(state.handle, audio, sampleRate)
-      ?: throw IllegalStateException("Moonshine offline transcription returned no transcript")
-    promise.resolve(buildTranscriptionResult(state, transcript))
+    transcribeFromSamplesInternal(
+      transcriberId = transcriberId,
+      state = state,
+      sampleRate = sampleRate,
+      samples = samples,
+      options = options,
+      promise = promise
+    )
   }
 
   private fun withDefaultTranscriber(

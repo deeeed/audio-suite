@@ -86,8 +86,9 @@ yarn workspace @siteed/moonshine.rn validate:offline:contract <model-id> <device
 ### Offline progress fidelity
 
 `transcribeWithoutStreaming(...)` now emits the same upstream-style transcript
-events through the wrapper by routing offline file transcription through the
-existing chunked temporary-stream path.
+events on native by running through the package's chunked stream bridge inside
+the iOS and Android modules, while web uses the package-owned offline stream
+path.
 
 On the short bundled speech sample:
 
@@ -119,7 +120,7 @@ When `wordTimestamps` is enabled:
 - iOS: `line.words` is returned in practice
 - Android: `line.words` is returned in practice
 - Web: `line.words` is returned when an attention-capable decoder is available
-  (for long-form web validation, the wrapper now uses a non-word-timestamp
+  (for long-form web validation, the package-owned web path now uses a non-word-timestamp
   progress model for intermediate updates and a final attention-enabled pass to
   return the word timings)
 
