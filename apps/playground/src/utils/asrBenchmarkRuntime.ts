@@ -121,9 +121,15 @@ export async function getBenchmarkModelStatus(modelId: string): Promise<Benchmar
         const dirUri = await getMoonshineModelDirectoryUri(modelId)
         const files = getMoonshineDownloadFiles(modelId)
         const statuses = await Promise.all(
-            files.map((file) => FileSystem.getInfoAsync(`${dirUri}/${file.fileName}`)),
+            files.map((file) =>
+                getValidatedMoonshineFileInfo(
+                    `${dirUri}/${file.fileName}`,
+                    file.expectedBytes,
+                    file.md5,
+                ),
+            ),
         )
-        const downloaded = statuses.every((status) => status.exists)
+        const downloaded = statuses.every((status) => status.isValid)
         return {
             downloaded,
             localPath: downloaded ? toNativePath(dirUri) : null,
@@ -148,6 +154,31 @@ async function downloadToFile(
     const result = await resumable.downloadAsync()
     if (!result) {
         throw new Error(`Download failed for ${url}`)
+    }
+}
+
+async function getValidatedMoonshineFileInfo(
+    targetPath: string,
+    expectedBytes: number,
+    expectedMd5?: string,
+): Promise<{ exists: boolean; isValid: boolean }> {
+    const info = await FileSystem.getInfoAsync(targetPath, expectedMd5 ? { md5: true } : {})
+    if (!info.exists) {
+        return { exists: false, isValid: false }
+    }
+
+    const size =
+        typeof (info as { size?: number }).size === 'number'
+            ? (info as { size?: number }).size
+            : null
+
+    return {
+        exists: true,
+        isValid:
+            size === expectedBytes &&
+            (expectedMd5 == null ||
+                (typeof (info as { md5?: string }).md5 === 'string' &&
+                    (info as { md5?: string }).md5 === expectedMd5)),
     }
 }
 
@@ -177,8 +208,18 @@ export async function prepareBenchmarkModel(
 
         for (const file of getMoonshineDownloadFiles(modelId)) {
             const targetPath = `${dirUri}/${file.fileName}`
-            const existing = await FileSystem.getInfoAsync(targetPath)
-            if (existing.exists) continue
+            const existing = await getValidatedMoonshineFileInfo(
+                targetPath,
+                file.expectedBytes,
+                file.md5,
+            )
+            if (existing.isValid) continue
+            if (existing.exists) {
+                onStatus?.(
+                    `Refreshing stale ${file.fileName} (cached Moonshine file does not match the expected bundle)...`,
+                )
+                await FileSystem.deleteAsync(targetPath, { idempotent: true }).catch(() => {})
+            }
             await downloadToFile(file.url, targetPath, onStatus)
         }
 

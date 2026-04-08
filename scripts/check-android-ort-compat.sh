@@ -30,6 +30,11 @@ extract_ort_symbol_version() {
     || true
 }
 
+sha256_file() {
+  local file_path="$1"
+  shasum -a 256 "$file_path" | awk '{print $1}'
+}
+
 resolve_moonshine_aar() {
   if [ -n "$MOONSHINE_AAR" ]; then
     if [ ! -f "$MOONSHINE_AAR" ]; then
@@ -96,14 +101,19 @@ TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 unzip -p "$MOONSHINE_AAR_PATH" jni/arm64-v8a/libmoonshine.so > "$TMP_DIR/libmoonshine.so"
+unzip -p "$MOONSHINE_AAR_PATH" jni/arm64-v8a/libonnxruntime.so > "$TMP_DIR/libonnxruntime.so"
 
 SHERPA_IMPORTED_VERSION="$(extract_ort_symbol_version "$SHERPA_JNI_LIB")"
 SHERPA_EXPORTED_VERSION="$(extract_ort_symbol_version "$SHERPA_ORT_LIB")"
 MOONSHINE_IMPORTED_VERSION="$(extract_ort_symbol_version "$TMP_DIR/libmoonshine.so")"
+SHERPA_ORT_SHA="$(sha256_file "$SHERPA_ORT_LIB")"
+MOONSHINE_ORT_SHA="$(sha256_file "$TMP_DIR/libonnxruntime.so")"
 
 echo "Sherpa JNI imports ORT symbol version: ${SHERPA_IMPORTED_VERSION:-unknown}"
 echo "Sherpa packaged ORT exports version: ${SHERPA_EXPORTED_VERSION:-unknown}"
 echo "Moonshine artifact imports ORT symbol version: ${MOONSHINE_IMPORTED_VERSION:-unknown}"
+echo "Sherpa packaged ORT sha256: ${SHERPA_ORT_SHA:-unknown}"
+echo "Moonshine packaged ORT sha256: ${MOONSHINE_ORT_SHA:-unknown}"
 echo "Moonshine artifact: $MOONSHINE_AAR_PATH"
 
 if [ -z "$SHERPA_IMPORTED_VERSION" ] || [ -z "$SHERPA_EXPORTED_VERSION" ] || [ -z "$MOONSHINE_IMPORTED_VERSION" ]; then
@@ -118,6 +128,13 @@ fi
 
 if [ "$SHERPA_IMPORTED_VERSION" != "$MOONSHINE_IMPORTED_VERSION" ]; then
   echo "Incompatible: Sherpa and Moonshine require different ORT symbol versions." >&2
+  exit 1
+fi
+
+if [ "$SHERPA_ORT_SHA" != "$MOONSHINE_ORT_SHA" ]; then
+  echo "Incompatible: Sherpa and Moonshine package different libonnxruntime.so binaries." >&2
+  echo "Symbol versions matched, but the actual runtime libraries differ." >&2
+  echo "Rebuild Sherpa so android/src/main/jniLibs and Moonshine's AAR package the same ORT binary." >&2
   exit 1
 fi
 

@@ -34,23 +34,60 @@ export interface AsrBenchmarkModel {
 }
 
 export interface MoonshineBenchmarkDownloadFile {
+    expectedBytes: number
     fileName: string
+    md5?: string
     url: string
 }
 
 function createMoonshineFiles(slug: string): MoonshineBenchmarkDownloadFile[] {
     const baseUrl = `https://download.moonshine.ai/model/${slug}/quantized`
-    return [
-        'adapter.ort',
-        'cross_kv.ort',
-        'decoder_kv.ort',
-        'decoder_kv_with_attention.ort',
-        'encoder.ort',
-        'frontend.ort',
-        'streaming_config.json',
-        'tokenizer.bin',
-    ].map((fileName) => ({
+    const expectedFilesBySlug: Record<
+        string,
+        Record<string, { expectedBytes: number; md5?: string }>
+    > = {
+        'small-streaming-en': {
+            'adapter.ort': { expectedBytes: 2867424, md5: '3bd0a8dda28d779ba92faed6ca33da81' },
+            'cross_kv.ort': { expectedBytes: 5298736, md5: '6afd15b369fc66fd5a05b88286cdfd92' },
+            'decoder_kv.ort': {
+                expectedBytes: 81435904,
+                md5: 'd5adfcfaa6e582144791f1568bd0f683',
+            },
+            'decoder_kv_with_attention.ort': {
+                expectedBytes: 81380336,
+                md5: 'a8028f0c430470fb6d3e081dbedd05aa',
+            },
+            'encoder.ort': { expectedBytes: 43853224, md5: '87b50cdeaadbc080ec984d0dcb21aaee' },
+            'frontend.ort': {
+                expectedBytes: 30984200,
+                md5: '98a71c79496460f485a59b6a2e57d369',
+            },
+            'streaming_config.json': {
+                expectedBytes: 512,
+                md5: 'c987419d7fbd825ace3a36e76c413c4c',
+            },
+            'tokenizer.bin': { expectedBytes: 249974, md5: '1373d5894cf6669c03c31e8ed141f969' },
+        },
+        'medium-streaming-en': {
+            'adapter.ort': { expectedBytes: 3647712 },
+            'cross_kv.ort': { expectedBytes: 11544952 },
+            'decoder_kv.ort': { expectedBytes: 146216448 },
+            'decoder_kv_with_attention.ort': { expectedBytes: 146138304 },
+            'encoder.ort': { expectedBytes: 94202872 },
+            'frontend.ort': { expectedBytes: 47467256 },
+            'streaming_config.json': { expectedBytes: 513 },
+            'tokenizer.bin': { expectedBytes: 249974 },
+        },
+    }
+    const expectedFiles = expectedFilesBySlug[slug]
+    if (!expectedFiles) {
+        throw new Error(`Missing expected Moonshine download metadata for slug ${slug}`)
+    }
+
+    return Object.entries(expectedFiles).map(([fileName, file]) => ({
+        expectedBytes: file.expectedBytes,
         fileName,
+        md5: file.md5,
         url: `${baseUrl}/${fileName}`,
     }))
 }
