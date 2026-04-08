@@ -35,6 +35,7 @@ import type { OnnxTensorData } from '@siteed/sherpa-onnx.rn'
 import {
     getBenchmarkModelOrThrow,
     getMoonshineRuntimeConfig,
+    getMoonshineWordTimestampValidationConfig,
     runBenchmarkFile,
     runBenchmarkSimulatedLive,
     runMoonshineSpeakerTurnValidation,
@@ -42,7 +43,11 @@ import {
     safeReleaseMoonshine,
     safeReleaseMoonshineTranscriber,
 } from './utils/asrBenchmarkRuntime'
-import Moonshine, { type MoonshineTranscriber } from '@siteed/moonshine.rn'
+import Moonshine, {
+    type MoonshineTranscriber,
+    type MoonshineTranscriptEvent,
+} from '@siteed/moonshine.rn'
+import { readMonoPcm16Wav } from './utils/wav'
 
 // State holders updated by AgenticBridgeSync component
 let _audioState: Record<string, unknown> = {}
@@ -109,6 +114,9 @@ async function loadSampleFileUri(): Promise<string> {
     const asset = Asset.fromModule(require('@assets/jfk.mp3'))
     await asset.downloadAsync()
     if (!asset.localUri) throw new Error('Failed to load sample audio asset')
+    if (Platform.OS === 'web') {
+        return asset.localUri
+    }
     const dest = `${FileSystem.cacheDirectory}jfk_test.mp3`
     await FileSystem.copyAsync({ from: asset.localUri, to: dest })
     return dest
@@ -119,6 +127,9 @@ async function loadSpeechWavSampleFileUri(): Promise<string> {
     const asset = Asset.fromModule(require('../public/audio_samples/recorder_hello_world.wav'))
     await asset.downloadAsync()
     if (!asset.localUri) throw new Error('Failed to load speech WAV sample asset')
+    if (Platform.OS === 'web') {
+        return asset.localUri
+    }
     const dest = `${FileSystem.cacheDirectory}speech_sample.wav`
     await FileSystem.copyAsync({ from: asset.localUri, to: dest })
     return dest
@@ -542,6 +553,111 @@ if (__DEV__) {
                         result: { audioUri, modelId },
                     }
                 } finally {
+                    await safeReleaseMoonshine()
+                }
+            })()
+            return { op, status: 'pending' }
+        },
+
+        validateMoonshineOfflineContract: (
+            modelId: string,
+            options?: {
+                sample?: 'speech'
+                wordTimestamps?: boolean
+            },
+        ) => {
+            const op = 'validateMoonshineOfflineContract'
+            _lastAsyncResult = { op, status: 'pending' }
+            void (async () => {
+                let transcriber: MoonshineTranscriber | null = null
+                let removeListener: (() => void) | null = null
+
+                try {
+                    if (!modelId) {
+                        throw new Error('validateMoonshineOfflineContract requires a modelId')
+                    }
+
+                    const sample = options?.sample ?? 'speech'
+                    const wordTimestamps = options?.wordTimestamps === true
+                    const audioUri =
+                        sample === 'speech'
+                            ? await loadSpeechWavSampleFileUri()
+                            : await loadSpeechWavSampleFileUri()
+
+                    const validation = wordTimestamps
+                        ? await getMoonshineWordTimestampValidationConfig(modelId)
+                        : {
+                              config: await getMoonshineRuntimeConfig(modelId),
+                              validationModelId: modelId,
+                              validationModelLabel:
+                                  getBenchmarkModelOrThrow(modelId).name,
+                              note: undefined,
+                          }
+
+                    transcriber = await Moonshine.createTranscriberFromFiles(validation.config)
+
+                    const events: MoonshineTranscriptEvent[] = []
+                    removeListener = transcriber.addListener((event) => {
+                        events.push(event)
+                    })
+
+                    const wav = await readMonoPcm16Wav(audioUri)
+                    const result = await transcriber.transcribeWithoutStreaming(
+                        wav.sampleRate,
+                        wav.samples,
+                    )
+
+                    const eventTypes = events.map((event) => event.type)
+                    const hasIntermediateProgress = eventTypes.some(
+                        (type) =>
+                            type === 'lineStarted' ||
+                            type === 'lineUpdated' ||
+                            type === 'lineTextChanged',
+                    )
+                    const progressSemantics =
+                        events.length === 0
+                            ? 'none'
+                            : hasIntermediateProgress
+                              ? 'granular'
+                              : 'terminal-only'
+                    const wordCount = result.lines.reduce(
+                        (total, line) => total + (line.words?.length ?? 0),
+                        0,
+                    )
+                    const linesWithWords = result.lines.filter(
+                        (line) => (line.words?.length ?? 0) > 0,
+                    ).length
+
+                    _lastAsyncResult = {
+                        op,
+                        status: 'success',
+                        result: {
+                            audioUri,
+                            eventCount: events.length,
+                            eventTypes,
+                            hasIntermediateProgress,
+                            linesWithWords,
+                            modelId,
+                            progressSemantics,
+                            sample,
+                            transcript: result.text,
+                            validationModelId: validation.validationModelId,
+                            validationModelLabel: validation.validationModelLabel,
+                            wordCount,
+                            wordTimestamps,
+                            wordsReturned: wordCount > 0,
+                        },
+                    }
+                } catch (e) {
+                    _lastAsyncResult = {
+                        op,
+                        status: 'error',
+                        error: String(e),
+                        result: { modelId },
+                    }
+                } finally {
+                    removeListener?.()
+                    await safeReleaseMoonshineTranscriber(transcriber)
                     await safeReleaseMoonshine()
                 }
             })()

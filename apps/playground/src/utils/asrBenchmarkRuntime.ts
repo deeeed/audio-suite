@@ -275,7 +275,7 @@ export async function getMoonshineRuntimeConfig(
     }
 }
 
-async function getMoonshineWordTimestampValidationConfig(
+export async function getMoonshineWordTimestampValidationConfig(
     modelId: string,
     onStatus?: (message: string) => void,
 ): Promise<{

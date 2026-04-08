@@ -230,6 +230,15 @@ Useful package-local preflight:
 yarn release:beta:preflight
 ```
 
+Offline progress + word timestamp validation notes:
+
+- [`./OFFLINE_PROGRESS_AND_WORD_TIMESTAMPS.md`](./OFFLINE_PROGRESS_AND_WORD_TIMESTAMPS.md)
+- repo-local harness:
+
+  ```bash
+  yarn validate:offline:contract <model-id> [device-filter]
+  ```
+
 External validation findings from the first beta cycle:
 
 - npm publish is possible after trimming duplicate/repo-only artifacts
