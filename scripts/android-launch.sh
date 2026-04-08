@@ -18,6 +18,7 @@ APP_SCHEME="${APP_SCHEME:-}"
 METRO_PORT="${METRO_PORT:-}"
 ANDROID_PACKAGE="${ANDROID_PACKAGE:-}"
 ANDROID_ACTIVITY="${ANDROID_ACTIVITY:-.MainActivity}"
+DEV_CLIENT_SCHEME="${DEV_CLIENT_SCHEME:-}"
 SELECT_MODE=false
 SKIP_METRO_CHECK=false
 
@@ -33,11 +34,24 @@ success() { echo -e "${GREEN}[ok]${NC} $1"; }
 warn()    { echo -e "${YELLOW}[warn]${NC} $1"; }
 error()   { echo -e "${RED}[error]${NC} $1"; }
 
+# Best-effort app-local agentic config lookup so Android launches can use the
+# stable Expo slug-based dev-client scheme instead of variant app schemes.
+APP_ROOT="${APP_ROOT:-$(pwd)}"
+AGENTIC_CONF_FILE="${APP_ROOT}/scripts/agentic/agentic.conf"
+if [ -z "$DEV_CLIENT_SCHEME" ] && [ -f "$AGENTIC_CONF_FILE" ]; then
+    # shellcheck disable=SC1090
+    source "$AGENTIC_CONF_FILE"
+    if [ -n "${AGENTIC_SCHEME:-}" ]; then
+        DEV_CLIENT_SCHEME="exp+${AGENTIC_SCHEME}"
+    fi
+fi
+
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
         --device|-d)    DEVICE_NAME="$2"; shift 2 ;;
         --scheme)       APP_SCHEME="$2"; shift 2 ;;
+        --expo-scheme)  DEV_CLIENT_SCHEME="$2"; shift 2 ;;
         --port|-p)      METRO_PORT="$2"; shift 2 ;;
         --package)      ANDROID_PACKAGE="$2"; shift 2 ;;
         --activity)     ANDROID_ACTIVITY="$2"; shift 2 ;;
@@ -111,6 +125,10 @@ if [ -z "$APP_SCHEME" ]; then
     exit 1
 fi
 
+if [ -z "$DEV_CLIENT_SCHEME" ]; then
+    DEV_CLIENT_SCHEME="exp+${APP_SCHEME}"
+fi
+
 if [ -z "$METRO_PORT" ]; then
     error "Metro port required. Use --port <port> or set METRO_PORT env var."
     exit 1
@@ -139,7 +157,7 @@ fi
 # ========================================================
 # Send deep link
 # ========================================================
-DEEP_LINK="exp+${APP_SCHEME}://expo-development-client/?url=http%3A%2F%2Flocalhost%3A${METRO_PORT}"
+DEEP_LINK="${DEV_CLIENT_SCHEME}://expo-development-client/?url=http%3A%2F%2Flocalhost%3A${METRO_PORT}"
 
 info "Sending deep link to $DEVICE_NAME"
 info "  -> $DEEP_LINK"
@@ -157,6 +175,7 @@ echo ""
 info "Summary:"
 echo "  Device:  $DEVICE_NAME"
 echo "  Scheme:  $APP_SCHEME"
+echo "  Dev URL: ${DEV_CLIENT_SCHEME}"
 echo "  Metro:   http://localhost:$METRO_PORT"
 if [ -n "$ANDROID_PACKAGE" ]; then
     echo "  Package: $ANDROID_PACKAGE"

@@ -19,6 +19,7 @@ const PKG =
   APP_VARIANT === 'production' ? BUNDLE_BASE : `${BUNDLE_BASE}.${APP_VARIANT}`;
 const SCHEME =
   APP_VARIANT === 'production' ? SCHEME_BASE : `${SCHEME_BASE}-${APP_VARIANT}`;
+const DEV_CLIENT_SCHEME = `exp+${SCHEME_BASE}`;
 const ROUTE = '/moonshine-live';
 const TIMEOUT_MS = 10 * 60 * 1000;
 const STATE_TIMEOUT_MS = 90 * 1000;
@@ -120,7 +121,7 @@ async function restartDevClient() {
     '-a',
     'android.intent.action.VIEW',
     '-d',
-    `exp+${SCHEME}://expo-development-client/?url=http://127.0.0.1:7365`,
+    `${DEV_CLIENT_SCHEME}://expo-development-client/?url=http://127.0.0.1:7365`,
     PKG,
   ]);
   await sleep(5000);

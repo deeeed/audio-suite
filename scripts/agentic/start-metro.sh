@@ -25,7 +25,7 @@ print_launch_hint() {
   if [ -n "$LAN_IP" ]; then
     echo ""
     echo "To open the app on Android:"
-    echo "  adb shell am start -a android.intent.action.VIEW -d \"exp+${SCHEME}://expo-development-client/?url=http://${LAN_IP}:${PORT}\" ${BUNDLE_ID_ANDROID}/.MainActivity"
+    echo "  adb shell am start -a android.intent.action.VIEW -d \"${DEV_CLIENT_SCHEME_ANDROID}://expo-development-client/?url=http://${LAN_IP}:${PORT}\" ${BUNDLE_ID_ANDROID}/.MainActivity"
     echo ""
   fi
 }

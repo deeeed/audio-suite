@@ -371,7 +371,12 @@ else
   METRO_HOST=$(ipconfig getifaddr en0 2>/dev/null || echo localhost)
 fi
 ENCODED_URL=$(python3 -c "import urllib.parse; print(urllib.parse.quote('http://${METRO_HOST}:${PORT}', safe=''))")
-DEV_CLIENT_URL="exp+${SCHEME}://expo-development-client/?url=${ENCODED_URL}"
+if [ "$PLATFORM" = "android" ]; then
+  DEV_CLIENT_SCHEME="${DEV_CLIENT_SCHEME_ANDROID}"
+else
+  DEV_CLIENT_SCHEME="${DEV_CLIENT_SCHEME_IOS}"
+fi
+DEV_CLIENT_URL="${DEV_CLIENT_SCHEME}://expo-development-client/?url=${ENCODED_URL}"
 
 if [ "$PLATFORM" = "ios" ] && [ "${IOS_DEVICE_MODE:-simulator}" = "physical" ]; then
   xcrun devicectl device process launch \
