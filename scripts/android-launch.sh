@@ -34,6 +34,23 @@ success() { echo -e "${GREEN}[ok]${NC} $1"; }
 warn()    { echo -e "${YELLOW}[warn]${NC} $1"; }
 error()   { echo -e "${RED}[error]${NC} $1"; }
 
+detect_metro_host() {
+    local device="$1"
+    if [[ "$device" == emulator-* ]]; then
+        printf '10.0.2.2\n'
+        return 0
+    fi
+
+    local lan_ip
+    lan_ip=$(ifconfig | awk '/inet / && !/127\./ && !/169\.254\./ {print $2}' | grep -v '^::' | head -1)
+    if [ -n "$lan_ip" ]; then
+        printf '%s\n' "$lan_ip"
+        return 0
+    fi
+
+    printf 'localhost\n'
+}
+
 # Best-effort app-local agentic config lookup so Android launches can use the
 # stable Expo slug-based dev-client scheme instead of variant app schemes.
 APP_ROOT="${APP_ROOT:-$(pwd)}"
@@ -157,7 +174,9 @@ fi
 # ========================================================
 # Send deep link
 # ========================================================
-DEEP_LINK="${DEV_CLIENT_SCHEME}://expo-development-client/?url=http%3A%2F%2Flocalhost%3A${METRO_PORT}"
+METRO_HOST=$(detect_metro_host "$DEVICE_NAME")
+ENCODED_URL=$(python3 -c "import urllib.parse; print(urllib.parse.quote('http://${METRO_HOST}:${METRO_PORT}', safe=''))")
+DEEP_LINK="${DEV_CLIENT_SCHEME}://expo-development-client/?url=${ENCODED_URL}"
 
 info "Sending deep link to $DEVICE_NAME"
 info "  -> $DEEP_LINK"
@@ -176,7 +195,7 @@ info "Summary:"
 echo "  Device:  $DEVICE_NAME"
 echo "  Scheme:  $APP_SCHEME"
 echo "  Dev URL: ${DEV_CLIENT_SCHEME}"
-echo "  Metro:   http://localhost:$METRO_PORT"
+echo "  Metro:   http://${METRO_HOST}:$METRO_PORT"
 if [ -n "$ANDROID_PACKAGE" ]; then
     echo "  Package: $ANDROID_PACKAGE"
 fi
