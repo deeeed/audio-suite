@@ -52,6 +52,22 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function getMetroHost() {
+  if (SERIAL.startsWith('emulator-')) {
+    return '10.0.2.2';
+  }
+
+  try {
+    const output = execSync(
+      "ipconfig getifaddr en0 2>/dev/null || ifconfig | awk '/inet / && !/127\\./ && !/169\\.254\\./ {print $2}' | grep -v '^::' | head -1",
+      { encoding: 'utf8' }
+    ).trim();
+    return output || 'localhost';
+  } catch {
+    return 'localhost';
+  }
+}
+
 function run(command, args, { cwd = REPO_ROOT, parseJson = false, maxBuffer = 50 * 1024 * 1024 } = {}) {
   const result = spawnSync(command, args, {
     cwd,
@@ -112,6 +128,7 @@ async function waitForBridgeTarget(timeoutMs = STATE_TIMEOUT_MS) {
 }
 
 async function restartDevClient() {
+  const metroHost = getMetroHost();
   adb(['reverse', 'tcp:7365', 'tcp:7365']);
   adb(['shell', 'am', 'force-stop', PKG]);
   adb([
@@ -121,7 +138,7 @@ async function restartDevClient() {
     '-a',
     'android.intent.action.VIEW',
     '-d',
-    `${DEV_CLIENT_SCHEME}://expo-development-client/?url=http://localhost:7365`,
+    `${DEV_CLIENT_SCHEME}://expo-development-client/?url=http://${metroHost}:7365`,
     PKG,
   ]);
   await sleep(5000);
