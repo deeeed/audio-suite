@@ -367,6 +367,8 @@ elif [ "$PLATFORM" = "ios" ] && [ "${IOS_DEVICE_MODE:-simulator}" = "physical" ]
   METRO_HOST=$(ipconfig getifaddr en0 2>/dev/null || echo localhost)
 elif [[ "${SERIAL:-}" == emulator-* ]]; then
   METRO_HOST="10.0.2.2"
+elif [ "$PLATFORM" = "android" ]; then
+  METRO_HOST="localhost"
 else
   METRO_HOST=$(ipconfig getifaddr en0 2>/dev/null || echo localhost)
 fi

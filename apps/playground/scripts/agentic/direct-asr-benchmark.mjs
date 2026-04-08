@@ -217,7 +217,7 @@ async function restartDevClient() {
     '-a',
     'android.intent.action.VIEW',
     '-d',
-    `${DEV_CLIENT_SCHEME}://expo-development-client/?url=http://127.0.0.1:7365`,
+    `${DEV_CLIENT_SCHEME}://expo-development-client/?url=http://localhost:7365`,
     PKG,
   ]);
   await sleep(5000);
