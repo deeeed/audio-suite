@@ -85,9 +85,11 @@ On the longer bundled `jfk.wav` sample:
 
 - iOS: **granular** (`44` events over `1234ms`)
 - Android: **granular** (`44` events over `3514ms`)
+- Web: **granular** (`69` events over `9810ms`)
 
-This means offline progress is now meaningful on native long-form runs, but web
-has only been validated as terminal-burst on the short sample so far.
+This means offline progress is now meaningful on long-form runs across native
+and web, even though the short sample can still look bursty because it finishes
+too quickly to expose many intermediate updates.
 
 If granular progress is desired, it should be implemented inside
 `moonshine.rn`, not faked in consumer UIs.
@@ -99,6 +101,9 @@ When `wordTimestamps` is enabled:
 - iOS: `line.words` is returned in practice
 - Android: `line.words` is returned in practice
 - Web: `line.words` is returned when an attention-capable decoder is available
+  (for long-form web validation, the wrapper now uses a non-word-timestamp
+  progress model for intermediate updates and a final attention-enabled pass to
+  return the word timings)
 
 ## Artifact caveats
 

@@ -8,6 +8,7 @@ import type {
   MoonshineMemoryModelConfig,
   MoonshineModelConfig,
   MoonshinePlatformStatus,
+  MoonshineTranscriptLine,
   MoonshineProcessUtteranceResult,
   MoonshineTranscriptEvent,
   MoonshineTranscriptionResult,
@@ -19,7 +20,10 @@ import {
   getMoonshineWebRuntimeVersion,
 } from '../web/config';
 import { MoonshineWebIntentRecognizerModel } from '../web/MoonshineWebIntentRecognizer';
-import { MoonshineWebModel } from '../web/MoonshineWebModel';
+import {
+  MoonshineWebModel,
+  type MoonshineWebTranscription,
+} from '../web/MoonshineWebModel';
 import { MoonshineWebSpeakerClusterer } from '../web/MoonshineWebSpeakerClusterer';
 
 type MoonshineListener = (event: MoonshineTranscriptEvent) => void;
@@ -93,6 +97,7 @@ const DEFAULT_LOOK_BEHIND_SAMPLES = 1600;
 const DEFAULT_MAX_SEGMENT_DURATION_MS = 15000;
 const DEFAULT_SPEAKER_HINT_MAX_SEGMENT_DURATION_MS = 4000;
 const MIN_TRANSCRIBE_SAMPLES = 1600;
+const DEFAULT_WEB_WORD_TIMESTAMP_WINDOW_MS = 5000;
 
 function createStreamState(
   transcriberId: string,
@@ -140,6 +145,46 @@ function trimToLastSamples(samples: number[], maxLength: number): number[] {
     return samples;
   }
   return samples.slice(samples.length - maxLength);
+}
+
+function joinTranscriptionText(parts: string[]): string {
+  return parts
+    .map((part) => normalizeTranscriptText(part))
+    .filter(Boolean)
+    .join(' ');
+}
+
+function buildOfflineResult(
+  transcriberId: string,
+  text: string,
+  durationMs: number,
+  latencyMs?: number,
+  words?: MoonshineLineWordTiming[],
+  speakerMetadata?: {
+    hasSpeakerId?: boolean;
+    speakerId?: string;
+    speakerIndex?: number;
+  }
+): MoonshineTranscriptionResult {
+  const normalizedText = normalizeTranscriptText(text);
+  return {
+    text: normalizedText,
+    lines: normalizedText
+      ? [
+          {
+            completedAtMs: durationMs,
+            durationMs,
+            isFinal: true,
+            lastTranscriptionLatencyMs: latencyMs,
+            lineId: `${transcriberId}:line:1`,
+            ...speakerMetadata,
+            startedAtMs: 0,
+            text: normalizedText,
+            words,
+          },
+        ]
+      : [],
+  };
 }
 
 function bytesFromModelPart(part: number[]): Uint8Array {
@@ -687,6 +732,18 @@ export class MoonshineService {
     sampleRate: number,
     samples: number[]
   ): Promise<MoonshineTranscriptionResult> {
+    const state = this.getTranscriberState(transcriberId);
+    if (state.config.options?.wordTimestamps) {
+      return this.transcribeWebOfflineWithWordTimestamps(
+        transcriberId,
+        state,
+        sampleRate,
+        samples,
+        {
+          chunkDurationMs: 200,
+        }
+      );
+    }
     return this.transcribeViaTemporaryStream(
       transcriberId,
       sampleRate,
@@ -720,41 +777,11 @@ export class MoonshineService {
     candidatePath: string | undefined
   ): Promise<MoonshineInitializeResult> {
     try {
-      const normalizedArch = normalizeMoonshineWebModelArch(config.modelArch);
-      const webEncoderUrl = getTranscriberOptionValue(
-        config,
-        'web_encoder_url'
-      );
-      const webDecoderUrl = getTranscriberOptionValue(
-        config,
-        'web_decoder_url'
-      );
-      const modelBasePath =
-        webEncoderUrl && webDecoderUrl
-          ? '[web-url-source]'
-          : resolveMoonshineWebModelBasePath(candidatePath, normalizedArch);
       const stateId = `web-transcriber-${this.nextTranscriberId++}`;
-      const wordTimestampsRequested = config.options?.wordTimestamps === true;
-      const cacheKey = `${normalizedArch}::${webEncoderUrl ?? modelBasePath}::${webDecoderUrl ?? modelBasePath}::wordTimestamps=${wordTimestampsRequested ? '1' : '0'}`;
-      let model = this.modelCache.get(cacheKey);
-      if (!model) {
-        model = new MoonshineWebModel(
-          normalizedArch,
-          webEncoderUrl && webDecoderUrl
-            ? {
-                decoderUrl: webDecoderUrl,
-                encoderUrl: webEncoderUrl,
-                kind: 'urls',
-              }
-            : {
-                kind: 'path',
-                modelBasePath,
-              },
-          { wordTimestamps: wordTimestampsRequested }
-        );
-        this.modelCache.set(cacheKey, model);
-      }
-      await model.load();
+      const { model, modelBasePath } = await this.getOrCreateWebModel(
+        config,
+        candidatePath
+      );
       const defaultStreamId = `${stateId}:default`;
       this.transcribers.set(stateId, {
         activeStreamHandles: new Set([defaultStreamId]),
@@ -784,6 +811,42 @@ export class MoonshineService {
         success: false,
       };
     }
+  }
+
+  private async getOrCreateWebModel(
+    config: MoonshineLoadConfigBase,
+    candidatePath: string | undefined
+  ): Promise<{ model: MoonshineWebModel; modelBasePath: string }> {
+    const normalizedArch = normalizeMoonshineWebModelArch(config.modelArch);
+    const webEncoderUrl = getTranscriberOptionValue(config, 'web_encoder_url');
+    const webDecoderUrl = getTranscriberOptionValue(config, 'web_decoder_url');
+    const modelBasePath =
+      webEncoderUrl && webDecoderUrl
+        ? '[web-url-source]'
+        : resolveMoonshineWebModelBasePath(candidatePath, normalizedArch);
+    const wordTimestampsRequested = config.options?.wordTimestamps === true;
+    const cacheKey = `${normalizedArch}::${webEncoderUrl ?? modelBasePath}::${webDecoderUrl ?? modelBasePath}::wordTimestamps=${wordTimestampsRequested ? '1' : '0'}`;
+
+    let model = this.modelCache.get(cacheKey);
+    if (!model) {
+      model = new MoonshineWebModel(
+        normalizedArch,
+        webEncoderUrl && webDecoderUrl
+          ? {
+              decoderUrl: webDecoderUrl,
+              encoderUrl: webEncoderUrl,
+              kind: 'urls',
+            }
+          : {
+              kind: 'path',
+              modelBasePath,
+            },
+        { wordTimestamps: wordTimestampsRequested }
+      );
+      this.modelCache.set(cacheKey, model);
+    }
+    await model.load();
+    return { model, modelBasePath };
   }
 
   private async createWebTranscriberFromMemory(
@@ -1053,6 +1116,222 @@ export class MoonshineService {
     };
   }
 
+  private async transcribeWebOfflineWithWordTimestamps(
+    transcriberId: string,
+    state: WebTranscriberState,
+    sampleRate: number,
+    samples: number[],
+    options?: MoonshineTranscribeOptions
+  ): Promise<MoonshineTranscriptionResult> {
+    if (sampleRate !== DEFAULT_SAMPLE_RATE) {
+      throw new Error(
+        `Moonshine web currently expects ${DEFAULT_SAMPLE_RATE}Hz mono PCM. Received sample rate: ${sampleRate}`
+      );
+    }
+
+    const progressConfig: MoonshineLoadConfigBase = {
+      ...state.config,
+      options: {
+        ...state.config.options,
+        wordTimestamps: false,
+      },
+      transcriberOptions: state.config.transcriberOptions?.filter(
+        (option) =>
+          option.name !== 'web_encoder_url' && option.name !== 'web_decoder_url'
+      ),
+    };
+    const progressCandidatePath = resolveMoonshineWebModelBasePath(
+      undefined,
+      normalizeMoonshineWebModelArch(progressConfig.modelArch)
+    );
+    const { model: progressModel } = await this.getOrCreateWebModel(
+      progressConfig,
+      progressCandidatePath
+    );
+
+    const streamId = `${transcriberId}:offline-progress`;
+    const chunkDurationMs = Math.max(1, options?.chunkDurationMs ?? 200);
+    const samplesPerChunk = Math.max(
+      1,
+      Math.floor((sampleRate * chunkDurationMs) / 1000)
+    );
+    let emittedText = '';
+    let lineStarted = false;
+
+    for (
+      let endIndex = samplesPerChunk;
+      endIndex <= samples.length;
+      endIndex += samplesPerChunk
+    ) {
+      const partialSamples = samples.slice(
+        0,
+        Math.min(endIndex, samples.length)
+      );
+      const partialDurationMs = (partialSamples.length / sampleRate) * 1000;
+      let transcription: MoonshineWebTranscription;
+      try {
+        transcription = await progressModel.transcribeDetailed(
+          Float32Array.from(partialSamples),
+          { wordTimestamps: false }
+        );
+      } catch (error) {
+        throw new Error(`offline progress pass failed: ${String(error)}`);
+      }
+      const text = normalizeTranscriptText(transcription.text);
+      if (!text || text === emittedText) {
+        continue;
+      }
+
+      const line: MoonshineTranscriptLine = {
+        durationMs: partialDurationMs,
+        isFinal: false,
+        lastTranscriptionLatencyMs: progressModel.getLatency(),
+        lineId: `${transcriberId}:line:1`,
+        startedAtMs: 0,
+        text,
+      };
+
+      if (!lineStarted) {
+        lineStarted = true;
+        this.emit({
+          line: {
+            ...line,
+            isNew: true,
+          },
+          streamId,
+          transcriberId,
+          type: 'lineStarted',
+        });
+      } else {
+        this.emit({
+          line: {
+            ...line,
+            hasTextChanged: true,
+            isUpdated: true,
+          },
+          streamId,
+          transcriberId,
+          type: 'lineUpdated',
+        });
+      }
+
+      this.emit({
+        line: {
+          ...line,
+          hasTextChanged: true,
+          isUpdated: lineStarted,
+        },
+        streamId,
+        transcriberId,
+        type: 'lineTextChanged',
+      });
+
+      emittedText = text;
+    }
+
+    const durationMs = (samples.length / sampleRate) * 1000;
+    let finalTranscription: MoonshineWebTranscription;
+    try {
+      finalTranscription = await state.model.transcribeDetailed(
+        Float32Array.from(samples),
+        { wordTimestamps: true }
+      );
+    } catch (error) {
+      finalTranscription = await this.runWindowedWordTimestampPass(
+        state,
+        sampleRate,
+        samples,
+        `offline word-timestamp pass failed: ${String(error)}`
+      );
+    }
+    const finalText = normalizeTranscriptText(finalTranscription.text);
+    const speakerMetadata =
+      finalText && state.speakerClusterer
+        ? state.speakerClusterer.assign(samples, sampleRate)
+        : undefined;
+    const result = buildOfflineResult(
+      transcriberId,
+      finalText,
+      durationMs,
+      state.model.getLatency(),
+      finalTranscription.words,
+      speakerMetadata
+    );
+
+    if (result.lines[0]) {
+      this.emit({
+        line: {
+          ...result.lines[0],
+          hasTextChanged: result.lines[0].text !== emittedText,
+          isUpdated: lineStarted,
+        },
+        streamId,
+        transcriberId,
+        type: 'lineCompleted',
+      });
+    }
+
+    return result;
+  }
+
+  private async runWindowedWordTimestampPass(
+    state: WebTranscriberState,
+    sampleRate: number,
+    samples: number[],
+    originalError: string
+  ): Promise<MoonshineWebTranscription> {
+    const samplesPerWindow = Math.max(
+      MIN_TRANSCRIBE_SAMPLES,
+      Math.floor((sampleRate * DEFAULT_WEB_WORD_TIMESTAMP_WINDOW_MS) / 1000)
+    );
+    const texts: string[] = [];
+    const words: MoonshineLineWordTiming[] = [];
+
+    for (
+      let startIndex = 0;
+      startIndex < samples.length;
+      startIndex += samplesPerWindow
+    ) {
+      const chunk = samples.slice(startIndex, startIndex + samplesPerWindow);
+      if (chunk.length < MIN_TRANSCRIBE_SAMPLES) {
+        continue;
+      }
+
+      let chunkTranscription: MoonshineWebTranscription;
+      try {
+        chunkTranscription = await state.model.transcribeDetailed(
+          Float32Array.from(chunk),
+          { wordTimestamps: true }
+        );
+      } catch (error) {
+        throw new Error(
+          `${originalError}; windowed fallback failed at ${startIndex}: ${String(error)}`
+        );
+      }
+
+      texts.push(chunkTranscription.text);
+      const offsetMs = (startIndex / sampleRate) * 1000;
+      for (const word of chunkTranscription.words ?? []) {
+        words.push({
+          ...word,
+          endTimeMs:
+            word.endTimeMs == null ? word.endTimeMs : word.endTimeMs + offsetMs,
+          startTimeMs:
+            word.startTimeMs == null
+              ? word.startTimeMs
+              : word.startTimeMs + offsetMs,
+        });
+      }
+    }
+
+    return {
+      text: joinTranscriptionText(texts),
+      words,
+      wordTimestampsEnabled: true,
+      wordTimestampsFailureReason: state.wordTimestampsFailureReason,
+    };
+  }
+
   private getStreamState(
     transcriber: WebTranscriberState,
     streamId: string
@@ -1214,7 +1493,10 @@ export class MoonshineService {
       try {
         const transcription = await transcriber.model.transcribeDetailed(
           snapshotSamples,
-          { wordTimestamps: transcriber.config.options?.wordTimestamps }
+          {
+            wordTimestamps:
+              shouldFinalize && transcriber.config.options?.wordTimestamps,
+          }
         );
         const text = normalizeTranscriptText(transcription.text);
         if (stream.currentLineId !== lineId) {

@@ -575,7 +575,7 @@ if (__DEV__) {
         validateMoonshineOfflineContract: (
             modelId: string,
             options?: {
-                sample?: 'speech'
+                sample?: 'jfk' | 'speech'
                 wordTimestamps?: boolean
             },
         ) => {
@@ -595,8 +595,6 @@ if (__DEV__) {
                     const audioUri =
                         sample === 'jfk'
                             ? await loadJfkWavSampleFileUri()
-                            : sample === 'speech'
-                            ? await loadSpeechWavSampleFileUri()
                             : await loadSpeechWavSampleFileUri()
 
                     const validation = wordTimestamps
@@ -629,6 +627,7 @@ if (__DEV__) {
                     const eventTypes = events.map((event) => event.type)
                     const eventTimeline = events.map((event) => ({
                         atMs: event.atMs,
+                        error: event.error ?? null,
                         type: event.type,
                     }))
                     const hasIntermediateProgress = eventTypes.some(

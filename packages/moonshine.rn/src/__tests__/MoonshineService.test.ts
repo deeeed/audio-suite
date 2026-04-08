@@ -14,6 +14,7 @@ const mockNativeModule = {
   releaseTranscriber: jest.fn(),
   removeListeners: jest.fn(),
   startTranscriber: jest.fn(),
+  transcribeFromSamplesForTranscriber: jest.fn(),
   transcribeWithoutStreamingForTranscriber: jest.fn(),
 };
 
@@ -152,20 +153,57 @@ describe('MoonshineService', () => {
       success: true,
       transcriberId: 'transcriber-1',
     });
-    mockNativeModule.transcribeWithoutStreamingForTranscriber.mockResolvedValue(
-      {
-        text: 'Hello world',
-        lines: [
-          {
+    mockNativeModule.transcribeFromSamplesForTranscriber.mockImplementation(
+      async () => {
+        const emit = mockEventListeners.get(MOONSHINE_EVENT_NAME);
+        emit?.({
+          line: {
+            lineId: 'line-1',
+            text: 'Hello',
+          },
+          streamId: 'transcriber-1:default',
+          transcriberId: 'transcriber-1',
+          type: 'lineStarted',
+        });
+        emit?.({
+          line: {
+            lineId: 'line-1',
+            hasTextChanged: true,
+            isUpdated: true,
+            text: 'Hello world',
+          },
+          streamId: 'transcriber-1:default',
+          transcriberId: 'transcriber-1',
+          type: 'lineTextChanged',
+        });
+        emit?.({
+          line: {
+            isFinal: true,
             lineId: 'line-1',
             text: 'Hello world',
-            isFinal: true,
             words: [
               { word: 'Hello', startTimeMs: 0, endTimeMs: 500 },
               { word: 'world', startTimeMs: 500, endTimeMs: 1000 },
             ],
           },
-        ],
+          streamId: 'transcriber-1:default',
+          transcriberId: 'transcriber-1',
+          type: 'lineCompleted',
+        });
+        return {
+          text: 'Hello world',
+          lines: [
+            {
+              lineId: 'line-1',
+              text: 'Hello world',
+              isFinal: true,
+              words: [
+                { word: 'Hello', startTimeMs: 0, endTimeMs: 500 },
+                { word: 'world', startTimeMs: 500, endTimeMs: 1000 },
+              ],
+            },
+          ],
+        };
       }
     );
 
