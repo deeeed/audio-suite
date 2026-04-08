@@ -16,6 +16,16 @@
         "types": "./lib/typescript/commonjs/index.d.ts",
         "default": "./lib/commonjs/index.js"
       }
+    },
+    "./constants/webTranscriberOptions": {
+      "import": {
+        "types": "./lib/typescript/module/constants/webTranscriberOptions.d.ts",
+        "default": "./lib/module/constants/webTranscriberOptions.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/constants/webTranscriberOptions.d.ts",
+        "default": "./lib/commonjs/constants/webTranscriberOptions.js"
+      }
     }
   },
   "files": [

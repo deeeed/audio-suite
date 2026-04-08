@@ -5,6 +5,7 @@ import Moonshine, {
     normalizeMoonshineWebModelArch,
     resolveMoonshineWebModelBasePath,
 } from '@siteed/moonshine.rn'
+import { MOONSHINE_WEB_TRANSCRIBER_OPTION_NAMES } from '../../../../packages/moonshine.rn/src/constants/webTranscriberOptions'
 import * as FileSystem from 'expo-file-system/legacy'
 import { Platform } from 'react-native'
 import { initWhisper, type WhisperContext } from 'whisper.rn'
@@ -302,15 +303,15 @@ export async function getMoonshineWordTimestampValidationConfig(
                 },
                 transcriberOptions: [
                     {
-                        name: 'web_encoder_url',
+                        name: MOONSHINE_WEB_TRANSCRIBER_OPTION_NAMES.encoderUrl,
                         value: MOONSHINE_WEB_WORD_TIMESTAMP_ENCODER_URL,
                     },
                     {
-                        name: 'web_decoder_url',
+                        name: MOONSHINE_WEB_TRANSCRIBER_OPTION_NAMES.decoderUrl,
                         value: MOONSHINE_WEB_WORD_TIMESTAMP_DECODER_URL,
                     },
                     {
-                        name: 'web_progress_model_base_path',
+                        name: MOONSHINE_WEB_TRANSCRIBER_OPTION_NAMES.progressModelBasePath,
                         value: resolveMoonshineWebModelBasePath(
                             undefined,
                             normalizedArch,
