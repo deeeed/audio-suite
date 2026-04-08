@@ -199,8 +199,7 @@ Current web status:
   CDN or the `onnxruntime-web` wasm base path.
 - Web consumers can pass typed overrides directly on the load config via
   `webEncoderUrl`, `webDecoderUrl`, and `webProgressModelBasePath` instead of
-  stringly-typed `transcriberOptions`. Legacy option names are still accepted
-  for compatibility.
+  stringly-typed `transcriberOptions`.
 
 Current iOS status:
 
