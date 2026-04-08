@@ -35,6 +35,11 @@ sha256_file() {
   shasum -a 256 "$file_path" | awk '{print $1}'
 }
 
+filesize_bytes() {
+  local file_path="$1"
+  wc -c < "$file_path" | tr -d ' '
+}
+
 resolve_moonshine_aar() {
   if [ -n "$MOONSHINE_AAR" ]; then
     if [ ! -f "$MOONSHINE_AAR" ]; then
@@ -108,10 +113,14 @@ SHERPA_EXPORTED_VERSION="$(extract_ort_symbol_version "$SHERPA_ORT_LIB")"
 MOONSHINE_IMPORTED_VERSION="$(extract_ort_symbol_version "$TMP_DIR/libmoonshine.so")"
 SHERPA_ORT_SHA="$(sha256_file "$SHERPA_ORT_LIB")"
 MOONSHINE_ORT_SHA="$(sha256_file "$TMP_DIR/libonnxruntime.so")"
+SHERPA_ORT_SIZE="$(filesize_bytes "$SHERPA_ORT_LIB")"
+MOONSHINE_ORT_SIZE="$(filesize_bytes "$TMP_DIR/libonnxruntime.so")"
 
 echo "Sherpa JNI imports ORT symbol version: ${SHERPA_IMPORTED_VERSION:-unknown}"
 echo "Sherpa packaged ORT exports version: ${SHERPA_EXPORTED_VERSION:-unknown}"
 echo "Moonshine artifact imports ORT symbol version: ${MOONSHINE_IMPORTED_VERSION:-unknown}"
+echo "Sherpa packaged ORT size: ${SHERPA_ORT_SIZE:-unknown}"
+echo "Moonshine packaged ORT size: ${MOONSHINE_ORT_SIZE:-unknown}"
 echo "Sherpa packaged ORT sha256: ${SHERPA_ORT_SHA:-unknown}"
 echo "Moonshine packaged ORT sha256: ${MOONSHINE_ORT_SHA:-unknown}"
 echo "Moonshine artifact: $MOONSHINE_AAR_PATH"

@@ -309,6 +309,8 @@ export class MoonshineWebModel {
     const crossAttentionTensors: Float32Array[] = [];
     let crossAttentionHeads = 0;
     let crossAttentionEncoderFrames = 0;
+    let collectCrossAttention =
+      options.wordTimestamps && this.wordTimestampsEnabled;
 
     for (let index = 0; index < maxLength; index += 1) {
       const decoderInput: Record<string, WebOrtTensor> = {
@@ -337,7 +339,11 @@ export class MoonshineWebModel {
 
       nextInputIds = [nextToken];
 
-      if (options.wordTimestamps && this.wordTimestampsEnabled) {
+      if (collectCrossAttention) {
+        const stepAttentionTensors: Float32Array[] = [];
+        let stepAttentionHeads = 0;
+        let stepAttentionEncoderFrames = 0;
+
         for (
           let layerIndex = 0;
           layerIndex < shape.numLayers;
@@ -346,17 +352,45 @@ export class MoonshineWebModel {
           const attentionTensor =
             decoderOutput[`cross_attentions.${layerIndex}`];
           if (!attentionTensor) {
+            collectCrossAttention = false;
+            crossAttentionTensors.length = 0;
+            break;
+          }
+
+          const attentionHeads = attentionTensor.dims[1] ?? shape.numKVHeads;
+          const attentionEncoderFrames =
+            attentionTensor.dims[3] ?? attentionTensor.dims[2] ?? 0;
+
+          if (stepAttentionHeads === 0) {
+            stepAttentionHeads = attentionHeads;
+            stepAttentionEncoderFrames = attentionEncoderFrames;
+          } else if (
+            stepAttentionHeads !== attentionHeads ||
+            stepAttentionEncoderFrames !== attentionEncoderFrames
+          ) {
+            collectCrossAttention = false;
+            crossAttentionTensors.length = 0;
+            break;
+          }
+
+          if (crossAttentionHeads === 0) {
+            crossAttentionHeads = attentionHeads;
+            crossAttentionEncoderFrames = attentionEncoderFrames;
+          } else if (
+            crossAttentionHeads !== attentionHeads ||
+            crossAttentionEncoderFrames !== attentionEncoderFrames
+          ) {
+            collectCrossAttention = false;
+            crossAttentionTensors.length = 0;
             break;
           }
 
           const attentionData = await readTensorData(attentionTensor);
-          crossAttentionTensors.push(attentionData);
+          stepAttentionTensors.push(attentionData);
+        }
 
-          if (crossAttentionHeads === 0) {
-            crossAttentionHeads = attentionTensor.dims[1] ?? shape.numKVHeads;
-            crossAttentionEncoderFrames =
-              attentionTensor.dims[3] ?? attentionTensor.dims[2] ?? 0;
-          }
+        if (collectCrossAttention) {
+          crossAttentionTensors.push(...stepAttentionTensors);
         }
       }
 

@@ -42,6 +42,10 @@ export interface MoonshineBenchmarkDownloadFile {
 
 function createMoonshineFiles(slug: string): MoonshineBenchmarkDownloadFile[] {
     const baseUrl = `https://download.moonshine.ai/model/${slug}/quantized`
+    // Keep this metadata in sync with the published Moonshine benchmark
+    // bundles. Sizes were confirmed against the upstream CDN on 2026-04-08,
+    // and small-streaming MD5 values are pinned so stale cached files can be
+    // refreshed deterministically on Android.
     const expectedFilesBySlug: Record<
         string,
         Record<string, { expectedBytes: number; md5?: string }>

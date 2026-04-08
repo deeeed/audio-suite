@@ -1175,7 +1175,8 @@ export class MoonshineService {
       return;
     }
     stream.inFlight = true;
-    this.runQueuedStreamTranscription(transcriber, stream).finally(() => {
+    // eslint-disable-next-line no-void
+    void this.runQueuedStreamTranscription(transcriber, stream).finally(() => {
       stream.inFlight = false;
       if (stream.pendingRun || stream.pendingFinalize) {
         this.scheduleStreamTranscription(transcriber, stream);
