@@ -29,6 +29,8 @@ import { MoonshineWebSpeakerClusterer } from '../web/MoonshineWebSpeakerClustere
 
 type MoonshineListener = (event: MoonshineTranscriptEvent) => void;
 
+const DEFAULT_OFFLINE_CHUNK_DURATION_MS = 200;
+
 type WebTranscriberState = {
   activeStreamHandles: Set<string>;
   config: MoonshineLoadConfigBase;
@@ -297,12 +299,14 @@ export class MoonshineTranscriber {
 
   public transcribeWithoutStreaming(
     sampleRate: number,
-    samples: number[]
+    samples: number[],
+    options?: MoonshineTranscribeOptions
   ): Promise<MoonshineTranscriptionResult> {
     return this.service.transcribeWithoutStreamingForTranscriber(
       this.transcriberId,
       sampleRate,
-      samples
+      samples,
+      options
     );
   }
 }
@@ -720,18 +724,21 @@ export class MoonshineService {
 
   public async transcribeWithoutStreaming(
     sampleRate: number,
-    samples: number[]
+    samples: number[],
+    options?: MoonshineTranscribeOptions
   ): Promise<MoonshineTranscriptionResult> {
     return this.ensureDefaultTranscriber().transcribeWithoutStreaming(
       sampleRate,
-      samples
+      samples,
+      options
     );
   }
 
   public async transcribeWithoutStreamingForTranscriber(
     transcriberId: string,
     sampleRate: number,
-    samples: number[]
+    samples: number[],
+    options?: MoonshineTranscribeOptions
   ): Promise<MoonshineTranscriptionResult> {
     const state = this.getTranscriberState(transcriberId);
     if (state.config.options?.wordTimestamps) {
@@ -741,7 +748,9 @@ export class MoonshineService {
         sampleRate,
         samples,
         {
-          chunkDurationMs: 200,
+          ...options,
+          chunkDurationMs:
+            options?.chunkDurationMs ?? DEFAULT_OFFLINE_CHUNK_DURATION_MS,
         }
       );
     }
@@ -750,7 +759,9 @@ export class MoonshineService {
       sampleRate,
       samples,
       {
-        chunkDurationMs: 200,
+        ...options,
+        chunkDurationMs:
+          options?.chunkDurationMs ?? DEFAULT_OFFLINE_CHUNK_DURATION_MS,
       }
     );
   }
