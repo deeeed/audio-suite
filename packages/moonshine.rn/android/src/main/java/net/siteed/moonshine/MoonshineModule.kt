@@ -579,11 +579,10 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
   fun transcribeWithoutStreaming(
     sampleRate: Int,
     samples: ReadableArray,
-    options: ReadableMap?,
     promise: Promise
   ) {
     withDefaultTranscriber(promise) { transcriberId, state ->
-      transcribeWithoutStreamingInternal(transcriberId, state, sampleRate, samples, options, promise)
+      transcribeWithoutStreamingInternal(transcriberId, state, sampleRate, samples, promise)
     }
   }
 
@@ -592,11 +591,10 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
     transcriberId: String,
     sampleRate: Int,
     samples: ReadableArray,
-    options: ReadableMap?,
     promise: Promise
   ) {
     withTranscriber(transcriberId, promise) { resolvedId, state ->
-      transcribeWithoutStreamingInternal(resolvedId, state, sampleRate, samples, options, promise)
+      transcribeWithoutStreamingInternal(resolvedId, state, sampleRate, samples, promise)
     }
   }
 
@@ -1264,9 +1262,11 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
     state: TranscriberState,
     sampleRate: Int,
     samples: ReadableArray,
-    options: ReadableMap?,
     promise: Promise
   ) {
+    val options = Arguments.createMap().apply {
+      putInt("chunkDurationMs", 200)
+    }
     transcribeFromSamplesInternal(
       transcriberId = transcriberId,
       state = state,

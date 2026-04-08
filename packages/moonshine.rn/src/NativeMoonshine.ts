@@ -114,14 +114,12 @@ export interface NativeMoonshineModule {
   ): Promise<MoonshineTranscriptionResult>;
   transcribeWithoutStreaming(
     sampleRate: number,
-    samples: number[],
-    options?: MoonshineTranscribeOptions
+    samples: number[]
   ): Promise<MoonshineTranscriptionResult>;
   transcribeWithoutStreamingForTranscriber(
     transcriberId: string,
     sampleRate: number,
-    samples: number[],
-    options?: MoonshineTranscribeOptions
+    samples: number[]
   ): Promise<MoonshineTranscriptionResult>;
   unregisterIntent(
     intentRecognizerId: string,

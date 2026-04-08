@@ -43,9 +43,6 @@ Current API coverage:
   `start()`, `stop()`, `createStream()`, `removeStream()`, `startStream()`,
   `stopStream()`, `addAudio()`, `addAudioToStream()`,
   `transcribeFromSamples()`, `transcribeWithoutStreaming()`
-- `transcribeWithoutStreaming()` now accepts the same optional
-  `MoonshineTranscribeOptions` shape as `transcribeFromSamples()`, including
-  `chunkDurationMs` when callers want to tune offline progress granularity.
 - Streaming and offline transcription
 - Multiple streams from one transcriber
 - Transcript line timings, optional line audio data, and word timings

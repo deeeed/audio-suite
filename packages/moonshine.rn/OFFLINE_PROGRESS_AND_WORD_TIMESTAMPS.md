@@ -109,10 +109,6 @@ too quickly to expose many intermediate updates.
 If granular progress is desired, it should be implemented inside
 `moonshine.rn`, not faked in consumer UIs.
 
-`transcribeWithoutStreaming()` accepts `MoonshineTranscribeOptions`, so callers
-can tune `chunkDurationMs` instead of relying on a hidden wrapper constant when
-trading off progress granularity against throughput.
-
 ### Offline word timestamps
 
 When `wordTimestamps` is enabled:

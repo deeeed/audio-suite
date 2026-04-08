@@ -948,7 +948,6 @@ RCT_EXPORT_METHOD(transcribeFromSamplesForTranscriber:(NSString *)transcriberId
 
 RCT_EXPORT_METHOD(transcribeWithoutStreaming:(nonnull NSNumber *)sampleRate
                   samples:(NSArray *)samples
-                  options:(NSDictionary *)options
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject) {
   [self withDefaultTranscriberRejecter:reject block:^(NSString *transcriberId, MoonshineTranscriberState *state) {
@@ -956,7 +955,7 @@ RCT_EXPORT_METHOD(transcribeWithoutStreaming:(nonnull NSNumber *)sampleRate
                                                      state:state
                                                 sampleRate:sampleRate.intValue
                                                    samples:samples
-                                                   options:options
+                                                   options:nil
                                                   resolver:resolve
                                                   rejecter:reject];
   }];
@@ -965,7 +964,6 @@ RCT_EXPORT_METHOD(transcribeWithoutStreaming:(nonnull NSNumber *)sampleRate
 RCT_EXPORT_METHOD(transcribeWithoutStreamingForTranscriber:(NSString *)transcriberId
                   sampleRate:(nonnull NSNumber *)sampleRate
                   samples:(NSArray *)samples
-                  options:(NSDictionary *)options
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject) {
   [self withTranscriber:transcriberId rejecter:reject block:^(NSString *resolvedId, MoonshineTranscriberState *state) {
@@ -973,7 +971,7 @@ RCT_EXPORT_METHOD(transcribeWithoutStreamingForTranscriber:(NSString *)transcrib
                                                      state:state
                                                 sampleRate:sampleRate.intValue
                                                    samples:samples
-                                                   options:options
+                                                   options:nil
                                                   resolver:resolve
                                                   rejecter:reject];
   }];

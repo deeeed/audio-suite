@@ -154,7 +154,7 @@ describe('MoonshineService', () => {
       transcriberId: 'transcriber-1',
     });
     mockNativeModule.transcribeWithoutStreamingForTranscriber.mockImplementation(
-      async (_transcriberId, _sampleRate, _samples, _options) => {
+      async (_transcriberId, _sampleRate, _samples) => {
         const emit = mockEventListeners.get(MOONSHINE_EVENT_NAME);
         emit?.({
           line: {
@@ -224,7 +224,7 @@ describe('MoonshineService', () => {
     expect(result.text).toBe('Hello world');
     expect(
       mockNativeModule.transcribeWithoutStreamingForTranscriber
-    ).toHaveBeenCalledWith('transcriber-1', 16000, [0, 0, 0], undefined);
+    ).toHaveBeenCalledWith('transcriber-1', 16000, [0, 0, 0]);
     expect(listener).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({

@@ -108,14 +108,12 @@ export class MoonshineTranscriber {
 
   public transcribeWithoutStreaming(
     sampleRate: number,
-    samples: number[],
-    options?: MoonshineTranscribeOptions
+    samples: number[]
   ): Promise<MoonshineTranscriptionResult> {
     return this.service.transcribeWithoutStreamingForTranscriber(
       this.transcriberId,
       sampleRate,
-      samples,
-      options
+      samples
     );
   }
 }
@@ -496,27 +494,23 @@ export class MoonshineService {
 
   public async transcribeWithoutStreaming(
     sampleRate: number,
-    samples: number[],
-    options?: MoonshineTranscribeOptions
+    samples: number[]
   ): Promise<MoonshineTranscriptionResult> {
     return this.ensureDefaultTranscriber().transcribeWithoutStreaming(
       sampleRate,
-      samples,
-      options
+      samples
     );
   }
 
   public transcribeWithoutStreamingForTranscriber(
     transcriberId: string,
     sampleRate: number,
-    samples: number[],
-    options?: MoonshineTranscribeOptions
+    samples: number[]
   ): Promise<MoonshineTranscriptionResult> {
     return requireNativeMoonshineModule().transcribeWithoutStreamingForTranscriber(
       transcriberId,
       sampleRate,
-      samples,
-      options
+      samples
     );
   }
 
