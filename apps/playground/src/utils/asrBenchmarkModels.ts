@@ -13,6 +13,7 @@ export interface MoonshineBenchmarkDescriptor {
     modelArch: MoonshineModelArch
     slug: string
     updateIntervalMs: number
+    webWordTimestampsSupported?: boolean
 }
 
 export interface WhisperBenchmarkDescriptor {
@@ -43,6 +44,7 @@ function createMoonshineFiles(slug: string): MoonshineBenchmarkDownloadFile[] {
         'adapter.ort',
         'cross_kv.ort',
         'decoder_kv.ort',
+        'decoder_kv_with_attention.ort',
         'encoder.ort',
         'frontend.ort',
         'streaming_config.json',
@@ -60,11 +62,13 @@ export const ASR_BENCHMARK_MODELS: AsrBenchmarkModel[] = [
         description: 'Primary Moonshine live contender for on-device English transcription.',
         engine: 'moonshine',
         liveCapable: true,
-        rationale: 'The smaller serious Moonshine candidate. Fast enough to be practical while still competitive on device.',
+        rationale:
+            'The smaller serious Moonshine candidate. Fast enough to be practical while still competitive on device.',
         moonshine: {
             modelArch: 'small-streaming',
             slug: 'small-streaming-en',
             updateIntervalMs: 250,
+            webWordTimestampsSupported: true,
         },
     },
     {
@@ -78,6 +82,7 @@ export const ASR_BENCHMARK_MODELS: AsrBenchmarkModel[] = [
             modelArch: 'medium-streaming',
             slug: 'medium-streaming-en',
             updateIntervalMs: 250,
+            webWordTimestampsSupported: false,
         },
     },
     {
@@ -95,27 +100,22 @@ export const ASR_BENCHMARK_MODELS: AsrBenchmarkModel[] = [
     },
 ]
 
-export const ASR_BENCHMARK_MODEL_IDS = ASR_BENCHMARK_MODELS.map(
-    (model) => model.id
-)
+export const ASR_BENCHMARK_MODEL_IDS = ASR_BENCHMARK_MODELS.map((model) => model.id)
 
 export const ASR_BENCHMARK_SAMPLES: AsrBenchmarkSample[] = [
     {
         id: 'jfk-public-wav',
         name: 'JFK Speech',
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         module: require('../../public/audio_samples/jfk.wav'),
     },
 ]
 
-export function getAsrBenchmarkModel(
-    modelId: string
-): AsrBenchmarkModel | undefined {
+export function getAsrBenchmarkModel(modelId: string): AsrBenchmarkModel | undefined {
     return ASR_BENCHMARK_MODELS.find((model) => model.id === modelId)
 }
 
-export function getMoonshineDownloadFiles(
-    modelId: string
-): MoonshineBenchmarkDownloadFile[] {
+export function getMoonshineDownloadFiles(modelId: string): MoonshineBenchmarkDownloadFile[] {
     const model = getAsrBenchmarkModel(modelId)
     if (!model?.moonshine) {
         throw new Error(`Model ${modelId} is not a Moonshine benchmark model`)

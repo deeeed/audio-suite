@@ -14,6 +14,7 @@ import {
     prepareBenchmarkModel,
     runBenchmarkFile,
     runBenchmarkSimulatedLive,
+    runMoonshineWordTimestampValidation,
 } from '../utils/asrBenchmarkRuntime'
 
 const logger = baseLogger.extend('AsrBenchmark')
@@ -35,7 +36,11 @@ export interface AsrBenchmarkResult {
     runtime: 'streaming' | 'offline'
     sampleName?: string
     sessionMs?: number
+    lineCount?: number
     transcript: string
+    validationKind?: 'benchmark' | 'word-timestamps'
+    wordCount?: number
+    linesWithWords?: number
 }
 
 interface BenchmarkModelStatus {
@@ -49,10 +54,8 @@ function nowMs(): number {
     return Date.now()
 }
 
-async function loadBenchmarkSamples(): Promise<
-    Array<AsrBenchmarkSample & { localUri: string }>
-> {
-    const loadedSamples: Array<AsrBenchmarkSample & { localUri: string }> = []
+async function loadBenchmarkSamples(): Promise<(AsrBenchmarkSample & { localUri: string })[]> {
+    const loadedSamples: (AsrBenchmarkSample & { localUri: string })[] = []
 
     for (const sample of ASR_BENCHMARK_SAMPLES) {
         const asset = Asset.fromModule(sample.module)
@@ -70,23 +73,17 @@ async function loadBenchmarkSamples(): Promise<
 
 export function useAsrBenchmark() {
     const [mode, setMode] = useState<AsrBenchmarkMode>('sample')
-    const [samples, setSamples] = useState<
-        Array<AsrBenchmarkSample & { localUri: string }>
-    >([])
+    const [samples, setSamples] = useState<(AsrBenchmarkSample & { localUri: string })[]>([])
     const [selectedModelId, setSelectedModelId] = useState<string>(
-        ASR_BENCHMARK_MODELS[0]?.id ?? ''
+        ASR_BENCHMARK_MODELS[0]?.id ?? '',
     )
-    const [selectedSampleId, setSelectedSampleId] = useState<string | null>(
-        null
-    )
+    const [selectedSampleId, setSelectedSampleId] = useState<string | null>(null)
     const [results, setResults] = useState<AsrBenchmarkResult[]>([])
     const [statusMessage, setStatusMessage] = useState('')
     const [error, setError] = useState<string | null>(null)
     const [processing, setProcessing] = useState(false)
     const [simulationIsRunning, setSimulationIsRunning] = useState(false)
-    const [modelStatuses, setModelStatuses] = useState<
-        Record<string, BenchmarkModelStatus>
-    >({})
+    const [modelStatuses, setModelStatuses] = useState<Record<string, BenchmarkModelStatus>>({})
     const [simulatedInterimText, setSimulatedInterimText] = useState('')
     const [simulatedCommittedText, setSimulatedCommittedText] = useState('')
 
@@ -95,29 +92,27 @@ export function useAsrBenchmark() {
             Platform.OS === 'web'
                 ? ASR_BENCHMARK_MODELS.filter((model) => model.engine === 'moonshine')
                 : ASR_BENCHMARK_MODELS,
-        []
+        [],
     )
 
     const selectedModel = useMemo(
-        () =>
-            benchmarkModels.find((model) => model.id === selectedModelId) ??
-            null,
-        [benchmarkModels, selectedModelId]
+        () => benchmarkModels.find((model) => model.id === selectedModelId) ?? null,
+        [benchmarkModels, selectedModelId],
     )
     const selectedSample = useMemo(
         () => samples.find((sample) => sample.id === selectedSampleId) ?? null,
-        [samples, selectedSampleId]
+        [samples, selectedSampleId],
     )
     const selectedModelStatus = selectedModelId
-        ? modelStatuses[selectedModelId] ?? {
+        ? (modelStatuses[selectedModelId] ?? {
               downloaded: false,
               localPath: null,
-          }
+          })
         : { downloaded: false, localPath: null }
 
     const simulatedBenchmarkModels = useMemo(
         () => benchmarkModels.filter((model) => model.liveCapable),
-        [benchmarkModels]
+        [benchmarkModels],
     )
 
     const refreshModelStatuses = useCallback(async () => {
@@ -125,7 +120,7 @@ export function useAsrBenchmark() {
         await Promise.all(
             benchmarkModels.map(async (model) => {
                 nextStatuses[model.id] = await getBenchmarkModelStatus(model.id)
-            })
+            }),
         )
         setModelStatuses(nextStatuses)
     }, [benchmarkModels])
@@ -142,10 +137,8 @@ export function useAsrBenchmark() {
             } catch (sampleError) {
                 logger.warn(
                     `${loggerPrefix} failed to load benchmark samples: ${
-                        sampleError instanceof Error
-                            ? sampleError.message
-                            : String(sampleError)
-                    }`
+                        sampleError instanceof Error ? sampleError.message : String(sampleError)
+                    }`,
                 )
             }
         })()
@@ -162,10 +155,7 @@ export function useAsrBenchmark() {
             setSelectedModelId(benchmarkModels[0].id)
             return
         }
-        if (
-            selectedModelId &&
-            !benchmarkModels.some((model) => model.id === selectedModelId)
-        ) {
+        if (selectedModelId && !benchmarkModels.some((model) => model.id === selectedModelId)) {
             setSelectedModelId(benchmarkModels[0]?.id ?? '')
         }
     }, [benchmarkModels, selectedModelId])
@@ -173,9 +163,7 @@ export function useAsrBenchmark() {
     useEffect(() => {
         if (mode !== 'simulated') return
         if (!selectedModelId) return
-        if (
-            !simulatedBenchmarkModels.some((model) => model.id === selectedModelId)
-        ) {
+        if (!simulatedBenchmarkModels.some((model) => model.id === selectedModelId)) {
             setSelectedModelId(simulatedBenchmarkModels[0]?.id ?? '')
         }
     }, [mode, selectedModelId, simulatedBenchmarkModels])
@@ -199,21 +187,14 @@ export function useAsrBenchmark() {
         setError(null)
         try {
             setStatusMessage(`Preparing ${selectedModel.name}...`)
-            const status = await prepareBenchmarkModel(
-                selectedModel.id,
-                setStatusMessage
-            )
+            const status = await prepareBenchmarkModel(selectedModel.id, setStatusMessage)
             setModelStatuses((previous) => ({
                 ...previous,
                 [selectedModel.id]: status,
             }))
             setStatusMessage(`${selectedModel.name} is ready`)
         } catch (prepareError) {
-            setError(
-                prepareError instanceof Error
-                    ? prepareError.message
-                    : String(prepareError)
-            )
+            setError(prepareError instanceof Error ? prepareError.message : String(prepareError))
         } finally {
             setProcessing(false)
         }
@@ -232,35 +213,30 @@ export function useAsrBenchmark() {
         setProcessing(true)
         setError(null)
         try {
-            setStatusMessage(
-                `Running ${selectedModel.name} on ${selectedSample.name}...`
-            )
+            setStatusMessage(`Running ${selectedModel.name} on ${selectedSample.name}...`)
             const startedAt = nowMs()
             const result = await runBenchmarkFile(
                 selectedModel.id,
                 selectedSample.localUri,
-                setStatusMessage
+                setStatusMessage,
             )
             appendResult({
                 createdAt: nowMs(),
                 engine: selectedModel.engine,
                 initMs: result.initMs,
+                validationKind: 'benchmark',
                 mode: 'sample',
                 modelId: selectedModel.id,
                 modelName: selectedModel.name,
                 recognizeMs: result.recognizeMs,
-                runtime:
-                    selectedModel.engine === 'moonshine'
-                        ? 'streaming'
-                        : 'offline',
+                runtime: selectedModel.engine === 'moonshine' ? 'streaming' : 'offline',
                 sampleName: selectedSample.name,
                 sessionMs: nowMs() - startedAt,
                 transcript: result.transcript,
             })
             await refreshModelStatuses()
         } catch (runError) {
-            const message =
-                runError instanceof Error ? runError.message : String(runError)
+            const message = runError instanceof Error ? runError.message : String(runError)
             appendResult({
                 createdAt: nowMs(),
                 engine: selectedModel.engine,
@@ -268,12 +244,10 @@ export function useAsrBenchmark() {
                 mode: 'sample',
                 modelId: selectedModel.id,
                 modelName: selectedModel.name,
-                runtime:
-                    selectedModel.engine === 'moonshine'
-                        ? 'streaming'
-                        : 'offline',
+                runtime: selectedModel.engine === 'moonshine' ? 'streaming' : 'offline',
                 sampleName: selectedSample.name,
                 transcript: '',
+                validationKind: 'benchmark',
             })
             setError(message)
         } finally {
@@ -298,20 +272,18 @@ export function useAsrBenchmark() {
                     const result = await runBenchmarkFile(
                         model.id,
                         selectedSample.localUri,
-                        setStatusMessage
+                        setStatusMessage,
                     )
                     appendResult({
                         createdAt: nowMs(),
                         engine: model.engine,
                         initMs: result.initMs,
+                        validationKind: 'benchmark',
                         mode: 'sample',
                         modelId: model.id,
                         modelName: model.name,
                         recognizeMs: result.recognizeMs,
-                        runtime:
-                            model.engine === 'moonshine'
-                                ? 'streaming'
-                                : 'offline',
+                        runtime: model.engine === 'moonshine' ? 'streaming' : 'offline',
                         sampleName: selectedSample.name,
                         sessionMs: nowMs() - startedAt,
                         transcript: result.transcript,
@@ -320,19 +292,14 @@ export function useAsrBenchmark() {
                     appendResult({
                         createdAt: nowMs(),
                         engine: model.engine,
-                        error:
-                            runError instanceof Error
-                                ? runError.message
-                                : String(runError),
+                        error: runError instanceof Error ? runError.message : String(runError),
                         mode: 'sample',
                         modelId: model.id,
                         modelName: model.name,
-                        runtime:
-                            model.engine === 'moonshine'
-                                ? 'streaming'
-                                : 'offline',
+                        runtime: model.engine === 'moonshine' ? 'streaming' : 'offline',
                         sampleName: selectedSample.name,
                         transcript: '',
+                        validationKind: 'benchmark',
                     })
                 }
             }
@@ -365,7 +332,7 @@ export function useAsrBenchmark() {
         try {
             const startedAt = nowMs()
             setStatusMessage(
-                `Running simulated live benchmark for ${selectedModel.name} on ${selectedSample.name}...`
+                `Running simulated live benchmark for ${selectedModel.name} on ${selectedSample.name}...`,
             )
             const result = await runBenchmarkSimulatedLive(
                 selectedModel.id,
@@ -374,7 +341,7 @@ export function useAsrBenchmark() {
                     onCommit: setSimulatedCommittedText,
                     onInterimUpdate: setSimulatedInterimText,
                     onStatus: setStatusMessage,
-                }
+                },
             )
 
             appendResult({
@@ -384,6 +351,7 @@ export function useAsrBenchmark() {
                 firstCommitMs: result.firstCommitMs,
                 firstPartialMs: result.firstPartialMs,
                 initMs: result.initMs,
+                validationKind: 'benchmark',
                 mode: 'simulated',
                 modelId: selectedModel.id,
                 modelName: selectedModel.name,
@@ -395,8 +363,7 @@ export function useAsrBenchmark() {
             })
             await refreshModelStatuses()
         } catch (runError) {
-            const message =
-                runError instanceof Error ? runError.message : String(runError)
+            const message = runError instanceof Error ? runError.message : String(runError)
             appendResult({
                 createdAt: nowMs(),
                 engine: selectedModel.engine,
@@ -407,10 +374,83 @@ export function useAsrBenchmark() {
                 runtime: 'streaming',
                 sampleName: selectedSample.name,
                 transcript: '',
+                validationKind: 'benchmark',
             })
             setError(message)
         } finally {
             setSimulationIsRunning(false)
+            setStatusMessage('')
+            setProcessing(false)
+        }
+    }, [
+        appendResult,
+        clearSimulatedTranscript,
+        refreshModelStatuses,
+        selectedModel,
+        selectedSample,
+    ])
+
+    const runSelectedWordTimestampValidation = useCallback(async () => {
+        if (!selectedModel) {
+            setError('Select a benchmark model first')
+            return
+        }
+        if (selectedModel.engine !== 'moonshine') {
+            setError('Word timestamp validation is only available for Moonshine')
+            return
+        }
+        if (!selectedSample) {
+            setError('Select a sample audio file first')
+            return
+        }
+
+        setProcessing(true)
+        setError(null)
+        clearSimulatedTranscript()
+
+        try {
+            setStatusMessage(
+                `Validating word timestamps for ${selectedModel.name} on ${selectedSample.name}...`,
+            )
+            const result = await runMoonshineWordTimestampValidation(
+                selectedModel.id,
+                selectedSample.localUri,
+                setStatusMessage,
+            )
+            appendResult({
+                createdAt: nowMs(),
+                engine: selectedModel.engine,
+                initMs: result.initMs,
+                lineCount: result.lineCount,
+                linesWithWords: result.linesWithWords,
+                mode: 'sample',
+                modelId: selectedModel.id,
+                modelName: result.validationModelLabel,
+                notes: result.note,
+                recognizeMs: result.recognizeMs,
+                runtime: Platform.OS === 'web' ? 'offline' : 'streaming',
+                sampleName: selectedSample.name,
+                transcript: result.transcript,
+                validationKind: 'word-timestamps',
+                wordCount: result.wordCount,
+            })
+            await refreshModelStatuses()
+        } catch (runError) {
+            const message = runError instanceof Error ? runError.message : String(runError)
+            appendResult({
+                createdAt: nowMs(),
+                engine: selectedModel.engine,
+                error: message,
+                mode: 'sample',
+                modelId: selectedModel.id,
+                modelName: selectedModel.name,
+                runtime: Platform.OS === 'web' ? 'offline' : 'streaming',
+                sampleName: selectedSample.name,
+                transcript: '',
+                validationKind: 'word-timestamps',
+            })
+            setError(message)
+        } finally {
             setStatusMessage('')
             setProcessing(false)
         }
@@ -441,6 +481,7 @@ export function useAsrBenchmark() {
         runAllSampleBenchmarks,
         runSelectedSampleBenchmark,
         runSelectedSimulatedBenchmark,
+        runSelectedWordTimestampValidation,
         samples,
         selectedModel,
         selectedModelId,

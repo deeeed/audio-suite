@@ -3,18 +3,10 @@ import React, { useEffect, useMemo } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 
 import type { AppTheme } from '@siteed/design-system'
-import {
-    Notice,
-    ScreenWrapper,
-    Text,
-    useTheme,
-} from '@siteed/design-system'
+import { Notice, ScreenWrapper, Text, useTheme } from '@siteed/design-system'
 
 import { setAgenticPageState } from '../agentic-bridge'
-import {
-    useAsrBenchmark,
-    type AsrBenchmarkResult,
-} from '../hooks/useAsrBenchmark'
+import { useAsrBenchmark, type AsrBenchmarkResult } from '../hooks/useAsrBenchmark'
 
 const getStyles = (theme: AppTheme) =>
     StyleSheet.create({
@@ -95,11 +87,7 @@ function formatMs(value?: number): string {
     return `${Math.round(value)} ms`
 }
 
-function ResultCard({
-    result,
-}: {
-    result: AsrBenchmarkResult
-}) {
+function ResultCard({ result }: { result: AsrBenchmarkResult }) {
     const theme = useTheme()
     const styles = useMemo(() => getStyles(theme), [theme])
     const metricLine =
@@ -125,16 +113,20 @@ function ResultCard({
                     partials {result.partialCount ?? 0} • commits {result.commitCount ?? 0}
                 </Text>
             ) : null}
+            {result.validationKind === 'word-timestamps' ? (
+                <Text style={styles.resultMeta}>
+                    lines {result.lineCount ?? 0} • lines with words {result.linesWithWords ?? 0}
+                    {' • '}
+                    words {result.wordCount ?? 0}
+                </Text>
+            ) : null}
             <Text>{result.error || result.transcript || 'No transcript returned'}</Text>
+            {result.notes ? <Text style={styles.resultMeta}>{result.notes}</Text> : null}
         </View>
     )
 }
 
 export default function AsrBenchmarkScreen() {
-    if (!__DEV__) {
-        return <Redirect href="/(tabs)/more" />
-    }
-
     const theme = useTheme()
     const styles = useMemo(() => getStyles(theme), [theme])
     const {
@@ -149,6 +141,7 @@ export default function AsrBenchmarkScreen() {
         runAllSampleBenchmarks,
         runSelectedSampleBenchmark,
         runSelectedSimulatedBenchmark,
+        runSelectedWordTimestampValidation,
         samples,
         selectedModel,
         selectedModelId,
@@ -165,8 +158,7 @@ export default function AsrBenchmarkScreen() {
         statusMessage,
     } = useAsrBenchmark()
 
-    const visibleModels =
-        mode === 'simulated' ? simulatedBenchmarkModels : benchmarkModels
+    const visibleModels = mode === 'simulated' ? simulatedBenchmarkModels : benchmarkModels
     const modeSwitchDisabled = processing || simulationIsRunning
 
     useEffect(() => {
@@ -195,7 +187,7 @@ export default function AsrBenchmarkScreen() {
                         downloaded: value.downloaded,
                         localPath: value.localPath,
                     },
-                ])
+                ]),
             ),
             latestResult: results[0] ?? null,
         })
@@ -220,12 +212,17 @@ export default function AsrBenchmarkScreen() {
         statusMessage,
     ])
 
+    if (!__DEV__) {
+        return <Redirect href="/(tabs)/more" />
+    }
+
     return (
         <ScreenWrapper withScrollView useInsets={false} contentContainerStyle={styles.container}>
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>ASR Benchmark</Text>
                 <Text style={styles.sectionBody}>
-                    Dev-only benchmark surface for Moonshine vs Whisper in the generic playground app.
+                    Dev-only benchmark surface for Moonshine vs Whisper in the generic playground
+                    app.
                 </Text>
             </View>
 
@@ -248,9 +245,7 @@ export default function AsrBenchmarkScreen() {
                                 testID={`asr-benchmark-mode-${item.id}`}
                                 accessibilityRole="button"
                                 disabled={modeSwitchDisabled}
-                                onPress={() =>
-                                    setMode(item.id as 'sample' | 'simulated')
-                                }
+                                onPress={() => setMode(item.id as 'sample' | 'simulated')}
                                 style={[
                                     styles.selector,
                                     {
@@ -287,10 +282,10 @@ export default function AsrBenchmarkScreen() {
                                 key={model.id}
                                 testID={`asr-benchmark-model-${model.id}`}
                                 accessibilityRole="button"
-                                    disabled={processing || simulationIsRunning}
-                                    onPress={() => setSelectedModelId(model.id)}
-                                    style={[
-                                        styles.selector,
+                                disabled={processing || simulationIsRunning}
+                                onPress={() => setSelectedModelId(model.id)}
+                                style={[
+                                    styles.selector,
                                     {
                                         borderColor: selected
                                             ? theme.colors.primary
@@ -298,10 +293,7 @@ export default function AsrBenchmarkScreen() {
                                         backgroundColor: selected
                                             ? theme.colors.primaryContainer
                                             : theme.colors.surface,
-                                        opacity:
-                                            processing || simulationIsRunning
-                                                ? 0.6
-                                                : 1,
+                                        opacity: processing || simulationIsRunning ? 0.6 : 1,
                                     },
                                 ]}
                             >
@@ -337,10 +329,7 @@ export default function AsrBenchmarkScreen() {
                                         backgroundColor: selected
                                             ? theme.colors.primaryContainer
                                             : theme.colors.surface,
-                                        opacity:
-                                            processing || simulationIsRunning
-                                                ? 0.6
-                                                : 1,
+                                        opacity: processing || simulationIsRunning ? 0.6 : 1,
                                     },
                                 ]}
                             >
@@ -360,8 +349,8 @@ export default function AsrBenchmarkScreen() {
             ) : (
                 <View style={styles.section}>
                     <Text style={styles.sectionBody}>
-                        Simulated live feeds the exact sample into the engine in timed chunks, without
-                        room or microphone acoustics.
+                        Simulated live feeds the exact sample into the engine in timed chunks,
+                        without room or microphone acoustics.
                     </Text>
                 </View>
             )}
@@ -380,8 +369,7 @@ export default function AsrBenchmarkScreen() {
                             styles.actionButton,
                             {
                                 backgroundColor: theme.colors.secondaryContainer,
-                                opacity:
-                                    processing || simulationIsRunning ? 0.6 : 1,
+                                opacity: processing || simulationIsRunning ? 0.6 : 1,
                             },
                         ]}
                     >
@@ -408,18 +396,12 @@ export default function AsrBenchmarkScreen() {
                                     styles.actionButton,
                                     {
                                         backgroundColor: theme.colors.primary,
-                                        opacity:
-                                            processing || simulationIsRunning
-                                                ? 0.6
-                                                : 1,
+                                        opacity: processing || simulationIsRunning ? 0.6 : 1,
                                     },
                                 ]}
                             >
                                 <Text
-                                    style={[
-                                        styles.actionLabel,
-                                        { color: theme.colors.onPrimary },
-                                    ]}
+                                    style={[styles.actionLabel, { color: theme.colors.onPrimary }]}
                                 >
                                     Run Sample
                                 </Text>
@@ -435,12 +417,8 @@ export default function AsrBenchmarkScreen() {
                                 style={[
                                     styles.actionButton,
                                     {
-                                        backgroundColor:
-                                            theme.colors.tertiaryContainer,
-                                        opacity:
-                                            processing || simulationIsRunning
-                                                ? 0.6
-                                                : 1,
+                                        backgroundColor: theme.colors.tertiaryContainer,
+                                        opacity: processing || simulationIsRunning ? 0.6 : 1,
                                     },
                                 ]}
                             >
@@ -448,12 +426,38 @@ export default function AsrBenchmarkScreen() {
                                     style={[
                                         styles.actionLabel,
                                         {
-                                            color:
-                                                theme.colors.onTertiaryContainer,
+                                            color: theme.colors.onTertiaryContainer,
                                         },
                                     ]}
                                 >
                                     Run Matrix
+                                </Text>
+                            </Pressable>
+
+                            <Pressable
+                                testID="asr-benchmark-run-word-timestamps"
+                                accessibilityRole="button"
+                                disabled={processing || simulationIsRunning}
+                                onPress={() => {
+                                    void runSelectedWordTimestampValidation()
+                                }}
+                                style={[
+                                    styles.actionButton,
+                                    {
+                                        backgroundColor: theme.colors.secondaryContainer,
+                                        opacity: processing || simulationIsRunning ? 0.6 : 1,
+                                    },
+                                ]}
+                            >
+                                <Text
+                                    style={[
+                                        styles.actionLabel,
+                                        {
+                                            color: theme.colors.onSecondaryContainer,
+                                        },
+                                    ]}
+                                >
+                                    Validate Word Timestamps
                                 </Text>
                             </Pressable>
                         </>
@@ -473,12 +477,7 @@ export default function AsrBenchmarkScreen() {
                                 },
                             ]}
                         >
-                            <Text
-                                style={[
-                                    styles.actionLabel,
-                                    { color: theme.colors.onPrimary },
-                                ]}
-                            >
+                            <Text style={[styles.actionLabel, { color: theme.colors.onPrimary }]}>
                                 Run Simulated Live
                             </Text>
                         </Pressable>
@@ -493,16 +492,12 @@ export default function AsrBenchmarkScreen() {
                             styles.actionButton,
                             {
                                 backgroundColor: theme.colors.surfaceVariant,
-                                opacity:
-                                    processing || simulationIsRunning ? 0.6 : 1,
+                                opacity: processing || simulationIsRunning ? 0.6 : 1,
                             },
                         ]}
                     >
                         <Text
-                            style={[
-                                styles.actionLabel,
-                                { color: theme.colors.onSurfaceVariant },
-                            ]}
+                            style={[styles.actionLabel, { color: theme.colors.onSurfaceVariant }]}
                         >
                             Clear Results
                         </Text>
@@ -510,9 +505,7 @@ export default function AsrBenchmarkScreen() {
                 </View>
             </View>
 
-            {statusMessage ? (
-                <Notice type="info" title="Status" message={statusMessage} />
-            ) : null}
+            {statusMessage ? <Notice type="info" title="Status" message={statusMessage} /> : null}
 
             {error ? <Notice type="error" title="Error" message={error} /> : null}
 

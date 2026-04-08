@@ -2,6 +2,7 @@
 
 #import <React/RCTLog.h>
 
+#import <deque>
 #import <mutex>
 #import <optional>
 #import <string>
@@ -23,8 +24,8 @@ struct IntentMatch {
 };
 
 struct TranscriberOptionBuffer {
-  std::vector<std::string> names;
-  std::vector<std::string> values;
+  std::deque<std::string> names;
+  std::deque<std::string> values;
   std::vector<transcriber_option_t> options;
 };
 

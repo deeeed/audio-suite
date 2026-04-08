@@ -3,6 +3,7 @@ import type {
   MoonshineAssetModelConfig,
   MoonshineCreateIntentRecognizerConfig,
   MoonshineInitializeResult,
+  MoonshineLineWordTiming,
   MoonshineLoadConfigBase,
   MoonshineMemoryModelConfig,
   MoonshineModelConfig,
@@ -18,7 +19,10 @@ import {
   getMoonshineWebRuntimeVersion,
 } from '../web/config';
 import { MoonshineWebIntentRecognizerModel } from '../web/MoonshineWebIntentRecognizer';
-import { MoonshineWebModel } from '../web/MoonshineWebModel';
+import {
+  MoonshineWebModel,
+  type MoonshineWebTranscription,
+} from '../web/MoonshineWebModel';
 import { MoonshineWebSpeakerClusterer } from '../web/MoonshineWebSpeakerClusterer';
 
 type MoonshineListener = (event: MoonshineTranscriptEvent) => void;
@@ -34,6 +38,7 @@ type WebTranscriberState = {
   nextStreamId: number;
   speakerClusterer: MoonshineWebSpeakerClusterer | null;
   streams: Map<string, WebStreamState>;
+  wordTimestampsFailureReason?: string;
 };
 
 type WebStreamState = {
@@ -69,7 +74,9 @@ type WebIntentRecognizerState = {
 function createResult(
   transcriberId: string,
   text: string,
+  durationMs: number,
   latencyMs?: number,
+  words?: MoonshineLineWordTiming[],
   speakerMetadata?: {
     hasSpeakerId?: boolean;
     speakerId?: string;
@@ -82,16 +89,36 @@ function createResult(
     lines: normalizedText
       ? [
           {
-            completedAtMs: Date.now(),
+            completedAtMs: durationMs,
+            durationMs,
             isFinal: true,
             lastTranscriptionLatencyMs: latencyMs,
             lineId: `${transcriberId}:line:1`,
             ...speakerMetadata,
+            startedAtMs: 0,
             text: normalizedText,
+            words,
           },
         ]
       : [],
   };
+}
+
+function offsetWords(
+  words: MoonshineLineWordTiming[] | undefined,
+  offsetMs: number
+): MoonshineLineWordTiming[] | undefined {
+  if (!words?.length) {
+    return undefined;
+  }
+
+  return words.map((word) => ({
+    ...word,
+    endTimeMs:
+      word.endTimeMs == null ? word.endTimeMs : word.endTimeMs + offsetMs,
+    startTimeMs:
+      word.startTimeMs == null ? word.startTimeMs : word.startTimeMs + offsetMs,
+  }));
 }
 
 const DEFAULT_SAMPLE_RATE = 16000;
@@ -166,6 +193,16 @@ function arrayBufferFromBytes(bytes: Uint8Array): ArrayBuffer {
   ) as ArrayBuffer;
 }
 
+function getTranscriberOptionValue(
+  config: MoonshineLoadConfigBase,
+  optionName: string
+): string | undefined {
+  const option = config.transcriberOptions?.find(
+    (candidate) => candidate.name === optionName
+  );
+  return option ? String(option.value) : undefined;
+}
+
 export class MoonshineTranscriber {
   public constructor(
     private readonly service: MoonshineService,
@@ -213,7 +250,10 @@ export class MoonshineTranscriber {
   }
 
   public removeStream(_streamId: string): Promise<{ success: boolean }> {
-    return this.service.removeStreamForTranscriber(this.transcriberId, _streamId);
+    return this.service.removeStreamForTranscriber(
+      this.transcriberId,
+      _streamId
+    );
   }
 
   public start(): Promise<{ success: boolean }> {
@@ -296,15 +336,24 @@ export class MoonshineIntentRecognizer {
   public unregisterIntent(
     triggerPhrase: string
   ): Promise<{ success: boolean }> {
-    return this.service.unregisterIntent(this.intentRecognizerId, triggerPhrase);
+    return this.service.unregisterIntent(
+      this.intentRecognizerId,
+      triggerPhrase
+    );
   }
 }
 
 export class MoonshineService {
   private defaultTranscriber: MoonshineTranscriber | null = null;
-  private intentModelCache = new Map<string, MoonshineWebIntentRecognizerModel>();
+  private intentModelCache = new Map<
+    string,
+    MoonshineWebIntentRecognizerModel
+  >();
   private nextIntentRecognizerId = 1;
-  private readonly intentRecognizers = new Map<string, WebIntentRecognizerState>();
+  private readonly intentRecognizers = new Map<
+    string,
+    WebIntentRecognizerState
+  >();
   private listeners = new Set<MoonshineListener>();
   private modelCache = new Map<string, MoonshineWebModel>();
   private nextTranscriberId = 1;
@@ -616,9 +665,7 @@ export class MoonshineService {
     return this.ensureDefaultTranscriber().stop();
   }
 
-  public stopTranscriber(
-    transcriberId: string
-  ): Promise<{ success: boolean }> {
+  public stopTranscriber(transcriberId: string): Promise<{ success: boolean }> {
     const state = this.getTranscriberState(transcriberId);
     return this.stopStreamInternal(state, state.defaultStreamId);
   }
@@ -698,18 +745,37 @@ export class MoonshineService {
   ): Promise<MoonshineInitializeResult> {
     try {
       const normalizedArch = normalizeMoonshineWebModelArch(config.modelArch);
-      const modelBasePath = resolveMoonshineWebModelBasePath(
-        candidatePath,
-        normalizedArch
+      const webEncoderUrl = getTranscriberOptionValue(
+        config,
+        'web_encoder_url'
       );
+      const webDecoderUrl = getTranscriberOptionValue(
+        config,
+        'web_decoder_url'
+      );
+      const modelBasePath =
+        webEncoderUrl && webDecoderUrl
+          ? '[web-url-source]'
+          : resolveMoonshineWebModelBasePath(candidatePath, normalizedArch);
       const stateId = `web-transcriber-${this.nextTranscriberId++}`;
-      const cacheKey = `${normalizedArch}::${modelBasePath}`;
+      const wordTimestampsRequested = config.options?.wordTimestamps === true;
+      const cacheKey = `${normalizedArch}::${webEncoderUrl ?? modelBasePath}::${webDecoderUrl ?? modelBasePath}::wordTimestamps=${wordTimestampsRequested ? '1' : '0'}`;
       let model = this.modelCache.get(cacheKey);
       if (!model) {
-        model = new MoonshineWebModel(normalizedArch, {
-          kind: 'path',
-          modelBasePath,
-        });
+        model = new MoonshineWebModel(
+          normalizedArch,
+          webEncoderUrl && webDecoderUrl
+            ? {
+                decoderUrl: webDecoderUrl,
+                encoderUrl: webEncoderUrl,
+                kind: 'urls',
+              }
+            : {
+                kind: 'path',
+                modelBasePath,
+              },
+          { wordTimestamps: wordTimestampsRequested }
+        );
         this.modelCache.set(cacheKey, model);
       }
       await model.load();
@@ -730,6 +796,7 @@ export class MoonshineService {
         streams: new Map([
           [defaultStreamId, createStreamState(stateId, defaultStreamId)],
         ]),
+        wordTimestampsFailureReason: model.getWordTimestampsFailureReason(),
       });
       return {
         success: true,
@@ -772,11 +839,15 @@ export class MoonshineService {
       );
 
       const stateId = `web-transcriber-${this.nextTranscriberId++}`;
-      const model = new MoonshineWebModel(normalizedArch, {
-        decoderUrl,
-        encoderUrl,
-        kind: 'urls',
-      });
+      const model = new MoonshineWebModel(
+        normalizedArch,
+        {
+          decoderUrl,
+          encoderUrl,
+          kind: 'urls',
+        },
+        { wordTimestamps: config.options?.wordTimestamps === true }
+      );
       await model.load();
 
       // The native in-memory API includes tokenizer bytes as the third part.
@@ -803,6 +874,7 @@ export class MoonshineService {
         streams: new Map([
           [defaultStreamId, createStreamState(stateId, defaultStreamId)],
         ]),
+        wordTimestampsFailureReason: model.getWordTimestampsFailureReason(),
       });
       return {
         success: true,
@@ -848,7 +920,9 @@ export class MoonshineService {
   private getTranscriberState(transcriberId: string): WebTranscriberState {
     const state = this.transcribers.get(transcriberId);
     if (!state) {
-      throw new Error(`Moonshine web transcriber "${transcriberId}" does not exist`);
+      throw new Error(
+        `Moonshine web transcriber "${transcriberId}" does not exist`
+      );
     }
     return state;
   }
@@ -867,12 +941,16 @@ export class MoonshineService {
       return { matched: false, success: true };
     }
 
-    const utteranceEmbedding = await state.model.getEmbedding(normalizedUtterance);
+    const utteranceEmbedding =
+      await state.model.getEmbedding(normalizedUtterance);
     let bestTriggerPhrase: string | null = null;
     let bestSimilarity = Number.NEGATIVE_INFINITY;
 
     for (const [triggerPhrase, intentEmbedding] of state.intents.entries()) {
-      const similarity = state.model.similarity(utteranceEmbedding, intentEmbedding);
+      const similarity = state.model.similarity(
+        utteranceEmbedding,
+        intentEmbedding
+      );
       if (similarity > bestSimilarity) {
         bestSimilarity = similarity;
         bestTriggerPhrase = triggerPhrase;
@@ -917,7 +995,10 @@ export class MoonshineService {
     }
 
     const previousDefaultTranscriberId = this.defaultTranscriber?.transcriberId;
-    this.defaultTranscriber = new MoonshineTranscriber(this, result.transcriberId);
+    this.defaultTranscriber = new MoonshineTranscriber(
+      this,
+      result.transcriberId
+    );
 
     if (
       previousDefaultTranscriberId &&
@@ -941,7 +1022,12 @@ export class MoonshineService {
     }
 
     const state = this.getTranscriberState(transcriberId);
-    const text = await state.model.transcribe(Float32Array.from(samples));
+    const durationMs = (samples.length / sampleRate) * 1000;
+    const transcription: MoonshineWebTranscription =
+      await state.model.transcribeDetailed(Float32Array.from(samples), {
+        wordTimestamps: state.config.options?.wordTimestamps,
+      });
+    const text = transcription.text;
     const speakerMetadata =
       text && state.speakerClusterer
         ? state.speakerClusterer.assign(samples, sampleRate)
@@ -949,7 +1035,9 @@ export class MoonshineService {
     const result = createResult(
       transcriberId,
       text,
+      durationMs,
       state.model.getLatency(),
+      transcription.words,
       speakerMetadata
     );
 
@@ -1018,7 +1106,8 @@ export class MoonshineService {
       options?.vadMaxSegmentDurationMs ?? defaultMaxSegmentDurationMs
     );
     const isSpeechChunk =
-      rms >= vadThreshold || (stream.currentLineId != null && rms >= vadThreshold * 0.5);
+      rms >= vadThreshold ||
+      (stream.currentLineId != null && rms >= vadThreshold * 0.5);
     const previousLookBehind = stream.lookBehindSamples;
 
     if (isSpeechChunk) {
@@ -1042,7 +1131,8 @@ export class MoonshineService {
         transcriber.config.updateIntervalMs ?? DEFAULT_UPDATE_INTERVAL_MS;
       if (
         stream.pendingFinalize ||
-        stream.processedDurationMs - stream.lastRequestedAtMs >= updateIntervalMs
+        stream.processedDurationMs - stream.lastRequestedAtMs >=
+          updateIntervalMs
       ) {
         stream.pendingRun = true;
         stream.lastRequestedAtMs = stream.processedDurationMs;
@@ -1067,7 +1157,8 @@ export class MoonshineService {
     if (
       stream.currentLineId &&
       stream.segmentStartedAtMs != null &&
-      stream.processedDurationMs - stream.segmentStartedAtMs >= maxSegmentDurationMs
+      stream.processedDurationMs - stream.segmentStartedAtMs >=
+        maxSegmentDurationMs
     ) {
       stream.pendingFinalize = true;
     }
@@ -1084,7 +1175,7 @@ export class MoonshineService {
       return;
     }
     stream.inFlight = true;
-    void this.runQueuedStreamTranscription(transcriber, stream).finally(() => {
+    this.runQueuedStreamTranscription(transcriber, stream).finally(() => {
       stream.inFlight = false;
       if (stream.pendingRun || stream.pendingFinalize) {
         this.scheduleStreamTranscription(transcriber, stream);
@@ -1115,21 +1206,22 @@ export class MoonshineService {
       const shouldFinalize = stream.pendingFinalize;
       stream.pendingFinalize = false;
       const snapshotSamples = Float32Array.from(stream.segmentSamples);
-      const startedAtMs = stream.segmentStartedAtMs ?? Math.max(0, stream.processedDurationMs - durationMs);
+      const startedAtMs =
+        stream.segmentStartedAtMs ??
+        Math.max(0, stream.processedDurationMs - durationMs);
 
       try {
-        const text = normalizeTranscriptText(
-          await transcriber.model.transcribe(snapshotSamples)
+        const transcription = await transcriber.model.transcribeDetailed(
+          snapshotSamples,
+          { wordTimestamps: transcriber.config.options?.wordTimestamps }
         );
+        const text = normalizeTranscriptText(transcription.text);
         if (stream.currentLineId !== lineId) {
           continue;
         }
 
         const latencyMs = transcriber.model.getLatency();
-        const completedAtMs = Math.max(
-          startedAtMs,
-          startedAtMs + durationMs
-        );
+        const completedAtMs = Math.max(startedAtMs, startedAtMs + durationMs);
         const speakerMetadata =
           shouldFinalize && text && transcriber.speakerClusterer
             ? transcriber.speakerClusterer.assign(snapshotSamples, sampleRate)
@@ -1147,6 +1239,7 @@ export class MoonshineService {
           ...speakerMetadata,
           startedAtMs,
           text,
+          words: offsetWords(transcription.words, startedAtMs),
         };
 
         if (text) {
