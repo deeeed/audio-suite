@@ -148,6 +148,19 @@ async function loadJfkWavSampleFileUri(): Promise<string> {
     return dest
 }
 
+
+async function loadOsrLongWavSampleFileUri(): Promise<string> {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const asset = Asset.fromModule(require('../public/audio_samples/osr_us_000_0010_8k.wav'))
+    await asset.downloadAsync()
+    if (!asset.localUri) throw new Error('Failed to load OSR long WAV sample asset')
+    if (Platform.OS === 'web') {
+        return asset.localUri
+    }
+    const dest = `${FileSystem.cacheDirectory}osr_long_sample.wav`
+    await FileSystem.copyAsync({ from: asset.localUri, to: dest })
+    return dest
+}
 function resolveMoonshineProbeModelPath(modelPath: string, appendTrailingSlash?: boolean): string {
     if (!appendTrailingSlash || modelPath.endsWith('/')) {
         return modelPath
@@ -575,7 +588,7 @@ if (__DEV__) {
         validateMoonshineOfflineContract: (
             modelId: string,
             options?: {
-                sample?: 'jfk' | 'speech'
+                sample?: 'jfk' | 'osr-long' | 'speech'
                 wordTimestamps?: boolean
             },
         ) => {
@@ -595,7 +608,9 @@ if (__DEV__) {
                     const audioUri =
                         sample === 'jfk'
                             ? await loadJfkWavSampleFileUri()
-                            : await loadSpeechWavSampleFileUri()
+                            : sample === 'osr-long'
+                              ? await loadOsrLongWavSampleFileUri()
+                              : await loadSpeechWavSampleFileUri()
 
                     const validation = wordTimestamps
                         ? await getMoonshineWordTimestampValidationConfig(modelId)

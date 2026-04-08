@@ -29,11 +29,11 @@ await Moonshine.createTranscriberFromFiles({
 - whether `line.words` is returned when `wordTimestamps` is enabled
 - which validation model actually ran (important for web tiny fallback)
 
-For longer offline progress checks, the harness also accepts the bundled
-`jfk.wav` sample:
+For longer offline progress checks, the harness also accepts bundled longer
+WAV samples such as `jfk.wav` and the ~34s `osr_us_000_0010_8k.wav` sample:
 
 ```bash
-yarn workspace @siteed/moonshine.rn validate:offline:contract <model-id> <device-filter> jfk
+yarn workspace @siteed/moonshine.rn validate:offline:contract <model-id> <device-filter> osr-long
 ```
 
 ## Current findings
