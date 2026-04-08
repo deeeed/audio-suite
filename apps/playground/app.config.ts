@@ -236,7 +236,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
                 '@config-plugins/detox',
                 {
                     skipProguard: false,
-                    subdomains: process.env.EAS_BUILD_PROFILE === "development"
+                    subdomains: validatedEnv.APP_VARIANT === 'development'
                         ? "*"
                         : [
                             '10.0.2.2',

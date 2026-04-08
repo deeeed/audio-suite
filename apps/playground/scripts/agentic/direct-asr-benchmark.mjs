@@ -91,6 +91,10 @@ function getMetroHost() {
     return '10.0.2.2';
   }
 
+  if (process.env.AGENTIC_DEV_HOST) {
+    return String(process.env.AGENTIC_DEV_HOST).trim();
+  }
+
   try {
     const output = execSync(
       "ipconfig getifaddr en0 2>/dev/null || ifconfig | awk '/inet / && !/127\\./ && !/169\\.254\\./ {print $2}' | grep -v '^::' | head -1",

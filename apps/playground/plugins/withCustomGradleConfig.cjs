@@ -1,5 +1,10 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
-const { withProjectBuildGradle, withGradleProperties, withDangerousMod } = require('@expo/config-plugins')
+const {
+    withProjectBuildGradle,
+    withAppBuildGradle,
+    withGradleProperties,
+    withDangerousMod,
+} = require('@expo/config-plugins')
 const fs = require('node:fs')
 const path = require('node:path')
 /* eslint-enable @typescript-eslint/no-require-imports */
@@ -128,6 +133,66 @@ ${newConfigurations}
         setProperty('org.gradle.caching', 'true');
         return config;
     });
+
+    config = withAppBuildGradle(config, (config) => {
+        const contents = config.modResults.contents
+        if (contents.includes("pickFirst 'lib/arm64-v8a/libonnxruntime.so'")) {
+            return config
+        }
+
+        const marker = "pickFirst 'lib/x86_64/libc++_shared.so'"
+        if (!contents.includes(marker)) {
+            return config
+        }
+
+        config.modResults.contents = contents.replace(
+            marker,
+            `${marker}
+        pickFirst 'lib/arm64-v8a/libonnxruntime.so'
+        pickFirst 'lib/armeabi-v7a/libonnxruntime.so'
+        pickFirst 'lib/x86/libonnxruntime.so'
+        pickFirst 'lib/x86_64/libonnxruntime.so'`
+        )
+
+        return config
+    })
+
+    // Keep Android debug-only manifest tweaks in one durable place so prebuild
+    // regeneration doesn't wipe them.
+    config = withDangerousMod(config, [
+        'android',
+        async (config) => {
+            const debugManifestDir = path.join(
+                config.modRequest.platformProjectRoot,
+                'app',
+                'src',
+                'debug'
+            )
+
+            fs.mkdirSync(debugManifestDir, { recursive: true })
+
+            const debugManifestPath = path.join(
+                debugManifestDir,
+                'AndroidManifest.xml'
+            )
+
+            fs.writeFileSync(
+                debugManifestPath,
+                `<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-sdk tools:overrideLibrary="net.siteed.moonshine,ai.moonshine.voice" />
+
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+
+    <application android:usesCleartextTraffic="true" tools:targetApi="28" tools:ignore="GoogleAppIndexingWarning" tools:replace="android:usesCleartextTraffic" />
+</manifest>
+`
+            )
+
+            return config
+        },
+    ])
 
     return config;
 }

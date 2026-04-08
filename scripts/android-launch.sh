@@ -34,10 +34,27 @@ success() { echo -e "${GREEN}[ok]${NC} $1"; }
 warn()    { echo -e "${YELLOW}[warn]${NC} $1"; }
 error()   { echo -e "${RED}[error]${NC} $1"; }
 
+# Best-effort app-local agentic config lookup so Android launches can use the
+# stable Expo slug-based dev-client scheme instead of variant app schemes.
+APP_ROOT="${APP_ROOT:-$(pwd)}"
+AGENTIC_CONF_FILE="${APP_ROOT}/scripts/agentic/agentic.conf"
+if [ -z "$DEV_CLIENT_SCHEME" ] && [ -f "$AGENTIC_CONF_FILE" ]; then
+    # shellcheck disable=SC1090
+    source "$AGENTIC_CONF_FILE"
+    if [ -n "${AGENTIC_SCHEME:-}" ]; then
+        DEV_CLIENT_SCHEME="exp+${AGENTIC_SCHEME}"
+    fi
+fi
+
 detect_metro_host() {
     local device="$1"
     if [[ "$device" == emulator-* ]]; then
         printf '10.0.2.2\n'
+        return 0
+    fi
+
+    if [ -n "${AGENTIC_DEV_HOST:-}" ]; then
+        printf '%s\n' "${AGENTIC_DEV_HOST}"
         return 0
     fi
 
@@ -50,18 +67,6 @@ detect_metro_host() {
 
     printf 'localhost\n'
 }
-
-# Best-effort app-local agentic config lookup so Android launches can use the
-# stable Expo slug-based dev-client scheme instead of variant app schemes.
-APP_ROOT="${APP_ROOT:-$(pwd)}"
-AGENTIC_CONF_FILE="${APP_ROOT}/scripts/agentic/agentic.conf"
-if [ -z "$DEV_CLIENT_SCHEME" ] && [ -f "$AGENTIC_CONF_FILE" ]; then
-    # shellcheck disable=SC1090
-    source "$AGENTIC_CONF_FILE"
-    if [ -n "${AGENTIC_SCHEME:-}" ]; then
-        DEV_CLIENT_SCHEME="exp+${AGENTIC_SCHEME}"
-    fi
-fi
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do

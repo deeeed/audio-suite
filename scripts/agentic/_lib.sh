@@ -61,6 +61,22 @@ DEV_CLIENT_SCHEME_IOS="exp+${SCHEME}"
 # Default bundle ID (for scripts that use a single BUNDLE_ID)
 BUNDLE_ID="${BUNDLE_ID_IOS}"
 
+resolve_agentic_dev_host() {
+  if [ -n "${AGENTIC_DEV_HOST:-}" ]; then
+    printf '%s\n' "${AGENTIC_DEV_HOST}"
+    return 0
+  fi
+
+  local lan_ip
+  lan_ip=$(ifconfig | awk '/inet / && !/127\./ && !/169\.254\./ {print $2}' | grep -v '^::' | head -1)
+  if [ -n "$lan_ip" ]; then
+    printf '%s\n' "$lan_ip"
+    return 0
+  fi
+
+  printf 'localhost\n'
+}
+
 # Helpers
 info()  { echo "[preflight] $1"; }
 pass()  { echo "[preflight] PASS $1"; }

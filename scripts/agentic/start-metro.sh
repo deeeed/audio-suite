@@ -18,14 +18,13 @@ TIMEOUT=60
 
 mkdir -p .agent
 
-# Detect LAN IP (skip loopback, link-local, VPN)
-LAN_IP=$(ifconfig | awk '/inet / && !/127\./ && !/169\.254\./ {print $2}' | grep -v '^::' | head -1)
+DEV_HOST="$(resolve_agentic_dev_host)"
 
 print_launch_hint() {
-  if [ -n "$LAN_IP" ]; then
+  if [ -n "$DEV_HOST" ]; then
     echo ""
     echo "To open the app on Android:"
-    echo "  adb shell am start -a android.intent.action.VIEW -d \"${DEV_CLIENT_SCHEME_ANDROID}://expo-development-client/?url=http://${LAN_IP}:${PORT}\" ${BUNDLE_ID_ANDROID}/.MainActivity"
+    echo "  adb shell am start -a android.intent.action.VIEW -d \"${DEV_CLIENT_SCHEME_ANDROID}://expo-development-client/?url=http://${DEV_HOST}:${PORT}\" ${BUNDLE_ID_ANDROID}/.MainActivity"
     echo ""
   fi
 }
@@ -48,15 +47,15 @@ echo "Starting Metro on port $PORT..."
 if [ "$AGENTIC_METRO_LOG_MODE" = "tee" ]; then
   nohup bash -lc '
     cd "$1"
-    EXPO_USE_METRO_WORKSPACE_ROOT=1 NODE_ENV=development \
+    EXPO_USE_METRO_WORKSPACE_ROOT=1 NODE_ENV=development REACT_NATIVE_PACKAGER_HOSTNAME="$4" \
       yarn expo start --dev-client --port "$2" 2>&1 | tee -a "$3"
-  ' bash "$APP_ROOT" "$PORT" "$LOGFILE" >/dev/null 2>&1 &
+  ' bash "$APP_ROOT" "$PORT" "$LOGFILE" "$DEV_HOST" >/dev/null 2>&1 &
 else
   nohup bash -lc '
     cd "$1"
-    EXPO_USE_METRO_WORKSPACE_ROOT=1 NODE_ENV=development \
+    EXPO_USE_METRO_WORKSPACE_ROOT=1 NODE_ENV=development REACT_NATIVE_PACKAGER_HOSTNAME="$4" \
       yarn expo start --dev-client --port "$2" >> "$3" 2>&1
-  ' bash "$APP_ROOT" "$PORT" "$LOGFILE" >/dev/null 2>&1 &
+  ' bash "$APP_ROOT" "$PORT" "$LOGFILE" "$DEV_HOST" >/dev/null 2>&1 &
 fi
 METRO_PID=$!
 echo "$METRO_PID" > "$PIDFILE"
