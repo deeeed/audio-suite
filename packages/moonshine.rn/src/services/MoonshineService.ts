@@ -24,18 +24,6 @@ import type {
 } from '../types/interfaces';
 
 type MoonshineListener = (event: MoonshineTranscriptEvent) => void;
-
-function isIosOfflinePromiseConversionRegression(error: unknown): boolean {
-  if (Platform.OS !== 'ios') {
-    return false;
-  }
-  const message = error instanceof Error ? error.message : String(error);
-  return (
-    message.includes('transcribeWithoutStreamingForTranscriber') &&
-    message.includes('RCTPromiseResolveBlock')
-  );
-}
-
 export class MoonshineTranscriber {
   public constructor(
     private readonly service: MoonshineService,
@@ -518,31 +506,18 @@ export class MoonshineService {
     );
   }
 
-  public async transcribeWithoutStreamingForTranscriber(
+  public transcribeWithoutStreamingForTranscriber(
     transcriberId: string,
     sampleRate: number,
     samples: number[],
     options?: MoonshineTranscribeOptions
   ): Promise<MoonshineTranscriptionResult> {
-    try {
-      return await requireNativeMoonshineModule().transcribeWithoutStreamingForTranscriber(
-        transcriberId,
-        sampleRate,
-        samples,
-        options
-      );
-    } catch (error) {
-      if (!isIosOfflinePromiseConversionRegression(error)) {
-        throw error;
-      }
-
-      return requireNativeMoonshineModule().transcribeFromSamplesForTranscriber(
-        transcriberId,
-        sampleRate,
-        samples,
-        options
-      );
-    }
+    return requireNativeMoonshineModule().transcribeWithoutStreamingForTranscriber(
+      transcriberId,
+      sampleRate,
+      samples,
+      options
+    );
   }
 
   public unregisterIntent(

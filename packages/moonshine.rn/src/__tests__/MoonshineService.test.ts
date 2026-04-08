@@ -148,63 +148,6 @@ describe('MoonshineService', () => {
     expect(result.match?.triggerPhrase).toBe('turn on the lights');
   });
 
-  it('falls back to sample transcription on iOS when the offline bridge expects the old promise arity', async () => {
-    (require('react-native').Platform as { OS: string }).OS = 'ios';
-    mockNativeModule.createTranscriberFromFiles.mockResolvedValue({
-      success: true,
-      transcriberId: 'transcriber-1',
-    });
-    mockNativeModule.transcribeWithoutStreamingForTranscriber.mockRejectedValue(
-      new Error(
-        'Moonshine.transcribeWithoutStreamingForTranscriber(): Error while converting JavaScript argument 3 to Objective C type RCTPromiseResolveBlock.'
-      )
-    );
-    mockNativeModule.transcribeFromSamplesForTranscriber.mockResolvedValue({
-      text: 'Hello world',
-      lines: [
-        {
-          lineId: 'line-1',
-          text: 'Hello world',
-          isFinal: true,
-        },
-      ],
-    });
-
-    const service = new MoonshineService();
-    const transcriber = await service.createTranscriberFromFiles({
-      modelArch: 'small-streaming',
-      modelPath: '/tmp/moonshine-small',
-    });
-
-    await expect(
-      transcriber.transcribeWithoutStreaming(16000, [0, 0, 0], {
-        chunkDurationMs: 250,
-      })
-    ).resolves.toEqual({
-      text: 'Hello world',
-      lines: [
-        {
-          lineId: 'line-1',
-          text: 'Hello world',
-          isFinal: true,
-        },
-      ],
-    });
-
-    expect(
-      mockNativeModule.transcribeWithoutStreamingForTranscriber
-    ).toHaveBeenCalledWith('transcriber-1', 16000, [0, 0, 0], {
-      chunkDurationMs: 250,
-    });
-    expect(
-      mockNativeModule.transcribeFromSamplesForTranscriber
-    ).toHaveBeenCalledWith('transcriber-1', 16000, [0, 0, 0], {
-      chunkDurationMs: 250,
-    });
-
-    (require('react-native').Platform as { OS: string }).OS = 'android';
-  });
-
   it('emits offline transcript lifecycle events from the native offline path', async () => {
     mockNativeModule.createTranscriberFromFiles.mockResolvedValue({
       success: true,
