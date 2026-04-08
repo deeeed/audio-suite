@@ -14,6 +14,7 @@ const mockNativeModule = {
   releaseTranscriber: jest.fn(),
   removeListeners: jest.fn(),
   startTranscriber: jest.fn(),
+  transcribeWithoutStreamingForTranscriber: jest.fn(),
 };
 
 class MockNativeEventEmitter {
@@ -144,5 +145,68 @@ describe('MoonshineService', () => {
     );
     expect(result.matched).toBe(true);
     expect(result.match?.triggerPhrase).toBe('turn on the lights');
+  });
+
+  it('emits offline transcript lifecycle events from the wrapper', async () => {
+    mockNativeModule.createTranscriberFromFiles.mockResolvedValue({
+      success: true,
+      transcriberId: 'transcriber-1',
+    });
+    mockNativeModule.transcribeWithoutStreamingForTranscriber.mockResolvedValue(
+      {
+        text: 'Hello world',
+        lines: [
+          {
+            lineId: 'line-1',
+            text: 'Hello world',
+            isFinal: true,
+            words: [
+              { word: 'Hello', startTimeMs: 0, endTimeMs: 500 },
+              { word: 'world', startTimeMs: 500, endTimeMs: 1000 },
+            ],
+          },
+        ],
+      }
+    );
+
+    const service = new MoonshineService();
+    const transcriber = await service.createTranscriberFromFiles({
+      modelArch: 'small-streaming',
+      modelPath: '/tmp/moonshine-small',
+    });
+
+    const listener = jest.fn();
+    transcriber.addListener(listener);
+
+    const result = await transcriber.transcribeWithoutStreaming(
+      16000,
+      [0, 0, 0]
+    );
+
+    expect(result.text).toBe('Hello world');
+    expect(listener).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        type: 'lineStarted',
+        transcriberId: 'transcriber-1',
+        streamId: 'transcriber-1:default',
+      })
+    );
+    expect(listener).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        type: 'lineTextChanged',
+        transcriberId: 'transcriber-1',
+        streamId: 'transcriber-1:default',
+      })
+    );
+    expect(listener).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        type: 'lineCompleted',
+        transcriberId: 'transcriber-1',
+        streamId: 'transcriber-1:default',
+      })
+    );
   });
 });

@@ -596,9 +596,13 @@ if (__DEV__) {
 
                     transcriber = await Moonshine.createTranscriberFromFiles(validation.config)
 
-                    const events: MoonshineTranscriptEvent[] = []
+                    const probeStartedAtMs = Date.now()
+                    const events: (MoonshineTranscriptEvent & { atMs: number })[] = []
                     removeListener = transcriber.addListener((event) => {
-                        events.push(event)
+                        events.push({
+                            ...event,
+                            atMs: Date.now() - probeStartedAtMs,
+                        })
                     })
 
                     const wav = await readMonoPcm16Wav(audioUri)
@@ -608,18 +612,26 @@ if (__DEV__) {
                     )
 
                     const eventTypes = events.map((event) => event.type)
+                    const eventTimeline = events.map((event) => ({
+                        atMs: event.atMs,
+                        type: event.type,
+                    }))
                     const hasIntermediateProgress = eventTypes.some(
                         (type) =>
                             type === 'lineStarted' ||
                             type === 'lineUpdated' ||
                             type === 'lineTextChanged',
                     )
-                    const progressSemantics =
-                        events.length === 0
-                            ? 'none'
-                            : hasIntermediateProgress
-                              ? 'granular'
-                              : 'terminal-only'
+                    const eventSpanMs =
+                        events.length >= 2
+                            ? (events.at(-1)?.atMs ?? 0) - (events[0]?.atMs ?? 0)
+                            : 0
+                    const progressSemantics = (() => {
+                        if (events.length === 0) return 'none'
+                        if (!hasIntermediateProgress) return 'terminal-only'
+                        if (eventSpanMs <= 5) return 'terminal-burst'
+                        return 'granular'
+                    })()
                     const wordCount = result.lines.reduce(
                         (total, line) => total + (line.words?.length ?? 0),
                         0,
@@ -634,6 +646,8 @@ if (__DEV__) {
                         result: {
                             audioUri,
                             eventCount: events.length,
+                            eventSpanMs,
+                            eventTimeline,
                             eventTypes,
                             hasIntermediateProgress,
                             linesWithWords,

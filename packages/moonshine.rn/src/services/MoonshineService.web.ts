@@ -896,6 +896,48 @@ export class MoonshineService {
     }
   }
 
+  private emitOfflineResultEvents(
+    transcriberId: string,
+    result: MoonshineTranscriptionResult
+  ): void {
+    const streamId = `${transcriberId}:default`;
+    for (const line of result.lines) {
+      this.emit({
+        line: {
+          ...line,
+          isFinal: false,
+          isNew: true,
+        },
+        streamId,
+        transcriberId,
+        type: 'lineStarted',
+      });
+      if ((line.text || '').length > 0) {
+        this.emit({
+          line: {
+            ...line,
+            hasTextChanged: true,
+            isFinal: false,
+            isUpdated: true,
+          },
+          streamId,
+          transcriberId,
+          type: 'lineTextChanged',
+        });
+      }
+      this.emit({
+        line: {
+          ...line,
+          isFinal: true,
+          isUpdated: true,
+        },
+        streamId,
+        transcriberId,
+        type: 'lineCompleted',
+      });
+    }
+  }
+
   private getIntentRecognizerState(
     intentRecognizerId: string
   ): WebIntentRecognizerState {
@@ -1042,12 +1084,7 @@ export class MoonshineService {
     );
 
     if (result.lines[0]) {
-      this.emit({
-        line: result.lines[0],
-        streamId: `${transcriberId}:default`,
-        transcriberId,
-        type: 'lineCompleted',
-      });
+      this.emitOfflineResultEvents(transcriberId, result);
     }
 
     return result;
