@@ -271,11 +271,12 @@ export function alignWordsFromCrossAttention(
       continue;
     }
 
+    const stepIndexSet = new Set(word.stepIndices);
     let minFrame = encoderFrames;
     let maxFrame = -1;
     for (let pathIndex = 0; pathIndex < textIndices.length; pathIndex += 1) {
       const alignedTokenIndex = textIndices[pathIndex] ?? -1;
-      if (!word.stepIndices.includes(alignedTokenIndex)) {
+      if (!stepIndexSet.has(alignedTokenIndex)) {
         continue;
       }
       const alignedFrameIndex = timeIndices[pathIndex] ?? -1;

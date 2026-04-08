@@ -5,7 +5,7 @@ import Moonshine, {
     normalizeMoonshineWebModelArch,
     resolveMoonshineWebModelBasePath,
 } from '@siteed/moonshine.rn'
-import { MOONSHINE_WEB_TRANSCRIBER_OPTION_NAMES } from '../../../../packages/moonshine.rn/src/constants/webTranscriberOptions'
+import { MOONSHINE_WEB_TRANSCRIBER_OPTION_NAMES } from '@siteed/moonshine.rn/constants/webTranscriberOptions'
 import * as FileSystem from 'expo-file-system/legacy'
 import { Platform } from 'react-native'
 import { initWhisper, type WhisperContext } from 'whisper.rn'

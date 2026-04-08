@@ -10,6 +10,13 @@ yarn workspace @siteed/moonshine.rn validate:offline:contract <model-id> [device
 The harness drives a real offline file transcription through the playground app
 runtime, listens for `MoonshineTranscriptEvent`s, and reports:
 
+When a web consumer needs to wire explicit model URLs or a separate progress
+model base path, use the public constants subpath:
+
+```ts
+import { MOONSHINE_WEB_TRANSCRIBER_OPTION_NAMES } from '@siteed/moonshine.rn/constants/webTranscriberOptions'
+```
+
 - whether any intermediate progress-like events were emitted
 - whether the event sequence is `none`, `terminal-only`, or `granular`
 - whether `line.words` is returned when `wordTimestamps` is enabled

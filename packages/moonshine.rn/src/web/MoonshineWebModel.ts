@@ -208,6 +208,10 @@ export class MoonshineWebModel {
       loadedSessions = {
         decoderSession,
         encoderSession,
+        // Older ORT-Web builds may not expose outputNames. In that case keep
+        // the request optimistic and let transcribeDetailed() detect missing
+        // cross-attention tensors at runtime instead of rejecting a potentially
+        // valid decoder up front.
         wordTimestampsEnabled:
           this.wordTimestampsRequested &&
           (attentionSupport == null ? true : attentionSupport),

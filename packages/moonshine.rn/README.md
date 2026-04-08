@@ -194,6 +194,10 @@ Current web status:
   Moonshine's CDN.
 - Use `configureMoonshineWeb()` if you want to override the default model asset
   CDN or the `onnxruntime-web` wasm base path.
+- Web-only transcriber option names are exposed from the explicit subpath
+  `@siteed/moonshine.rn/constants/webTranscriberOptions`, for example when a
+  caller needs to pass `web_encoder_url`, `web_decoder_url`, or
+  `web_progress_model_base_path` through `transcriberOptions`.
 
 Current iOS status:
 

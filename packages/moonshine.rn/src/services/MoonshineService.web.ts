@@ -1148,6 +1148,11 @@ export class MoonshineService {
       MOONSHINE_WEB_TRANSCRIBER_OPTION_NAMES.progressModelBasePath
     );
     if (progressModelBasePath) {
+      // When callers provide a dedicated progress-model base path, drop any
+      // explicit encoder/decoder URL overrides so the progress pass resolves
+      // from that base path. Without this option we intentionally reuse the
+      // original model source, which preserves custom URL and blob-backed
+      // transcribers for the progress-only pass.
       progressConfig.transcriberOptions =
         state.config.transcriberOptions?.filter(
           (option) =>
