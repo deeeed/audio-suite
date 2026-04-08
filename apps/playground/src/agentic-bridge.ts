@@ -135,6 +135,19 @@ async function loadSpeechWavSampleFileUri(): Promise<string> {
     return dest
 }
 
+async function loadJfkWavSampleFileUri(): Promise<string> {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const asset = Asset.fromModule(require('../public/audio_samples/jfk.wav'))
+    await asset.downloadAsync()
+    if (!asset.localUri) throw new Error('Failed to load JFK WAV sample asset')
+    if (Platform.OS === 'web') {
+        return asset.localUri
+    }
+    const dest = `${FileSystem.cacheDirectory}jfk_sample.wav`
+    await FileSystem.copyAsync({ from: asset.localUri, to: dest })
+    return dest
+}
+
 function resolveMoonshineProbeModelPath(modelPath: string, appendTrailingSlash?: boolean): string {
     if (!appendTrailingSlash || modelPath.endsWith('/')) {
         return modelPath
@@ -580,7 +593,9 @@ if (__DEV__) {
                     const sample = options?.sample ?? 'speech'
                     const wordTimestamps = options?.wordTimestamps === true
                     const audioUri =
-                        sample === 'speech'
+                        sample === 'jfk'
+                            ? await loadJfkWavSampleFileUri()
+                            : sample === 'speech'
                             ? await loadSpeechWavSampleFileUri()
                             : await loadSpeechWavSampleFileUri()
 

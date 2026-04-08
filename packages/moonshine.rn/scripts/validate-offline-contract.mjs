@@ -43,6 +43,7 @@ function sleep(ms) {
 async function main() {
   const modelId = process.argv[2] || 'moonshine-small-streaming-en'
   const deviceFilter = process.argv[3]
+  const sample = process.argv[4] || 'speech'
   const argsPrefix = deviceFilter ? ['--device', deviceFilter] : []
   const op = 'validateMoonshineOfflineContract'
 
@@ -52,7 +53,7 @@ async function main() {
       'eval',
       `globalThis.__AGENTIC__?.validateMoonshineOfflineContract?.(${JSON.stringify(
         modelId
-      )}, { sample: 'speech', wordTimestamps: true })`,
+      )}, { sample: ${JSON.stringify(sample)}, wordTimestamps: true })`,
     ],
     false
   )

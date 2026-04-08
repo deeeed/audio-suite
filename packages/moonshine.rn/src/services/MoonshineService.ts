@@ -508,16 +508,12 @@ export class MoonshineService {
     sampleRate: number,
     samples: number[]
   ): Promise<MoonshineTranscriptionResult> {
-    return requireNativeMoonshineModule()
-      .transcribeWithoutStreamingForTranscriber(
-        transcriberId,
-        sampleRate,
-        samples
-      )
-      .then((result: MoonshineTranscriptionResult) => {
-        this.emitOfflineResultEvents(transcriberId, result);
-        return result;
-      });
+    return this.transcribeFromSamplesForTranscriber(
+      transcriberId,
+      sampleRate,
+      samples,
+      { chunkDurationMs: 200 }
+    );
   }
 
   public unregisterIntent(
@@ -552,9 +548,9 @@ export class MoonshineService {
     if (this.eventSubscription || !isMoonshineNativeAvailable()) return;
 
     const emitter =
-      Platform.OS === 'android'
-        ? new NativeEventEmitter(requireNativeMoonshineModule())
-        : DeviceEventEmitter;
+      Platform.OS === 'web'
+        ? DeviceEventEmitter
+        : new NativeEventEmitter(requireNativeMoonshineModule());
     this.eventSubscription = emitter.addListener(
       MOONSHINE_EVENT_NAME,
       (event: MoonshineTranscriptEvent) => {
@@ -573,50 +569,6 @@ export class MoonshineService {
         ? new MoonshineTranscriber(this, result.transcriberId)
         : null;
     return result;
-  }
-
-  private emitOfflineResultEvents(
-    transcriberId: string,
-    result: MoonshineTranscriptionResult
-  ): void {
-    const streamId = `${transcriberId}:default`;
-    for (const line of result.lines) {
-      for (const listener of this.listeners) {
-        listener({
-          line: {
-            ...line,
-            isFinal: false,
-            isNew: true,
-          },
-          streamId,
-          transcriberId,
-          type: 'lineStarted',
-        });
-        if ((line.text || '').length > 0) {
-          listener({
-            line: {
-              ...line,
-              hasTextChanged: true,
-              isFinal: false,
-              isUpdated: true,
-            },
-            streamId,
-            transcriberId,
-            type: 'lineTextChanged',
-          });
-        }
-        listener({
-          line: {
-            ...line,
-            isFinal: true,
-            isUpdated: true,
-          },
-          streamId,
-          transcriberId,
-          type: 'lineCompleted',
-        });
-      }
-    }
   }
 
   private teardownEventSubscription(): void {

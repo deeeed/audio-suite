@@ -15,6 +15,13 @@ runtime, listens for `MoonshineTranscriptEvent`s, and reports:
 - whether `line.words` is returned when `wordTimestamps` is enabled
 - which validation model actually ran (important for web tiny fallback)
 
+For longer offline progress checks, the harness also accepts the bundled
+`jfk.wav` sample:
+
+```bash
+yarn workspace @siteed/moonshine.rn validate:offline:contract <model-id> <device-filter> jfk
+```
+
 ## Current findings
 
 ### iOS simulator (`sim:playground-1`)
@@ -65,21 +72,22 @@ runtime, listens for `MoonshineTranscriptEvent`s, and reports:
 ### Offline progress fidelity
 
 `transcribeWithoutStreaming(...)` now emits the same upstream-style transcript
-events through the wrapper, but they currently arrive as a **terminal burst**,
-not as meaningful incremental progress.
+events through the wrapper by routing offline file transcription through the
+existing chunked temporary-stream path.
 
-- iOS: `lineStarted -> lineTextChanged -> lineCompleted` are emitted together at
-  the end of the offline call
-- Android: `lineStarted -> lineTextChanged -> lineCompleted` are emitted
-  together at the end of the offline call
-- Web: `lineStarted -> lineTextChanged -> lineCompleted` are emitted together
-  at the end of the offline call
+On the short bundled speech sample:
 
-So the current offline progress contract is still **not meaningfully granular
-across platforms**. Consumer apps should treat offline transcription as:
+- iOS: terminal burst
+- Android: terminal burst
+- Web: terminal burst
 
-- a single offline operation that may emit a final line-event burst immediately
-  before the promise resolves
+On the longer bundled `jfk.wav` sample:
+
+- iOS: **granular** (`44` events over `1234ms`)
+- Android: **granular** (`44` events over `3514ms`)
+
+This means offline progress is now meaningful on native long-form runs, but web
+has only been validated as terminal-burst on the short sample so far.
 
 If granular progress is desired, it should be implemented inside
 `moonshine.rn`, not faked in consumer UIs.
