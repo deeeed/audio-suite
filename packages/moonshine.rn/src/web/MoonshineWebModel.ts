@@ -17,6 +17,17 @@ type LoadedSessions = {
   wordTimestampsFailureReason?: string;
 };
 
+function decoderSupportsCrossAttention(
+  decoderSession: WebOrtSession
+): boolean | null {
+  if (!Array.isArray(decoderSession.outputNames)) {
+    return null;
+  }
+  return decoderSession.outputNames.some((name) =>
+    name.startsWith('cross_attentions.')
+  );
+}
+
 export type MoonshineWebTranscription = {
   text: string;
   words?: MoonshineLineWordTiming[];
@@ -185,22 +196,24 @@ export class MoonshineWebModel {
 
     let loadedSessions: LoadedSessions;
     if (this.source.kind === 'urls') {
+      const decoderSession = await runtime.InferenceSession.create(
+        this.source.decoderUrl,
+        SESSION_OPTIONS
+      );
+      const encoderSession = await runtime.InferenceSession.create(
+        this.source.encoderUrl,
+        SESSION_OPTIONS
+      );
+      const attentionSupport = decoderSupportsCrossAttention(decoderSession);
       loadedSessions = {
-        decoderSession: await runtime.InferenceSession.create(
-          this.source.decoderUrl,
-          SESSION_OPTIONS
-        ),
-        encoderSession: await runtime.InferenceSession.create(
-          this.source.encoderUrl,
-          SESSION_OPTIONS
-        ),
+        decoderSession,
+        encoderSession,
         wordTimestampsEnabled:
           this.wordTimestampsRequested &&
-          /attention/i.test(this.source.decoderUrl),
+          (attentionSupport == null ? true : attentionSupport),
         wordTimestampsFailureReason:
-          this.wordTimestampsRequested &&
-          !/attention/i.test(this.source.decoderUrl)
-            ? 'Word timestamps were requested for a custom decoder URL that does not look attention-enabled.'
+          this.wordTimestampsRequested && attentionSupport === false
+            ? 'Word timestamps were requested, but the loaded decoder does not expose cross-attention outputs.'
             : undefined,
       };
     } else {

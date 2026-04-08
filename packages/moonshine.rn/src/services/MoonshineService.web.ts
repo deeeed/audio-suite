@@ -1135,18 +1135,25 @@ export class MoonshineService {
         ...state.config.options,
         wordTimestamps: false,
       },
-      transcriberOptions: state.config.transcriberOptions?.filter(
-        (option) =>
-          option.name !== 'web_encoder_url' && option.name !== 'web_decoder_url'
-      ),
     };
-    const progressCandidatePath = resolveMoonshineWebModelBasePath(
-      undefined,
-      normalizeMoonshineWebModelArch(progressConfig.modelArch)
+    const progressModelBasePath = getTranscriberOptionValue(
+      state.config,
+      'web_progress_model_base_path'
     );
+    if (progressModelBasePath) {
+      progressConfig.transcriberOptions =
+        state.config.transcriberOptions?.filter(
+          (option) =>
+            option.name !== 'web_encoder_url' &&
+            option.name !== 'web_decoder_url'
+        );
+    }
     const { model: progressModel } = await this.getOrCreateWebModel(
       progressConfig,
-      progressCandidatePath
+      progressModelBasePath ??
+        (state.modelBasePath === '[web-url-source]'
+          ? undefined
+          : state.modelBasePath)
     );
 
     const streamId = `${transcriberId}:offline-progress`;

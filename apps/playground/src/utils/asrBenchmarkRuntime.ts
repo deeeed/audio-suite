@@ -309,6 +309,13 @@ export async function getMoonshineWordTimestampValidationConfig(
                         name: 'web_decoder_url',
                         value: MOONSHINE_WEB_WORD_TIMESTAMP_DECODER_URL,
                     },
+                    {
+                        name: 'web_progress_model_base_path',
+                        value: resolveMoonshineWebModelBasePath(
+                            undefined,
+                            normalizedArch,
+                        ),
+                    },
                 ],
                 updateIntervalMs: model.moonshine.updateIntervalMs,
             },
