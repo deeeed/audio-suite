@@ -18,8 +18,6 @@ const BUNDLE_BASE = 'net.siteed.audioplayground';
 const SCHEME_BASE = 'audioplayground';
 const PKG =
   APP_VARIANT === 'production' ? BUNDLE_BASE : `${BUNDLE_BASE}.${APP_VARIANT}`;
-const SCHEME =
-  APP_VARIANT === 'production' ? SCHEME_BASE : `${SCHEME_BASE}-${APP_VARIANT}`;
 const DEV_CLIENT_SCHEME = `exp+${SCHEME_BASE}`;
 const ROUTE = '/asr-benchmark';
 const OFFLINE_TIMEOUT_MS = 10 * 60 * 1000;
@@ -91,19 +89,11 @@ function getMetroHost() {
     return '10.0.2.2';
   }
 
-  if (process.env.AGENTIC_DEV_HOST) {
-    return String(process.env.AGENTIC_DEV_HOST).trim();
-  }
-
-  try {
-    const output = execSync(
-      "ipconfig getifaddr en0 2>/dev/null || ifconfig | awk '/inet / && !/127\\./ && !/169\\.254\\./ {print $2}' | grep -v '^::' | head -1",
-      { encoding: 'utf8' }
-    ).trim();
-    return output || 'localhost';
-  } catch {
-    return 'localhost';
-  }
+  // This script always installs an adb reverse tunnel immediately before
+  // launching the Android dev client, so the launch URL must keep targeting
+  // the device loopback interface instead of a workstation-specific LAN/mDNS
+  // host.
+  return '127.0.0.1';
 }
 
 function run(command, args, { cwd = REPO_ROOT, parseJson = false, maxBuffer = 50 * 1024 * 1024 } = {}) {
@@ -172,7 +162,9 @@ async function waitForBridgeTarget(timeoutMs = STATE_TIMEOUT_MS) {
     try {
       const devices = bridge(['list-devices']);
       if ((devices?.count ?? 0) > 0) return;
-    } catch {}
+    } catch (_error) {
+      // Target is not ready yet; keep polling until the timeout expires.
+    }
     await sleep(POLL_INTERVAL_MS);
   }
   throw new Error('Timed out waiting for CDP target');

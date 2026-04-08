@@ -424,7 +424,7 @@ export function useAsrBenchmark() {
                 lineCount: result.lineCount,
                 linesWithWords: result.linesWithWords,
                 mode: 'sample',
-                modelId: selectedModel.id,
+                modelId: result.validationModelId,
                 modelName: result.validationModelLabel,
                 notes: result.note,
                 recognizeMs: result.recognizeMs,

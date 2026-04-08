@@ -47,6 +47,7 @@ export interface BenchmarkWordTimestampValidationRunResult extends BenchmarkFile
     lineCount: number
     linesWithWords: number
     note?: string
+    validationModelId: string
     validationModelLabel: string
     wordCount: number
 }
@@ -279,6 +280,7 @@ async function getMoonshineWordTimestampValidationConfig(
     onStatus?: (message: string) => void,
 ): Promise<{
     config: MoonshineModelConfig
+    validationModelId: string
     validationModelLabel: string
     note?: string
 }> {
@@ -310,6 +312,7 @@ async function getMoonshineWordTimestampValidationConfig(
                 ],
                 updateIntervalMs: model.moonshine.updateIntervalMs,
             },
+            validationModelId: 'moonshine-tiny-web-word-timestamp-validation',
             note: 'Web validation uses the tiny-en offline attention decoder because web runtime parity is currently available there.',
             validationModelLabel: 'Moonshine Tiny Web Word-Timestamp Validation',
         }
@@ -324,6 +327,7 @@ async function getMoonshineWordTimestampValidationConfig(
                 wordTimestamps: true,
             },
         },
+        validationModelId: model.id,
         validationModelLabel: model.name,
     }
 }
@@ -457,6 +461,7 @@ export async function runMoonshineWordTimestampValidation(
             note: validation.note,
             recognizeMs,
             transcript: result.text.trim(),
+            validationModelId: validation.validationModelId,
             validationModelLabel: validation.validationModelLabel,
             wordCount,
         }
