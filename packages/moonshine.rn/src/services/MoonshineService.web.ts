@@ -17,6 +17,7 @@ import type {
   MoonshineTranscribeParams,
 } from '../types/interfaces';
 import { MOONSHINE_TRANSCRIPTION_CANCELLED_CODE } from '../types/interfaces';
+import { OfflineProgressTracker } from './offlineProgressTracker';
 import { runWithAbortSignal } from './transcriptionCancellation';
 import {
   normalizeMoonshineWebModelArch,
@@ -31,13 +32,6 @@ import {
 import { MoonshineWebSpeakerClusterer } from '../web/MoonshineWebSpeakerClusterer';
 
 type MoonshineListener = (event: MoonshineTranscriptEvent) => void;
-
-type OfflineProgressState = {
-  enabled: boolean;
-  lastProgress: number;
-  sawNativeProgress: boolean;
-  totalDurationMs: number;
-};
 
 const DEFAULT_OFFLINE_CHUNK_DURATION_MS = 200;
 
@@ -402,7 +396,7 @@ export class MoonshineIntentRecognizer {
 
 export class MoonshineService {
   private defaultTranscriber: MoonshineTranscriber | null = null;
-  private intentModelCache = new Map<
+  private readonly intentModelCache = new Map<
     string,
     MoonshineWebIntentRecognizerModel
   >();
@@ -411,13 +405,10 @@ export class MoonshineService {
     string,
     WebIntentRecognizerState
   >();
-  private listeners = new Set<MoonshineListener>();
-  private modelCache = new Map<string, MoonshineWebModel>();
+  private readonly listeners = new Set<MoonshineListener>();
+  private readonly modelCache = new Map<string, MoonshineWebModel>();
   private nextTranscriberId = 1;
-  private offlineProgressByTranscriber = new Map<
-    string,
-    OfflineProgressState
-  >();
+  private readonly offlineProgressTracker = new OfflineProgressTracker();
   private readonly transcribers = new Map<string, WebTranscriberState>();
 
   public addAudio(
@@ -768,7 +759,7 @@ export class MoonshineService {
     transcriberId: string,
     params: MoonshineTranscribeParams
   ): Promise<MoonshineTranscriptionResult> {
-    this.beginOfflineProgressTracking(
+    this.offlineProgressTracker.begin(
       transcriberId,
       params.sampleRate,
       params.input.length,
@@ -777,10 +768,13 @@ export class MoonshineService {
     return runWithAbortSignal({
       cancel: () => this.cancelForTranscriber(transcriberId),
       onFinally: (outcome) => {
-        this.finishOfflineProgressTracking(
+        const completionEvent = this.offlineProgressTracker.finish(
           transcriberId,
           outcome === 'resolved'
         );
+        if (completionEvent) {
+          this.emit(completionEvent);
+        }
       },
       signal: params.signal,
       run: async (): Promise<MoonshineTranscriptionResult> => {
@@ -854,92 +848,6 @@ export class MoonshineService {
       samples,
       normalizedOptions
     );
-  }
-
-  private beginOfflineProgressTracking(
-    transcriberId: string,
-    sampleRate: number,
-    sampleCount: number,
-    enabled: boolean
-  ): void {
-    if (!enabled || sampleRate <= 0) {
-      this.offlineProgressByTranscriber.delete(transcriberId);
-      return;
-    }
-
-    this.offlineProgressByTranscriber.set(transcriberId, {
-      enabled: true,
-      lastProgress: 0,
-      sawNativeProgress: false,
-      totalDurationMs: (sampleCount / sampleRate) * 1000,
-    });
-  }
-
-  private finishOfflineProgressTracking(
-    transcriberId: string,
-    completed: boolean
-  ): void {
-    const state = this.offlineProgressByTranscriber.get(transcriberId);
-    if (!state) {
-      return;
-    }
-
-    if (completed && !state.sawNativeProgress && state.lastProgress < 1) {
-      this.emit({
-        processedDurationMs: state.totalDurationMs,
-        progress: 1,
-        streamId: `${transcriberId}:offline`,
-        totalDurationMs: state.totalDurationMs,
-        transcriberId,
-        type: 'transcriptionProgress',
-      });
-    }
-
-    this.offlineProgressByTranscriber.delete(transcriberId);
-  }
-
-  private maybeCreateSyntheticProgressEvent(
-    event: MoonshineTranscriptEvent
-  ): MoonshineTranscriptEvent | null {
-    const state = this.offlineProgressByTranscriber.get(event.transcriberId);
-    if (!state?.enabled) {
-      return null;
-    }
-
-    if (event.type === 'transcriptionProgress') {
-      state.sawNativeProgress = true;
-      state.lastProgress = Math.max(state.lastProgress, event.progress ?? 0);
-      return null;
-    }
-
-    if (state.sawNativeProgress || !event.line) {
-      return null;
-    }
-
-    const processedDurationMs =
-      event.line.completedAtMs ??
-      (event.line.startedAtMs ?? 0) + (event.line.durationMs ?? 0);
-    if (!Number.isFinite(processedDurationMs) || state.totalDurationMs <= 0) {
-      return null;
-    }
-
-    const progress = Math.min(
-      Math.max(processedDurationMs / state.totalDurationMs, state.lastProgress),
-      1
-    );
-    if (progress <= state.lastProgress && event.type !== 'lineCompleted') {
-      return null;
-    }
-
-    state.lastProgress = progress;
-    return {
-      processedDurationMs,
-      progress,
-      streamId: event.streamId,
-      totalDurationMs: state.totalDurationMs,
-      transcriberId: event.transcriberId,
-      type: 'transcriptionProgress',
-    };
   }
 
   private async createWebTranscriber(
@@ -1105,7 +1013,7 @@ export class MoonshineService {
     for (const listener of this.listeners) {
       listener(event);
     }
-    const syntheticProgress = this.maybeCreateSyntheticProgressEvent(event);
+    const syntheticProgress = this.offlineProgressTracker.observe(event);
     if (syntheticProgress) {
       for (const listener of this.listeners) {
         listener(syntheticProgress);
