@@ -164,7 +164,10 @@ export class MoonshineService {
   private defaultTranscriber: MoonshineTranscriber | null = null;
   private eventSubscription: EmitterSubscription | null = null;
   private listeners = new Set<MoonshineListener>();
-  private offlineProgressByTranscriber = new Map<string, OfflineProgressState>();
+  private offlineProgressByTranscriber = new Map<
+    string,
+    OfflineProgressState
+  >();
 
   public addAudio(
     samples: number[],
@@ -623,7 +626,7 @@ export class MoonshineService {
 
     const processedDurationMs =
       event.line.completedAtMs ??
-      ((event.line.startedAtMs ?? 0) + (event.line.durationMs ?? 0));
+      (event.line.startedAtMs ?? 0) + (event.line.durationMs ?? 0);
     if (!Number.isFinite(processedDurationMs) || state.totalDurationMs <= 0) {
       return null;
     }

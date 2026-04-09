@@ -831,6 +831,106 @@ if (__DEV__) {
             return { op, status: 'pending' }
         },
 
+        validateMoonshineOfflineProgressDisabledContract: (
+            modelId: string,
+            options?: {
+                sample?: 'jfk' | 'osr-long' | 'speech'
+                wordTimestamps?: boolean
+            },
+        ) => {
+            const op = 'validateMoonshineOfflineProgressDisabledContract'
+            _lastAsyncResult = { op, status: 'pending' }
+            void (async () => {
+                let transcriber: MoonshineTranscriber | null = null
+                let removeListener: (() => void) | null = null
+
+                try {
+                    if (!modelId) {
+                        throw new Error(
+                            'validateMoonshineOfflineProgressDisabledContract requires a modelId',
+                        )
+                    }
+
+                    const sample =
+                        options?.sample ??
+                        (Platform.OS === 'web' ? 'jfk' : 'osr-long')
+                    const wordTimestamps = options?.wordTimestamps === true
+                    const audioUri =
+                        sample === 'jfk'
+                            ? await loadJfkWavSampleFileUri()
+                            : sample === 'speech'
+                              ? await loadSpeechWavSampleFileUri()
+                              : await loadOsrLongWavSampleFileUri()
+
+                    const validation = wordTimestamps
+                        ? await getMoonshineWordTimestampValidationConfig(modelId)
+                        : {
+                              config: await getMoonshineRuntimeConfig(modelId),
+                              validationModelId: modelId,
+                              validationModelLabel:
+                                  getBenchmarkModelOrThrow(modelId).name,
+                              note: undefined,
+                          }
+
+                    transcriber = await Moonshine.createTranscriberFromFiles(validation.config)
+
+                    const startedAtMs = Date.now()
+                    const events: (MoonshineTranscriptEvent & { atMs: number })[] = []
+                    removeListener = transcriber.addListener((event) => {
+                        events.push({
+                            ...event,
+                            atMs: Date.now() - startedAtMs,
+                        })
+                    })
+
+                    const wav = await readMonoPcm16Wav(audioUri)
+                    const result = await transcriber.transcribe({
+                        input: wav.samples,
+                        progress: false,
+                        sampleRate: wav.sampleRate,
+                    })
+
+                    const progressEventCount = events.filter(
+                        (event) => event.type === 'transcriptionProgress',
+                    ).length
+                    const validationIssues: string[] = []
+                    if (progressEventCount !== 0) {
+                        validationIssues.push(
+                            `Expected no transcriptionProgress events when progress is disabled, received ${progressEventCount}`,
+                        )
+                    }
+
+                    _lastAsyncResult = {
+                        op,
+                        status: validationIssues.length === 0 ? 'success' : 'error',
+                        result: {
+                            audioUri,
+                            eventCount: events.length,
+                            eventTypes: events.map((event) => event.type),
+                            modelId,
+                            progressEventCount,
+                            sample,
+                            transcript: result.text,
+                            validationIssues,
+                            wordTimestamps,
+                        },
+                    }
+                } catch (e) {
+                    _lastAsyncResult = {
+                        op,
+                        status: 'error',
+                        error: String(e),
+                        result: { modelId },
+                    }
+                } finally {
+                    removeListener?.()
+                    await safeReleaseMoonshineTranscriber(transcriber)
+                    await safeReleaseMoonshine()
+                }
+            })()
+            return { op, status: 'pending' }
+        },
+
         validateMoonshineOfflineCancellationContract: (
             modelId: string,
             options?: {

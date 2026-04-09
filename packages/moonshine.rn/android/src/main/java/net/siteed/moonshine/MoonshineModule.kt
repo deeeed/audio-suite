@@ -1345,7 +1345,9 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
         ?.toInt()
         ?: 200
       val hasProgressOptions =
-        options?.hasKey("progress") == true && !options.isNull("progress")
+        options?.hasKey("progress") == true &&
+          !options.isNull("progress") &&
+          options.getType("progress") == ReadableType.Map
       val progressOptions =
         if (hasProgressOptions) options?.getMap("progress") else null
       val progressEnabled = progressOptions != null

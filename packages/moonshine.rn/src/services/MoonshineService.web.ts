@@ -208,7 +208,9 @@ function buildOfflineResult(
   };
 }
 
-function resolveOfflineProgressSettings(options?: MoonshinePcmTranscribeOptions): {
+function resolveOfflineProgressSettings(
+  options?: MoonshinePcmTranscribeOptions
+): {
   enabled: boolean;
   intervalMs: number;
 } {
@@ -412,7 +414,10 @@ export class MoonshineService {
   private listeners = new Set<MoonshineListener>();
   private modelCache = new Map<string, MoonshineWebModel>();
   private nextTranscriberId = 1;
-  private offlineProgressByTranscriber = new Map<string, OfflineProgressState>();
+  private offlineProgressByTranscriber = new Map<
+    string,
+    OfflineProgressState
+  >();
   private readonly transcribers = new Map<string, WebTranscriberState>();
 
   public addAudio(
@@ -800,7 +805,7 @@ export class MoonshineService {
             : params.input,
           params
         );
-      }
+      },
     });
   }
 
@@ -828,6 +833,11 @@ export class MoonshineService {
     samples: number[],
     options?: MoonshinePcmTranscribeOptions
   ): Promise<MoonshineTranscriptionResult> {
+    const normalizedOptions: MoonshinePcmTranscribeOptions = {
+      ...options,
+      chunkDurationMs:
+        options?.chunkDurationMs ?? DEFAULT_OFFLINE_CHUNK_DURATION_MS,
+    };
     const state = this.getTranscriberState(transcriberId);
     if (state.config.options?.wordTimestamps) {
       return this.transcribeWebOfflineWithWordTimestamps(
@@ -835,20 +845,14 @@ export class MoonshineService {
         state,
         sampleRate,
         samples,
-        {
-          chunkDurationMs:
-            options?.chunkDurationMs ?? DEFAULT_OFFLINE_CHUNK_DURATION_MS,
-        }
+        normalizedOptions
       );
     }
     return this.transcribeViaTemporaryStream(
       transcriberId,
       sampleRate,
       samples,
-      {
-        chunkDurationMs:
-          options?.chunkDurationMs ?? DEFAULT_OFFLINE_CHUNK_DURATION_MS,
-      }
+      normalizedOptions
     );
   }
 
@@ -914,7 +918,7 @@ export class MoonshineService {
 
     const processedDurationMs =
       event.line.completedAtMs ??
-      ((event.line.startedAtMs ?? 0) + (event.line.durationMs ?? 0));
+      (event.line.startedAtMs ?? 0) + (event.line.durationMs ?? 0);
     if (!Number.isFinite(processedDurationMs) || state.totalDurationMs <= 0) {
       return null;
     }
@@ -1374,7 +1378,7 @@ export class MoonshineService {
       return leftStart - rightStart;
     });
 
-  return {
+    return {
       lines,
       text: lines
         .map((line) => line.text)

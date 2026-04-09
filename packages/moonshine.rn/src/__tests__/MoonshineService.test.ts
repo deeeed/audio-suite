@@ -331,17 +331,14 @@ describe('MoonshineService', () => {
       sampleRate: 16000,
     });
 
-    expect(mockNativeModule.transcribeFromSamplesForTranscriber).toHaveBeenCalledWith(
-      'transcriber-1',
-      16000,
-      [0, 0, 0],
-      {
-        chunkDurationMs: undefined,
-        progress: {
-          intervalMs: 250,
-        },
-      }
-    );
+    expect(
+      mockNativeModule.transcribeFromSamplesForTranscriber
+    ).toHaveBeenCalledWith('transcriber-1', 16000, [0, 0, 0], {
+      chunkDurationMs: undefined,
+      progress: {
+        intervalMs: 250,
+      },
+    });
     expect(listener).toHaveBeenCalledWith(
       expect.objectContaining({
         progress: 0,
