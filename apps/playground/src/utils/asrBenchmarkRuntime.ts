@@ -408,7 +408,10 @@ export async function transcribeMoonshineFile(
     try {
         const recognizeStartedAt = Date.now()
         const wav = await readMonoPcm16Wav(audioUri)
-        const result = await transcriber.transcribeWithoutStreaming(wav.sampleRate, wav.samples)
+        const result = await transcriber.transcribe({
+            input: wav.samples,
+            sampleRate: wav.sampleRate,
+        })
         const recognizeMs = Date.now() - recognizeStartedAt
 
         return {
@@ -439,7 +442,10 @@ export async function runMoonshineWordTimestampValidation(
     try {
         const recognizeStartedAt = Date.now()
         const wav = await readMonoPcm16Wav(audioUri)
-        const result = await transcriber.transcribeWithoutStreaming(wav.sampleRate, wav.samples)
+        const result = await transcriber.transcribe({
+            input: wav.samples,
+            sampleRate: wav.sampleRate,
+        })
         const recognizeMs = Date.now() - recognizeStartedAt
 
         const lineCount = result.lines.length

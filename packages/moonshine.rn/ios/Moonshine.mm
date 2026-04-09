@@ -1574,11 +1574,11 @@ RCT_EXPORT_METHOD(unregisterIntent:(NSString *)intentRecognizerId
     ThrowIfMoonshineError(moonshine_start_stream(state.handle, temporaryStreamHandle), @"start stream");
 
     NSUInteger samplesPerChunk = (NSUInteger)MAX((int)((sampleRate * chunkDurationMs) / 1000.0), 1);
-    __weak typeof(self) weakSelf = self;
+    __weak Moonshine *weakSelf = self;
     __block NSUInteger startIndex = 0;
     __block void (^processNextChunk)(void);
     processNextChunk = ^{
-      __strong typeof(weakSelf) strongSelf = weakSelf;
+      Moonshine *strongSelf = weakSelf;
       if (strongSelf == nil) {
         return;
       }

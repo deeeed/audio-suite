@@ -1247,6 +1247,7 @@ export class MoonshineService {
           chunk,
           sampleRate
         );
+        await this.yieldToEventLoop();
       }
       this.throwIfOfflineTranscriptionCancelled(job);
       await this.stopStreamForTranscriber(transcriberId, streamId);
@@ -1264,13 +1265,19 @@ export class MoonshineService {
       return leftStart - rightStart;
     });
 
-    return {
+  return {
       lines,
       text: lines
         .map((line) => line.text)
         .filter(Boolean)
         .join('\n'),
     };
+  }
+
+  private async yieldToEventLoop(): Promise<void> {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
   }
 
   private async transcribeWebOfflineWithWordTimestamps(
@@ -1391,6 +1398,7 @@ export class MoonshineService {
         });
 
         emittedText = text;
+        await this.yieldToEventLoop();
       }
 
       this.throwIfOfflineTranscriptionCancelled(job);
@@ -1496,6 +1504,7 @@ export class MoonshineService {
               : word.startTimeMs + offsetMs,
         });
       }
+      await this.yieldToEventLoop();
     }
 
     return {

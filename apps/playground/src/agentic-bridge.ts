@@ -634,10 +634,10 @@ if (__DEV__) {
                     })
 
                     const wav = await readMonoPcm16Wav(audioUri)
-                    const result = await transcriber.transcribeWithoutStreaming(
-                        wav.sampleRate,
-                        wav.samples,
-                    )
+                    const result = await transcriber.transcribe({
+                        input: wav.samples,
+                        sampleRate: wav.sampleRate,
+                    })
 
                     const eventTypes = events.map((event) => event.type)
                     const eventTimeline = events.map((event) => ({
@@ -689,6 +689,193 @@ if (__DEV__) {
                             wordCount,
                             wordTimestamps,
                             wordsReturned: wordCount > 0,
+                        },
+                    }
+                } catch (e) {
+                    _lastAsyncResult = {
+                        op,
+                        status: 'error',
+                        error: String(e),
+                        result: { modelId },
+                    }
+                } finally {
+                    removeListener?.()
+                    await safeReleaseMoonshineTranscriber(transcriber)
+                    await safeReleaseMoonshine()
+                }
+            })()
+            return { op, status: 'pending' }
+        },
+
+        validateMoonshineOfflineCancellationContract: (
+            modelId: string,
+            options?: {
+                sample?: 'jfk' | 'osr-long' | 'speech'
+                wordTimestamps?: boolean
+            },
+        ) => {
+            const op = 'validateMoonshineOfflineCancellationContract'
+            _lastAsyncResult = { op, status: 'pending' }
+            void (async () => {
+                let transcriber: MoonshineTranscriber | null = null
+                let removeListener: (() => void) | null = null
+
+                try {
+                    if (!modelId) {
+                        throw new Error(
+                            'validateMoonshineOfflineCancellationContract requires a modelId',
+                        )
+                    }
+
+                    const sample = options?.sample ?? 'osr-long'
+                    const wordTimestamps = options?.wordTimestamps === true
+                    const audioUri =
+                        sample === 'jfk'
+                            ? await loadJfkWavSampleFileUri()
+                            : sample === 'speech'
+                              ? await loadSpeechWavSampleFileUri()
+                              : await loadOsrLongWavSampleFileUri()
+
+                    const validation = wordTimestamps
+                        ? await getMoonshineWordTimestampValidationConfig(modelId)
+                        : {
+                              config: await getMoonshineRuntimeConfig(modelId),
+                              validationModelId: modelId,
+                              validationModelLabel:
+                                  getBenchmarkModelOrThrow(modelId).name,
+                              note: undefined,
+                          }
+
+                    transcriber = await Moonshine.createTranscriberFromFiles(validation.config)
+                    const wav = await readMonoPcm16Wav(audioUri)
+
+                    const events: (MoonshineTranscriptEvent & { atMs: number })[] = []
+                    const startedAtMs = Date.now()
+                    removeListener = transcriber.addListener((event) => {
+                        events.push({
+                            ...event,
+                            atMs: Date.now() - startedAtMs,
+                        })
+                    })
+
+                    const firstRunPromise = transcriber.transcribe({
+                        input: wav.samples,
+                        sampleRate: wav.sampleRate,
+                    })
+
+                    const cancellationRequestedAtMs = await new Promise<number>(
+                        (resolve, reject) => {
+                            const startedAt = Date.now()
+                            const interval = setInterval(() => {
+                                const hasProgress = events.some(
+                                    (event) =>
+                                        event.type === 'lineStarted' ||
+                                        event.type === 'lineUpdated' ||
+                                        event.type === 'lineTextChanged',
+                                )
+                                if (hasProgress) {
+                                    clearInterval(interval)
+                                    resolve(Date.now() - startedAtMs)
+                                    return
+                                }
+
+                                if (Date.now() - startedAt > 15000) {
+                                    clearInterval(interval)
+                                    reject(
+                                        new Error(
+                                            'Timed out waiting for offline progress events before cancel',
+                                        ),
+                                    )
+                                }
+                            }, 100)
+                        },
+                    )
+
+                    const cancelRequest = await transcriber.cancel()
+
+                    let firstRunError: { code?: string; message?: string } | null = null
+                    let firstRunResolved = false
+                    let firstRunSettledAtMs: number | null = null
+                    try {
+                        await firstRunPromise
+                        firstRunResolved = true
+                        firstRunSettledAtMs = Date.now()
+                    } catch (error) {
+                        firstRunSettledAtMs = Date.now()
+                        firstRunError = {
+                            code:
+                                error &&
+                                typeof error === 'object' &&
+                                'code' in error &&
+                                typeof error.code === 'string'
+                                    ? error.code
+                                    : undefined,
+                            message:
+                                error instanceof Error ? error.message : String(error),
+                        }
+                    }
+
+                    await new Promise((resolve) => setTimeout(resolve, 1000))
+
+                    const cancelEvent = events.find(
+                        (event) => event.type === 'transcriptionCancelled',
+                    )
+                    const eventsAfterCancel = cancelEvent
+                        ? events.filter((event) => event.atMs > cancelEvent.atMs)
+                        : []
+                    const lineEventsAfterCancel = eventsAfterCancel.filter(
+                        (event) =>
+                            event.type === 'lineStarted' ||
+                            event.type === 'lineUpdated' ||
+                            event.type === 'lineTextChanged' ||
+                            event.type === 'lineCompleted',
+                    )
+                    const eventTimeline = events.map((event) => ({
+                        atMs: event.atMs,
+                        error: event.error ?? null,
+                        type: event.type,
+                    }))
+
+                    const secondRunStartedAtMs = Date.now()
+                    const secondRunResult = await transcriber.transcribe({
+                        input: wav.samples,
+                        sampleRate: wav.sampleRate,
+                    })
+                    const secondRunDurationMs = Date.now() - secondRunStartedAtMs
+
+                    _lastAsyncResult = {
+                        op,
+                        status: 'success',
+                        result: {
+                            audioUri,
+                            cancelEventSeen: Boolean(cancelEvent),
+                            cancelRequest,
+                            cancellationRequestedAtMs,
+                            eventCount: events.length,
+                            eventTimeline,
+                            firstRunError,
+                            firstRunResolved,
+                            firstRunSettledAtMs:
+                                firstRunSettledAtMs == null
+                                    ? null
+                                    : firstRunSettledAtMs - startedAtMs,
+                            lineEventsAfterCancel: lineEventsAfterCancel.map((event) => ({
+                                atMs: event.atMs,
+                                type: event.type,
+                            })),
+                            modelId,
+                            rejectedAfterCancelMs:
+                                firstRunSettledAtMs == null
+                                    ? null
+                                    : firstRunSettledAtMs -
+                                      startedAtMs -
+                                      cancellationRequestedAtMs,
+                            sample,
+                            secondRunDurationMs,
+                            secondRunTranscript: secondRunResult.text,
+                            validationModelId: validation.validationModelId,
+                            validationModelLabel: validation.validationModelLabel,
+                            wordTimestamps,
                         },
                     }
                 } catch (e) {
