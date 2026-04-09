@@ -1096,6 +1096,33 @@ RCT_EXPORT_METHOD(unregisterIntent:(NSString *)intentRecognizerId
   };
 }
 
+- (void)emitOfflineProgressForTranscriber:(NSString *)transcriberId
+                                     state:(MoonshineTranscriberState *)state
+                                streamHandle:(int32_t)streamHandle
+                              processedCount:(NSUInteger)processedCount
+                                  totalCount:(NSUInteger)totalCount
+                                  sampleRate:(int32_t)sampleRate {
+  if (!self.hasListeners || sampleRate <= 0) {
+    return;
+  }
+
+  double totalDurationMs = totalCount == 0 ? 0.0 : ((double)totalCount * 1000.0) / sampleRate;
+  double processedDurationMs =
+      totalCount == 0 ? totalDurationMs : ((double)processedCount * 1000.0) / sampleRate;
+  double normalizedProgress =
+      totalCount == 0 ? 1.0 : MIN(MAX(((double)processedCount) / totalCount, 0.0), 1.0);
+
+  NSMutableDictionary *params = [@{
+    @"type": @"transcriptionProgress",
+    @"transcriberId": transcriberId,
+    @"streamId": [self streamIdForHandle:streamHandle transcriberId:transcriberId],
+    @"progress": @(normalizedProgress),
+    @"processedDurationMs": @(processedDurationMs),
+    @"totalDurationMs": @(totalDurationMs),
+  } mutableCopy];
+  [self sendEventWithName:MoonshineEventName body:params];
+}
+
 - (void)emitEventWithType:(NSString *)type
              transcriberId:(NSString *)transcriberId
                 streamHandle:(int32_t)streamHandle
@@ -1556,12 +1583,19 @@ RCT_EXPORT_METHOD(unregisterIntent:(NSString *)intentRecognizerId
                                               state:(MoonshineTranscriberState *)state
                                          sampleRate:(int32_t)sampleRate
                                             samples:(NSArray *)samples
-                                            options:(NSDictionary *)options
+                                           options:(NSDictionary *)options
                                            resolver:(RCTPromiseResolveBlock)resolve
                                            rejecter:(RCTPromiseRejectBlock)reject {
   NSNumber *chunkDurationValue = NumberFromValue(options[@"chunkDurationMs"]);
+  id rawProgressOption = options[@"progress"];
+  NSDictionary *progressOptions =
+      [rawProgressOption isKindOfClass:NSDictionary.class] ? rawProgressOption : nil;
   @try {
     int chunkDurationMs = chunkDurationValue != nil ? MAX(chunkDurationValue.intValue, 1) : 200;
+    BOOL progressEnabled = progressOptions != nil;
+    double progressIntervalMs = progressEnabled
+        ? MAX(NumberFromValue(progressOptions[@"intervalMs"]).doubleValue, 0.0)
+        : 0.0;
     int32_t temporaryStreamHandle = moonshine_create_stream(state.handle, 0);
     ThrowIfNegativeHandle(temporaryStreamHandle, @"create stream");
     [state.activeStreamHandles addObject:@(temporaryStreamHandle)];
@@ -1574,8 +1608,19 @@ RCT_EXPORT_METHOD(unregisterIntent:(NSString *)intentRecognizerId
     ThrowIfMoonshineError(moonshine_start_stream(state.handle, temporaryStreamHandle), @"start stream");
 
     NSUInteger samplesPerChunk = (NSUInteger)MAX((int)((sampleRate * chunkDurationMs) / 1000.0), 1);
+    NSUInteger totalSampleCount = samples.count;
     __weak Moonshine *weakSelf = self;
     __block NSUInteger startIndex = 0;
+    __block double lastProgressEmitMs = -1.0;
+    if (progressEnabled) {
+      [self emitOfflineProgressForTranscriber:transcriberId
+                                        state:state
+                                   streamHandle:temporaryStreamHandle
+                                 processedCount:0
+                                     totalCount:totalSampleCount
+                                     sampleRate:sampleRate];
+      lastProgressEmitMs = 0.0;
+    }
     __block void (^processNextChunk)(void);
     processNextChunk = ^{
       Moonshine *strongSelf = weakSelf;
@@ -1620,6 +1665,21 @@ RCT_EXPORT_METHOD(unregisterIntent:(NSString *)intentRecognizerId
                                                 sampleRate:sampleRate
                                                     samples:chunkArray];
         startIndex = endIndex;
+        if (progressEnabled) {
+          double processedDurationMs =
+              totalSampleCount == 0 ? 0.0 : ((double)startIndex * 1000.0) / sampleRate;
+          if (lastProgressEmitMs < 0.0 ||
+              processedDurationMs - lastProgressEmitMs >= progressIntervalMs ||
+              startIndex >= totalSampleCount) {
+            [strongSelf emitOfflineProgressForTranscriber:transcriberId
+                                                    state:state
+                                               streamHandle:temporaryStreamHandle
+                                             processedCount:startIndex
+                                                 totalCount:totalSampleCount
+                                                 sampleRate:sampleRate];
+            lastProgressEmitMs = processedDurationMs;
+          }
+        }
         dispatch_async(strongSelf.moonshineQueue, processNextChunk);
       } @catch (id exception) {
         [strongSelf cleanupOfflineTemporaryStreamForState:state streamHandle:temporaryStreamHandle];

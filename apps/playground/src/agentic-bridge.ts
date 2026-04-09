@@ -706,6 +706,131 @@ if (__DEV__) {
             return { op, status: 'pending' }
         },
 
+        validateMoonshineOfflineProgressContract: (
+            modelId: string,
+            options?: {
+                sample?: 'jfk' | 'osr-long' | 'speech'
+                intervalMs?: number
+                wordTimestamps?: boolean
+            },
+        ) => {
+            const op = 'validateMoonshineOfflineProgressContract'
+            _lastAsyncResult = { op, status: 'pending' }
+            void (async () => {
+                let transcriber: MoonshineTranscriber | null = null
+                let removeListener: (() => void) | null = null
+
+                try {
+                    if (!modelId) {
+                        throw new Error(
+                            'validateMoonshineOfflineProgressContract requires a modelId',
+                        )
+                    }
+
+                    const sample =
+                        options?.sample ??
+                        (Platform.OS === 'web' ? 'jfk' : 'osr-long')
+                    const wordTimestamps = options?.wordTimestamps === true
+                    const progressIntervalMs = Math.max(options?.intervalMs ?? 250, 0)
+                    const audioUri =
+                        sample === 'jfk'
+                            ? await loadJfkWavSampleFileUri()
+                            : sample === 'speech'
+                              ? await loadSpeechWavSampleFileUri()
+                              : await loadOsrLongWavSampleFileUri()
+
+                    const validation = wordTimestamps
+                        ? await getMoonshineWordTimestampValidationConfig(modelId)
+                        : {
+                              config: await getMoonshineRuntimeConfig(modelId),
+                              validationModelId: modelId,
+                              validationModelLabel:
+                                  getBenchmarkModelOrThrow(modelId).name,
+                              note: undefined,
+                          }
+
+                    transcriber = await Moonshine.createTranscriberFromFiles(validation.config)
+
+                    const startedAtMs = Date.now()
+                    const events: (MoonshineTranscriptEvent & { atMs: number })[] = []
+                    removeListener = transcriber.addListener((event) => {
+                        events.push({
+                            ...event,
+                            atMs: Date.now() - startedAtMs,
+                        })
+                    })
+
+                    const wav = await readMonoPcm16Wav(audioUri)
+                    const result = await transcriber.transcribe({
+                        input: wav.samples,
+                        progress: {
+                            intervalMs: progressIntervalMs,
+                        },
+                        sampleRate: wav.sampleRate,
+                    })
+
+                    const progressEvents = events.filter(
+                        (event) => event.type === 'transcriptionProgress',
+                    )
+                    const progressValues = progressEvents.map((event) => event.progress ?? 0)
+                    const validationIssues: string[] = []
+                    if (progressEvents.length < 2) {
+                        validationIssues.push(
+                            'Expected multiple offline progress events before completion',
+                        )
+                    }
+                    const monotonic = progressValues.every(
+                        (value, index) => index === 0 || value >= progressValues[index - 1] - 0.0001,
+                    )
+                    if (!monotonic) {
+                        validationIssues.push('Offline progress values are not monotonic')
+                    }
+                    const finalProgress = progressValues.at(-1) ?? 0
+                    if (finalProgress < 0.999) {
+                        validationIssues.push(
+                            `Offline progress did not reach completion: ${finalProgress}`,
+                        )
+                    }
+
+                    _lastAsyncResult = {
+                        op,
+                        status: validationIssues.length === 0 ? 'success' : 'error',
+                        result: {
+                            audioUri,
+                            eventCount: events.length,
+                            eventTypes: events.map((event) => event.type),
+                            modelId,
+                            progressEventCount: progressEvents.length,
+                            progressEvents: progressEvents.map((event) => ({
+                                atMs: event.atMs,
+                                processedDurationMs: event.processedDurationMs ?? null,
+                                progress: event.progress ?? null,
+                                totalDurationMs: event.totalDurationMs ?? null,
+                            })),
+                            sample,
+                            transcript: result.text,
+                            validationModelId: validation.validationModelId,
+                            validationModelLabel: validation.validationModelLabel,
+                            validationIssues,
+                            wordTimestamps,
+                        },
+                    }
+                } catch (e) {
+                    _lastAsyncResult = {
+                        op,
+                        status: 'error',
+                        error: String(e),
+                        result: { modelId },
+                    }
+                } finally {
+                    removeListener?.()
+                    await safeReleaseMoonshineTranscriber(transcriber)
+                    await safeReleaseMoonshine()
+                }
+            })()
+            return { op, status: 'pending' }
+        },
+
         validateMoonshineOfflineCancellationContract: (
             modelId: string,
             options?: {
@@ -759,6 +884,9 @@ if (__DEV__) {
 
                     const firstRunPromise = transcriber.transcribe({
                         input: wav.samples,
+                        progress: {
+                            intervalMs: 250,
+                        },
                         sampleRate: wav.sampleRate,
                     })
 
@@ -768,6 +896,7 @@ if (__DEV__) {
                             const interval = setInterval(() => {
                                 const hasProgress = events.some(
                                     (event) =>
+                                        event.type === 'transcriptionProgress' ||
                                         event.type === 'lineStarted' ||
                                         event.type === 'lineUpdated' ||
                                         event.type === 'lineTextChanged',
@@ -838,6 +967,9 @@ if (__DEV__) {
                     const secondRunStartedAtMs = Date.now()
                     const secondRunResult = await transcriber.transcribe({
                         input: wav.samples,
+                        progress: {
+                            intervalMs: 250,
+                        },
                         sampleRate: wav.sampleRate,
                     })
                     const secondRunDurationMs = Date.now() - secondRunStartedAtMs

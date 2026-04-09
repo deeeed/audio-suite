@@ -18,15 +18,24 @@ export function createMoonshineAbortError(
 
 export async function runWithAbortSignal<T>({
   cancel,
+  onFinally,
   signal,
   run,
 }: {
   cancel: () => Promise<unknown>;
+  onFinally?: (outcome: 'resolved' | 'rejected') => void;
   signal: MoonshineAbortSignal | undefined;
   run: () => Promise<T>;
 }): Promise<T> {
   if (!signal) {
-    return run();
+    try {
+      const result = await run();
+      onFinally?.('resolved');
+      return result;
+    } catch (error) {
+      onFinally?.('rejected');
+      throw error;
+    }
   }
 
   if (signal.aborted) {
@@ -44,8 +53,11 @@ export async function runWithAbortSignal<T>({
 
   signal.addEventListener?.('abort', onAbort, { once: true });
   try {
-    return await run();
+    const result = await run();
+    onFinally?.('resolved');
+    return result;
   } catch (error) {
+    onFinally?.('rejected');
     if (
       abortRequested &&
       error &&

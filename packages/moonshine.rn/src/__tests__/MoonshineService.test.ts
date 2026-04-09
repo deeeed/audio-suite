@@ -276,6 +276,92 @@ describe('MoonshineService', () => {
     );
   });
 
+  it('emits configurable offline progress events from the native offline path', async () => {
+    mockNativeModule.createTranscriberFromFiles.mockResolvedValue({
+      success: true,
+      transcriberId: 'transcriber-1',
+    });
+    mockNativeModule.transcribeFromSamplesForTranscriber.mockImplementation(
+      async () => {
+        const emit = mockEventListeners.get(MOONSHINE_EVENT_NAME);
+        emit?.({
+          processedDurationMs: 0,
+          progress: 0,
+          streamId: 'transcriber-1:stream-7',
+          totalDurationMs: 1000,
+          transcriberId: 'transcriber-1',
+          type: 'transcriptionProgress',
+        });
+        emit?.({
+          processedDurationMs: 500,
+          progress: 0.5,
+          streamId: 'transcriber-1:stream-7',
+          totalDurationMs: 1000,
+          transcriberId: 'transcriber-1',
+          type: 'transcriptionProgress',
+        });
+        emit?.({
+          processedDurationMs: 1000,
+          progress: 1,
+          streamId: 'transcriber-1:stream-7',
+          totalDurationMs: 1000,
+          transcriberId: 'transcriber-1',
+          type: 'transcriptionProgress',
+        });
+        return {
+          text: 'done',
+          lines: [],
+        };
+      }
+    );
+
+    const service = new MoonshineService();
+    const transcriber = await service.createTranscriberFromFiles({
+      modelArch: 'small-streaming',
+      modelPath: '/tmp/moonshine-small',
+    });
+    const listener = jest.fn();
+    transcriber.addListener(listener);
+
+    await transcriber.transcribe({
+      input: [0, 0, 0],
+      progress: {
+        intervalMs: 250,
+      },
+      sampleRate: 16000,
+    });
+
+    expect(mockNativeModule.transcribeFromSamplesForTranscriber).toHaveBeenCalledWith(
+      'transcriber-1',
+      16000,
+      [0, 0, 0],
+      {
+        chunkDurationMs: undefined,
+        progress: {
+          intervalMs: 250,
+        },
+      }
+    );
+    expect(listener).toHaveBeenCalledWith(
+      expect.objectContaining({
+        progress: 0,
+        type: 'transcriptionProgress',
+      })
+    );
+    expect(listener).toHaveBeenCalledWith(
+      expect.objectContaining({
+        progress: 0.5,
+        type: 'transcriptionProgress',
+      })
+    );
+    expect(listener).toHaveBeenCalledWith(
+      expect.objectContaining({
+        progress: 1,
+        type: 'transcriptionProgress',
+      })
+    );
+  });
+
   it('cancels the active offline transcription for a transcriber', async () => {
     mockNativeModule.createTranscriberFromFiles.mockResolvedValue({
       success: true,

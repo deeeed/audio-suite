@@ -1,6 +1,6 @@
 {
   "name": "@siteed/moonshine.rn",
-  "version": "0.2.0-beta.8",
+  "version": "0.3.0-beta.1",
   "description": "React Native wrapper for Moonshine Voice on-device transcription",
   "source": "./src/index.ts",
   "main": "./lib/commonjs/index.js",

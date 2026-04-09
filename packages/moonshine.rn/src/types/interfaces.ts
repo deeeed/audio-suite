@@ -13,6 +13,7 @@ export type MoonshineTranscriptEventType =
   | 'lineUpdated'
   | 'lineTextChanged'
   | 'lineCompleted'
+  | 'transcriptionProgress'
   | 'transcriptionCancelled'
   | 'error';
 
@@ -127,7 +128,10 @@ export interface MoonshineTranscriptEvent {
   type: MoonshineTranscriptEventType;
   error?: string;
   line?: MoonshineTranscriptLine;
+  progress?: number;
+  processedDurationMs?: number;
   streamId: string;
+  totalDurationMs?: number;
   transcriberId: string;
 }
 
@@ -154,11 +158,16 @@ export interface MoonshineAbortSignal {
 
 export type MoonshineTranscriptionInput = number[] | Float32Array;
 
+export interface MoonshineOfflineProgressOptions {
+  intervalMs?: number;
+}
+
 export interface MoonshinePcmTranscribeOptions {
   // PCM is currently transported as number[] over the React Native bridge.
   // Keep chunks reasonably small (roughly 100-250ms) until a JSI/ArrayBuffer
   // path exists.
   chunkDurationMs?: number;
+  progress?: false | MoonshineOfflineProgressOptions;
 }
 
 // moonshine.rn stays intentionally narrow: callers provide decoded mono PCM,

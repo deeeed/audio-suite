@@ -947,6 +947,48 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
       .emit(EVENT_NAME, params)
   }
 
+  private fun emitOfflineProgress(
+    transcriberId: String,
+    streamHandle: Int,
+    processedSampleCount: Int,
+    totalSampleCount: Int,
+    sampleRate: Int
+  ) {
+    if (sampleRate <= 0) {
+      return
+    }
+
+    val totalDurationMs =
+      if (totalSampleCount <= 0) {
+        0.0
+      } else {
+        (totalSampleCount.toDouble() * 1000.0) / sampleRate
+      }
+    val processedDurationMs =
+      if (totalSampleCount <= 0) {
+        totalDurationMs
+      } else {
+        (processedSampleCount.toDouble() * 1000.0) / sampleRate
+      }
+    val progress =
+      if (totalSampleCount <= 0) {
+        1.0
+      } else {
+        (processedSampleCount.toDouble() / totalSampleCount).coerceIn(0.0, 1.0)
+      }
+
+    val params = Arguments.createMap()
+    params.putString("type", "transcriptionProgress")
+    params.putString("transcriberId", transcriberId)
+    params.putString("streamId", streamIdForHandle(transcriberId, streamHandle))
+    params.putDouble("progress", progress)
+    params.putDouble("processedDurationMs", processedDurationMs)
+    params.putDouble("totalDurationMs", totalDurationMs)
+    reactApplicationContext
+      .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+      .emit(EVENT_NAME, params)
+  }
+
   private fun nextTranscriberId(): String = "transcriber-${transcriberCounter.getAndIncrement()}"
 
   private fun notifyFromTranscript(
@@ -1302,6 +1344,22 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
         ?.getDouble("chunkDurationMs")
         ?.toInt()
         ?: 200
+      val hasProgressOptions =
+        options?.hasKey("progress") == true && !options.isNull("progress")
+      val progressOptions =
+        if (hasProgressOptions) options?.getMap("progress") else null
+      val progressEnabled = progressOptions != null
+      val progressIntervalMs =
+        if (
+          progressEnabled &&
+          progressOptions != null &&
+          progressOptions.hasKey("intervalMs") &&
+          !progressOptions.isNull("intervalMs")
+        ) {
+          progressOptions.getDouble("intervalMs").coerceAtLeast(0.0)
+        } else {
+          0.0
+        }
       val streamHandle = MoonshineDirectJni.createStream(state.handle)
       requireNonNegativeHandle(streamHandle, "create stream")
       state.activeStreamHandles.add(streamHandle)
@@ -1315,6 +1373,20 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
       requireNoError(MoonshineDirectJni.startStream(state.handle, streamHandle), "start stream")
 
       val samplesPerChunk = ((sampleRate * chunkDurationMs) / 1000.0).toInt().coerceAtLeast(1)
+      val totalSampleCount = audio.size
+      var lastProgressEmitMs =
+        if (progressEnabled) {
+          emitOfflineProgress(
+            transcriberId = transcriberId,
+            streamHandle = streamHandle,
+            processedSampleCount = 0,
+            totalSampleCount = totalSampleCount,
+            sampleRate = sampleRate
+          )
+          0.0
+        } else {
+          -1.0
+        }
       fun processNextChunk(startIndex: Int) {
         try {
           throwIfOfflineTranscriptionCancelled(transcriberId, state, job)
@@ -1334,6 +1406,29 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
             sampleRate = sampleRate,
             audio = audio.copyOfRange(startIndex, endIndex)
           )
+
+          if (progressEnabled) {
+            val processedDurationMs =
+              if (totalSampleCount <= 0) {
+                0.0
+              } else {
+                (endIndex.toDouble() * 1000.0) / sampleRate
+              }
+            if (
+              lastProgressEmitMs < 0.0 ||
+              processedDurationMs - lastProgressEmitMs >= progressIntervalMs ||
+              endIndex >= totalSampleCount
+            ) {
+              emitOfflineProgress(
+                transcriberId = transcriberId,
+                streamHandle = streamHandle,
+                processedSampleCount = endIndex,
+                totalSampleCount = totalSampleCount,
+                sampleRate = sampleRate
+              )
+              lastProgressEmitMs = processedDurationMs
+            }
+          }
 
           reactApplicationContext.runOnNativeModulesQueueThread {
             processNextChunk(endIndex)
