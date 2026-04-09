@@ -364,14 +364,19 @@ info "Step 4: Launch app on correct port (${PORT})"
 if [ "$PLATFORM" = "ios" ] && [ "${IOS_DEVICE_MODE:-simulator}" = "simulator" ]; then
   METRO_HOST="localhost"
 elif [ "$PLATFORM" = "ios" ] && [ "${IOS_DEVICE_MODE:-simulator}" = "physical" ]; then
-  METRO_HOST=$(ipconfig getifaddr en0 2>/dev/null || echo localhost)
+  METRO_HOST="$(resolve_agentic_dev_host)"
 elif [[ "${SERIAL:-}" == emulator-* ]]; then
   METRO_HOST="10.0.2.2"
 else
-  METRO_HOST=$(ipconfig getifaddr en0 2>/dev/null || echo localhost)
+  METRO_HOST="$(resolve_agentic_dev_host)"
 fi
 ENCODED_URL=$(python3 -c "import urllib.parse; print(urllib.parse.quote('http://${METRO_HOST}:${PORT}', safe=''))")
-DEV_CLIENT_URL="exp+${SCHEME}://expo-development-client/?url=${ENCODED_URL}"
+if [ "$PLATFORM" = "android" ]; then
+  DEV_CLIENT_SCHEME="${DEV_CLIENT_SCHEME_ANDROID}"
+else
+  DEV_CLIENT_SCHEME="${DEV_CLIENT_SCHEME_IOS}"
+fi
+DEV_CLIENT_URL="${DEV_CLIENT_SCHEME}://expo-development-client/?url=${ENCODED_URL}"
 
 if [ "$PLATFORM" = "ios" ] && [ "${IOS_DEVICE_MODE:-simulator}" = "physical" ]; then
   xcrun devicectl device process launch \

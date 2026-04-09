@@ -27,10 +27,17 @@ private data class ParsedStreamId(
   val handle: Int
 )
 
+private data class OfflineTranscriptionJob(
+  val streamHandle: Int,
+  var cancelEventEmitted: Boolean = false,
+  var cancelRequested: Boolean = false
+)
+
 private data class TranscriberState(
   val handle: Int,
   val defaultStreamHandle: Int,
   val includeAudioDataInLines: Boolean,
+  var activeOfflineJob: OfflineTranscriptionJob? = null,
   val activeStreamHandles: MutableSet<Int> = mutableSetOf(),
   val streamLines: ConcurrentHashMap<Int, LinkedHashMap<Long, TranscriptLine>> = ConcurrentHashMap(),
   val completedLineIds: ConcurrentHashMap<Int, MutableSet<Long>> = ConcurrentHashMap()
@@ -537,6 +544,17 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
   }
 
   @ReactMethod
+  fun cancelCurrentTranscriptionForTranscriber(transcriberId: String, promise: Promise) {
+    withTranscriber(transcriberId, promise) { _, state ->
+      val cancelled = state.activeOfflineJob != null
+      state.activeOfflineJob?.cancelRequested = true
+      val result = successMap()
+      result.putBoolean("cancelled", cancelled)
+      promise.resolve(result)
+    }
+  }
+
+  @ReactMethod
   fun transcribeFromSamples(
     sampleRate: Int,
     samples: ReadableArray,
@@ -548,7 +566,7 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
         transcriberId = transcriberId,
         state = state,
         sampleRate = sampleRate,
-        samples = samples,
+        samples = readableArrayToFloatArray(samples),
         options = options,
         promise = promise
       )
@@ -568,7 +586,7 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
         transcriberId = resolvedId,
         state = state,
         sampleRate = sampleRate,
-        samples = samples,
+        samples = readableArrayToFloatArray(samples),
         options = options,
         promise = promise
       )
@@ -581,8 +599,14 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
     samples: ReadableArray,
     promise: Promise
   ) {
-    withDefaultTranscriber(promise) { _, state ->
-      transcribeWithoutStreamingInternal(state, sampleRate, samples, promise)
+    withDefaultTranscriber(promise) { transcriberId, state ->
+      transcribeWithoutStreamingInternal(
+        transcriberId,
+        state,
+        sampleRate,
+        readableArrayToFloatArray(samples),
+        promise
+      )
     }
   }
 
@@ -593,8 +617,14 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
     samples: ReadableArray,
     promise: Promise
   ) {
-    withTranscriber(transcriberId, promise) { _, state ->
-      transcribeWithoutStreamingInternal(state, sampleRate, samples, promise)
+    withTranscriber(transcriberId, promise) { resolvedId, state ->
+      transcribeWithoutStreamingInternal(
+        resolvedId,
+        state,
+        sampleRate,
+        readableArrayToFloatArray(samples),
+        promise
+      )
     }
   }
 
@@ -917,6 +947,48 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
       .emit(EVENT_NAME, params)
   }
 
+  private fun emitOfflineProgress(
+    transcriberId: String,
+    streamHandle: Int,
+    processedSampleCount: Int,
+    totalSampleCount: Int,
+    sampleRate: Int
+  ) {
+    if (sampleRate <= 0) {
+      return
+    }
+
+    val totalDurationMs =
+      if (totalSampleCount <= 0) {
+        0.0
+      } else {
+        (totalSampleCount.toDouble() * 1000.0) / sampleRate
+      }
+    val processedDurationMs =
+      if (totalSampleCount <= 0) {
+        totalDurationMs
+      } else {
+        (processedSampleCount.toDouble() * 1000.0) / sampleRate
+      }
+    val progress =
+      if (totalSampleCount <= 0) {
+        1.0
+      } else {
+        (processedSampleCount.toDouble() / totalSampleCount).coerceIn(0.0, 1.0)
+      }
+
+    val params = Arguments.createMap()
+    params.putString("type", "transcriptionProgress")
+    params.putString("transcriberId", transcriberId)
+    params.putString("streamId", streamIdForHandle(transcriberId, streamHandle))
+    params.putDouble("progress", progress)
+    params.putDouble("processedDurationMs", processedDurationMs)
+    params.putDouble("totalDurationMs", totalDurationMs)
+    reactApplicationContext
+      .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+      .emit(EVENT_NAME, params)
+  }
+
   private fun nextTranscriberId(): String = "transcriber-${transcriberCounter.getAndIncrement()}"
 
   private fun notifyFromTranscript(
@@ -1109,6 +1181,57 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
     return true
   }
 
+  private fun beginOfflineTranscription(state: TranscriberState, streamHandle: Int): OfflineTranscriptionJob {
+    if (state.activeOfflineJob != null) {
+      throw IllegalStateException("Moonshine offline transcription is already running")
+    }
+    return OfflineTranscriptionJob(streamHandle = streamHandle).also {
+      state.activeOfflineJob = it
+    }
+  }
+
+  private fun clearOfflineTranscription(state: TranscriberState, streamHandle: Int) {
+    if (state.activeOfflineJob?.streamHandle == streamHandle) {
+      state.activeOfflineJob = null
+    }
+  }
+
+  private fun throwIfOfflineTranscriptionCancelled(
+    transcriberId: String,
+    state: TranscriberState,
+    job: OfflineTranscriptionJob
+  ) {
+    if (!job.cancelRequested) {
+      return
+    }
+
+    if (!job.cancelEventEmitted) {
+      job.cancelEventEmitted = true
+      emitEvent(
+        "transcriptionCancelled",
+        transcriberId,
+        job.streamHandle,
+        state.includeAudioDataInLines
+      )
+    }
+
+    throw IllegalStateException("Moonshine transcription cancelled for transcriber $transcriberId")
+  }
+
+  private fun cleanupOfflineTemporaryStream(state: TranscriberState, streamHandle: Int) {
+    clearOfflineTranscription(state, streamHandle)
+    try {
+      MoonshineDirectJni.stopStream(state.handle, streamHandle)
+    } catch (_: Throwable) {
+    }
+    try {
+      MoonshineDirectJni.freeStream(state.handle, streamHandle)
+    } catch (_: Throwable) {
+    }
+    state.activeStreamHandles.remove(streamHandle)
+    releaseStreamState(state, streamHandle)
+  }
+
   private fun requireArray(config: ReadableMap, key: String): ReadableArray {
     return config.getArray(key)
       ?: throw IllegalArgumentException("Moonshine $key is required")
@@ -1210,63 +1333,146 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
     transcriberId: String,
     state: TranscriberState,
     sampleRate: Int,
-    samples: ReadableArray,
+    samples: FloatArray,
     options: ReadableMap?,
     promise: Promise
   ) {
-    var streamHandle: Int? = null
     try {
-      val audio = readableArrayToFloatArray(samples)
+      val audio = samples
       val chunkDurationMs = options
         ?.takeIf { it.hasKey("chunkDurationMs") && !it.isNull("chunkDurationMs") }
         ?.getDouble("chunkDurationMs")
         ?.toInt()
         ?: 200
-      streamHandle = MoonshineDirectJni.createStream(state.handle)
+      val hasProgressOptions =
+        options?.hasKey("progress") == true &&
+          !options.isNull("progress") &&
+          options.getType("progress") == ReadableType.Map
+      val progressOptions =
+        if (hasProgressOptions) options?.getMap("progress") else null
+      val progressEnabled = progressOptions != null
+      val progressIntervalMs =
+        if (
+          progressEnabled &&
+          progressOptions != null &&
+          progressOptions.hasKey("intervalMs") &&
+          !progressOptions.isNull("intervalMs")
+        ) {
+          progressOptions.getDouble("intervalMs").coerceAtLeast(0.0)
+        } else {
+          0.0
+        }
+      val streamHandle = MoonshineDirectJni.createStream(state.handle)
       requireNonNegativeHandle(streamHandle, "create stream")
       state.activeStreamHandles.add(streamHandle)
       registerStreamState(state, streamHandle)
+      val job = try {
+        beginOfflineTranscription(state, streamHandle)
+      } catch (error: Throwable) {
+        cleanupOfflineTemporaryStream(state, streamHandle)
+        throw error
+      }
       requireNoError(MoonshineDirectJni.startStream(state.handle, streamHandle), "start stream")
 
       val samplesPerChunk = ((sampleRate * chunkDurationMs) / 1000.0).toInt().coerceAtLeast(1)
-      var startIndex = 0
-      while (startIndex < audio.size) {
-        val endIndex = minOf(startIndex + samplesPerChunk, audio.size)
-        addAudioToTrackedStream(
-          transcriberId = transcriberId,
-          state = state,
-          streamHandle = streamHandle,
-          sampleRate = sampleRate,
-          audio = audio.copyOfRange(startIndex, endIndex)
-        )
-        startIndex = endIndex
+      val totalSampleCount = audio.size
+      var lastProgressEmitMs =
+        if (progressEnabled) {
+          emitOfflineProgress(
+            transcriberId = transcriberId,
+            streamHandle = streamHandle,
+            processedSampleCount = 0,
+            totalSampleCount = totalSampleCount,
+            sampleRate = sampleRate
+          )
+          0.0
+        } else {
+          -1.0
+        }
+      fun processNextChunk(startIndex: Int) {
+        try {
+          throwIfOfflineTranscriptionCancelled(transcriberId, state, job)
+          if (startIndex >= audio.size) {
+            stopAndFlushStream(transcriberId, state, streamHandle)
+            val result = buildTranscriptionResult(state, streamHandle)
+            cleanupOfflineTemporaryStream(state, streamHandle)
+            promise.resolve(result)
+            return
+          }
+
+          val endIndex = minOf(startIndex + samplesPerChunk, audio.size)
+          addAudioToTrackedStream(
+            transcriberId = transcriberId,
+            state = state,
+            streamHandle = streamHandle,
+            sampleRate = sampleRate,
+            audio = audio.copyOfRange(startIndex, endIndex)
+          )
+
+          if (progressEnabled) {
+            val processedDurationMs =
+              if (totalSampleCount <= 0) {
+                0.0
+              } else {
+                (endIndex.toDouble() * 1000.0) / sampleRate
+              }
+            if (
+              lastProgressEmitMs < 0.0 ||
+              processedDurationMs - lastProgressEmitMs >= progressIntervalMs ||
+              endIndex >= totalSampleCount
+            ) {
+              emitOfflineProgress(
+                transcriberId = transcriberId,
+                streamHandle = streamHandle,
+                processedSampleCount = endIndex,
+                totalSampleCount = totalSampleCount,
+                sampleRate = sampleRate
+              )
+              lastProgressEmitMs = processedDurationMs
+            }
+          }
+
+          reactApplicationContext.runOnNativeModulesQueueThread {
+            processNextChunk(endIndex)
+          }
+        } catch (error: Throwable) {
+          cleanupOfflineTemporaryStream(state, streamHandle)
+          val errorCode =
+            if (error.message?.startsWith("Moonshine transcription cancelled") == true) {
+              "MOONSHINE_TRANSCRIPTION_CANCELLED"
+            } else {
+              "MOONSHINE_TRANSCRIBE_ERROR"
+            }
+          promise.reject(errorCode, error.message, error)
+        }
       }
-      stopAndFlushStream(transcriberId, state, streamHandle)
-      promise.resolve(buildTranscriptionResult(state, streamHandle))
+
+      reactApplicationContext.runOnNativeModulesQueueThread {
+        processNextChunk(0)
+      }
     } catch (error: Throwable) {
       promise.reject("MOONSHINE_TRANSCRIBE_ERROR", error.message, error)
-    } finally {
-      streamHandle?.let { temporaryStreamHandle ->
-        try {
-          MoonshineDirectJni.freeStream(state.handle, temporaryStreamHandle)
-        } catch (_: Throwable) {
-        }
-        state.activeStreamHandles.remove(temporaryStreamHandle)
-        releaseStreamState(state, temporaryStreamHandle)
-      }
     }
   }
 
   private fun transcribeWithoutStreamingInternal(
+    transcriberId: String,
     state: TranscriberState,
     sampleRate: Int,
-    samples: ReadableArray,
+    samples: FloatArray,
     promise: Promise
   ) {
-    val audio = readableArrayToFloatArray(samples)
-    val transcript = MoonshineDirectJni.transcribeWithoutStreaming(state.handle, audio, sampleRate)
-      ?: throw IllegalStateException("Moonshine offline transcription returned no transcript")
-    promise.resolve(buildTranscriptionResult(state, transcript))
+    val options = Arguments.createMap().apply {
+      putInt("chunkDurationMs", 200)
+    }
+    transcribeFromSamplesInternal(
+      transcriberId = transcriberId,
+      state = state,
+      sampleRate = sampleRate,
+      samples = samples,
+      options = options,
+      promise = promise
+    )
   }
 
   private fun withDefaultTranscriber(

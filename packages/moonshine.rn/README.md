@@ -1,83 +1,232 @@
 # `@siteed/moonshine.rn`
 
-React Native wrapper around Moonshine Voice's transcription and
-intent-recognition C API.
+[![Version](https://img.shields.io/npm/v/@siteed/moonshine.rn.svg)](https://www.npmjs.com/package/@siteed/moonshine.rn)
+[![Downloads](https://img.shields.io/npm/dt/@siteed/moonshine.rn.svg)](https://www.npmjs.com/package/@siteed/moonshine.rn)
+[![License](https://img.shields.io/npm/l/@siteed/moonshine.rn.svg)](https://www.npmjs.com/package/@siteed/moonshine.rn)
+[![GitHub stars](https://img.shields.io/github/stars/deeeed/audiolab.svg?style=social&label=Star)](https://github.com/deeeed/audiolab)
 
-This package can use either:
+**Give it a GitHub star, if you found this repo useful.**
 
-- the published Moonshine Android artifact from Maven
-- a source-built Moonshine Android AAR generated from a pinned upstream checkout
-  under `third_party/moonshine`
-- a source-built Moonshine iOS xcframework generated from the same pinned
-  upstream checkout
-- a package-owned web backend built on `onnxruntime-web`, with model assets
-  staged under `prebuilt/web`
+React Native bindings for Moonshine on-device speech recognition, offline
+transcription from decoded PCM, streaming transcription, and intent
+recognition across iOS, Android, and web.
 
-## External-consumer quick notes
+## Highlights
 
-- For Yarn Berry / Yarn 4 consumer apps, prefer:
+- Offline transcription from decoded PCM
+- Streaming transcription with incremental transcript events
+- Incremental transcript events during streaming and offline processing
+- Word timestamps when the required model assets are present
+- Intent recognizer support
+- Web backend built on `onnxruntime-web`
+- Typed transcriber API with explicit cancellation support
 
-  ```yaml
-  nodeLinker: node-modules
-  ```
+## Install
 
-  in `.yarnrc.yml` for the most predictable React Native / Expo install flow.
+```bash
+yarn add @siteed/moonshine.rn
+```
 
-- Android currently requires:
-  - `minSdkVersion 35`
+For Expo / React Native apps using Yarn Berry, `node-modules` is still the most
+predictable setup:
 
-- The published npm package is optimized for runtime consumption, not for
-  repo-local source-built Android AAR usage. Published Android consumers should
-  use the default Maven-based dependency path unless they explicitly opt into a
-  custom/source-built override.
+```yaml
+nodeLinker: node-modules
+```
 
-Current API coverage:
+## Platform requirements
 
-- Explicit transcriber instances:
-  `createTranscriberFromFiles()`, `createTranscriberFromMemory()`,
-  `createTranscriberFromAssets()`, `releaseTranscriber()`
-- Compatibility singleton helpers:
-  `loadFromFiles()`, `loadFromMemory()`, `loadFromAssets()`, `initialize()`,
-  `release()`
-- Instance and compatibility transcription APIs:
-  `start()`, `stop()`, `createStream()`, `removeStream()`, `startStream()`,
-  `stopStream()`, `addAudio()`, `addAudioToStream()`,
-  `transcribeFromSamples()`, `transcribeWithoutStreaming()`
-- Streaming and offline transcription
-- Multiple streams from one transcriber
-- Transcript line timings, optional line audio data, and word timings
-- Experimental speaker-turn / speaker-clustering metadata on transcript lines.
-  This is useful for tentative turn segmentation, but it should not be treated
-  as trusted diarization or speaker identity assignment without task-specific
-  validation.
-- Explicit intent recognizer instances plus lifecycle and registration APIs:
-  `createIntentRecognizer()`, `releaseIntentRecognizer()`,
-  `registerIntent()`, `unregisterIntent()`, `processUtterance()`,
-  `setIntentThreshold()`, `getIntentThreshold()`, `getIntentCount()`, and
-  `clearIntents()`
-- JNI helpers `getVersion()` and `errorToString()`
-- Typed transcriber runtime options exposed from the Android artifact, including:
-  `identifySpeakers`, `speakerIdClusterThreshold`, `vadThreshold`,
-  `vadHopSize`, `vadWindowDurationMs`, `vadMaxSegmentDurationMs`,
-  `vadLookBehindSampleCount`, `maxTokensPerSecond`, `logApiCalls`,
-  `logOrtRuns`, `logOutputText`, `saveInputWavPath`, and `wordTimestamps`
-- Raw pass-through `transcriberOptions` so new upstream options can be used
-  without waiting on another wrapper release
-- `loadFromMemory()` mirrors the Android AAR directly and accepts the same
-  three opaque binary model parts via `modelData`
+- **Android:** `minSdkVersion 35`
+- **iOS:** native rebuild required after installing or upgrading the package
+- **Web:** `window.ort` must be available before creating a transcriber
 
-Current gap:
+## Quick start
 
-- `MicTranscriber` is not wrapped directly. React Native apps usually already
-  own microphone capture, permissions, and audio routing, so this package stays
-  focused on the reusable `Transcriber` engine surface instead of replacing the
-  app audio stack.
-- The package owns the Android transcriber logic directly now, but full intent
-  recognition requires the source-built Moonshine artifact or another custom
-  Android artifact that includes the direct JNI extensions added in
-  `patches/OrtAndroidOverrides.patch`.
+### Create a transcriber from files
 
-Source checkout and Android source build:
+```ts
+import Moonshine from '@siteed/moonshine.rn';
+
+const transcriber = await Moonshine.createTranscriberFromFiles({
+  modelArch: 'small-streaming',
+  modelPath: '/absolute/path/to/model-dir',
+  options: {
+    wordTimestamps: true,
+  },
+});
+
+const result = await transcriber.transcribe({
+  input: samples,
+  sampleRate: 16000,
+});
+console.log(result.text);
+```
+
+### Cancel an in-flight offline transcription
+
+```ts
+const controller = new AbortController();
+
+const transcriptionPromise = transcriber.transcribe({
+  input: samples,
+  sampleRate: 16000,
+  signal: controller.signal,
+});
+
+controller.abort();
+
+try {
+  await transcriptionPromise;
+} catch (error) {
+  if (
+    error &&
+    typeof error === 'object' &&
+    'code' in error &&
+    error.code === 'MOONSHINE_TRANSCRIPTION_CANCELLED'
+  ) {
+    console.log('Transcription cancelled');
+  }
+}
+```
+
+### Listen for incremental transcript events
+
+```ts
+const removeListener = transcriber.addListener((event) => {
+  switch (event.type) {
+    case 'lineStarted':
+    case 'lineUpdated':
+    case 'lineTextChanged':
+    case 'lineCompleted':
+      console.log(event.line);
+      break;
+    case 'transcriptionCancelled':
+      console.warn('Transcription cancelled');
+      break;
+    case 'error':
+      console.error(event.error);
+      break;
+  }
+});
+```
+
+## Main API surface
+
+### Transcriber lifecycle
+
+- `createTranscriberFromFiles()`
+- `createTranscriberFromAssets()`
+- `createTranscriberFromMemory()`
+- `releaseTranscriber()`
+
+### Singleton compatibility helpers
+
+- `loadFromFiles()`
+- `loadFromAssets()`
+- `loadFromMemory()`
+- `initialize()`
+- `release()`
+
+### Transcription
+
+- `start()` / `stop()`
+- `cancel()`
+- `createStream()` / `removeStream()`
+- `startStream()` / `stopStream()`
+- `addAudio()` / `addAudioToStream()`
+- `transcribe({ input, sampleRate, signal? })`
+
+`transcribe(...)` accepts decoded mono PCM samples (`number[]` or
+`Float32Array`) and a required `sampleRate`.
+
+This package intentionally stays at the transcription-wrapper layer. Decode
+files, URIs, and other container formats upstream before calling `transcribe`.
+In this monorepo, that responsibility belongs in audio-processing utilities
+such as `audio-studio`, not inside `moonshine.rn`.
+
+Offline transcription cancellation rejects the in-flight promise with
+`MOONSHINE_TRANSCRIPTION_CANCELLED`, surfaces as an `AbortError`-style
+rejection, and emits a terminal `transcriptionCancelled` event instead of
+returning a partial success result.
+
+### Intent recognition
+
+- `createIntentRecognizer()`
+- `releaseIntentRecognizer()`
+- `registerIntent()` / `unregisterIntent()`
+- `processUtterance()`
+- `clearIntents()`
+- `setIntentThreshold()` / `getIntentThreshold()`
+- `getIntentCount()`
+
+## Model options
+
+Typed transcriber options include:
+
+- `identifySpeakers`
+- `speakerIdClusterThreshold`
+- `vadThreshold`
+- `vadHopSize`
+- `vadWindowDurationMs`
+- `vadMaxSegmentDurationMs`
+- `vadLookBehindSampleCount`
+- `maxTokensPerSecond`
+- `logApiCalls`
+- `logOrtRuns`
+- `logOutputText`
+- `saveInputWavPath`
+- `wordTimestamps`
+
+`transcriberOptions` is also available as a low-level escape hatch for
+upstream native options that are not yet modeled in the typed surface.
+
+## Platform notes
+
+### Android
+
+By default, the published package uses the Maven Moonshine Android artifact.
+That is the intended path for external consumers.
+
+The package also supports repo-local source builds for internal development, but
+that is an advanced workflow and not the default installation path.
+
+### iOS
+
+The podspec consumes the packaged Moonshine xcframework. After upgrading the
+package, rebuild the native iOS app so the JS layer and native bridge stay in
+sync.
+
+### Web
+
+The web backend is package-owned and does not depend on the published
+`@moonshine-ai/moonshine-js` runtime bundle.
+
+Web-specific typed load-config overrides are available when needed:
+
+- `webEncoderUrl`
+- `webDecoderUrl`
+- `webProgressModelBasePath`
+
+Use `configureMoonshineWeb()` to override the default model CDN or the
+`onnxruntime-web` wasm base path.
+
+## Word timestamps
+
+Word timestamps depend on model assets, not just API flags.
+
+- Native streaming/offline word timestamps require the attention-capable decoder
+  assets to be present alongside the model bundle.
+- On web, word timestamps require an attention-capable decoder path.
+
+## Speaker metadata
+
+Speaker-turn / speaker-clustering hints are available, but they should be
+considered **experimental**. They are useful for tentative turn segmentation,
+not trusted diarization or speaker identity.
+
+## Advanced / repo-local workflows
+
+These are mainly for development inside this monorepo:
 
 ```bash
 bash packages/moonshine.rn/setup.sh
@@ -86,177 +235,18 @@ bash packages/moonshine.rn/build-moonshine-ios.sh
 bash packages/moonshine.rn/build-moonshine-web.sh
 ```
 
-That produces:
-
-- `packages/moonshine.rn/prebuilt/android/moonshine-voice-source-release.aar`
-- `packages/moonshine.rn/prebuilt/android/build-metadata.json`
-- `packages/moonshine.rn/prebuilt/ios/Moonshine.xcframework`
-- `packages/moonshine.rn/prebuilt/ios/build-metadata.json`
-- `packages/moonshine.rn/prebuilt/web/model/...`
-- `packages/moonshine.rn/prebuilt/web/build-metadata.json`
-
-Repo note:
-
-- Those large generated artifacts are primarily for repo-local build and
-  validation flows.
-- The published npm package intentionally excludes the source-built Android AAR
-  and bundled web model weights to keep the tarball smaller.
-
-To make the React Native package consume that local source-built artifact:
-
-```bash
-SITEED_MOONSHINE_ANDROID_USE_SOURCE=1 yarn workspace audio-playground android
-```
-
-For iOS, the podspec consumes `prebuilt/ios/Moonshine.xcframework` directly
-once it has been built and the app is reinstalled with CocoaPods.
-
-The source-built artifact is the recommended Android path. It gives this
-package direct JNI access to vendored Moonshine features that are not available
-through the published Java wrapper alone, including the intent recognizer API.
-
-ORT override flow for the source build:
-
-- `SITEED_MOONSHINE_ORT_ROOT`
-- `SITEED_MOONSHINE_ORT_LIB_DIR`
-- `SITEED_MOONSHINE_ORT_INCLUDE_DIR`
-- `SITEED_MOONSHINE_ORT_LIB_PATH`
-- `SITEED_MOONSHINE_ORT_VERSION`
-- `SITEED_MOONSHINE_ANDROID_ABI`
-- `SITEED_MOONSHINE_ANDROID_ABIS`
-- `SITEED_MOONSHINE_SPEAKER_EMBEDDING_DATA_CPP`
-
-The most reliable override is to point the source build at an explicit ORT
-library/include pair:
-
-```bash
-SITEED_MOONSHINE_ORT_ROOT=/abs/path/to/onnxruntime-android \
-SITEED_MOONSHINE_ORT_VERSION=1.23.0 \
-bash packages/moonshine.rn/build-moonshine-android.sh
-```
-
-If `git-lfs` is unavailable or too slow for Moonshine's generated
-`core/speaker-embedding-model-data.cpp`, you can point the build at a local
-materialized copy:
-
-```bash
-SITEED_MOONSHINE_SPEAKER_EMBEDDING_DATA_CPP=/abs/path/to/speaker-embedding-model-data.cpp \
-bash packages/moonshine.rn/build-moonshine-android.sh
-```
-
-Moonshine's Android artifact currently requires `minSdkVersion 35`.
-This package itself stays neutral; the consuming app decides whether to link it
-and how to gate Android inclusion.
-
-Current Android limitation:
-
-- `@siteed/moonshine.rn` does not safely coexist in the same app binary with
-  `@siteed/sherpa-onnx.rn` unless both native stacks are built against the exact
-  same ONNX Runtime ABI.
-- As validated on April 2, 2026, Sherpa rebuilt against ORT `1.23.0` and
-  Moonshine `0.0.51` can coexist in one app binary, and the mixed-engine sample
-  recipe passes on a physical Pixel 6a.
-- If either side moves to a different ORT ABI, mixed-engine loading will break
-  again until both artifacts are realigned.
-- Streaming audio currently crosses the React Native bridge as `number[]` PCM
-  chunks. Keep live chunks in the ~100-250ms range for now; a JSI/ArrayBuffer
-  transport would be the future optimization path for heavier streaming loads.
-
-Current web status:
-
-- The web backend is package-owned. It does not depend on the published
-  `@moonshine-ai/moonshine-js` bundle at runtime.
-- Web supports offline transcription plus file-driven live streaming through
-  the same `MoonshineService` / `MoonshineTranscriber` API that native uses.
-  The current web streaming path consumes PCM chunks from the app audio layer
-  (for example `@siteed/audio-studio`) and emits the same transcript events as
-  the native wrapper.
-- Web maps the current live English contenders to the available web tiers:
-  `small-streaming -> tiny` and `medium-streaming -> base`.
-- Web requires `window.ort` to be loaded before creating a transcriber. In
-  playground this is done from `src/index.web.tsx` before the app mounts.
-- Web `loadFromMemory()` is supported for the same three-part
-  `encoder + decoder + tokenizer` contract that native uses. The browser
-  backend currently uses the first two blobs to create temporary ONNX object
-  URLs and ignores the tokenizer bytes because decoding is handled by
-  `llama-tokenizer-js`.
-- Web intent recognition is supported through the same
-  `createIntentRecognizer()` / `processUtterance()` API. The package-owned web
-  backend loads Moonshine's `embeddinggemma-300m` ONNX model, mounts its
-  external `.onnx_data` sidecar into `onnxruntime-web`, and uses a package-
-  owned tokenizer implementation for trigger phrase and utterance embeddings.
-- Web exposes experimental speaker-turn hints when `identifySpeakers` is
-  enabled. This is implemented with a package-owned audio-feature clusterer on
-  finalized segments, not Moonshine's native speaker embedding pipeline, so it
-  should be treated as tentative turn segmentation rather than reliable
-  diarization.
-- By default, the published package expects web model assets to be fetched from
-  Moonshine's CDN.
-- Use `configureMoonshineWeb()` if you want to override the default model asset
-  CDN or the `onnxruntime-web` wasm base path.
-
-Current iOS status:
-
-- iOS simulator validation is in place for the parity branch.
-- Confirmed on April 3, 2026:
-  - app launch / dev client / CDP connectivity
-  - intent recognizer creation on iOS simulator
-  - deterministic file transcription on iOS simulator (`Hello world` on the
-    bundled speech WAV sample)
-  - live Moonshine session startup on iOS simulator
-- iOS live speaker-turn hints are currently disabled in the playground live
-  demo. The native transcriber works, but the current live-session path avoids
-  passing transcriber options on iOS because that broke streaming startup during
-  validation.
-- Physical-device validation is intentionally deferred for now. The currently
-  installed iPhone dev binary did not yet include the newly linked Moonshine
-  native module, so simulator validation is the current source of truth for
-  parity on this branch.
-
-Beta release / external validation:
-
-- Before a stable release, validate the package from an external consumer repo
-  rather than only from this monorepo.
-- Recommended target:
-  - `~/dev/demo-audiolab`
-- Release preparation and checklist:
-  - [`./BETA_RELEASE_PLAN.md`](./BETA_RELEASE_PLAN.md)
-- Pasteable external-consumer validation prompt:
-  - [`./EXTERNAL_VALIDATION_PROMPT.md`](./EXTERNAL_VALIDATION_PROMPT.md)
-
-Useful package-local preflight:
+Useful package-local checks:
 
 ```bash
 yarn release:beta:preflight
+yarn validate:offline:contract <model-id> [device-filter]
 ```
 
-External validation findings from the first beta cycle:
+## Known limitations
 
-- npm publish is possible after trimming duplicate/repo-only artifacts
-- Yarn 4 consumer apps worked more reliably with `nodeLinker: node-modules`
-- iOS external consumer prebuild + simulator build smoke succeeded
-- Android external consumer build currently fails unless the app accepts
-  `minSdkVersion 35`
-
-Android artifact override:
-
-- `SITEED_MOONSHINE_ANDROID_MAVEN_COORD`
-- `SITEED_MOONSHINE_ANDROID_MAVEN_REPO`
-- `SITEED_MOONSHINE_ANDROID_AAR`
-- `SITEED_MOONSHINE_ANDROID_USE_SOURCE`
-- `SITEED_MOONSHINE_ANDROID_SOURCE_AAR`
-
-If Moonshine is rebuilt to coexist with Sherpa, the rebuilt artifact must use
-the same ORT ABI or intentionally depend on a differently named ORT SONAME.
-Changing the packaged filename alone is not sufficient.
-
-Example with a custom Maven repo:
-
-```bash
-SITEED_MOONSHINE_ANDROID_MAVEN_REPO=/abs/path/to/local-maven \
-SITEED_MOONSHINE_ANDROID_MAVEN_COORD=ai.moonshine:moonshine-voice:0.0.51-ort1232 \
-yarn workspace audio-playground android
-```
-
-See [`../../docs/ANDROID_ORT_ALIGNMENT.md`](../../docs/ANDROID_ORT_ALIGNMENT.md)
-for the full Sherpa + Moonshine alignment flow and compatibility check.
+- `MicTranscriber` is not wrapped directly; apps are expected to own microphone
+  capture and audio routing.
+- Android and Sherpa must use a compatible ONNX Runtime ABI when linked into the
+  same app binary.
+- External Android consumers still need an app configuration compatible with
+  `minSdkVersion 35`.

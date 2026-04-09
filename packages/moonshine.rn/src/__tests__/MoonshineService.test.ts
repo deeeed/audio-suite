@@ -4,6 +4,7 @@ const mockNativeModule = {
   addListener: jest.fn(),
   addAudioForTranscriber: jest.fn(),
   addAudioToStreamForTranscriber: jest.fn(),
+  cancelCurrentTranscriptionForTranscriber: jest.fn(),
   createIntentRecognizer: jest.fn(),
   createStreamForTranscriber: jest.fn(),
   createTranscriberFromFiles: jest.fn(),
@@ -14,6 +15,7 @@ const mockNativeModule = {
   releaseTranscriber: jest.fn(),
   removeListeners: jest.fn(),
   startTranscriber: jest.fn(),
+  transcribeFromSamplesForTranscriber: jest.fn(),
 };
 
 class MockNativeEventEmitter {
@@ -42,6 +44,29 @@ jest.mock('react-native', () => ({
 
 import { MOONSHINE_EVENT_NAME } from '../NativeMoonshine';
 import { MoonshineService } from '../services/MoonshineService';
+import { MOONSHINE_TRANSCRIPTION_CANCELLED_CODE } from '../types/interfaces';
+
+class MockAbortSignal {
+  public aborted = false;
+  public reason: unknown;
+  private listeners = new Set<() => void>();
+
+  public addEventListener(_type: 'abort', listener: () => void) {
+    this.listeners.add(listener);
+  }
+
+  public removeEventListener(_type: 'abort', listener: () => void) {
+    this.listeners.delete(listener);
+  }
+
+  public abort(reason?: unknown) {
+    this.aborted = true;
+    this.reason = reason;
+    for (const listener of this.listeners) {
+      listener();
+    }
+  }
+}
 
 describe('MoonshineService', () => {
   beforeEach(() => {
@@ -144,5 +169,315 @@ describe('MoonshineService', () => {
     );
     expect(result.matched).toBe(true);
     expect(result.match?.triggerPhrase).toBe('turn on the lights');
+  });
+
+  it('emits offline transcript lifecycle events from the native offline path', async () => {
+    mockNativeModule.createTranscriberFromFiles.mockResolvedValue({
+      success: true,
+      transcriberId: 'transcriber-1',
+    });
+    mockNativeModule.transcribeFromSamplesForTranscriber.mockImplementation(
+      async (_transcriberId, _sampleRate, _samples) => {
+        const emit = mockEventListeners.get(MOONSHINE_EVENT_NAME);
+        emit?.({
+          line: {
+            lineId: 'line-1',
+            text: 'Hello',
+          },
+          streamId: 'transcriber-1:default',
+          transcriberId: 'transcriber-1',
+          type: 'lineStarted',
+        });
+        emit?.({
+          line: {
+            lineId: 'line-1',
+            hasTextChanged: true,
+            isUpdated: true,
+            text: 'Hello world',
+          },
+          streamId: 'transcriber-1:default',
+          transcriberId: 'transcriber-1',
+          type: 'lineTextChanged',
+        });
+        emit?.({
+          line: {
+            isFinal: true,
+            lineId: 'line-1',
+            text: 'Hello world',
+            words: [
+              { word: 'Hello', startTimeMs: 0, endTimeMs: 500 },
+              { word: 'world', startTimeMs: 500, endTimeMs: 1000 },
+            ],
+          },
+          streamId: 'transcriber-1:default',
+          transcriberId: 'transcriber-1',
+          type: 'lineCompleted',
+        });
+        return {
+          text: 'Hello world',
+          lines: [
+            {
+              lineId: 'line-1',
+              text: 'Hello world',
+              isFinal: true,
+              words: [
+                { word: 'Hello', startTimeMs: 0, endTimeMs: 500 },
+                { word: 'world', startTimeMs: 500, endTimeMs: 1000 },
+              ],
+            },
+          ],
+        };
+      }
+    );
+
+    const service = new MoonshineService();
+    const transcriber = await service.createTranscriberFromFiles({
+      modelArch: 'small-streaming',
+      modelPath: '/tmp/moonshine-small',
+    });
+
+    const listener = jest.fn();
+    transcriber.addListener(listener);
+
+    const result = await transcriber.transcribe({
+      input: [0, 0, 0],
+      sampleRate: 16000,
+    });
+
+    expect(result.text).toBe('Hello world');
+    expect(
+      mockNativeModule.transcribeFromSamplesForTranscriber
+    ).toHaveBeenCalledWith('transcriber-1', 16000, [0, 0, 0], {
+      chunkDurationMs: undefined,
+    });
+    expect(listener).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        type: 'lineStarted',
+        transcriberId: 'transcriber-1',
+        streamId: 'transcriber-1:default',
+      })
+    );
+    expect(listener).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        type: 'lineTextChanged',
+        transcriberId: 'transcriber-1',
+        streamId: 'transcriber-1:default',
+      })
+    );
+    expect(listener).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        type: 'lineCompleted',
+        transcriberId: 'transcriber-1',
+        streamId: 'transcriber-1:default',
+      })
+    );
+  });
+
+  it('emits configurable offline progress events from the native offline path', async () => {
+    mockNativeModule.createTranscriberFromFiles.mockResolvedValue({
+      success: true,
+      transcriberId: 'transcriber-1',
+    });
+    mockNativeModule.transcribeFromSamplesForTranscriber.mockImplementation(
+      async () => {
+        const emit = mockEventListeners.get(MOONSHINE_EVENT_NAME);
+        emit?.({
+          processedDurationMs: 0,
+          progress: 0,
+          streamId: 'transcriber-1:stream-7',
+          totalDurationMs: 1000,
+          transcriberId: 'transcriber-1',
+          type: 'transcriptionProgress',
+        });
+        emit?.({
+          processedDurationMs: 500,
+          progress: 0.5,
+          streamId: 'transcriber-1:stream-7',
+          totalDurationMs: 1000,
+          transcriberId: 'transcriber-1',
+          type: 'transcriptionProgress',
+        });
+        emit?.({
+          processedDurationMs: 1000,
+          progress: 1,
+          streamId: 'transcriber-1:stream-7',
+          totalDurationMs: 1000,
+          transcriberId: 'transcriber-1',
+          type: 'transcriptionProgress',
+        });
+        return {
+          text: 'done',
+          lines: [],
+        };
+      }
+    );
+
+    const service = new MoonshineService();
+    const transcriber = await service.createTranscriberFromFiles({
+      modelArch: 'small-streaming',
+      modelPath: '/tmp/moonshine-small',
+    });
+    const listener = jest.fn();
+    transcriber.addListener(listener);
+
+    await transcriber.transcribe({
+      input: [0, 0, 0],
+      progress: {
+        intervalMs: 250,
+      },
+      sampleRate: 16000,
+    });
+
+    expect(
+      mockNativeModule.transcribeFromSamplesForTranscriber
+    ).toHaveBeenCalledWith('transcriber-1', 16000, [0, 0, 0], {
+      chunkDurationMs: undefined,
+      progress: {
+        intervalMs: 250,
+      },
+    });
+    expect(listener).toHaveBeenCalledWith(
+      expect.objectContaining({
+        progress: 0,
+        type: 'transcriptionProgress',
+      })
+    );
+    expect(listener).toHaveBeenCalledWith(
+      expect.objectContaining({
+        progress: 0.5,
+        type: 'transcriptionProgress',
+      })
+    );
+    expect(listener).toHaveBeenCalledWith(
+      expect.objectContaining({
+        progress: 1,
+        type: 'transcriptionProgress',
+      })
+    );
+  });
+
+  it('cancels the active offline transcription for a transcriber', async () => {
+    mockNativeModule.createTranscriberFromFiles.mockResolvedValue({
+      success: true,
+      transcriberId: 'transcriber-1',
+    });
+    mockNativeModule.cancelCurrentTranscriptionForTranscriber.mockResolvedValue(
+      {
+        cancelled: true,
+        success: true,
+      }
+    );
+
+    const service = new MoonshineService();
+    const transcriber = await service.createTranscriberFromFiles({
+      modelArch: 'small-streaming',
+      modelPath: '/tmp/moonshine-small',
+    });
+
+    await expect(transcriber.cancel()).resolves.toEqual({
+      cancelled: true,
+      success: true,
+    });
+    expect(
+      mockNativeModule.cancelCurrentTranscriptionForTranscriber
+    ).toHaveBeenCalledWith('transcriber-1');
+  });
+
+  it('cancels active transcription when the provided signal aborts', async () => {
+    mockNativeModule.createTranscriberFromFiles.mockResolvedValue({
+      success: true,
+      transcriberId: 'transcriber-1',
+    });
+    mockNativeModule.cancelCurrentTranscriptionForTranscriber.mockResolvedValue(
+      {
+        cancelled: true,
+        success: true,
+      }
+    );
+    mockNativeModule.transcribeFromSamplesForTranscriber.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          setTimeout(() => {
+            const error = new Error('Moonshine transcription cancelled');
+            (error as Error & { code?: string }).code =
+              MOONSHINE_TRANSCRIPTION_CANCELLED_CODE;
+            reject(error);
+          }, 0);
+        })
+    );
+
+    const service = new MoonshineService();
+    const transcriber = await service.createTranscriberFromFiles({
+      modelArch: 'small-streaming',
+      modelPath: '/tmp/moonshine-small',
+    });
+    const signal = new MockAbortSignal();
+    const transcriptionPromise = transcriber.transcribe({
+      input: [0, 0, 0],
+      sampleRate: 16000,
+      signal,
+    });
+
+    signal.abort('User cancelled');
+
+    await expect(transcriptionPromise).rejects.toMatchObject({
+      code: MOONSHINE_TRANSCRIPTION_CANCELLED_CODE,
+    });
+    expect(
+      mockNativeModule.cancelCurrentTranscriptionForTranscriber
+    ).toHaveBeenCalledWith('transcriber-1');
+  });
+
+  it('surfaces explicit cancellation events and errors from offline transcription', async () => {
+    mockNativeModule.createTranscriberFromFiles.mockResolvedValue({
+      success: true,
+      transcriberId: 'transcriber-1',
+    });
+    mockNativeModule.transcribeFromSamplesForTranscriber.mockImplementation(
+      async (_transcriberId, _sampleRate, _samples) => {
+        const emit = mockEventListeners.get(MOONSHINE_EVENT_NAME);
+        emit?.({
+          streamId: 'transcriber-1:stream-99',
+          transcriberId: 'transcriber-1',
+          type: 'transcriptionCancelled',
+        });
+        const error = new Error('Moonshine transcription cancelled');
+        (
+          error as Error & {
+            code?: string;
+          }
+        ).code = MOONSHINE_TRANSCRIPTION_CANCELLED_CODE;
+        throw error;
+      }
+    );
+
+    const service = new MoonshineService();
+    const transcriber = await service.createTranscriberFromFiles({
+      modelArch: 'small-streaming',
+      modelPath: '/tmp/moonshine-small',
+    });
+
+    const listener = jest.fn();
+    transcriber.addListener(listener);
+
+    await expect(
+      transcriber.transcribe({
+        input: [0, 0, 0],
+        sampleRate: 16000,
+      })
+    ).rejects.toMatchObject({
+      code: MOONSHINE_TRANSCRIPTION_CANCELLED_CODE,
+      message: 'Moonshine transcription cancelled',
+    });
+    expect(listener).toHaveBeenCalledWith(
+      expect.objectContaining({
+        streamId: 'transcriber-1:stream-99',
+        transcriberId: 'transcriber-1',
+        type: 'transcriptionCancelled',
+      })
+    );
   });
 });

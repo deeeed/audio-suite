@@ -12,19 +12,22 @@ import {
 } from '../NativeMoonshine';
 import type {
   MoonshineAssetModelConfig,
+  MoonshineCancelTranscriptionResult,
   MoonshineCreateIntentRecognizerConfig,
   MoonshineInitializeResult,
   MoonshineMemoryModelConfig,
   MoonshineModelConfig,
+  MoonshinePcmTranscribeOptions,
   MoonshinePlatformStatus,
   MoonshineProcessUtteranceResult,
   MoonshineTranscriptEvent,
   MoonshineTranscriptionResult,
-  MoonshineTranscribeOptions,
+  MoonshineTranscribeParams,
 } from '../types/interfaces';
+import { OfflineProgressTracker } from './offlineProgressTracker';
+import { runWithAbortSignal } from './transcriptionCancellation';
 
 type MoonshineListener = (event: MoonshineTranscriptEvent) => void;
-
 export class MoonshineTranscriber {
   public constructor(
     private readonly service: MoonshineService,
@@ -67,12 +70,19 @@ export class MoonshineTranscriber {
     return this.service.createStreamForTranscriber(this.transcriberId);
   }
 
+  public cancel(): Promise<MoonshineCancelTranscriptionResult> {
+    return this.service.cancelForTranscriber(this.transcriberId);
+  }
+
   public release(): Promise<{ released: boolean }> {
     return this.service.releaseTranscriber(this.transcriberId);
   }
 
   public removeStream(streamId: string): Promise<{ success: boolean }> {
-    return this.service.removeStreamForTranscriber(this.transcriberId, streamId);
+    return this.service.removeStreamForTranscriber(
+      this.transcriberId,
+      streamId
+    );
   }
 
   public start(): Promise<{ success: boolean }> {
@@ -91,28 +101,10 @@ export class MoonshineTranscriber {
     return this.service.stopStreamForTranscriber(this.transcriberId, streamId);
   }
 
-  public transcribeFromSamples(
-    sampleRate: number,
-    samples: number[],
-    options?: MoonshineTranscribeOptions
+  public transcribe(
+    params: MoonshineTranscribeParams
   ): Promise<MoonshineTranscriptionResult> {
-    return this.service.transcribeFromSamplesForTranscriber(
-      this.transcriberId,
-      sampleRate,
-      samples,
-      options
-    );
-  }
-
-  public transcribeWithoutStreaming(
-    sampleRate: number,
-    samples: number[]
-  ): Promise<MoonshineTranscriptionResult> {
-    return this.service.transcribeWithoutStreamingForTranscriber(
-      this.transcriberId,
-      sampleRate,
-      samples
-    );
+    return this.service.transcribeForTranscriber(this.transcriberId, params);
   }
 }
 
@@ -140,9 +132,7 @@ export class MoonshineIntentRecognizer {
     return this.service.processUtterance(this.intentRecognizerId, utterance);
   }
 
-  public registerIntent(
-    triggerPhrase: string
-  ): Promise<{ success: boolean }> {
+  public registerIntent(triggerPhrase: string): Promise<{ success: boolean }> {
     return this.service.registerIntent(this.intentRecognizerId, triggerPhrase);
   }
 
@@ -150,16 +140,17 @@ export class MoonshineIntentRecognizer {
     return this.service.releaseIntentRecognizer(this.intentRecognizerId);
   }
 
-  public setIntentThreshold(
-    threshold: number
-  ): Promise<{ success: boolean }> {
+  public setIntentThreshold(threshold: number): Promise<{ success: boolean }> {
     return this.service.setIntentThreshold(this.intentRecognizerId, threshold);
   }
 
   public unregisterIntent(
     triggerPhrase: string
   ): Promise<{ success: boolean }> {
-    return this.service.unregisterIntent(this.intentRecognizerId, triggerPhrase);
+    return this.service.unregisterIntent(
+      this.intentRecognizerId,
+      triggerPhrase
+    );
   }
 }
 
@@ -167,6 +158,7 @@ export class MoonshineService {
   private defaultTranscriber: MoonshineTranscriber | null = null;
   private eventSubscription: EmitterSubscription | null = null;
   private listeners = new Set<MoonshineListener>();
+  private readonly offlineProgressTracker = new OfflineProgressTracker();
 
   public addAudio(
     samples: number[],
@@ -230,12 +222,23 @@ export class MoonshineService {
     return requireNativeMoonshineModule().clearIntents(intentRecognizerId);
   }
 
+  public async cancel(): Promise<MoonshineCancelTranscriptionResult> {
+    return this.ensureDefaultTranscriber().cancel();
+  }
+
+  public cancelForTranscriber(
+    transcriberId: string
+  ): Promise<MoonshineCancelTranscriptionResult> {
+    return requireNativeMoonshineModule().cancelCurrentTranscriptionForTranscriber(
+      transcriberId
+    );
+  }
+
   public async createIntentRecognizer(
     config: MoonshineCreateIntentRecognizerConfig
   ): Promise<MoonshineIntentRecognizer> {
-    const result = await requireNativeMoonshineModule().createIntentRecognizer(
-      config
-    );
+    const result =
+      await requireNativeMoonshineModule().createIntentRecognizer(config);
     if (!result.success || !result.intentRecognizerId) {
       throw new Error('Failed to create Moonshine intent recognizer');
     }
@@ -249,9 +252,10 @@ export class MoonshineService {
   public async createStreamForTranscriber(
     transcriberId: string
   ): Promise<string> {
-    const result = await requireNativeMoonshineModule().createStreamForTranscriber(
-      transcriberId
-    );
+    const result =
+      await requireNativeMoonshineModule().createStreamForTranscriber(
+        transcriberId
+      );
     if (!result.success || !result.streamId) {
       throw new Error('Failed to create Moonshine stream');
     }
@@ -291,7 +295,9 @@ export class MoonshineService {
   }
 
   public async getIntentThreshold(intentRecognizerId: string): Promise<number> {
-    return requireNativeMoonshineModule().getIntentThreshold(intentRecognizerId);
+    return requireNativeMoonshineModule().getIntentThreshold(
+      intentRecognizerId
+    );
   }
 
   public getPlatformStatus(): MoonshinePlatformStatus {
@@ -352,9 +358,8 @@ export class MoonshineService {
   public async releaseTranscriber(
     transcriberId: string
   ): Promise<{ released: boolean }> {
-    const result = await requireNativeMoonshineModule().releaseTranscriber(
-      transcriberId
-    );
+    const result =
+      await requireNativeMoonshineModule().releaseTranscriber(transcriberId);
     if (this.defaultTranscriber?.transcriberId === transcriberId) {
       this.defaultTranscriber = null;
     }
@@ -446,9 +451,7 @@ export class MoonshineService {
     return this.ensureDefaultTranscriber().stop();
   }
 
-  public stopTranscriber(
-    transcriberId: string
-  ): Promise<{ success: boolean }> {
+  public stopTranscriber(transcriberId: string): Promise<{ success: boolean }> {
     return requireNativeMoonshineModule().stopTranscriber(transcriberId);
   }
 
@@ -466,52 +469,59 @@ export class MoonshineService {
     );
   }
 
-  public async transcribeFromSamples(
-    sampleRate: number,
-    samples: number[],
-    options?: MoonshineTranscribeOptions
+  public async transcribe(
+    params: MoonshineTranscribeParams
   ): Promise<MoonshineTranscriptionResult> {
-    return this.ensureDefaultTranscriber().transcribeFromSamples(
-      sampleRate,
-      samples,
-      options
-    );
+    return this.ensureDefaultTranscriber().transcribe(params);
   }
 
-  public transcribeFromSamplesForTranscriber(
+  public async transcribeForTranscriber(
     transcriberId: string,
-    sampleRate: number,
-    samples: number[],
-    options?: MoonshineTranscribeOptions
+    params: MoonshineTranscribeParams
   ): Promise<MoonshineTranscriptionResult> {
-    return requireNativeMoonshineModule().transcribeFromSamplesForTranscriber(
+    this.offlineProgressTracker.begin(
       transcriberId,
-      sampleRate,
-      samples,
-      options
+      params.sampleRate,
+      params.input.length,
+      params.progress !== false && params.progress != null
     );
-  }
+    return runWithAbortSignal({
+      cancel: () => this.cancelForTranscriber(transcriberId),
+      signal: params.signal,
+      run: async (): Promise<MoonshineTranscriptionResult> => {
+        if (
+          !Number.isFinite(params.sampleRate) ||
+          (params.sampleRate ?? 0) <= 0
+        ) {
+          throw new Error(
+            'Moonshine transcribe({ input, sampleRate }) requires a positive sampleRate'
+          );
+        }
 
-  public async transcribeWithoutStreaming(
-    sampleRate: number,
-    samples: number[]
-  ): Promise<MoonshineTranscriptionResult> {
-    return this.ensureDefaultTranscriber().transcribeWithoutStreaming(
-      sampleRate,
-      samples
-    );
-  }
-
-  public transcribeWithoutStreamingForTranscriber(
-    transcriberId: string,
-    sampleRate: number,
-    samples: number[]
-  ): Promise<MoonshineTranscriptionResult> {
-    return requireNativeMoonshineModule().transcribeWithoutStreamingForTranscriber(
-      transcriberId,
-      sampleRate,
-      samples
-    );
+        return this.transcribePcmForTranscriber(
+          transcriberId,
+          params.sampleRate,
+          params.input instanceof Float32Array
+            ? Array.from(params.input)
+            : params.input,
+          {
+            chunkDurationMs: params.chunkDurationMs,
+            progress: params.progress,
+          }
+        );
+      },
+      onFinally: (outcome) => {
+        const completionEvent = this.offlineProgressTracker.finish(
+          transcriberId,
+          outcome === 'resolved'
+        );
+        if (completionEvent) {
+          for (const listener of this.listeners) {
+            listener(completionEvent);
+          }
+        }
+      },
+    });
   }
 
   public unregisterIntent(
@@ -533,6 +543,20 @@ export class MoonshineService {
     return new MoonshineTranscriber(this, result.transcriberId);
   }
 
+  private transcribePcmForTranscriber(
+    transcriberId: string,
+    sampleRate: number,
+    samples: number[],
+    options?: MoonshinePcmTranscribeOptions
+  ): Promise<MoonshineTranscriptionResult> {
+    return requireNativeMoonshineModule().transcribeFromSamplesForTranscriber(
+      transcriberId,
+      sampleRate,
+      samples,
+      options
+    );
+  }
+
   private ensureDefaultTranscriber(): MoonshineTranscriber {
     if (!this.defaultTranscriber) {
       throw new Error(
@@ -546,14 +570,20 @@ export class MoonshineService {
     if (this.eventSubscription || !isMoonshineNativeAvailable()) return;
 
     const emitter =
-      Platform.OS === 'android'
-        ? new NativeEventEmitter(requireNativeMoonshineModule())
-        : DeviceEventEmitter;
+      Platform.OS === 'web'
+        ? DeviceEventEmitter
+        : new NativeEventEmitter(requireNativeMoonshineModule());
     this.eventSubscription = emitter.addListener(
       MOONSHINE_EVENT_NAME,
       (event: MoonshineTranscriptEvent) => {
         for (const listener of this.listeners) {
           listener(event);
+        }
+        const syntheticProgress = this.offlineProgressTracker.observe(event);
+        if (syntheticProgress) {
+          for (const listener of this.listeners) {
+            listener(syntheticProgress);
+          }
         }
       }
     );

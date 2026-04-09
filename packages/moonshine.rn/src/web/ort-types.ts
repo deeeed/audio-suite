@@ -5,7 +5,11 @@ export type WebOrtTensor = {
 };
 
 export type WebOrtSession = {
-  run(feeds: Record<string, WebOrtTensor>): Promise<Record<string, WebOrtTensor>>;
+  inputNames?: string[];
+  outputNames?: string[];
+  run(
+    feeds: Record<string, WebOrtTensor>
+  ): Promise<Record<string, WebOrtTensor>>;
 };
 
 export type WebOrtRuntime = {

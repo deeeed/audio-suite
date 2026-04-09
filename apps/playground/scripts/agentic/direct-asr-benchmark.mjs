@@ -5,6 +5,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import asrEvalManifest from './asr-eval-manifest.mjs';
+import { getMetroHost } from './metro-host.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.resolve(SCRIPT_DIR, '..', '..');
@@ -18,8 +19,7 @@ const BUNDLE_BASE = 'net.siteed.audioplayground';
 const SCHEME_BASE = 'audioplayground';
 const PKG =
   APP_VARIANT === 'production' ? BUNDLE_BASE : `${BUNDLE_BASE}.${APP_VARIANT}`;
-const SCHEME =
-  APP_VARIANT === 'production' ? SCHEME_BASE : `${SCHEME_BASE}-${APP_VARIANT}`;
+const DEV_CLIENT_SCHEME = `exp+${SCHEME_BASE}`;
 const ROUTE = '/asr-benchmark';
 const OFFLINE_TIMEOUT_MS = 10 * 60 * 1000;
 const SIMULATED_TIMEOUT_MS = 10 * 60 * 1000;
@@ -151,7 +151,9 @@ async function waitForBridgeTarget(timeoutMs = STATE_TIMEOUT_MS) {
     try {
       const devices = bridge(['list-devices']);
       if ((devices?.count ?? 0) > 0) return;
-    } catch {}
+    } catch (_error) {
+      // Target is not ready yet; keep polling until the timeout expires.
+    }
     await sleep(POLL_INTERVAL_MS);
   }
   throw new Error('Timed out waiting for CDP target');
@@ -207,6 +209,7 @@ async function ensureDeviceClip(clip) {
 }
 
 async function restartDevClient() {
+  const metroHost = getMetroHost();
   adb(['reverse', 'tcp:7365', 'tcp:7365']);
   adb(['shell', 'am', 'force-stop', PKG]);
   adb([
@@ -216,7 +219,7 @@ async function restartDevClient() {
     '-a',
     'android.intent.action.VIEW',
     '-d',
-    `exp+${SCHEME}://expo-development-client/?url=http://127.0.0.1:7365`,
+    `${DEV_CLIENT_SCHEME}://expo-development-client/?url=http://${metroHost}:7365`,
     PKG,
   ]);
   await sleep(5000);

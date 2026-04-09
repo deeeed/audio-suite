@@ -2,17 +2,21 @@ import { NativeModules, Platform } from 'react-native';
 import type {
   MoonshineCreateIntentRecognizerConfig,
   MoonshineAssetModelConfig,
+  MoonshineCancelTranscriptionResult,
   MoonshineInitializeResult,
   MoonshineIntentRecognizerResult,
   MoonshineMemoryModelConfig,
   MoonshineModelConfig,
   MoonshineProcessUtteranceResult,
   MoonshineTranscriptionResult,
-  MoonshineTranscribeOptions,
+  MoonshinePcmTranscribeOptions,
 } from './types/interfaces';
 
 export interface NativeMoonshineModule {
-  addAudio(sampleRate: number, samples: number[]): Promise<{ success: boolean }>;
+  addAudio(
+    sampleRate: number,
+    samples: number[]
+  ): Promise<{ success: boolean }>;
   addAudioForTranscriber(
     transcriberId: string,
     sampleRate: number,
@@ -47,6 +51,9 @@ export interface NativeMoonshineModule {
   createStreamForTranscriber(
     transcriberId: string
   ): Promise<{ streamId: string; success: boolean }>;
+  cancelCurrentTranscriptionForTranscriber(
+    transcriberId: string
+  ): Promise<MoonshineCancelTranscriptionResult>;
   errorToString(code: number): Promise<string>;
   getIntentCount(intentRecognizerId: string): Promise<number>;
   getIntentThreshold(intentRecognizerId: string): Promise<number>;
@@ -55,7 +62,9 @@ export interface NativeMoonshineModule {
   loadFromAssets(
     config: MoonshineAssetModelConfig
   ): Promise<MoonshineInitializeResult>;
-  loadFromFiles(config: MoonshineModelConfig): Promise<MoonshineInitializeResult>;
+  loadFromFiles(
+    config: MoonshineModelConfig
+  ): Promise<MoonshineInitializeResult>;
   loadFromMemory(
     config: MoonshineMemoryModelConfig
   ): Promise<MoonshineInitializeResult>;
@@ -99,13 +108,13 @@ export interface NativeMoonshineModule {
   transcribeFromSamples(
     sampleRate: number,
     samples: number[],
-    options?: MoonshineTranscribeOptions
+    options?: MoonshinePcmTranscribeOptions
   ): Promise<MoonshineTranscriptionResult>;
   transcribeFromSamplesForTranscriber(
     transcriberId: string,
     sampleRate: number,
     samples: number[],
-    options?: MoonshineTranscribeOptions
+    options?: MoonshinePcmTranscribeOptions
   ): Promise<MoonshineTranscriptionResult>;
   transcribeWithoutStreaming(
     sampleRate: number,
@@ -131,7 +140,10 @@ const NativeMoonshine = NativeModules.Moonshine as
 export const MOONSHINE_EVENT_NAME = 'MoonshineTranscriptEvent';
 
 export function isMoonshineNativeAvailable(): boolean {
-  return (Platform.OS === 'android' || Platform.OS === 'ios') && Boolean(NativeMoonshine);
+  return (
+    (Platform.OS === 'android' || Platform.OS === 'ios') &&
+    Boolean(NativeMoonshine)
+  );
 }
 
 export function getMoonshineUnavailableReason(): string | undefined {
@@ -147,7 +159,8 @@ export function getMoonshineUnavailableReason(): string | undefined {
 export function requireNativeMoonshineModule(): NativeMoonshineModule {
   if (!NativeMoonshine) {
     throw new Error(
-      getMoonshineUnavailableReason() ?? 'Moonshine native module is unavailable'
+      getMoonshineUnavailableReason() ??
+        'Moonshine native module is unavailable'
     );
   }
   return NativeMoonshine;

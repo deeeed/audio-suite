@@ -171,7 +171,7 @@ if [ "$needs_lfs_pull" = "1" ]; then
   git lfs pull --include="$LFS_INCLUDE_PATHS"
 fi
 
-./gradlew clean assembleRelease
+./gradlew clean assembleRelease -Pandroid.useAndroidX=true
 
 AAR_SOURCE="$(find "$UPSTREAM_DIR/build/outputs/aar" -maxdepth 1 -name '*release.aar' | head -n1)"
 if [ -z "$AAR_SOURCE" ] || [ ! -f "$AAR_SOURCE" ]; then

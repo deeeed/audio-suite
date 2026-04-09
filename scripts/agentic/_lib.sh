@@ -51,8 +51,31 @@ else
   BUNDLE_ID_ANDROID="${BUNDLE_BASE}.${_VARIANT}"
 fi
 
+# Expo dev client deep-link schemes are not the same on every platform.
+# Android reliably uses the Expo slug-based exp+<slug> scheme from Expo's
+# generated manifest, while iOS also registers the variant-specific
+# exp+<scheme> alias via withVariantExpoScheme.
+DEV_CLIENT_SCHEME_ANDROID="exp+${AGENTIC_SCHEME}"
+DEV_CLIENT_SCHEME_IOS="exp+${SCHEME}"
+
 # Default bundle ID (for scripts that use a single BUNDLE_ID)
 BUNDLE_ID="${BUNDLE_ID_IOS}"
+
+resolve_agentic_dev_host() {
+  if [ -n "${AGENTIC_DEV_HOST:-}" ]; then
+    printf '%s\n' "${AGENTIC_DEV_HOST}"
+    return 0
+  fi
+
+  local lan_ip
+  lan_ip=$(ifconfig | awk '/inet / && !/127\./ && !/169\.254\./ {print $2}' | grep -v '^::' | head -1)
+  if [ -n "$lan_ip" ]; then
+    printf '%s\n' "$lan_ip"
+    return 0
+  fi
+
+  printf 'localhost\n'
+}
 
 # Helpers
 info()  { echo "[preflight] $1"; }

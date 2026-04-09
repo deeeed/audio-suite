@@ -30,22 +30,24 @@ import {
     trimAudio,
     AudioDeviceManager,
 } from '@siteed/audio-studio'
-import {
-    OnnxInference,
-    typedArrayToBase64,
-    base64ToTypedArray,
-} from '@siteed/sherpa-onnx.rn'
+import { OnnxInference, typedArrayToBase64, base64ToTypedArray } from '@siteed/sherpa-onnx.rn'
 import type { OnnxTensorData } from '@siteed/sherpa-onnx.rn'
 import {
     getBenchmarkModelOrThrow,
     getMoonshineRuntimeConfig,
+    getMoonshineWordTimestampValidationConfig,
     runBenchmarkFile,
     runBenchmarkSimulatedLive,
     runMoonshineSpeakerTurnValidation,
+    runMoonshineWordTimestampValidation,
     safeReleaseMoonshine,
     safeReleaseMoonshineTranscriber,
 } from './utils/asrBenchmarkRuntime'
-import Moonshine, { type MoonshineTranscriber } from '@siteed/moonshine.rn'
+import Moonshine, {
+    type MoonshineTranscriber,
+    type MoonshineTranscriptEvent,
+} from '@siteed/moonshine.rn'
+import { readMonoPcm16Wav } from './utils/wav'
 
 // State holders updated by AgenticBridgeSync component
 let _audioState: Record<string, unknown> = {}
@@ -98,35 +100,67 @@ function stripFunctions(obj: Record<string, unknown>): Record<string, unknown> {
 }
 
 // --- Async result store for fire-and-store pattern (CDP awaitPromise:false) ---
-let _lastAsyncResult: { op: string; status: 'pending' | 'success' | 'error'; result?: unknown; error?: string } | null = null
+let _lastAsyncResult: {
+    op: string
+    status: 'pending' | 'success' | 'error'
+    result?: unknown
+    error?: string
+} | null = null
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const JFK_MP3_ASSET = require('@assets/jfk.mp3')
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const SPEECH_WAV_ASSET = require('../public/audio_samples/recorder_hello_world.wav')
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const JFK_WAV_ASSET = require('../public/audio_samples/jfk.wav')
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const OSR_LONG_WAV_ASSET = require('../public/audio_samples/osr_us_000_0010_8k.wav')
+
+async function loadBundledAssetToUri(
+    assetModule: number,
+    destinationFilename: string,
+    errorLabel: string,
+): Promise<string> {
+    const asset = Asset.fromModule(assetModule)
+    await asset.downloadAsync()
+    if (!asset.localUri) {
+        throw new Error(`Failed to load ${errorLabel} asset`)
+    }
+    if (Platform.OS === 'web') {
+        return asset.localUri
+    }
+    const dest = `${FileSystem.cacheDirectory}${destinationFilename}`
+    await FileSystem.copyAsync({ from: asset.localUri, to: dest })
+    return dest
+}
 
 /**
  * Load jfk.mp3 sample audio to a local file URI (standalone, not a hook).
  */
 async function loadSampleFileUri(): Promise<string> {
-    const asset = Asset.fromModule(require('@assets/jfk.mp3'))
-    await asset.downloadAsync()
-    if (!asset.localUri) throw new Error('Failed to load sample audio asset')
-    const dest = `${FileSystem.cacheDirectory}jfk_test.mp3`
-    await FileSystem.copyAsync({ from: asset.localUri, to: dest })
-    return dest
+    return loadBundledAssetToUri(JFK_MP3_ASSET, 'jfk_test.mp3', 'sample audio')
 }
 
 async function loadSpeechWavSampleFileUri(): Promise<string> {
-    const asset = Asset.fromModule(
-        require('../public/audio_samples/recorder_hello_world.wav')
+    return loadBundledAssetToUri(
+        SPEECH_WAV_ASSET,
+        'speech_sample.wav',
+        'speech WAV sample',
     )
-    await asset.downloadAsync()
-    if (!asset.localUri) throw new Error('Failed to load speech WAV sample asset')
-    const dest = `${FileSystem.cacheDirectory}speech_sample.wav`
-    await FileSystem.copyAsync({ from: asset.localUri, to: dest })
-    return dest
 }
 
-function resolveMoonshineProbeModelPath(
-    modelPath: string,
-    appendTrailingSlash?: boolean
-): string {
+async function loadJfkWavSampleFileUri(): Promise<string> {
+    return loadBundledAssetToUri(JFK_WAV_ASSET, 'jfk_sample.wav', 'JFK WAV sample')
+}
+
+async function loadOsrLongWavSampleFileUri(): Promise<string> {
+    return loadBundledAssetToUri(
+        OSR_LONG_WAV_ASSET,
+        'osr_long_sample.wav',
+        'OSR long WAV sample',
+    )
+}
+function resolveMoonshineProbeModelPath(modelPath: string, appendTrailingSlash?: boolean): string {
     if (!appendTrailingSlash || modelPath.endsWith('/')) {
         return modelPath
     }
@@ -136,11 +170,13 @@ function resolveMoonshineProbeModelPath(
 async function runMoonshineProbe(
     modelId: string,
     op: string,
-    options: {
-        appendTrailingSlash?: boolean
-        transcriberOptions?: Record<string, unknown>
-    } | undefined,
-    afterCreate?: (transcriber: MoonshineTranscriber) => Promise<void>
+    options:
+        | {
+              appendTrailingSlash?: boolean
+              transcriberOptions?: Record<string, unknown>
+          }
+        | undefined,
+    afterCreate?: (transcriber: MoonshineTranscriber) => Promise<void>,
 ): Promise<void> {
     let transcriber: MoonshineTranscriber | null = null
     try {
@@ -151,10 +187,7 @@ async function runMoonshineProbe(
         const config = await getMoonshineRuntimeConfig(modelId)
         const resolvedModelPath =
             typeof config.modelPath === 'string'
-                ? resolveMoonshineProbeModelPath(
-                      config.modelPath,
-                      options?.appendTrailingSlash
-                  )
+                ? resolveMoonshineProbeModelPath(config.modelPath, options?.appendTrailingSlash)
                 : config.modelPath
 
         const mergedOptions =
@@ -198,7 +231,8 @@ async function runMoonshineProbe(
 }
 
 if (__DEV__) {
-    (globalThis as Record<string, unknown>).__AGENTIC__ = {
+    const agenticGlobal = globalThis as Record<string, unknown>
+    agenticGlobal.__AGENTIC__ = {
         platform: Platform.OS,
 
         navigate: (path: string) => {
@@ -424,13 +458,12 @@ if (__DEV__) {
 
                     const model = getBenchmarkModelOrThrow(modelId)
                     if (model.engine !== 'moonshine') {
-                        throw new Error('benchmarkMoonshineSpeakerTurns only supports Moonshine models')
+                        throw new Error(
+                            'benchmarkMoonshineSpeakerTurns only supports Moonshine models',
+                        )
                     }
 
-                    const result = await runMoonshineSpeakerTurnValidation(
-                        modelId,
-                        audioUri
-                    )
+                    const result = await runMoonshineSpeakerTurnValidation(modelId, audioUri)
                     _lastAsyncResult = {
                         op,
                         status: 'success',
@@ -501,12 +534,603 @@ if (__DEV__) {
             return { op, status: 'pending' }
         },
 
+        benchmarkMoonshineWordTimestamps: (modelId: string, audioUri: string) => {
+            const op = 'benchmarkMoonshineWordTimestamps'
+            _lastAsyncResult = { op, status: 'pending' }
+            void (async () => {
+                try {
+                    if (!modelId) {
+                        throw new Error('benchmarkMoonshineWordTimestamps requires a modelId')
+                    }
+                    if (!audioUri) {
+                        throw new Error('benchmarkMoonshineWordTimestamps requires an audioUri')
+                    }
+
+                    const model = getBenchmarkModelOrThrow(modelId)
+                    if (model.engine !== 'moonshine') {
+                        throw new Error(
+                            'benchmarkMoonshineWordTimestamps only supports Moonshine models',
+                        )
+                    }
+
+                    const result = await runMoonshineWordTimestampValidation(modelId, audioUri)
+                    _lastAsyncResult = {
+                        op,
+                        status: 'success',
+                        result: {
+                            audioUri,
+                            initMs: result.initMs,
+                            lineCount: result.lineCount,
+                            linesWithWords: result.linesWithWords,
+                            modelId,
+                            modelName: result.validationModelLabel,
+                            note: result.note,
+                            recognizeMs: result.recognizeMs,
+                            transcript: result.transcript,
+                            wordCount: result.wordCount,
+                        },
+                    }
+                } catch (e) {
+                    _lastAsyncResult = {
+                        op,
+                        status: 'error',
+                        error: String(e),
+                        result: { audioUri, modelId },
+                    }
+                } finally {
+                    await safeReleaseMoonshine()
+                }
+            })()
+            return { op, status: 'pending' }
+        },
+
+        validateMoonshineOfflineContract: (
+            modelId: string,
+            options?: {
+                sample?: 'jfk' | 'osr-long' | 'speech'
+                wordTimestamps?: boolean
+            },
+        ) => {
+            const op = 'validateMoonshineOfflineContract'
+            _lastAsyncResult = { op, status: 'pending' }
+            void (async () => {
+                let transcriber: MoonshineTranscriber | null = null
+                let removeListener: (() => void) | null = null
+
+                try {
+                    if (!modelId) {
+                        throw new Error('validateMoonshineOfflineContract requires a modelId')
+                    }
+
+                    const sample = options?.sample ?? 'speech'
+                    const wordTimestamps = options?.wordTimestamps === true
+                    const audioUri =
+                        sample === 'jfk'
+                            ? await loadJfkWavSampleFileUri()
+                            : sample === 'osr-long'
+                              ? await loadOsrLongWavSampleFileUri()
+                              : await loadSpeechWavSampleFileUri()
+
+                    const validation = wordTimestamps
+                        ? await getMoonshineWordTimestampValidationConfig(modelId)
+                        : {
+                              config: await getMoonshineRuntimeConfig(modelId),
+                              validationModelId: modelId,
+                              validationModelLabel:
+                                  getBenchmarkModelOrThrow(modelId).name,
+                              note: undefined,
+                          }
+
+                    transcriber = await Moonshine.createTranscriberFromFiles(validation.config)
+
+                    const probeStartedAtMs = Date.now()
+                    const events: (MoonshineTranscriptEvent & { atMs: number })[] = []
+                    removeListener = transcriber.addListener((event) => {
+                        events.push({
+                            ...event,
+                            atMs: Date.now() - probeStartedAtMs,
+                        })
+                    })
+
+                    const wav = await readMonoPcm16Wav(audioUri)
+                    const result = await transcriber.transcribe({
+                        input: wav.samples,
+                        sampleRate: wav.sampleRate,
+                    })
+
+                    const eventTypes = events.map((event) => event.type)
+                    const eventTimeline = events.map((event) => ({
+                        atMs: event.atMs,
+                        error: event.error ?? null,
+                        type: event.type,
+                    }))
+                    const hasIntermediateProgress = eventTypes.some(
+                        (type) =>
+                            type === 'lineStarted' ||
+                            type === 'lineUpdated' ||
+                            type === 'lineTextChanged',
+                    )
+                    const eventSpanMs =
+                        events.length >= 2
+                            ? (events.at(-1)?.atMs ?? 0) - (events[0]?.atMs ?? 0)
+                            : 0
+                    const progressSemantics = (() => {
+                        if (events.length === 0) return 'none'
+                        if (!hasIntermediateProgress) return 'terminal-only'
+                        if (eventSpanMs <= 5) return 'terminal-burst'
+                        return 'granular'
+                    })()
+                    const wordCount = result.lines.reduce(
+                        (total, line) => total + (line.words?.length ?? 0),
+                        0,
+                    )
+                    const linesWithWords = result.lines.filter(
+                        (line) => (line.words?.length ?? 0) > 0,
+                    ).length
+
+                    _lastAsyncResult = {
+                        op,
+                        status: 'success',
+                        result: {
+                            audioUri,
+                            eventCount: events.length,
+                            eventSpanMs,
+                            eventTimeline,
+                            eventTypes,
+                            hasIntermediateProgress,
+                            linesWithWords,
+                            modelId,
+                            progressSemantics,
+                            sample,
+                            transcript: result.text,
+                            validationModelId: validation.validationModelId,
+                            validationModelLabel: validation.validationModelLabel,
+                            wordCount,
+                            wordTimestamps,
+                            wordsReturned: wordCount > 0,
+                        },
+                    }
+                } catch (e) {
+                    _lastAsyncResult = {
+                        op,
+                        status: 'error',
+                        error: String(e),
+                        result: { modelId },
+                    }
+                } finally {
+                    removeListener?.()
+                    await safeReleaseMoonshineTranscriber(transcriber)
+                    await safeReleaseMoonshine()
+                }
+            })()
+            return { op, status: 'pending' }
+        },
+
+        validateMoonshineOfflineProgressContract: (
+            modelId: string,
+            options?: {
+                sample?: 'jfk' | 'osr-long' | 'speech'
+                intervalMs?: number
+                wordTimestamps?: boolean
+            },
+        ) => {
+            const op = 'validateMoonshineOfflineProgressContract'
+            _lastAsyncResult = { op, status: 'pending' }
+            void (async () => {
+                let transcriber: MoonshineTranscriber | null = null
+                let removeListener: (() => void) | null = null
+
+                try {
+                    if (!modelId) {
+                        throw new Error(
+                            'validateMoonshineOfflineProgressContract requires a modelId',
+                        )
+                    }
+
+                    const sample =
+                        options?.sample ??
+                        (Platform.OS === 'web' ? 'jfk' : 'osr-long')
+                    const wordTimestamps = options?.wordTimestamps === true
+                    const progressIntervalMs = Math.max(options?.intervalMs ?? 250, 0)
+                    const audioUri =
+                        sample === 'jfk'
+                            ? await loadJfkWavSampleFileUri()
+                            : sample === 'speech'
+                              ? await loadSpeechWavSampleFileUri()
+                              : await loadOsrLongWavSampleFileUri()
+
+                    const validation = wordTimestamps
+                        ? await getMoonshineWordTimestampValidationConfig(modelId)
+                        : {
+                              config: await getMoonshineRuntimeConfig(modelId),
+                              validationModelId: modelId,
+                              validationModelLabel:
+                                  getBenchmarkModelOrThrow(modelId).name,
+                              note: undefined,
+                          }
+
+                    transcriber = await Moonshine.createTranscriberFromFiles(validation.config)
+
+                    const startedAtMs = Date.now()
+                    const events: (MoonshineTranscriptEvent & { atMs: number })[] = []
+                    removeListener = transcriber.addListener((event) => {
+                        events.push({
+                            ...event,
+                            atMs: Date.now() - startedAtMs,
+                        })
+                    })
+
+                    const wav = await readMonoPcm16Wav(audioUri)
+                    const result = await transcriber.transcribe({
+                        input: wav.samples,
+                        progress: {
+                            intervalMs: progressIntervalMs,
+                        },
+                        sampleRate: wav.sampleRate,
+                    })
+
+                    const progressEvents = events.filter(
+                        (event) => event.type === 'transcriptionProgress',
+                    )
+                    const progressValues = progressEvents.map((event) => event.progress ?? 0)
+                    const validationIssues: string[] = []
+                    if (progressEvents.length < 2) {
+                        validationIssues.push(
+                            'Expected multiple offline progress events before completion',
+                        )
+                    }
+                    const monotonic = progressValues.every(
+                        (value, index) => index === 0 || value >= progressValues[index - 1] - 0.0001,
+                    )
+                    if (!monotonic) {
+                        validationIssues.push('Offline progress values are not monotonic')
+                    }
+                    const finalProgress = progressValues.at(-1) ?? 0
+                    if (finalProgress < 0.999) {
+                        validationIssues.push(
+                            `Offline progress did not reach completion: ${finalProgress}`,
+                        )
+                    }
+
+                    _lastAsyncResult = {
+                        op,
+                        status: validationIssues.length === 0 ? 'success' : 'error',
+                        result: {
+                            audioUri,
+                            eventCount: events.length,
+                            eventTypes: events.map((event) => event.type),
+                            modelId,
+                            progressEventCount: progressEvents.length,
+                            progressEvents: progressEvents.map((event) => ({
+                                atMs: event.atMs,
+                                processedDurationMs: event.processedDurationMs ?? null,
+                                progress: event.progress ?? null,
+                                totalDurationMs: event.totalDurationMs ?? null,
+                            })),
+                            sample,
+                            transcript: result.text,
+                            validationModelId: validation.validationModelId,
+                            validationModelLabel: validation.validationModelLabel,
+                            validationIssues,
+                            wordTimestamps,
+                        },
+                    }
+                } catch (e) {
+                    _lastAsyncResult = {
+                        op,
+                        status: 'error',
+                        error: String(e),
+                        result: { modelId },
+                    }
+                } finally {
+                    removeListener?.()
+                    await safeReleaseMoonshineTranscriber(transcriber)
+                    await safeReleaseMoonshine()
+                }
+            })()
+            return { op, status: 'pending' }
+        },
+
+        validateMoonshineOfflineProgressDisabledContract: (
+            modelId: string,
+            options?: {
+                sample?: 'jfk' | 'osr-long' | 'speech'
+                wordTimestamps?: boolean
+            },
+        ) => {
+            const op = 'validateMoonshineOfflineProgressDisabledContract'
+            _lastAsyncResult = { op, status: 'pending' }
+            void (async () => {
+                let transcriber: MoonshineTranscriber | null = null
+                let removeListener: (() => void) | null = null
+
+                try {
+                    if (!modelId) {
+                        throw new Error(
+                            'validateMoonshineOfflineProgressDisabledContract requires a modelId',
+                        )
+                    }
+
+                    const sample =
+                        options?.sample ??
+                        (Platform.OS === 'web' ? 'jfk' : 'osr-long')
+                    const wordTimestamps = options?.wordTimestamps === true
+                    const audioUri =
+                        sample === 'jfk'
+                            ? await loadJfkWavSampleFileUri()
+                            : sample === 'speech'
+                              ? await loadSpeechWavSampleFileUri()
+                              : await loadOsrLongWavSampleFileUri()
+
+                    const validation = wordTimestamps
+                        ? await getMoonshineWordTimestampValidationConfig(modelId)
+                        : {
+                              config: await getMoonshineRuntimeConfig(modelId),
+                              validationModelId: modelId,
+                              validationModelLabel:
+                                  getBenchmarkModelOrThrow(modelId).name,
+                              note: undefined,
+                          }
+
+                    transcriber = await Moonshine.createTranscriberFromFiles(validation.config)
+
+                    const startedAtMs = Date.now()
+                    const events: (MoonshineTranscriptEvent & { atMs: number })[] = []
+                    removeListener = transcriber.addListener((event) => {
+                        events.push({
+                            ...event,
+                            atMs: Date.now() - startedAtMs,
+                        })
+                    })
+
+                    const wav = await readMonoPcm16Wav(audioUri)
+                    const result = await transcriber.transcribe({
+                        input: wav.samples,
+                        progress: false,
+                        sampleRate: wav.sampleRate,
+                    })
+
+                    const progressEventCount = events.filter(
+                        (event) => event.type === 'transcriptionProgress',
+                    ).length
+                    const validationIssues: string[] = []
+                    if (progressEventCount !== 0) {
+                        validationIssues.push(
+                            `Expected no transcriptionProgress events when progress is disabled, received ${progressEventCount}`,
+                        )
+                    }
+
+                    _lastAsyncResult = {
+                        op,
+                        status: validationIssues.length === 0 ? 'success' : 'error',
+                        result: {
+                            audioUri,
+                            eventCount: events.length,
+                            eventTypes: events.map((event) => event.type),
+                            modelId,
+                            progressEventCount,
+                            sample,
+                            transcript: result.text,
+                            validationIssues,
+                            wordTimestamps,
+                        },
+                    }
+                } catch (e) {
+                    _lastAsyncResult = {
+                        op,
+                        status: 'error',
+                        error: String(e),
+                        result: { modelId },
+                    }
+                } finally {
+                    removeListener?.()
+                    await safeReleaseMoonshineTranscriber(transcriber)
+                    await safeReleaseMoonshine()
+                }
+            })()
+            return { op, status: 'pending' }
+        },
+
+        validateMoonshineOfflineCancellationContract: (
+            modelId: string,
+            options?: {
+                sample?: 'jfk' | 'osr-long' | 'speech'
+                wordTimestamps?: boolean
+            },
+        ) => {
+            const op = 'validateMoonshineOfflineCancellationContract'
+            _lastAsyncResult = { op, status: 'pending' }
+            void (async () => {
+                let transcriber: MoonshineTranscriber | null = null
+                let removeListener: (() => void) | null = null
+
+                try {
+                    if (!modelId) {
+                        throw new Error(
+                            'validateMoonshineOfflineCancellationContract requires a modelId',
+                        )
+                    }
+
+                    const sample = options?.sample ?? 'osr-long'
+                    const wordTimestamps = options?.wordTimestamps === true
+                    const audioUri =
+                        sample === 'jfk'
+                            ? await loadJfkWavSampleFileUri()
+                            : sample === 'speech'
+                              ? await loadSpeechWavSampleFileUri()
+                              : await loadOsrLongWavSampleFileUri()
+
+                    const validation = wordTimestamps
+                        ? await getMoonshineWordTimestampValidationConfig(modelId)
+                        : {
+                              config: await getMoonshineRuntimeConfig(modelId),
+                              validationModelId: modelId,
+                              validationModelLabel:
+                                  getBenchmarkModelOrThrow(modelId).name,
+                              note: undefined,
+                          }
+
+                    transcriber = await Moonshine.createTranscriberFromFiles(validation.config)
+                    const wav = await readMonoPcm16Wav(audioUri)
+
+                    const events: (MoonshineTranscriptEvent & { atMs: number })[] = []
+                    const startedAtMs = Date.now()
+                    removeListener = transcriber.addListener((event) => {
+                        events.push({
+                            ...event,
+                            atMs: Date.now() - startedAtMs,
+                        })
+                    })
+
+                    const firstRunPromise = transcriber.transcribe({
+                        input: wav.samples,
+                        progress: {
+                            intervalMs: 250,
+                        },
+                        sampleRate: wav.sampleRate,
+                    })
+
+                    const cancellationRequestedAtMs = await new Promise<number>(
+                        (resolve, reject) => {
+                            const startedAt = Date.now()
+                            const interval = setInterval(() => {
+                                const hasProgress = events.some(
+                                    (event) =>
+                                        event.type === 'transcriptionProgress' ||
+                                        event.type === 'lineStarted' ||
+                                        event.type === 'lineUpdated' ||
+                                        event.type === 'lineTextChanged',
+                                )
+                                if (hasProgress) {
+                                    clearInterval(interval)
+                                    resolve(Date.now() - startedAtMs)
+                                    return
+                                }
+
+                                if (Date.now() - startedAt > 15000) {
+                                    clearInterval(interval)
+                                    reject(
+                                        new Error(
+                                            'Timed out waiting for offline progress events before cancel',
+                                        ),
+                                    )
+                                }
+                            }, 100)
+                        },
+                    )
+
+                    const cancelRequest = await transcriber.cancel()
+
+                    let firstRunError: { code?: string; message?: string } | null = null
+                    let firstRunResolved = false
+                    let firstRunSettledAtMs: number | null = null
+                    try {
+                        await firstRunPromise
+                        firstRunResolved = true
+                        firstRunSettledAtMs = Date.now()
+                    } catch (error) {
+                        firstRunSettledAtMs = Date.now()
+                        firstRunError = {
+                            code:
+                                error &&
+                                typeof error === 'object' &&
+                                'code' in error &&
+                                typeof error.code === 'string'
+                                    ? error.code
+                                    : undefined,
+                            message:
+                                error instanceof Error ? error.message : String(error),
+                        }
+                    }
+
+                    await new Promise((resolve) => setTimeout(resolve, 1000))
+
+                    const cancelEvent = events.find(
+                        (event) => event.type === 'transcriptionCancelled',
+                    )
+                    const eventsAfterCancel = cancelEvent
+                        ? events.filter((event) => event.atMs > cancelEvent.atMs)
+                        : []
+                    const lineEventsAfterCancel = eventsAfterCancel.filter(
+                        (event) =>
+                            event.type === 'lineStarted' ||
+                            event.type === 'lineUpdated' ||
+                            event.type === 'lineTextChanged' ||
+                            event.type === 'lineCompleted',
+                    )
+                    const eventTimeline = events.map((event) => ({
+                        atMs: event.atMs,
+                        error: event.error ?? null,
+                        type: event.type,
+                    }))
+
+                    const secondRunStartedAtMs = Date.now()
+                    const secondRunResult = await transcriber.transcribe({
+                        input: wav.samples,
+                        progress: {
+                            intervalMs: 250,
+                        },
+                        sampleRate: wav.sampleRate,
+                    })
+                    const secondRunDurationMs = Date.now() - secondRunStartedAtMs
+
+                    _lastAsyncResult = {
+                        op,
+                        status: 'success',
+                        result: {
+                            audioUri,
+                            cancelEventSeen: Boolean(cancelEvent),
+                            cancelRequest,
+                            cancellationRequestedAtMs,
+                            eventCount: events.length,
+                            eventTimeline,
+                            firstRunError,
+                            firstRunResolved,
+                            firstRunSettledAtMs:
+                                firstRunSettledAtMs == null
+                                    ? null
+                                    : firstRunSettledAtMs - startedAtMs,
+                            lineEventsAfterCancel: lineEventsAfterCancel.map((event) => ({
+                                atMs: event.atMs,
+                                type: event.type,
+                            })),
+                            modelId,
+                            rejectedAfterCancelMs:
+                                firstRunSettledAtMs == null
+                                    ? null
+                                    : firstRunSettledAtMs -
+                                      startedAtMs -
+                                      cancellationRequestedAtMs,
+                            sample,
+                            secondRunDurationMs,
+                            secondRunTranscript: secondRunResult.text,
+                            validationModelId: validation.validationModelId,
+                            validationModelLabel: validation.validationModelLabel,
+                            wordTimestamps,
+                        },
+                    }
+                } catch (e) {
+                    _lastAsyncResult = {
+                        op,
+                        status: 'error',
+                        error: String(e),
+                        result: { modelId },
+                    }
+                } finally {
+                    removeListener?.()
+                    await safeReleaseMoonshineTranscriber(transcriber)
+                    await safeReleaseMoonshine()
+                }
+            })()
+            return { op, status: 'pending' }
+        },
+
         testMoonshineLoad: (
             modelId: string,
             options?: {
                 appendTrailingSlash?: boolean
                 transcriberOptions?: Record<string, unknown>
-            }
+            },
         ) => {
             const op = 'testMoonshineLoad'
             _lastAsyncResult = { op, status: 'pending' }
@@ -519,7 +1143,7 @@ if (__DEV__) {
             options?: {
                 appendTrailingSlash?: boolean
                 transcriberOptions?: Record<string, unknown>
-            }
+            },
         ) => {
             const op = 'testMoonshineStart'
             _lastAsyncResult = { op, status: 'pending' }
@@ -535,8 +1159,20 @@ if (__DEV__) {
             void (async () => {
                 try {
                     const fileUri = await loadSampleFileUri()
-                    const result = await extractPreview({ fileUri, numberOfPoints: 50, startTimeMs: 0, endTimeMs: 10000 })
-                    _lastAsyncResult = { op, status: 'success', result: { dataPointCount: result.dataPoints.length, durationMs: result.durationMs } }
+                    const result = await extractPreview({
+                        fileUri,
+                        numberOfPoints: 50,
+                        startTimeMs: 0,
+                        endTimeMs: 10000,
+                    })
+                    _lastAsyncResult = {
+                        op,
+                        status: 'success',
+                        result: {
+                            dataPointCount: result.dataPoints.length,
+                            durationMs: result.durationMs,
+                        },
+                    }
                 } catch (e) {
                     _lastAsyncResult = { op, status: 'error', error: String(e) }
                 }
@@ -550,8 +1186,21 @@ if (__DEV__) {
             void (async () => {
                 try {
                     const fileUri = await loadSampleFileUri()
-                    const result = await extractAudioData({ fileUri, startTimeMs: 0, endTimeMs: 5000 })
-                    _lastAsyncResult = { op, status: 'success', result: { sampleRate: result.sampleRate, channels: result.channels, durationMs: result.durationMs, samples: result.samples } }
+                    const result = await extractAudioData({
+                        fileUri,
+                        startTimeMs: 0,
+                        endTimeMs: 5000,
+                    })
+                    _lastAsyncResult = {
+                        op,
+                        status: 'success',
+                        result: {
+                            sampleRate: result.sampleRate,
+                            channels: result.channels,
+                            durationMs: result.durationMs,
+                            samples: result.samples,
+                        },
+                    }
                 } catch (e) {
                     _lastAsyncResult = { op, status: 'error', error: String(e) }
                 }
@@ -566,7 +1215,15 @@ if (__DEV__) {
                 try {
                     const fileUri = await loadSampleFileUri()
                     const result = await trimAudio({ fileUri, startTimeMs: 0, endTimeMs: 5000 })
-                    _lastAsyncResult = { op, status: 'success', result: { uri: result.uri, durationMs: result.durationMs, size: result.size } }
+                    _lastAsyncResult = {
+                        op,
+                        status: 'success',
+                        result: {
+                            uri: result.uri,
+                            durationMs: result.durationMs,
+                            size: result.size,
+                        },
+                    }
                 } catch (e) {
                     _lastAsyncResult = { op, status: 'error', error: String(e) }
                 }
@@ -580,8 +1237,26 @@ if (__DEV__) {
             void (async () => {
                 try {
                     const fileUri = await loadSampleFileUri()
-                    const result = await extractMelSpectrogram({ fileUri, windowSizeMs: 25, hopLengthMs: 10, nMels: 40, startTimeMs: 0, endTimeMs: 5000 })
-                    _lastAsyncResult = { op, status: 'success', result: { timeSteps: result.timeSteps, nMels: result.nMels, durationMs: result.durationMs, sampleValues: result.spectrogram.slice(0, 3).map(row => row.slice(0, 5)) } }
+                    const result = await extractMelSpectrogram({
+                        fileUri,
+                        windowSizeMs: 25,
+                        hopLengthMs: 10,
+                        nMels: 40,
+                        startTimeMs: 0,
+                        endTimeMs: 5000,
+                    })
+                    _lastAsyncResult = {
+                        op,
+                        status: 'success',
+                        result: {
+                            timeSteps: result.timeSteps,
+                            nMels: result.nMels,
+                            durationMs: result.durationMs,
+                            sampleValues: result.spectrogram
+                                .slice(0, 3)
+                                .map((row) => row.slice(0, 5)),
+                        },
+                    }
                 } catch (e) {
                     _lastAsyncResult = { op, status: 'error', error: String(e) }
                 }
@@ -668,9 +1343,13 @@ if (__DEV__) {
                 try {
                     const mgr = new AudioDeviceManager()
                     const success = await mgr.selectDevice(deviceId)
-                    await new Promise(resolve => setTimeout(resolve, 500))
+                    await new Promise((resolve) => setTimeout(resolve, 500))
                     const state = _audioState
-                    _lastAsyncResult = { op, status: 'success', result: { success, isRecording: state.isRecording, deviceId } }
+                    _lastAsyncResult = {
+                        op,
+                        status: 'success',
+                        result: { success, isRecording: state.isRecording, deviceId },
+                    }
                 } catch (e) {
                     _lastAsyncResult = { op, status: 'error', error: String(e) }
                 }
@@ -685,9 +1364,13 @@ if (__DEV__) {
                 try {
                     const mgr = new AudioDeviceManager()
                     const success = await mgr.resetToDefaultDevice()
-                    await new Promise(resolve => setTimeout(resolve, 500))
+                    await new Promise((resolve) => setTimeout(resolve, 500))
                     const state = _audioState
-                    _lastAsyncResult = { op, status: 'success', result: { success, isRecording: state.isRecording } }
+                    _lastAsyncResult = {
+                        op,
+                        status: 'success',
+                        result: { success, isRecording: state.isRecording },
+                    }
                 } catch (e) {
                     _lastAsyncResult = { op, status: 'error', error: String(e) }
                 }
@@ -708,7 +1391,10 @@ if (__DEV__) {
                 const onPress = props?.onPress as ((...args: unknown[]) => unknown) | undefined
                 const click = (fiber.stateNode as { click?: () => void } | null)?.click
                 if (typeof onPress !== 'function' && typeof click !== 'function') {
-                    return { ok: false, error: `Component with testID="${testId}" has no onPress prop` }
+                    return {
+                        ok: false,
+                        error: `Component with testID="${testId}" has no onPress prop`,
+                    }
                 }
 
                 if (typeof onPress === 'function') {
@@ -739,7 +1425,9 @@ if (__DEV__) {
                     } else {
                         const localUri = asset.localUri ?? asset.uri
                         if (!localUri) throw new Error('Failed to load model asset')
-                        modelPath = localUri.startsWith('file://') ? localUri.substring(7) : localUri
+                        modelPath = localUri.startsWith('file://')
+                            ? localUri.substring(7)
+                            : localUri
                     }
 
                     // 1. Create session via the OnnxInference service (works on native + web)
@@ -761,7 +1449,11 @@ if (__DEV__) {
                     const c = new Float32Array(2 * 1 * 64) // LSTM cell state
 
                     const inputs: Record<string, OnnxTensorData> = {
-                        input: { type: 'float32', dims: [1, 512], data: typedArrayToBase64(audioChunk) },
+                        input: {
+                            type: 'float32',
+                            dims: [1, 512],
+                            data: typedArrayToBase64(audioChunk),
+                        },
                         sr: { type: 'int64', dims: [1], data: typedArrayToBase64(srData) },
                         h: { type: 'float32', dims: [2, 1, 64], data: typedArrayToBase64(h) },
                         c: { type: 'float32', dims: [2, 1, 64], data: typedArrayToBase64(c) },
@@ -770,12 +1462,19 @@ if (__DEV__) {
                     const runResult = await OnnxInference.run(session.sessionId, inputs)
                     if (!runResult.success || !runResult.outputs) {
                         await OnnxInference.releaseSession(session.sessionId)
-                        _lastAsyncResult = { op, status: 'error', error: runResult.error || 'run returned no outputs' }
+                        _lastAsyncResult = {
+                            op,
+                            status: 'error',
+                            error: runResult.error || 'run returned no outputs',
+                        }
                         return
                     }
 
                     // 3. Inspect outputs
-                    const outputSummary: Record<string, { type: string; dims: number[]; sampleValues: number[] }> = {}
+                    const outputSummary: Record<
+                        string,
+                        { type: string; dims: number[]; sampleValues: number[] }
+                    > = {}
                     for (const [name, td] of Object.entries(runResult.outputs)) {
                         const typed = base64ToTypedArray(td.data, td.type)
                         const sample: number[] = []
@@ -814,12 +1513,19 @@ if (__DEV__) {
                     const stateNode = fiber.stateNode as Record<string, unknown> | null
                     if (stateNode) {
                         if (typeof stateNode.scrollTo === 'function') {
-                            const node = stateNode as { scrollTo: (opts: { y: number; animated: boolean }) => void }
+                            const node = stateNode as {
+                                scrollTo: (opts: { y: number; animated: boolean }) => void
+                            }
                             node.scrollTo({ y: offset, animated })
                             return true
                         }
                         if (typeof stateNode.scrollToOffset === 'function') {
-                            const node = stateNode as { scrollToOffset: (opts: { offset: number; animated: boolean }) => void }
+                            const node = stateNode as {
+                                scrollToOffset: (opts: {
+                                    offset: number
+                                    animated: boolean
+                                }) => void
+                            }
                             node.scrollToOffset({ offset, animated })
                             return true
                         }
@@ -848,7 +1554,12 @@ if (__DEV__) {
                     })
                     if (scrolled) return { ok: true, testId, offset, animated }
                 }
-                return { ok: false, error: testId ? `No scrollable found near testID="${testId}"` : 'No scrollable found in fiber tree' }
+                return {
+                    ok: false,
+                    error: testId
+                        ? `No scrollable found near testID="${testId}"`
+                        : 'No scrollable found in fiber tree',
+                }
             } catch (e) {
                 return { ok: false, error: String(e) }
             }

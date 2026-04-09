@@ -26,6 +26,11 @@ const MOONSHINE_SIMULATED_CHUNK_MS = 200
 const WHISPER_SIMULATED_CHUNK_MS = 5000
 const SIMULATED_FINALIZATION_WAIT_MS = 750
 const EXPECTED_WHISPER_SAMPLE_RATE = 16000
+const MOONSHINE_WEB_WORD_TIMESTAMP_MODEL_ARCH = 'tiny'
+const MOONSHINE_WEB_WORD_TIMESTAMP_ENCODER_URL =
+    'https://download.moonshine.ai/model/tiny-en/quantized/encoder_model.ort'
+const MOONSHINE_WEB_WORD_TIMESTAMP_DECODER_URL =
+    'https://download.moonshine.ai/model/tiny-en/quantized/decoder_with_attention.ort'
 
 export interface BenchmarkDownloadState {
     downloaded: boolean
@@ -38,6 +43,15 @@ export interface BenchmarkFileRunResult {
     transcript: string
 }
 
+export interface BenchmarkWordTimestampValidationRunResult extends BenchmarkFileRunResult {
+    lineCount: number
+    linesWithWords: number
+    note?: string
+    validationModelId: string
+    validationModelLabel: string
+    wordCount: number
+}
+
 export interface BenchmarkSimulatedLiveRunResult {
     commitCount: number
     firstCommitMs?: number
@@ -48,8 +62,7 @@ export interface BenchmarkSimulatedLiveRunResult {
     transcript: string
 }
 
-export interface BenchmarkMoonshineSpeakerTurnRunResult
-    extends BenchmarkSimulatedLiveRunResult {
+export interface BenchmarkMoonshineSpeakerTurnRunResult extends BenchmarkSimulatedLiveRunResult {
     lines: MoonshineTranscriptLine[]
 }
 
@@ -63,28 +76,21 @@ function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function waitForSimulatedClock(
-    startedAt: number,
-    targetElapsedMs: number
-): Promise<void> {
+async function waitForSimulatedClock(startedAt: number, targetElapsedMs: number): Promise<void> {
     const remainingMs = targetElapsedMs - (Date.now() - startedAt)
     if (remainingMs > 0) {
         await sleep(remainingMs)
     }
 }
 
-export async function getMoonshineModelDirectoryUri(
-    modelId: string
-): Promise<string> {
+export async function getMoonshineModelDirectoryUri(modelId: string): Promise<string> {
     await FileSystem.makeDirectoryAsync(moonshineModelRoot, {
         intermediates: true,
     }).catch(() => {})
     return `${moonshineModelRoot}${modelId}`
 }
 
-export async function getWhisperModelFilePath(
-    modelId: string
-): Promise<string> {
+export async function getWhisperModelFilePath(modelId: string): Promise<string> {
     const benchmarkModel = getAsrBenchmarkModel(modelId)
     if (!benchmarkModel?.whisper) {
         throw new Error(`Model ${modelId} is not a Whisper benchmark model`)
@@ -96,22 +102,17 @@ export async function getWhisperModelFilePath(
     return `${whisperModelRoot}${benchmarkModel.whisper.filename}`
 }
 
-export async function getBenchmarkModelStatus(
-    modelId: string
-): Promise<BenchmarkDownloadState> {
+export async function getBenchmarkModelStatus(modelId: string): Promise<BenchmarkDownloadState> {
     const model = getAsrBenchmarkModel(modelId)
     if (!model) {
         throw new Error(`Unknown benchmark model ${modelId}`)
     }
 
-    const moonshineConfig =
-        model.engine === 'moonshine' ? model.moonshine ?? null : null
+    const moonshineConfig = model.engine === 'moonshine' ? (model.moonshine ?? null) : null
 
     if (moonshineConfig) {
         if (Platform.OS === 'web') {
-            const normalizedArch = normalizeMoonshineWebModelArch(
-                moonshineConfig.modelArch
-            )
+            const normalizedArch = normalizeMoonshineWebModelArch(moonshineConfig.modelArch)
             return {
                 downloaded: true,
                 localPath: resolveMoonshineWebModelBasePath(undefined, normalizedArch),
@@ -122,10 +123,14 @@ export async function getBenchmarkModelStatus(
         const files = getMoonshineDownloadFiles(modelId)
         const statuses = await Promise.all(
             files.map((file) =>
-                FileSystem.getInfoAsync(`${dirUri}/${file.fileName}`)
-            )
+                getValidatedMoonshineFileInfo(
+                    `${dirUri}/${file.fileName}`,
+                    file.expectedBytes,
+                    file.md5,
+                ),
+            ),
         )
-        const downloaded = statuses.every((status) => status.exists)
+        const downloaded = statuses.every((status) => status.isValid)
         return {
             downloaded,
             localPath: downloaded ? toNativePath(dirUri) : null,
@@ -143,7 +148,7 @@ export async function getBenchmarkModelStatus(
 async function downloadToFile(
     url: string,
     targetPath: string,
-    onStatus?: (message: string) => void
+    onStatus?: (message: string) => void,
 ): Promise<void> {
     onStatus?.(`Downloading ${targetPath.split('/').pop()}...`)
     const resumable = FileSystem.createDownloadResumable(url, targetPath)
@@ -153,21 +158,47 @@ async function downloadToFile(
     }
 }
 
+async function getValidatedMoonshineFileInfo(
+    targetPath: string,
+    expectedBytes: number,
+    expectedMd5?: string,
+): Promise<{ exists: boolean; isValid: boolean }> {
+    const info = await FileSystem.getInfoAsync(targetPath, expectedMd5 ? { md5: true } : {})
+    if (!info.exists) {
+        return { exists: false, isValid: false }
+    }
+
+    const size =
+        typeof (info as { size?: number }).size === 'number'
+            ? (info as { size?: number }).size
+            : null
+
+    return {
+        exists: true,
+        isValid:
+            size === expectedBytes &&
+            (expectedMd5 == null ||
+                (typeof (info as { md5?: string }).md5 === 'string' &&
+                    (info as { md5?: string }).md5 === expectedMd5)),
+    }
+}
+
 export async function prepareBenchmarkModel(
     modelId: string,
-    onStatus?: (message: string) => void
+    onStatus?: (message: string) => void,
 ): Promise<BenchmarkDownloadState> {
     const model = getAsrBenchmarkModel(modelId)
     if (!model) {
         throw new Error(`Unknown benchmark model ${modelId}`)
     }
 
-    const moonshineConfig =
-        model.engine === 'moonshine' ? model.moonshine ?? null : null
+    const moonshineConfig = model.engine === 'moonshine' ? (model.moonshine ?? null) : null
 
     if (moonshineConfig) {
         if (Platform.OS === 'web') {
-            onStatus?.('Moonshine web uses package-owned runtime with staged/upstream model assets.')
+            onStatus?.(
+                'Moonshine web uses package-owned runtime with staged/upstream model assets.',
+            )
             return getBenchmarkModelStatus(modelId)
         }
 
@@ -178,8 +209,18 @@ export async function prepareBenchmarkModel(
 
         for (const file of getMoonshineDownloadFiles(modelId)) {
             const targetPath = `${dirUri}/${file.fileName}`
-            const existing = await FileSystem.getInfoAsync(targetPath)
-            if (existing.exists) continue
+            const existing = await getValidatedMoonshineFileInfo(
+                targetPath,
+                file.expectedBytes,
+                file.md5,
+            )
+            if (existing.isValid) continue
+            if (existing.exists) {
+                onStatus?.(
+                    `Refreshing stale ${file.fileName} (cached Moonshine file does not match the expected bundle)...`,
+                )
+                await FileSystem.deleteAsync(targetPath, { idempotent: true }).catch(() => {})
+            }
             await downloadToFile(file.url, targetPath, onStatus)
         }
 
@@ -206,7 +247,7 @@ export async function prepareBenchmarkModel(
 
 export async function getMoonshineRuntimeConfig(
     modelId: string,
-    onStatus?: (message: string) => void
+    onStatus?: (message: string) => void,
 ): Promise<MoonshineModelConfig> {
     const model = getAsrBenchmarkModel(modelId)
     if (!model?.moonshine) {
@@ -214,9 +255,7 @@ export async function getMoonshineRuntimeConfig(
     }
 
     if (Platform.OS === 'web') {
-        const normalizedArch = normalizeMoonshineWebModelArch(
-            model.moonshine.modelArch
-        )
+        const normalizedArch = normalizeMoonshineWebModelArch(model.moonshine.modelArch)
         return {
             modelArch: model.moonshine.modelArch,
             modelPath: resolveMoonshineWebModelBasePath(undefined, normalizedArch),
@@ -236,10 +275,63 @@ export async function getMoonshineRuntimeConfig(
     }
 }
 
+export async function getMoonshineWordTimestampValidationConfig(
+    modelId: string,
+    onStatus?: (message: string) => void,
+): Promise<{
+    config: MoonshineModelConfig
+    validationModelId: string
+    validationModelLabel: string
+    note?: string
+}> {
+    const model = getAsrBenchmarkModel(modelId)
+    if (!model?.moonshine) {
+        throw new Error(`Model ${modelId} is not a Moonshine benchmark model`)
+    }
+
+    if (Platform.OS === 'web') {
+        const normalizedArch = normalizeMoonshineWebModelArch(
+            MOONSHINE_WEB_WORD_TIMESTAMP_MODEL_ARCH,
+        )
+        return {
+            config: {
+                modelArch: MOONSHINE_WEB_WORD_TIMESTAMP_MODEL_ARCH,
+                modelPath: resolveMoonshineWebModelBasePath(undefined, normalizedArch),
+                options: {
+                    wordTimestamps: true,
+                },
+                webEncoderUrl: MOONSHINE_WEB_WORD_TIMESTAMP_ENCODER_URL,
+                webDecoderUrl: MOONSHINE_WEB_WORD_TIMESTAMP_DECODER_URL,
+                webProgressModelBasePath: resolveMoonshineWebModelBasePath(
+                    undefined,
+                    normalizedArch,
+                ),
+                updateIntervalMs: model.moonshine.updateIntervalMs,
+            },
+            validationModelId: 'moonshine-tiny-web-word-timestamp-validation',
+            note: 'Web validation uses the tiny-en offline attention decoder because web runtime parity is currently available there.',
+            validationModelLabel: 'Moonshine Tiny Web Word-Timestamp Validation',
+        }
+    }
+
+    const config = await getMoonshineRuntimeConfig(modelId, onStatus)
+    return {
+        config: {
+            ...config,
+            options: {
+                ...config.options,
+                wordTimestamps: true,
+            },
+        },
+        validationModelId: model.id,
+        validationModelLabel: model.name,
+    }
+}
+
 export async function createMoonshineBenchmarkTranscriber(
     modelId: string,
     onStatus?: (message: string) => void,
-    optionsOverride?: NonNullable<MoonshineModelConfig['options']>
+    optionsOverride?: NonNullable<MoonshineModelConfig['options']>,
 ): Promise<{
     config: MoonshineModelConfig
     transcriber: MoonshineTranscriber
@@ -257,7 +349,7 @@ export async function createMoonshineBenchmarkTranscriber(
 
 export async function initializeWhisperBenchmarkModel(
     modelId: string,
-    onStatus?: (message: string) => void
+    onStatus?: (message: string) => void,
 ): Promise<WhisperContext> {
     const prepared = await prepareBenchmarkModel(modelId, onStatus)
     if (!prepared.localPath) {
@@ -272,7 +364,7 @@ export async function initializeWhisperBenchmarkModel(
 export async function runBenchmarkFile(
     modelId: string,
     audioUri: string,
-    onStatus?: (message: string) => void
+    onStatus?: (message: string) => void,
 ): Promise<BenchmarkFileRunResult> {
     const model = getAsrBenchmarkModel(modelId)
     if (!model) {
@@ -303,7 +395,7 @@ export async function runBenchmarkFile(
 export async function transcribeMoonshineFile(
     modelId: string,
     audioUri: string,
-    onStatus?: (message: string) => void
+    onStatus?: (message: string) => void,
 ): Promise<BenchmarkFileRunResult> {
     const model = getAsrBenchmarkModel(modelId)
     if (!model?.moonshine) {
@@ -311,18 +403,15 @@ export async function transcribeMoonshineFile(
     }
 
     const initStartedAt = Date.now()
-    const { transcriber } = await createMoonshineBenchmarkTranscriber(
-        modelId,
-        onStatus
-    )
+    const { transcriber } = await createMoonshineBenchmarkTranscriber(modelId, onStatus)
     const initMs = Date.now() - initStartedAt
     try {
         const recognizeStartedAt = Date.now()
         const wav = await readMonoPcm16Wav(audioUri)
-        const result = await transcriber.transcribeWithoutStreaming(
-            wav.sampleRate,
-            wav.samples
-        )
+        const result = await transcriber.transcribe({
+            input: wav.samples,
+            sampleRate: wav.sampleRate,
+        })
         const recognizeMs = Date.now() - recognizeStartedAt
 
         return {
@@ -335,10 +424,58 @@ export async function transcribeMoonshineFile(
     }
 }
 
+export async function runMoonshineWordTimestampValidation(
+    modelId: string,
+    audioUri: string,
+    onStatus?: (message: string) => void,
+): Promise<BenchmarkWordTimestampValidationRunResult> {
+    const model = getAsrBenchmarkModel(modelId)
+    if (!model?.moonshine) {
+        throw new Error(`Model ${modelId} is not a Moonshine benchmark model`)
+    }
+
+    const initStartedAt = Date.now()
+    const validation = await getMoonshineWordTimestampValidationConfig(modelId, onStatus)
+    const transcriber = await Moonshine.createTranscriberFromFiles(validation.config)
+    const initMs = Date.now() - initStartedAt
+
+    try {
+        const recognizeStartedAt = Date.now()
+        const wav = await readMonoPcm16Wav(audioUri)
+        const result = await transcriber.transcribe({
+            input: wav.samples,
+            sampleRate: wav.sampleRate,
+        })
+        const recognizeMs = Date.now() - recognizeStartedAt
+
+        const lineCount = result.lines.length
+        const linesWithWords = result.lines.filter((line) => (line.words?.length ?? 0) > 0).length
+        const wordCount = result.lines.reduce((total, line) => total + (line.words?.length ?? 0), 0)
+
+        if (wordCount <= 0) {
+            throw new Error('Moonshine returned no per-word timestamps for this validation run')
+        }
+
+        return {
+            initMs,
+            lineCount,
+            linesWithWords,
+            note: validation.note,
+            recognizeMs,
+            transcript: result.text.trim(),
+            validationModelId: validation.validationModelId,
+            validationModelLabel: validation.validationModelLabel,
+            wordCount,
+        }
+    } finally {
+        await safeReleaseMoonshineTranscriber(transcriber)
+    }
+}
+
 export async function runBenchmarkSimulatedLive(
     modelId: string,
     audioUri: string,
-    callbacks: SimulatedLiveCallbacks = {}
+    callbacks: SimulatedLiveCallbacks = {},
 ): Promise<BenchmarkSimulatedLiveRunResult> {
     const model = getAsrBenchmarkModel(modelId)
     if (!model) {
@@ -367,7 +504,7 @@ export async function safeReleaseMoonshine(): Promise<void> {
 }
 
 export async function safeReleaseMoonshineTranscriber(
-    transcriber: MoonshineTranscriber | null | undefined
+    transcriber: MoonshineTranscriber | null | undefined,
 ): Promise<void> {
     if (!transcriber) return
     try {
@@ -377,9 +514,7 @@ export async function safeReleaseMoonshineTranscriber(
     }
 }
 
-async function safeReleaseWhisper(
-    context: WhisperContext | null | undefined
-): Promise<void> {
+async function safeReleaseWhisper(context: WhisperContext | null | undefined): Promise<void> {
     if (!context) return
     try {
         await context.release()
@@ -391,14 +526,11 @@ async function safeReleaseWhisper(
 async function runMoonshineSimulatedLive(
     modelId: string,
     audioUri: string,
-    callbacks: SimulatedLiveCallbacks
+    callbacks: SimulatedLiveCallbacks,
 ): Promise<BenchmarkSimulatedLiveRunResult> {
-    const result = await runMoonshineSimulatedLiveInternal(
-        modelId,
-        audioUri,
-        callbacks,
-        { identifySpeakers: false }
-    )
+    const result = await runMoonshineSimulatedLiveInternal(modelId, audioUri, callbacks, {
+        identifySpeakers: false,
+    })
     return {
         commitCount: result.commitCount,
         firstCommitMs: result.firstCommitMs,
@@ -413,7 +545,7 @@ async function runMoonshineSimulatedLive(
 export async function runMoonshineSpeakerTurnValidation(
     modelId: string,
     audioUri: string,
-    callbacks: SimulatedLiveCallbacks = {}
+    callbacks: SimulatedLiveCallbacks = {},
 ): Promise<BenchmarkMoonshineSpeakerTurnRunResult> {
     const model = getAsrBenchmarkModel(modelId)
     if (!model?.moonshine) {
@@ -437,20 +569,20 @@ async function runMoonshineSimulatedLiveInternal(
     modelId: string,
     audioUri: string,
     callbacks: SimulatedLiveCallbacks,
-    options: { identifySpeakers: boolean }
+    options: { identifySpeakers: boolean },
 ): Promise<BenchmarkMoonshineSpeakerTurnRunResult> {
     const initStartedAt = Date.now()
     const { transcriber } = await createMoonshineBenchmarkTranscriber(
         modelId,
         callbacks.onStatus,
-        options.identifySpeakers ? { identifySpeakers: true } : undefined
+        options.identifySpeakers ? { identifySpeakers: true } : undefined,
     )
     const initMs = Date.now() - initStartedAt
     try {
         const wav = await readMonoPcm16Wav(audioUri)
         const chunkSize = Math.max(
             1,
-            Math.floor((wav.sampleRate * MOONSHINE_SIMULATED_CHUNK_MS) / 1000)
+            Math.floor((wav.sampleRate * MOONSHINE_SIMULATED_CHUNK_MS) / 1000),
         )
         const chunkCount = Math.max(1, Math.ceil(wav.samples.length / chunkSize))
         let committedText = ''
@@ -535,11 +667,11 @@ async function runMoonshineSimulatedLiveInternal(
                     throw new Error(listenerError)
                 }
                 callbacks.onStatus?.(
-                    `Simulating Moonshine chunk ${chunkIndex + 1}/${chunkCount}...`
+                    `Simulating Moonshine chunk ${chunkIndex + 1}/${chunkCount}...`,
                 )
                 await waitForSimulatedClock(
                     sessionStartedAt,
-                    (chunkIndex + 1) * MOONSHINE_SIMULATED_CHUNK_MS
+                    (chunkIndex + 1) * MOONSHINE_SIMULATED_CHUNK_MS,
                 )
             }
 
@@ -575,12 +707,12 @@ async function runMoonshineSimulatedLiveInternal(
 async function runWhisperSimulatedLive(
     modelId: string,
     audioUri: string,
-    callbacks: SimulatedLiveCallbacks
+    callbacks: SimulatedLiveCallbacks,
 ): Promise<BenchmarkSimulatedLiveRunResult> {
     const wav = await readMonoPcm16Wav(audioUri)
     if (wav.sampleRate !== EXPECTED_WHISPER_SAMPLE_RATE) {
         throw new Error(
-            `Whisper simulated live expects ${EXPECTED_WHISPER_SAMPLE_RATE} Hz audio, got ${wav.sampleRate}`
+            `Whisper simulated live expects ${EXPECTED_WHISPER_SAMPLE_RATE} Hz audio, got ${wav.sampleRate}`,
         )
     }
 
@@ -591,7 +723,7 @@ async function runWhisperSimulatedLive(
         const initMs = Date.now() - initStartedAt
         const chunkSize = Math.max(
             1,
-            Math.floor((wav.sampleRate * WHISPER_SIMULATED_CHUNK_MS) / 1000)
+            Math.floor((wav.sampleRate * WHISPER_SIMULATED_CHUNK_MS) / 1000),
         )
         const chunkCount = Math.max(1, Math.ceil(wav.pcm16.length / chunkSize))
         const sessionStartedAt = Date.now()
@@ -604,13 +736,16 @@ async function runWhisperSimulatedLive(
 
         callbacks.onStatus?.(`Simulating Whisper on ${chunkCount} chunk(s)...`)
 
-        for (let end = chunkSize, chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1, end += chunkSize) {
+        for (
+            let end = chunkSize, chunkIndex = 0;
+            chunkIndex < chunkCount;
+            chunkIndex += 1, end += chunkSize
+        ) {
             const boundedEnd = Math.min(end, wav.pcm16.length)
             const cumulativePcm = wav.pcm16.slice(0, boundedEnd)
-            const { promise } = context.transcribeData(
-                pcm16ToArrayBuffer(cumulativePcm),
-                { language: 'en' }
-            )
+            const { promise } = context.transcribeData(pcm16ToArrayBuffer(cumulativePcm), {
+                language: 'en',
+            })
             const result = await promise
             const nextTranscript = String(result?.result || '').trim()
 
@@ -623,12 +758,10 @@ async function runWhisperSimulatedLive(
                 callbacks.onInterimUpdate?.(nextTranscript)
             }
 
-            callbacks.onStatus?.(
-                `Simulating Whisper chunk ${chunkIndex + 1}/${chunkCount}...`
-            )
+            callbacks.onStatus?.(`Simulating Whisper chunk ${chunkIndex + 1}/${chunkCount}...`)
             await waitForSimulatedClock(
                 sessionStartedAt,
-                (chunkIndex + 1) * WHISPER_SIMULATED_CHUNK_MS
+                (chunkIndex + 1) * WHISPER_SIMULATED_CHUNK_MS,
             )
         }
 
