@@ -107,59 +107,58 @@ let _lastAsyncResult: {
     error?: string
 } | null = null
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const JFK_MP3_ASSET = require('@assets/jfk.mp3')
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const SPEECH_WAV_ASSET = require('../public/audio_samples/recorder_hello_world.wav')
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const JFK_WAV_ASSET = require('../public/audio_samples/jfk.wav')
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const OSR_LONG_WAV_ASSET = require('../public/audio_samples/osr_us_000_0010_8k.wav')
+
+async function loadBundledAssetToUri(
+    assetModule: number,
+    destinationFilename: string,
+    errorLabel: string,
+): Promise<string> {
+    const asset = Asset.fromModule(assetModule)
+    await asset.downloadAsync()
+    if (!asset.localUri) {
+        throw new Error(`Failed to load ${errorLabel} asset`)
+    }
+    if (Platform.OS === 'web') {
+        return asset.localUri
+    }
+    const dest = `${FileSystem.cacheDirectory}${destinationFilename}`
+    await FileSystem.copyAsync({ from: asset.localUri, to: dest })
+    return dest
+}
+
 /**
  * Load jfk.mp3 sample audio to a local file URI (standalone, not a hook).
  */
 async function loadSampleFileUri(): Promise<string> {
-    const asset = Asset.fromModule(require('@assets/jfk.mp3'))
-    await asset.downloadAsync()
-    if (!asset.localUri) throw new Error('Failed to load sample audio asset')
-    if (Platform.OS === 'web') {
-        return asset.localUri
-    }
-    const dest = `${FileSystem.cacheDirectory}jfk_test.mp3`
-    await FileSystem.copyAsync({ from: asset.localUri, to: dest })
-    return dest
+    return loadBundledAssetToUri(JFK_MP3_ASSET, 'jfk_test.mp3', 'sample audio')
 }
 
 async function loadSpeechWavSampleFileUri(): Promise<string> {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const asset = Asset.fromModule(require('../public/audio_samples/recorder_hello_world.wav'))
-    await asset.downloadAsync()
-    if (!asset.localUri) throw new Error('Failed to load speech WAV sample asset')
-    if (Platform.OS === 'web') {
-        return asset.localUri
-    }
-    const dest = `${FileSystem.cacheDirectory}speech_sample.wav`
-    await FileSystem.copyAsync({ from: asset.localUri, to: dest })
-    return dest
+    return loadBundledAssetToUri(
+        SPEECH_WAV_ASSET,
+        'speech_sample.wav',
+        'speech WAV sample',
+    )
 }
 
 async function loadJfkWavSampleFileUri(): Promise<string> {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const asset = Asset.fromModule(require('../public/audio_samples/jfk.wav'))
-    await asset.downloadAsync()
-    if (!asset.localUri) throw new Error('Failed to load JFK WAV sample asset')
-    if (Platform.OS === 'web') {
-        return asset.localUri
-    }
-    const dest = `${FileSystem.cacheDirectory}jfk_sample.wav`
-    await FileSystem.copyAsync({ from: asset.localUri, to: dest })
-    return dest
+    return loadBundledAssetToUri(JFK_WAV_ASSET, 'jfk_sample.wav', 'JFK WAV sample')
 }
 
-
 async function loadOsrLongWavSampleFileUri(): Promise<string> {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const asset = Asset.fromModule(require('../public/audio_samples/osr_us_000_0010_8k.wav'))
-    await asset.downloadAsync()
-    if (!asset.localUri) throw new Error('Failed to load OSR long WAV sample asset')
-    if (Platform.OS === 'web') {
-        return asset.localUri
-    }
-    const dest = `${FileSystem.cacheDirectory}osr_long_sample.wav`
-    await FileSystem.copyAsync({ from: asset.localUri, to: dest })
-    return dest
+    return loadBundledAssetToUri(
+        OSR_LONG_WAV_ASSET,
+        'osr_long_sample.wav',
+        'OSR long WAV sample',
+    )
 }
 function resolveMoonshineProbeModelPath(modelPath: string, appendTrailingSlash?: boolean): string {
     if (!appendTrailingSlash || modelPath.endsWith('/')) {

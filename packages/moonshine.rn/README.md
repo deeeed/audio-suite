@@ -1,17 +1,25 @@
 # `@siteed/moonshine.rn`
 
-React Native bindings for Moonshine on-device speech recognition, offline file
-transcription, streaming transcription, and intent recognition across iOS,
-Android, and web.
+[![Version](https://img.shields.io/npm/v/@siteed/moonshine.rn.svg)](https://www.npmjs.com/package/@siteed/moonshine.rn)
+[![Downloads](https://img.shields.io/npm/dt/@siteed/moonshine.rn.svg)](https://www.npmjs.com/package/@siteed/moonshine.rn)
+[![License](https://img.shields.io/npm/l/@siteed/moonshine.rn.svg)](https://www.npmjs.com/package/@siteed/moonshine.rn)
+[![GitHub stars](https://img.shields.io/github/stars/deeeed/audiolab.svg?style=social&label=Star)](https://github.com/deeeed/audiolab)
+
+**Give it a GitHub star, if you found this repo useful.**
+
+React Native bindings for Moonshine on-device speech recognition, offline
+transcription from decoded PCM, streaming transcription, and intent
+recognition across iOS, Android, and web.
 
 ## Highlights
 
-- Offline transcription and file-driven live streaming
+- Offline transcription from decoded PCM
+- Streaming transcription with incremental transcript events
 - Incremental transcript events during streaming and offline processing
 - Word timestamps when the required model assets are present
 - Intent recognizer support
 - Web backend built on `onnxruntime-web`
-- Typed API for explicit transcriber instances and singleton-style usage
+- Typed transcriber API with explicit cancellation support
 
 ## Install
 
@@ -47,13 +55,38 @@ const transcriber = await Moonshine.createTranscriberFromFiles({
   },
 });
 
-const controller = new AbortController();
 const result = await transcriber.transcribe({
+  input: samples,
+  sampleRate: 16000,
+});
+console.log(result.text);
+```
+
+### Cancel an in-flight offline transcription
+
+```ts
+const controller = new AbortController();
+
+const transcriptionPromise = transcriber.transcribe({
   input: samples,
   sampleRate: 16000,
   signal: controller.signal,
 });
-console.log(result.text);
+
+controller.abort();
+
+try {
+  await transcriptionPromise;
+} catch (error) {
+  if (
+    error &&
+    typeof error === 'object' &&
+    'code' in error &&
+    error.code === 'MOONSHINE_TRANSCRIPTION_CANCELLED'
+  ) {
+    console.log('Transcription cancelled');
+  }
+}
 ```
 
 ### Listen for incremental transcript events
@@ -103,8 +136,8 @@ const removeListener = transcriber.addListener((event) => {
 - `addAudio()` / `addAudioToStream()`
 - `transcribe({ input, sampleRate, signal? })`
 
-`transcribe(...)` accepts PCM samples (`number[]` or `Float32Array`) and a
-required `sampleRate`.
+`transcribe(...)` accepts decoded mono PCM samples (`number[]` or
+`Float32Array`) and a required `sampleRate`.
 
 This package intentionally stays at the transcription-wrapper layer. Decode
 files, URIs, and other container formats upstream before calling `transcribe`.

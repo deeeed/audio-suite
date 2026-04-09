@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { getMetroHost } from './metro-host.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.resolve(SCRIPT_DIR, '..', '..');
@@ -48,18 +49,6 @@ fs.mkdirSync(REPORT_DIR, { recursive: true });
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function getMetroHost() {
-  if (SERIAL.startsWith('emulator-')) {
-    return '10.0.2.2';
-  }
-
-  // This script always installs an adb reverse tunnel immediately before
-  // launching the Android dev client, so the launch URL must keep targeting
-  // the device loopback interface instead of a workstation-specific LAN/mDNS
-  // host.
-  return '127.0.0.1';
 }
 
 function run(command, args, { cwd = REPO_ROOT, parseJson = false, maxBuffer = 50 * 1024 * 1024 } = {}) {

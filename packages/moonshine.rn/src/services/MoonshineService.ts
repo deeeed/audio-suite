@@ -12,7 +12,6 @@ import {
 } from '../NativeMoonshine';
 import type {
   MoonshineAssetModelConfig,
-  MoonshineAbortSignal,
   MoonshineCancelTranscriptionResult,
   MoonshineCreateIntentRecognizerConfig,
   MoonshineInitializeResult,
@@ -25,22 +24,9 @@ import type {
   MoonshineTranscriptionResult,
   MoonshineTranscribeParams,
 } from '../types/interfaces';
-import { MOONSHINE_TRANSCRIPTION_CANCELLED_CODE } from '../types/interfaces';
+import { runWithAbortSignal } from './transcriptionCancellation';
 
 type MoonshineListener = (event: MoonshineTranscriptEvent) => void;
-
-function createMoonshineAbortError(reason?: unknown): Error & { code: string } {
-  const message =
-    reason instanceof Error
-      ? reason.message
-      : typeof reason === 'string'
-        ? reason
-        : 'Moonshine transcription cancelled';
-  const error = new Error(message) as Error & { code: string; name: string };
-  error.code = MOONSHINE_TRANSCRIPTION_CANCELLED_CODE;
-  error.name = 'AbortError';
-  return error;
-}
 export class MoonshineTranscriber {
   public constructor(
     private readonly service: MoonshineService,
@@ -491,10 +477,10 @@ export class MoonshineService {
     transcriberId: string,
     params: MoonshineTranscribeParams
   ): Promise<MoonshineTranscriptionResult> {
-    return this.withAbortSignal(
-      transcriberId,
-      params.signal,
-      async (): Promise<MoonshineTranscriptionResult> => {
+    return runWithAbortSignal({
+      cancel: () => this.cancelForTranscriber(transcriberId),
+      signal: params.signal,
+      run: async (): Promise<MoonshineTranscriptionResult> => {
         if (
           !Number.isFinite(params.sampleRate) ||
           (params.sampleRate ?? 0) <= 0
@@ -515,7 +501,7 @@ export class MoonshineService {
           }
         );
       }
-    );
+    });
   }
 
   public unregisterIntent(
@@ -549,48 +535,6 @@ export class MoonshineService {
       samples,
       options
     );
-  }
-
-  private async withAbortSignal<T>(
-    transcriberId: string,
-    signal: MoonshineAbortSignal | undefined,
-    run: () => Promise<T>
-  ): Promise<T> {
-    if (!signal) {
-      return run();
-    }
-
-    if (signal.aborted) {
-      throw createMoonshineAbortError(signal.reason);
-    }
-
-    let abortRequested = false;
-    const onAbort = () => {
-      if (abortRequested) {
-        return;
-      }
-      abortRequested = true;
-      this.cancelForTranscriber(transcriberId).catch(() => undefined);
-    };
-
-    signal.addEventListener?.('abort', onAbort, { once: true });
-    try {
-      return await run();
-    } catch (error) {
-      if (
-        abortRequested &&
-        error &&
-        typeof error === 'object' &&
-        'code' in error &&
-        (error as { code?: string }).code ===
-          MOONSHINE_TRANSCRIPTION_CANCELLED_CODE
-      ) {
-        throw createMoonshineAbortError(signal.reason);
-      }
-      throw error;
-    } finally {
-      signal.removeEventListener?.('abort', onAbort);
-    }
   }
 
   private ensureDefaultTranscriber(): MoonshineTranscriber {
