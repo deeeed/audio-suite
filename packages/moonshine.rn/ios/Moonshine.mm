@@ -322,6 +322,9 @@ void ThrowIfNegativeHandle(int32_t handle, NSString *operation) {
 @property(nonatomic, assign) int32_t handle;
 @property(nonatomic, assign) int32_t defaultStreamHandle;
 @property(nonatomic, assign) BOOL includeAudioDataInLines;
+@property(nonatomic, assign) BOOL offlineTranscriptionInFlight;
+@property(nonatomic, assign) BOOL offlineCancellationRequested;
+@property(nonatomic, assign) int32_t offlineTranscriptionStreamHandle;
 @property(nonatomic, strong) NSMutableSet<NSNumber *> *activeStreamHandles;
 @property(nonatomic, strong)
     NSMutableDictionary<NSNumber *, MoonshineStreamState *> *streamStates;
@@ -332,6 +335,9 @@ void ThrowIfNegativeHandle(int32_t handle, NSString *operation) {
   self = [super init];
   if (self) {
     _activeStreamHandles = [NSMutableSet set];
+    _offlineCancellationRequested = NO;
+    _offlineTranscriptionInFlight = NO;
+    _offlineTranscriptionStreamHandle = -1;
     _streamStates = [NSMutableDictionary dictionary];
   }
   return self;
@@ -913,6 +919,17 @@ RCT_EXPORT_METHOD(stopTranscriber:(NSString *)transcriberId
   }];
 }
 
+RCT_EXPORT_METHOD(cancelCurrentTranscriptionForTranscriber:(NSString *)transcriberId
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject) {
+  [self withTranscriber:transcriberId rejecter:reject block:^(__unused NSString *resolvedId, MoonshineTranscriberState *state) {
+    BOOL cancelled = [self requestOfflineTranscriptionCancellationForState:state];
+    NSMutableDictionary *result = [self successMap];
+    result[@"cancelled"] = @(cancelled);
+    resolve(result);
+  }];
+}
+
 RCT_EXPORT_METHOD(transcribeFromSamples:(nonnull NSNumber *)sampleRate
                   samples:(NSArray *)samples
                   options:(NSDictionary *)options
@@ -1405,6 +1422,50 @@ RCT_EXPORT_METHOD(unregisterIntent:(NSString *)intentRecognizerId
   return YES;
 }
 
+- (BOOL)beginOfflineTranscriptionForState:(MoonshineTranscriberState *)state
+                              streamHandle:(int32_t)streamHandle {
+  @synchronized(state) {
+    if (state.offlineTranscriptionInFlight) {
+      return NO;
+    }
+    state.offlineTranscriptionInFlight = YES;
+    state.offlineCancellationRequested = NO;
+    state.offlineTranscriptionStreamHandle = streamHandle;
+    return YES;
+  }
+}
+
+- (void)clearOfflineTranscriptionForState:(MoonshineTranscriberState *)state
+                              streamHandle:(int32_t)streamHandle {
+  @synchronized(state) {
+    if (state.offlineTranscriptionStreamHandle != streamHandle) {
+      return;
+    }
+    state.offlineCancellationRequested = NO;
+    state.offlineTranscriptionInFlight = NO;
+    state.offlineTranscriptionStreamHandle = -1;
+  }
+}
+
+- (BOOL)isOfflineTranscriptionCancellationRequestedForState:(MoonshineTranscriberState *)state
+                                                streamHandle:(int32_t)streamHandle {
+  @synchronized(state) {
+    return state.offlineTranscriptionInFlight &&
+        state.offlineTranscriptionStreamHandle == streamHandle &&
+        state.offlineCancellationRequested;
+  }
+}
+
+- (BOOL)requestOfflineTranscriptionCancellationForState:(MoonshineTranscriberState *)state {
+  @synchronized(state) {
+    if (!state.offlineTranscriptionInFlight || state.offlineTranscriptionStreamHandle < 0) {
+      return NO;
+    }
+    state.offlineCancellationRequested = YES;
+    return YES;
+  }
+}
+
 - (int32_t)resolveIntentModelArch:(NSDictionary *)config {
   id rawValue = config[@"modelArch"];
   if (rawValue == nil || rawValue == (id)kCFNull) {
@@ -1476,6 +1537,21 @@ RCT_EXPORT_METHOD(unregisterIntent:(NSString *)intentRecognizerId
   };
 }
 
+- (void)cleanupOfflineTemporaryStreamForState:(MoonshineTranscriberState *)state
+                                 streamHandle:(int32_t)streamHandle {
+  [self clearOfflineTranscriptionForState:state streamHandle:streamHandle];
+  @try {
+    moonshine_stop_stream(state.handle, streamHandle);
+  } @catch (...) {
+  }
+  @try {
+    moonshine_free_stream(state.handle, streamHandle);
+  } @catch (...) {
+  }
+  [state.activeStreamHandles removeObject:@(streamHandle)];
+  [state.streamStates removeObjectForKey:@(streamHandle)];
+}
+
 - (void)transcribeFromSamplesInternalForTranscriber:(NSString *)transcriberId
                                               state:(MoonshineTranscriberState *)state
                                          sampleRate:(int32_t)sampleRate
@@ -1484,42 +1560,77 @@ RCT_EXPORT_METHOD(unregisterIntent:(NSString *)intentRecognizerId
                                            resolver:(RCTPromiseResolveBlock)resolve
                                            rejecter:(RCTPromiseRejectBlock)reject {
   NSNumber *chunkDurationValue = NumberFromValue(options[@"chunkDurationMs"]);
-  int32_t temporaryStreamHandle = -1;
   @try {
-    auto audio = FloatVectorFromArray(samples);
     int chunkDurationMs = chunkDurationValue != nil ? MAX(chunkDurationValue.intValue, 1) : 200;
-    temporaryStreamHandle = moonshine_create_stream(state.handle, 0);
+    int32_t temporaryStreamHandle = moonshine_create_stream(state.handle, 0);
     ThrowIfNegativeHandle(temporaryStreamHandle, @"create stream");
     [state.activeStreamHandles addObject:@(temporaryStreamHandle)];
     [self registerStreamStateForTranscriberState:state streamHandle:temporaryStreamHandle];
+    if (![self beginOfflineTranscriptionForState:state streamHandle:temporaryStreamHandle]) {
+      [self cleanupOfflineTemporaryStreamForState:state streamHandle:temporaryStreamHandle];
+      ThrowNSError([NSString stringWithFormat:
+          @"Moonshine offline transcription is already running for transcriber %@", transcriberId]);
+    }
     ThrowIfMoonshineError(moonshine_start_stream(state.handle, temporaryStreamHandle), @"start stream");
 
-    int samplesPerChunk = MAX((int)((sampleRate * chunkDurationMs) / 1000.0), 1);
-    for (size_t startIndex = 0; startIndex < audio.size(); startIndex += samplesPerChunk) {
-      size_t endIndex = MIN(startIndex + (size_t)samplesPerChunk, audio.size());
-      NSMutableArray<NSNumber *> *chunkArray = [NSMutableArray arrayWithCapacity:endIndex - startIndex];
-      for (size_t index = startIndex; index < endIndex; index += 1) {
-        [chunkArray addObject:@(audio[index])];
+    NSUInteger samplesPerChunk = (NSUInteger)MAX((int)((sampleRate * chunkDurationMs) / 1000.0), 1);
+    __weak typeof(self) weakSelf = self;
+    __block NSUInteger startIndex = 0;
+    __block void (^processNextChunk)(void);
+    processNextChunk = ^{
+      __strong typeof(weakSelf) strongSelf = weakSelf;
+      if (strongSelf == nil) {
+        return;
       }
-      [self addAudioToTrackedStreamForTranscriber:transcriberId
-                                            state:state
-                                       streamHandle:temporaryStreamHandle
-                                        sampleRate:sampleRate
-                                            samples:chunkArray];
-    }
-    [self stopAndFlushStreamForTranscriber:transcriberId state:state streamHandle:temporaryStreamHandle];
-    resolve([self buildTranscriptionResultForState:state streamHandle:temporaryStreamHandle]);
+
+      @try {
+        if ([strongSelf isOfflineTranscriptionCancellationRequestedForState:state
+                                                               streamHandle:temporaryStreamHandle]) {
+          [strongSelf emitEventWithType:@"transcriptionCancelled"
+                           transcriberId:transcriberId
+                              streamHandle:temporaryStreamHandle
+                                     state:state
+                                      line:nil
+                                     error:nil];
+          [strongSelf cleanupOfflineTemporaryStreamForState:state streamHandle:temporaryStreamHandle];
+          RejectPromiseWithError(
+              reject,
+              MoonshineNSError(
+                  [NSString stringWithFormat:@"Moonshine transcription cancelled for transcriber %@", transcriberId]),
+              @"MOONSHINE_TRANSCRIPTION_CANCELLED");
+          return;
+        }
+
+        if (startIndex >= samples.count) {
+          [strongSelf stopAndFlushStreamForTranscriber:transcriberId
+                                                 state:state
+                                            streamHandle:temporaryStreamHandle];
+          NSDictionary *result =
+              [strongSelf buildTranscriptionResultForState:state streamHandle:temporaryStreamHandle];
+          [strongSelf cleanupOfflineTemporaryStreamForState:state streamHandle:temporaryStreamHandle];
+          resolve(result);
+          return;
+        }
+
+        NSUInteger endIndex = MIN(startIndex + samplesPerChunk, samples.count);
+        NSArray *chunkArray = [samples subarrayWithRange:NSMakeRange(startIndex, endIndex - startIndex)];
+        [strongSelf addAudioToTrackedStreamForTranscriber:transcriberId
+                                                    state:state
+                                               streamHandle:temporaryStreamHandle
+                                                sampleRate:sampleRate
+                                                    samples:chunkArray];
+        startIndex = endIndex;
+        dispatch_async(strongSelf.moonshineQueue, processNextChunk);
+      } @catch (id exception) {
+        [strongSelf cleanupOfflineTemporaryStreamForState:state streamHandle:temporaryStreamHandle];
+        NSError *error = MoonshineNSErrorFromException(exception);
+        RejectPromiseWithError(reject, error, @"MOONSHINE_TRANSCRIBE_ERROR");
+      }
+    };
+
+    dispatch_async(self.moonshineQueue, processNextChunk);
   } @catch (id exception) {
     RejectPromiseWithError(reject, MoonshineNSErrorFromException(exception), @"MOONSHINE_TRANSCRIBE_ERROR");
-  } @finally {
-    if (temporaryStreamHandle >= 0) {
-      @try {
-        moonshine_free_stream(state.handle, temporaryStreamHandle);
-      } @catch (...) {
-      }
-      [state.activeStreamHandles removeObject:@(temporaryStreamHandle)];
-      [state.streamStates removeObjectForKey:@(temporaryStreamHandle)];
-    }
   }
 }
 

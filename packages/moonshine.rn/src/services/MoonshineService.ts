@@ -12,18 +12,35 @@ import {
 } from '../NativeMoonshine';
 import type {
   MoonshineAssetModelConfig,
+  MoonshineAbortSignal,
+  MoonshineCancelTranscriptionResult,
   MoonshineCreateIntentRecognizerConfig,
   MoonshineInitializeResult,
   MoonshineMemoryModelConfig,
   MoonshineModelConfig,
+  MoonshinePcmTranscribeOptions,
   MoonshinePlatformStatus,
   MoonshineProcessUtteranceResult,
   MoonshineTranscriptEvent,
   MoonshineTranscriptionResult,
-  MoonshineTranscribeOptions,
+  MoonshineTranscribeParams,
 } from '../types/interfaces';
+import { MOONSHINE_TRANSCRIPTION_CANCELLED_CODE } from '../types/interfaces';
 
 type MoonshineListener = (event: MoonshineTranscriptEvent) => void;
+
+function createMoonshineAbortError(reason?: unknown): Error & { code: string } {
+  const message =
+    reason instanceof Error
+      ? reason.message
+      : typeof reason === 'string'
+        ? reason
+        : 'Moonshine transcription cancelled';
+  const error = new Error(message) as Error & { code: string; name: string };
+  error.code = MOONSHINE_TRANSCRIPTION_CANCELLED_CODE;
+  error.name = 'AbortError';
+  return error;
+}
 export class MoonshineTranscriber {
   public constructor(
     private readonly service: MoonshineService,
@@ -66,6 +83,10 @@ export class MoonshineTranscriber {
     return this.service.createStreamForTranscriber(this.transcriberId);
   }
 
+  public cancel(): Promise<MoonshineCancelTranscriptionResult> {
+    return this.service.cancelForTranscriber(this.transcriberId);
+  }
+
   public release(): Promise<{ released: boolean }> {
     return this.service.releaseTranscriber(this.transcriberId);
   }
@@ -93,28 +114,10 @@ export class MoonshineTranscriber {
     return this.service.stopStreamForTranscriber(this.transcriberId, streamId);
   }
 
-  public transcribeFromSamples(
-    sampleRate: number,
-    samples: number[],
-    options?: MoonshineTranscribeOptions
+  public transcribe(
+    params: MoonshineTranscribeParams
   ): Promise<MoonshineTranscriptionResult> {
-    return this.service.transcribeFromSamplesForTranscriber(
-      this.transcriberId,
-      sampleRate,
-      samples,
-      options
-    );
-  }
-
-  public transcribeWithoutStreaming(
-    sampleRate: number,
-    samples: number[]
-  ): Promise<MoonshineTranscriptionResult> {
-    return this.service.transcribeWithoutStreamingForTranscriber(
-      this.transcriberId,
-      sampleRate,
-      samples
-    );
+    return this.service.transcribeForTranscriber(this.transcriberId, params);
   }
 }
 
@@ -229,6 +232,18 @@ export class MoonshineService {
     intentRecognizerId: string
   ): Promise<{ success: boolean }> {
     return requireNativeMoonshineModule().clearIntents(intentRecognizerId);
+  }
+
+  public async cancel(): Promise<MoonshineCancelTranscriptionResult> {
+    return this.ensureDefaultTranscriber().cancel();
+  }
+
+  public cancelForTranscriber(
+    transcriberId: string
+  ): Promise<MoonshineCancelTranscriptionResult> {
+    return requireNativeMoonshineModule().cancelCurrentTranscriptionForTranscriber(
+      transcriberId
+    );
   }
 
   public async createIntentRecognizer(
@@ -466,51 +481,40 @@ export class MoonshineService {
     );
   }
 
-  public async transcribeFromSamples(
-    sampleRate: number,
-    samples: number[],
-    options?: MoonshineTranscribeOptions
+  public async transcribe(
+    params: MoonshineTranscribeParams
   ): Promise<MoonshineTranscriptionResult> {
-    return this.ensureDefaultTranscriber().transcribeFromSamples(
-      sampleRate,
-      samples,
-      options
-    );
+    return this.ensureDefaultTranscriber().transcribe(params);
   }
 
-  public transcribeFromSamplesForTranscriber(
+  public async transcribeForTranscriber(
     transcriberId: string,
-    sampleRate: number,
-    samples: number[],
-    options?: MoonshineTranscribeOptions
+    params: MoonshineTranscribeParams
   ): Promise<MoonshineTranscriptionResult> {
-    return requireNativeMoonshineModule().transcribeFromSamplesForTranscriber(
+    return this.withAbortSignal(
       transcriberId,
-      sampleRate,
-      samples,
-      options
-    );
-  }
+      params.signal,
+      async (): Promise<MoonshineTranscriptionResult> => {
+        if (
+          !Number.isFinite(params.sampleRate) ||
+          (params.sampleRate ?? 0) <= 0
+        ) {
+          throw new Error(
+            'Moonshine transcribe({ input, sampleRate }) requires a positive sampleRate'
+          );
+        }
 
-  public async transcribeWithoutStreaming(
-    sampleRate: number,
-    samples: number[]
-  ): Promise<MoonshineTranscriptionResult> {
-    return this.ensureDefaultTranscriber().transcribeWithoutStreaming(
-      sampleRate,
-      samples
-    );
-  }
-
-  public transcribeWithoutStreamingForTranscriber(
-    transcriberId: string,
-    sampleRate: number,
-    samples: number[]
-  ): Promise<MoonshineTranscriptionResult> {
-    return requireNativeMoonshineModule().transcribeWithoutStreamingForTranscriber(
-      transcriberId,
-      sampleRate,
-      samples
+        return this.transcribePcmForTranscriber(
+          transcriberId,
+          params.sampleRate,
+          params.input instanceof Float32Array
+            ? Array.from(params.input)
+            : params.input,
+          {
+            chunkDurationMs: params.chunkDurationMs,
+          }
+        );
+      }
     );
   }
 
@@ -531,6 +535,62 @@ export class MoonshineService {
       throw new Error(result.error || 'Failed to create Moonshine transcriber');
     }
     return new MoonshineTranscriber(this, result.transcriberId);
+  }
+
+  private transcribePcmForTranscriber(
+    transcriberId: string,
+    sampleRate: number,
+    samples: number[],
+    options?: MoonshinePcmTranscribeOptions
+  ): Promise<MoonshineTranscriptionResult> {
+    return requireNativeMoonshineModule().transcribeFromSamplesForTranscriber(
+      transcriberId,
+      sampleRate,
+      samples,
+      options
+    );
+  }
+
+  private async withAbortSignal<T>(
+    transcriberId: string,
+    signal: MoonshineAbortSignal | undefined,
+    run: () => Promise<T>
+  ): Promise<T> {
+    if (!signal) {
+      return run();
+    }
+
+    if (signal.aborted) {
+      throw createMoonshineAbortError(signal.reason);
+    }
+
+    let abortRequested = false;
+    const onAbort = () => {
+      if (abortRequested) {
+        return;
+      }
+      abortRequested = true;
+      this.cancelForTranscriber(transcriberId).catch(() => undefined);
+    };
+
+    signal.addEventListener?.('abort', onAbort, { once: true });
+    try {
+      return await run();
+    } catch (error) {
+      if (
+        abortRequested &&
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        (error as { code?: string }).code ===
+          MOONSHINE_TRANSCRIPTION_CANCELLED_CODE
+      ) {
+        throw createMoonshineAbortError(signal.reason);
+      }
+      throw error;
+    } finally {
+      signal.removeEventListener?.('abort', onAbort);
+    }
   }
 
   private ensureDefaultTranscriber(): MoonshineTranscriber {

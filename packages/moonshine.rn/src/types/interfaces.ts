@@ -13,7 +13,11 @@ export type MoonshineTranscriptEventType =
   | 'lineUpdated'
   | 'lineTextChanged'
   | 'lineCompleted'
+  | 'transcriptionCancelled'
   | 'error';
+
+export const MOONSHINE_TRANSCRIPTION_CANCELLED_CODE =
+  'MOONSHINE_TRANSCRIPTION_CANCELLED';
 
 export interface MoonshineModelOptions {
   identifySpeakers?: boolean;
@@ -127,16 +131,43 @@ export interface MoonshineTranscriptEvent {
   transcriberId: string;
 }
 
+export interface MoonshineCancelTranscriptionResult {
+  cancelled: boolean;
+  success: boolean;
+}
+
 export interface MoonshineTranscriptionResult {
   lines: MoonshineTranscriptLine[];
   text: string;
 }
 
-export interface MoonshineTranscribeOptions {
-  // The current React Native path streams PCM as number[] over the bridge.
+export interface MoonshineAbortSignal {
+  aborted: boolean;
+  addEventListener?: (
+    type: 'abort',
+    listener: () => void,
+    options?: { once?: boolean } | boolean
+  ) => void;
+  removeEventListener?: (type: 'abort', listener: () => void) => void;
+  reason?: unknown;
+}
+
+export type MoonshineTranscriptionInput = number[] | Float32Array;
+
+export interface MoonshinePcmTranscribeOptions {
+  // PCM is currently transported as number[] over the React Native bridge.
   // Keep chunks reasonably small (roughly 100-250ms) until a JSI/ArrayBuffer
-  // transport exists.
+  // path exists.
   chunkDurationMs?: number;
+}
+
+// moonshine.rn stays intentionally narrow: callers provide decoded mono PCM,
+// while file/URI decoding and resampling live in higher-level audio utilities.
+export interface MoonshineTranscribeParams
+  extends MoonshinePcmTranscribeOptions {
+  input: MoonshineTranscriptionInput;
+  sampleRate: number;
+  signal?: MoonshineAbortSignal;
 }
 
 export interface MoonshinePlatformStatus {

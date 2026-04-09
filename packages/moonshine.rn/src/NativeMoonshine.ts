@@ -2,13 +2,14 @@ import { NativeModules, Platform } from 'react-native';
 import type {
   MoonshineCreateIntentRecognizerConfig,
   MoonshineAssetModelConfig,
+  MoonshineCancelTranscriptionResult,
   MoonshineInitializeResult,
   MoonshineIntentRecognizerResult,
   MoonshineMemoryModelConfig,
   MoonshineModelConfig,
   MoonshineProcessUtteranceResult,
   MoonshineTranscriptionResult,
-  MoonshineTranscribeOptions,
+  MoonshinePcmTranscribeOptions,
 } from './types/interfaces';
 
 export interface NativeMoonshineModule {
@@ -50,6 +51,9 @@ export interface NativeMoonshineModule {
   createStreamForTranscriber(
     transcriberId: string
   ): Promise<{ streamId: string; success: boolean }>;
+  cancelCurrentTranscriptionForTranscriber(
+    transcriberId: string
+  ): Promise<MoonshineCancelTranscriptionResult>;
   errorToString(code: number): Promise<string>;
   getIntentCount(intentRecognizerId: string): Promise<number>;
   getIntentThreshold(intentRecognizerId: string): Promise<number>;
@@ -104,13 +108,13 @@ export interface NativeMoonshineModule {
   transcribeFromSamples(
     sampleRate: number,
     samples: number[],
-    options?: MoonshineTranscribeOptions
+    options?: MoonshinePcmTranscribeOptions
   ): Promise<MoonshineTranscriptionResult>;
   transcribeFromSamplesForTranscriber(
     transcriberId: string,
     sampleRate: number,
     samples: number[],
-    options?: MoonshineTranscribeOptions
+    options?: MoonshinePcmTranscribeOptions
   ): Promise<MoonshineTranscriptionResult>;
   transcribeWithoutStreaming(
     sampleRate: number,

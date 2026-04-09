@@ -47,10 +47,12 @@ const transcriber = await Moonshine.createTranscriberFromFiles({
   },
 });
 
-const result = await transcriber.transcribeWithoutStreaming(
-  sampleRate,
-  samples
-);
+const controller = new AbortController();
+const result = await transcriber.transcribe({
+  input: samples,
+  sampleRate: 16000,
+  signal: controller.signal,
+});
 console.log(result.text);
 ```
 
@@ -64,6 +66,9 @@ const removeListener = transcriber.addListener((event) => {
     case 'lineTextChanged':
     case 'lineCompleted':
       console.log(event.line);
+      break;
+    case 'transcriptionCancelled':
+      console.warn('Transcription cancelled');
       break;
     case 'error':
       console.error(event.error);
@@ -92,11 +97,24 @@ const removeListener = transcriber.addListener((event) => {
 ### Transcription
 
 - `start()` / `stop()`
+- `cancel()`
 - `createStream()` / `removeStream()`
 - `startStream()` / `stopStream()`
 - `addAudio()` / `addAudioToStream()`
-- `transcribeFromSamples()`
-- `transcribeWithoutStreaming()`
+- `transcribe({ input, sampleRate, signal? })`
+
+`transcribe(...)` accepts PCM samples (`number[]` or `Float32Array`) and a
+required `sampleRate`.
+
+This package intentionally stays at the transcription-wrapper layer. Decode
+files, URIs, and other container formats upstream before calling `transcribe`.
+In this monorepo, that responsibility belongs in audio-processing utilities
+such as `audio-studio`, not inside `moonshine.rn`.
+
+Offline transcription cancellation rejects the in-flight promise with
+`MOONSHINE_TRANSCRIPTION_CANCELLED`, surfaces as an `AbortError`-style
+rejection, and emits a terminal `transcriptionCancelled` event instead of
+returning a partial success result.
 
 ### Intent recognition
 

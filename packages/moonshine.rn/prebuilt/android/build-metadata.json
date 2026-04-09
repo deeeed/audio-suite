@@ -1,9 +1,9 @@
 {
   "moonshineVersion": "v0.0.51",
   "androidAbis": "arm64-v8a",
-  "onnxRuntimeVersionHint": "1.23.0",
-  "onnxRuntimeLibPathOverride": "[external override]",
-  "onnxRuntimeIncludeDirOverride": "third_party/moonshine/core/third-party/onnxruntime/include",
+  "onnxRuntimeVersionHint": "upstream-bundled",
+  "onnxRuntimeLibPathOverride": "",
+  "onnxRuntimeIncludeDirOverride": "",
   "arm64ImportedOrtSymbolVersion": "1.23.0",
   "arm64PackagedOrtSymbolVersion": "1.23.0"
 }
