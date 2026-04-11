@@ -382,7 +382,13 @@ class AudioStudioModule : Module(), EventSender {
                 val endTimeMs = (options["endTimeMs"] as? Number)?.toLong()
                 
                 @Suppress("UNCHECKED_CAST")
-                val ranges = options["ranges"] as? List<Map<String, Long>>
+                val rawRanges = options["ranges"] as? List<Map<String, Any>>
+                val ranges = rawRanges?.map { range ->
+                    mapOf(
+                        "startTimeMs" to ((range["startTimeMs"] as? Number)?.toLong() ?: 0L),
+                        "endTimeMs" to ((range["endTimeMs"] as? Number)?.toLong() ?: 0L)
+                    )
+                }
                 
                 val outputFileName = options["outputFileName"] as? String
                 
