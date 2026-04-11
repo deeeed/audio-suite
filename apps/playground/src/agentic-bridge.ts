@@ -1214,14 +1214,23 @@ if (__DEV__) {
             void (async () => {
                 try {
                     const fileUri = await loadSampleFileUri()
-                    const result = await trimAudio({ fileUri, startTimeMs: 0, endTimeMs: 5000 })
+                    // Test 1: single mode
+                    const result1 = await trimAudio({ fileUri, startTimeMs: 0, endTimeMs: 5000 })
+                    // Test 2: keep mode with ranges (validates fix for #347)
+                    const result2 = await trimAudio({
+                        fileUri,
+                        mode: 'keep',
+                        ranges: [
+                            { startTimeMs: 0, endTimeMs: 2000 },
+                            { startTimeMs: 3000, endTimeMs: 5000 },
+                        ],
+                    })
                     _lastAsyncResult = {
                         op,
                         status: 'success',
                         result: {
-                            uri: result.uri,
-                            durationMs: result.durationMs,
-                            size: result.size,
+                            single: { uri: result1.uri, durationMs: result1.durationMs, size: result1.size },
+                            keepRanges: { uri: result2.uri, durationMs: result2.durationMs, size: result2.size },
                         },
                     }
                 } catch (e) {
