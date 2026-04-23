@@ -830,16 +830,13 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             return false
         }
 
-        // Reset audio session before preparing new recording
+        // Deactivate the session to ensure a clean state before reconfiguring.
+        // The session will be activated once after configureAudioSession below.
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setActive(false, options: .notifyOthersOnDeactivation)
-            Thread.sleep(forTimeInterval: 0.1) // Brief pause to ensure clean state
-            try session.setActive(true, options: .notifyOthersOnDeactivation)
         } catch {
-            Logger.debug("AudioStreamManager", "Failed to reset audio session: \(error)")
-            delegate?.audioStreamManager(self, didFailWithError: "Failed to reset audio session: \(error.localizedDescription)")
-            return false
+            Logger.debug("AudioStreamManager", "Failed to deactivate audio session (non-fatal): \(error)")
         }
 
         // Update auto-resume preference from settings
@@ -943,7 +940,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
 
             recordingSettings = newSettings  // Keep original settings with desired sample rate
 
-            audioEngine.prepare() // Prepare the engine without starting it
+            // audioEngine.prepare() is already called inside installTapWithHardwareFormat()
             
             // Setup compressed recording if enabled
             if settings.output.compressed.enabled {

@@ -183,28 +183,24 @@ class AudioStudioModule : Module(), EventSender {
 
 
         AsyncFunction("prepareRecording") { options: Map<String, Any?>, promise: Promise ->
-            try {
-                // If notifications are requested but permission not in manifest, modify options
-                if (options["showNotification"] as? Boolean == true && !enableNotificationHandling) {
-                    val modifiedOptions = options.toMutableMap()
-                    modifiedOptions["showNotification"] = false
-                    LogUtils.d(CLASS_NAME, "Notification permission not in manifest, disabling showNotification")
-                    
-                    if (audioRecorderManager.prepareRecording(modifiedOptions)) {
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val opts = if (options["showNotification"] as? Boolean == true && !enableNotificationHandling) {
+                        LogUtils.d(CLASS_NAME, "Notification permission not in manifest, disabling showNotification")
+                        options.toMutableMap().apply { this["showNotification"] = false }
+                    } else {
+                        options
+                    }
+
+                    if (audioRecorderManager.prepareRecording(opts)) {
                         promise.resolve(true)
                     } else {
                         promise.reject("PREPARE_ERROR", "Failed to prepare recording", null)
                     }
-                } else {
-                    if (audioRecorderManager.prepareRecording(options)) {
-                        promise.resolve(true)
-                    } else {
-                        promise.reject("PREPARE_ERROR", "Failed to prepare recording", null)
-                    }
+                } catch (e: Exception) {
+                    LogUtils.e(CLASS_NAME, "Error preparing recording", e)
+                    promise.reject("PREPARE_ERROR", "Failed to prepare recording: ${e.message}", e)
                 }
-            } catch (e: Exception) {
-                LogUtils.e(CLASS_NAME, "Error preparing recording", e)
-                promise.reject("PREPARE_ERROR", "Failed to prepare recording: ${e.message}", e)
             }
         }
 

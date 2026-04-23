@@ -281,13 +281,15 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                 
                 switch settingsResult {
                 case .success(let settings):
-                    Logger.debug("AudioStudioModule", "prepareRecording: Settings parsed successfully. Calling streamManager.prepareRecording")
-                    if self.streamManager.prepareRecording(settings: settings) {
-                        Logger.info("AudioStudioModule", "prepareRecording: Preparation successful.")
-                        promise.resolve(true)
-                    } else {
-                        Logger.error("AudioStudioModule", "prepareRecording: streamManager.prepareRecording returned false.")
-                        promise.reject("ERROR", "Failed to prepare recording.")
+                    Logger.debug("AudioStudioModule", "prepareRecording: Settings parsed successfully. Dispatching to background queue.")
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        if self.streamManager.prepareRecording(settings: settings) {
+                            Logger.info("AudioStudioModule", "prepareRecording: Preparation successful.")
+                            promise.resolve(true)
+                        } else {
+                            Logger.error("AudioStudioModule", "prepareRecording: streamManager.prepareRecording returned false.")
+                            promise.reject("ERROR", "Failed to prepare recording.")
+                        }
                     }
                     
                 case .failure(let error):
