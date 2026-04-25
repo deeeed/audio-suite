@@ -65,6 +65,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
     internal var lastEmittedCompressedSize: Int64 = 0
     private var totalDataSize: Int64 = 0
     private var lastBufferTime: AVAudioTime?
+    /// Guarded by `accumulatedDataLock`.
     private var accumulatedData = Data()
 
     // Data emission for onAudioAnalysis
@@ -73,6 +74,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
     internal var lastEmittedCompressedSizeAnalysis: Int64 = 0
     private var totalDataSizeAnalysis: Int64 = 0
     private var lastBufferTimeAnalysis: AVAudioTime?
+    /// Guarded by `accumulatedDataLock`.
     private var accumulatedAnalysisData = Data()
 
     // Guards accumulatedData and accumulatedAnalysisData. The audio tap
@@ -1056,19 +1058,10 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             Logger.debug("AudioStreamManager", "AudioProcessor activated successfully.")
         }
         
-        // Prepare notifications if enabled but don't show yet.
-        // initializeNotifications schedules a Timer on the current thread's
-        // RunLoop; prepareRecording runs on audioLifecycleQueue which has
-        // no running RunLoop, so the work has to land on main.
-        //
-        // Use .sync (with a Thread.isMainThread fast path) so the manager
-        // exists before prepareRecording returns. The direct-start path —
-        // startRecording calling prepareRecording recursively on the same
-        // audioLifecycleQueue and then continuing on to notificationManager?.
-        // startUpdates(...) without ever yielding to main — would otherwise
-        // see a nil manager and silently skip notification updates.
-        // No deadlock: the dispatch architecture never blocks main waiting
-        // on audioLifecycleQueue.
+        // initializeNotifications schedules a Timer that needs main's RunLoop,
+        // and notificationManager must exist before prepareRecording returns
+        // (the recursive startRecording → prepareRecording path uses it
+        // immediately). .sync is safe: nothing on main blocks on audioLifecycleQueue.
         if settings.showNotification {
             if Thread.isMainThread {
                 initializeNotifications()
