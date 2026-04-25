@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+## [3.0.4] - 2026-04-25
+### Changed
+- fix(audio-studio): move module ops off main thread + fix iOS stop crash (#363) ([1a07d2d](https://github.com/deeeed/audiolab/commit/1a07d2d9222bfac1083b00d6de992fcb2a3be42d))
+- chore(audio-studio): release @siteed/audio-studio@3.0.3 ([9d4d14e](https://github.com/deeeed/audiolab/commit/9d4d14e8dffd4378a71f2d3dfb5d7140b8248c0f))
+- fix(audio-studio): convert trim ranges from Double to Long on Android (#347) (#360) ([6099e0e](https://github.com/deeeed/audiolab/commit/6099e0e81f3c8d7b1c109b415ad63e924f3f043b))
+- feat(audio-studio): web trimAudio, WASM refactor, new utilities (#344) ([3d4862a](https://github.com/deeeed/audiolab/commit/3d4862a57a5eb2496169d27f758d7628d7d3659a))
+- feat(sherpa-voice): comprehensive logging + fix Android prod model extraction (#342) ([5b20594](https://github.com/deeeed/audiolab/commit/5b20594c729a9deb703cbc2e23c07daa616149ab))
+- fix(audio-studio): remove blocking CDN poll from publish.sh, sync wasmConfig to 3.0.2 ([290409a](https://github.com/deeeed/audiolab/commit/290409aae8d1160e1952a5ee1961ce3864fbb0c8))
+- chore(audio-studio): release @siteed/audio-studio@3.0.2 ([ebd3300](https://github.com/deeeed/audiolab/commit/ebd330098d2756e6d5a555126e2dfc3fb038d155))
 ## [3.0.3] - 2026-04-12
 ### Changed
 - fix(audio-studio): convert trim ranges from Double to Long on Android (#347) (#360) ([6099e0e](https://github.com/deeeed/audiolab/commit/6099e0e81f3c8d7b1c109b415ad63e924f3f043b))
@@ -335,7 +344,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Audio features extraction during recording
 - Consistent WAV PCM recording format across all platforms
 
-[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.0.3...HEAD
+[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.0.4...HEAD
+[3.0.4]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.0.3...@siteed/audio-studio@3.0.4
 [3.0.3]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.0.2...@siteed/audio-studio@3.0.3
 [3.0.2]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.0.2-beta.2...@siteed/audio-studio@3.0.2
 [3.0.1]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.0.0...@siteed/audio-studio@3.0.1
