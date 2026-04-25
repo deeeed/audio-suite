@@ -16,6 +16,8 @@ import expo.modules.interfaces.permissions.Permissions
 import java.util.zip.CRC32
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -31,7 +33,7 @@ class AudioStudioModule : Module(), EventSender {
     private var enableNotificationHandling: Boolean = false // Default to false until we check manifest
     private var enableBackgroundAudio: Boolean = false // Default to false until we check manifest
     private var enableDeviceDetection: Boolean = false // Default to false until we check manifest
-    private val coroutineScope = CoroutineScope(Dispatchers.Main)
+    private val coroutineScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private val audioFileHandler by lazy { 
         AudioFileHandler(appContext.reactContext?.filesDir ?: throw IllegalStateException("React context not available")) 
@@ -183,28 +185,27 @@ class AudioStudioModule : Module(), EventSender {
 
 
         AsyncFunction("prepareRecording") { options: Map<String, Any?>, promise: Promise ->
-            try {
-                // If notifications are requested but permission not in manifest, modify options
-                if (options["showNotification"] as? Boolean == true && !enableNotificationHandling) {
-                    val modifiedOptions = options.toMutableMap()
-                    modifiedOptions["showNotification"] = false
-                    LogUtils.d(CLASS_NAME, "Notification permission not in manifest, disabling showNotification")
-                    
-                    if (audioRecorderManager.prepareRecording(modifiedOptions)) {
+            // Heavy native init (AudioRecord probe, MediaRecorder.prepare, file I/O)
+            // must run off the main thread to keep the JS/UI thread responsive.
+            // Module-scoped Job ensures cancellation on module destroy.
+            coroutineScope.launch(Dispatchers.IO) {
+                try {
+                    val opts = if (options["showNotification"] as? Boolean == true && !enableNotificationHandling) {
+                        LogUtils.d(CLASS_NAME, "Notification permission not in manifest, disabling showNotification")
+                        options.toMutableMap().apply { this["showNotification"] = false }
+                    } else {
+                        options
+                    }
+
+                    if (audioRecorderManager.prepareRecording(opts)) {
                         promise.resolve(true)
                     } else {
                         promise.reject("PREPARE_ERROR", "Failed to prepare recording", null)
                     }
-                } else {
-                    if (audioRecorderManager.prepareRecording(options)) {
-                        promise.resolve(true)
-                    } else {
-                        promise.reject("PREPARE_ERROR", "Failed to prepare recording", null)
-                    }
+                } catch (e: Exception) {
+                    LogUtils.e(CLASS_NAME, "Error preparing recording", e)
+                    promise.reject("PREPARE_ERROR", "Failed to prepare recording: ${e.message}", e)
                 }
-            } catch (e: Exception) {
-                LogUtils.e(CLASS_NAME, "Error preparing recording", e)
-                promise.reject("PREPARE_ERROR", "Failed to prepare recording: ${e.message}", e)
             }
         }
 
@@ -368,287 +369,294 @@ class AudioStudioModule : Module(), EventSender {
         }
 
         AsyncFunction("trimAudio") { options: Map<String, Any>, promise: Promise ->
-            try {
-                val fileUri = options["fileUri"] as? String ?: run {
-                    promise.reject("INVALID_URI", "fileUri is required", null)
-                    return@AsyncFunction
-                }
+            // Trim does heavy decode/encode + file I/O — must run off the
+            // shared module executor so other JS calls don't queue behind it.
+            coroutineScope.launch(Dispatchers.IO) {
+                try {
+                    val fileUri = options["fileUri"] as? String ?: run {
+                        promise.reject("INVALID_URI", "fileUri is required", null)
+                        return@launch
+                    }
 
-                LogUtils.d(CLASS_NAME, "trimAudio called with fileUri: $fileUri")
-                LogUtils.d(CLASS_NAME, "Full options: $options")
+                    LogUtils.d(CLASS_NAME, "trimAudio called with fileUri: $fileUri")
+                    LogUtils.d(CLASS_NAME, "Full options: $options")
 
-                val mode = options["mode"] as? String ?: "single"
-                val startTimeMs = (options["startTimeMs"] as? Number)?.toLong()
-                val endTimeMs = (options["endTimeMs"] as? Number)?.toLong()
-                
-                @Suppress("UNCHECKED_CAST")
-                val rawRanges = options["ranges"] as? List<Map<String, Any>>
-                val ranges = rawRanges?.map { range ->
-                    mapOf(
-                        "startTimeMs" to ((range["startTimeMs"] as? Number)?.toLong() ?: 0L),
-                        "endTimeMs" to ((range["endTimeMs"] as? Number)?.toLong() ?: 0L)
+                    val mode = options["mode"] as? String ?: "single"
+                    val startTimeMs = (options["startTimeMs"] as? Number)?.toLong()
+                    val endTimeMs = (options["endTimeMs"] as? Number)?.toLong()
+
+                    @Suppress("UNCHECKED_CAST")
+                    val rawRanges = options["ranges"] as? List<Map<String, Any>>
+                    val ranges = rawRanges?.map { range ->
+                        mapOf(
+                            "startTimeMs" to ((range["startTimeMs"] as? Number)?.toLong() ?: 0L),
+                            "endTimeMs" to ((range["endTimeMs"] as? Number)?.toLong() ?: 0L)
+                        )
+                    }
+
+                    val outputFileName = options["outputFileName"] as? String
+
+                    @Suppress("UNCHECKED_CAST")
+                    var outputFormatMap = options["outputFormat"] as? Map<String, Any>
+
+                    if (outputFormatMap != null) {
+                        val format = outputFormatMap["format"] as? String
+                        if (format != null && format != "wav" && format != "aac" && format != "opus") {
+                            LogUtils.w(CLASS_NAME, "Requested format '$format' is not fully supported. Using 'aac' instead.")
+                            val newOutputFormat = HashMap<String, Any>(outputFormatMap)
+                            newOutputFormat["format"] = "aac"
+                            outputFormatMap = newOutputFormat
+                        }
+                    }
+
+                    LogUtils.d(CLASS_NAME, "Output format options: $outputFormatMap")
+
+                    val progressListener = object : AudioTrimmer.ProgressListener {
+                        override fun onProgress(progress: Float, bytesProcessed: Long, totalBytes: Long) {
+                            sendEvent(Constants.TRIM_PROGRESS_EVENT, mapOf(
+                                "progress" to progress,
+                                "bytesProcessed" to bytesProcessed,
+                                "totalBytes" to totalBytes
+                            ))
+                        }
+                    }
+
+                    val startTime = System.currentTimeMillis()
+
+                    val result = audioTrimmer.trimAudio(
+                        fileUri = fileUri,
+                        mode = mode,
+                        startTimeMs = startTimeMs,
+                        endTimeMs = endTimeMs,
+                        ranges = ranges,
+                        outputFileName = outputFileName,
+                        outputFormat = outputFormatMap,
+                        progressListener = progressListener
                     )
+
+                    val processingTimeMs = System.currentTimeMillis() - startTime
+
+                    val resultWithProcessingTime = result.toMutableMap()
+                    resultWithProcessingTime["processingInfo"] = mapOf(
+                        "durationMs" to processingTimeMs
+                    )
+
+                    LogUtils.d(CLASS_NAME, "Trim operation completed successfully in ${processingTimeMs}ms: $result")
+                    promise.resolve(resultWithProcessingTime)
+                } catch (e: Exception) {
+                    LogUtils.e(CLASS_NAME, "Error trimming audio: ${e.message}", e)
+                    promise.reject("TRIM_ERROR", "Error trimming audio: ${e.message}", e)
                 }
-                
-                val outputFileName = options["outputFileName"] as? String
-                
-                @Suppress("UNCHECKED_CAST")
-                var outputFormatMap = options["outputFormat"] as? Map<String, Any>
-                
-                // Validate output format if provided
-                if (outputFormatMap != null) {
-                    val format = outputFormatMap["format"] as? String
-                    if (format != null && format != "wav" && format != "aac" && format != "opus") {
-                        LogUtils.w(CLASS_NAME, "Requested format '$format' is not fully supported. Using 'aac' instead.")
-                        // Create a new map with the corrected format
-                        val newOutputFormat = HashMap<String, Any>(outputFormatMap)
-                        newOutputFormat["format"] = "aac"
-                        outputFormatMap = newOutputFormat
-                    }
-                }
-                
-                LogUtils.d(CLASS_NAME, "Output format options: $outputFormatMap")
-                
-                // Create progress listener
-                val progressListener = object : AudioTrimmer.ProgressListener {
-                    override fun onProgress(progress: Float, bytesProcessed: Long, totalBytes: Long) {
-                        sendEvent(Constants.TRIM_PROGRESS_EVENT, mapOf(
-                            "progress" to progress,
-                            "bytesProcessed" to bytesProcessed,
-                            "totalBytes" to totalBytes
-                        ))
-                    }
-                }
-
-                // Record start time
-                val startTime = System.currentTimeMillis()
-
-                // Perform the trim operation
-                val result = audioTrimmer.trimAudio(
-                    fileUri = fileUri,
-                    mode = mode,
-                    startTimeMs = startTimeMs,
-                    endTimeMs = endTimeMs,
-                    ranges = ranges,
-                    outputFileName = outputFileName,
-                    outputFormat = outputFormatMap,
-                    progressListener = progressListener
-                )
-
-                // Calculate processing time
-                val processingTimeMs = System.currentTimeMillis() - startTime
-                
-                // Add processing time to result
-                val resultWithProcessingTime = result.toMutableMap()
-                resultWithProcessingTime["processingInfo"] = mapOf(
-                    "durationMs" to processingTimeMs
-                )
-
-                LogUtils.d(CLASS_NAME, "Trim operation completed successfully in ${processingTimeMs}ms: $result")
-                promise.resolve(resultWithProcessingTime)
-            } catch (e: Exception) {
-                LogUtils.e(CLASS_NAME, "Error trimming audio: ${e.message}", e)
-                promise.reject("TRIM_ERROR", "Error trimming audio: ${e.message}", e)
             }
         }
 
         AsyncFunction("extractMelSpectrogram") { options: Map<String, Any>, promise: Promise ->
-            try {
-                // Log all incoming options for debugging
-                LogUtils.d(CLASS_NAME, "extractMelSpectrogram called with options: $options")
+            // Heavy DSP: file decode + STFT + mel projection. Off the shared
+            // module executor so other JS calls don't block.
+            coroutineScope.launch(Dispatchers.IO) {
+                try {
+                    LogUtils.d(CLASS_NAME, "extractMelSpectrogram called with options: $options")
                 
-                // Extract required parameters with detailed logging
-                val fileUri = options["fileUri"] as? String
-                LogUtils.d(CLASS_NAME, "fileUri: $fileUri")
-                if (fileUri == null) {
-                    LogUtils.e(CLASS_NAME, "Missing required parameter: fileUri")
-                    throw IllegalArgumentException("fileUri is required")
-                }
-                
-                val windowSizeMs = options["windowSizeMs"] as? Double
-                LogUtils.d(CLASS_NAME, "windowSizeMs: $windowSizeMs")
-                if (windowSizeMs == null) {
-                    LogUtils.e(CLASS_NAME, "Missing required parameter: windowSizeMs")
-                    throw IllegalArgumentException("windowSizeMs is required")
-                }
-                
-                val hopLengthMs = options["hopLengthMs"] as? Double
-                LogUtils.d(CLASS_NAME, "hopLengthMs: $hopLengthMs")
-                if (hopLengthMs == null) {
-                    LogUtils.e(CLASS_NAME, "Missing required parameter: hopLengthMs")
-                    throw IllegalArgumentException("hopLengthMs is required")
-                }
-                
-                // Handle nMels which might come as Double from JavaScript
-                val nMelsValue = options["nMels"]
-                LogUtils.d(CLASS_NAME, "Raw nMels value: $nMelsValue (type: ${nMelsValue?.javaClass?.name})")
-                
-                val nMels = when (nMelsValue) {
-                    is Int -> nMelsValue
-                    is Double -> nMelsValue.toInt()
-                    is Number -> nMelsValue.toInt()
-                    else -> {
-                        LogUtils.e(CLASS_NAME, "Missing or invalid required parameter: nMels")
-                        throw IllegalArgumentException("nMels is required and must be a number")
+                    // Extract required parameters with detailed logging
+                    val fileUri = options["fileUri"] as? String
+                    LogUtils.d(CLASS_NAME, "fileUri: $fileUri")
+                    if (fileUri == null) {
+                        LogUtils.e(CLASS_NAME, "Missing required parameter: fileUri")
+                        throw IllegalArgumentException("fileUri is required")
                     }
-                }
                 
-                LogUtils.d(CLASS_NAME, "Converted nMels: $nMels (from ${nMelsValue?.javaClass?.name})")
-
-                // Extract optional parameters with defaults
-                val fMin = options["fMin"] as? Double ?: 0.0
-                val fMax = options["fMax"] as? Double
-                val windowType = options["windowType"] as? String ?: "hann"
-                val normalize = options["normalize"] as? Boolean ?: false
-                val logScale = options["logScale"] as? Boolean ?: true
-                
-                // Fix the conversion from Number to Long to preserve decimal values
-                val startTimeMsNumber = options["startTimeMs"] as? Number
-                val endTimeMsNumber = options["endTimeMs"] as? Number
-                val startTimeMs = startTimeMsNumber?.toLong() ?: startTimeMsNumber?.toDouble()?.toLong()
-                val endTimeMs = endTimeMsNumber?.toLong() ?: endTimeMsNumber?.toDouble()?.toLong()
-
-                LogUtils.d(CLASS_NAME, """
-                    Optional parameters:
-                    - fMin: $fMin
-                    - fMax: $fMax
-                    - windowType: $windowType
-                    - normalize: $normalize
-                    - logScale: $logScale
-                    - startTimeMs: $startTimeMs (original: $startTimeMsNumber)
-                    - endTimeMs: $endTimeMs (original: $endTimeMsNumber)
-                """.trimIndent())
-
-                // Handle decoding options
-                val decodingOptions = options["decodingOptions"] as? Map<String, Any>
-                LogUtils.d(CLASS_NAME, "Decoding options: $decodingOptions")
-                
-                val config = decodingOptions?.let {
-                    val targetSampleRateValue = it["targetSampleRate"]
-                    val targetSampleRate = when (targetSampleRateValue) {
-                        is Int -> targetSampleRateValue
-                        is Double -> targetSampleRateValue.toInt()
-                        is Number -> targetSampleRateValue.toInt()
-                        else -> null
+                    val windowSizeMs = options["windowSizeMs"] as? Double
+                    LogUtils.d(CLASS_NAME, "windowSizeMs: $windowSizeMs")
+                    if (windowSizeMs == null) {
+                        LogUtils.e(CLASS_NAME, "Missing required parameter: windowSizeMs")
+                        throw IllegalArgumentException("windowSizeMs is required")
                     }
+                
+                    val hopLengthMs = options["hopLengthMs"] as? Double
+                    LogUtils.d(CLASS_NAME, "hopLengthMs: $hopLengthMs")
+                    if (hopLengthMs == null) {
+                        LogUtils.e(CLASS_NAME, "Missing required parameter: hopLengthMs")
+                        throw IllegalArgumentException("hopLengthMs is required")
+                    }
+                
+                    // Handle nMels which might come as Double from JavaScript
+                    val nMelsValue = options["nMels"]
+                    LogUtils.d(CLASS_NAME, "Raw nMels value: $nMelsValue (type: ${nMelsValue?.javaClass?.name})")
+                
+                    val nMels = when (nMelsValue) {
+                        is Int -> nMelsValue
+                        is Double -> nMelsValue.toInt()
+                        is Number -> nMelsValue.toInt()
+                        else -> {
+                            LogUtils.e(CLASS_NAME, "Missing or invalid required parameter: nMels")
+                            throw IllegalArgumentException("nMels is required and must be a number")
+                        }
+                    }
+                
+                    LogUtils.d(CLASS_NAME, "Converted nMels: $nMels (from ${nMelsValue?.javaClass?.name})")
+
+                    // Extract optional parameters with defaults
+                    val fMin = options["fMin"] as? Double ?: 0.0
+                    val fMax = options["fMax"] as? Double
+                    val windowType = options["windowType"] as? String ?: "hann"
+                    val normalize = options["normalize"] as? Boolean ?: false
+                    val logScale = options["logScale"] as? Boolean ?: true
+                
+                    // Fix the conversion from Number to Long to preserve decimal values
+                    val startTimeMsNumber = options["startTimeMs"] as? Number
+                    val endTimeMsNumber = options["endTimeMs"] as? Number
+                    val startTimeMs = startTimeMsNumber?.toLong() ?: startTimeMsNumber?.toDouble()?.toLong()
+                    val endTimeMs = endTimeMsNumber?.toLong() ?: endTimeMsNumber?.toDouble()?.toLong()
+
+                    LogUtils.d(CLASS_NAME, """
+                        Optional parameters:
+                        - fMin: $fMin
+                        - fMax: $fMax
+                        - windowType: $windowType
+                        - normalize: $normalize
+                        - logScale: $logScale
+                        - startTimeMs: $startTimeMs (original: $startTimeMsNumber)
+                        - endTimeMs: $endTimeMs (original: $endTimeMsNumber)
+                    """.trimIndent())
+
+                    // Handle decoding options
+                    val decodingOptions = options["decodingOptions"] as? Map<String, Any>
+                    LogUtils.d(CLASS_NAME, "Decoding options: $decodingOptions")
+                
+                    val config = decodingOptions?.let {
+                        val targetSampleRateValue = it["targetSampleRate"]
+                        val targetSampleRate = when (targetSampleRateValue) {
+                            is Int -> targetSampleRateValue
+                            is Double -> targetSampleRateValue.toInt()
+                            is Number -> targetSampleRateValue.toInt()
+                            else -> null
+                        }
                     
-                    val targetChannelsValue = it["targetChannels"]
-                    val targetChannels = when (targetChannelsValue) {
-                        is Int -> targetChannelsValue
-                        is Double -> targetChannelsValue.toInt()
-                        is Number -> targetChannelsValue.toInt()
-                        else -> 1
-                    }
+                        val targetChannelsValue = it["targetChannels"]
+                        val targetChannels = when (targetChannelsValue) {
+                            is Int -> targetChannelsValue
+                            is Double -> targetChannelsValue.toInt()
+                            is Number -> targetChannelsValue.toInt()
+                            else -> 1
+                        }
                     
-                    val targetBitDepthValue = it["targetBitDepth"]
-                    val targetBitDepth = when (targetBitDepthValue) {
-                        is Int -> targetBitDepthValue
-                        is Double -> targetBitDepthValue.toInt()
-                        is Number -> targetBitDepthValue.toInt()
-                        else -> 16
-                    }
+                        val targetBitDepthValue = it["targetBitDepth"]
+                        val targetBitDepth = when (targetBitDepthValue) {
+                            is Int -> targetBitDepthValue
+                            is Double -> targetBitDepthValue.toInt()
+                            is Number -> targetBitDepthValue.toInt()
+                            else -> 16
+                        }
                     
-                    val normalizeAudio = it["normalizeAudio"] as? Boolean ?: false
+                        val normalizeAudio = it["normalizeAudio"] as? Boolean ?: false
                     
-                    DecodingConfig(
-                        targetSampleRate = targetSampleRate,
-                        targetChannels = targetChannels,
-                        targetBitDepth = targetBitDepth,
-                        normalizeAudio = normalizeAudio
-                    ).also { config ->
-                        LogUtils.d(CLASS_NAME, """
-                            Using decoding config:
-                            - targetSampleRate: ${config.targetSampleRate ?: "original"}
-                            - targetChannels: ${config.targetChannels ?: "original"}
-                            - targetBitDepth: ${config.targetBitDepth}
-                            - normalizeAudio: ${config.normalizeAudio}
-                        """.trimIndent())
+                        DecodingConfig(
+                            targetSampleRate = targetSampleRate,
+                            targetChannels = targetChannels,
+                            targetBitDepth = targetBitDepth,
+                            normalizeAudio = normalizeAudio
+                        ).also { config ->
+                            LogUtils.d(CLASS_NAME, """
+                                Using decoding config:
+                                - targetSampleRate: ${config.targetSampleRate ?: "original"}
+                                - targetChannels: ${config.targetChannels ?: "original"}
+                                - targetBitDepth: ${config.targetBitDepth}
+                                - normalizeAudio: ${config.normalizeAudio}
+                            """.trimIndent())
+                        }
+                    } ?: DecodingConfig(targetSampleRate = null, targetChannels = 1, targetBitDepth = 16).also {
+                        LogUtils.d(CLASS_NAME, "Using default decoding config")
                     }
-                } ?: DecodingConfig(targetSampleRate = null, targetChannels = 1, targetBitDepth = 16).also {
-                    LogUtils.d(CLASS_NAME, "Using default decoding config")
-                }
 
-                // Check if the audio data is too short
-                if (startTimeMs != null && endTimeMs != null) {
-                    val durationMs = endTimeMs - startTimeMs
-                    LogUtils.d(CLASS_NAME, "Audio duration for spectrogram: $durationMs ms")
-                    if (durationMs < 25) {  // 25ms is minimum for a single window
-                        LogUtils.w(CLASS_NAME, "Audio duration is too short for spectrogram analysis: $durationMs ms")
-                        throw IllegalArgumentException("Audio duration must be at least 25ms for spectrogram analysis")
+                    // Check if the audio data is too short
+                    if (startTimeMs != null && endTimeMs != null) {
+                        val durationMs = endTimeMs - startTimeMs
+                        LogUtils.d(CLASS_NAME, "Audio duration for spectrogram: $durationMs ms")
+                        if (durationMs < 25) {  // 25ms is minimum for a single window
+                            LogUtils.w(CLASS_NAME, "Audio duration is too short for spectrogram analysis: $durationMs ms")
+                            throw IllegalArgumentException("Audio duration must be at least 25ms for spectrogram analysis")
+                        }
                     }
-                }
 
-                // Load audio data with optional time range
-                LogUtils.d(CLASS_NAME, "Loading audio data...")
-                val audioData = when {
-                    startTimeMs != null && endTimeMs != null -> {
-                        LogUtils.d(CLASS_NAME, "Loading audio range: $startTimeMs to $endTimeMs ms")
-                        audioProcessor.loadAudioRange(fileUri, startTimeMs, endTimeMs, config)
+                    // Load audio data with optional time range
+                    LogUtils.d(CLASS_NAME, "Loading audio data...")
+                    val audioData = when {
+                        startTimeMs != null && endTimeMs != null -> {
+                            LogUtils.d(CLASS_NAME, "Loading audio range: $startTimeMs to $endTimeMs ms")
+                            audioProcessor.loadAudioRange(fileUri, startTimeMs, endTimeMs, config)
+                        }
+                        else -> {
+                            LogUtils.d(CLASS_NAME, "Loading entire audio file")
+                            audioProcessor.loadAudioFromAnyFormat(fileUri, config)
+                        }
                     }
-                    else -> {
-                        LogUtils.d(CLASS_NAME, "Loading entire audio file")
-                        audioProcessor.loadAudioFromAnyFormat(fileUri, config)
-                    }
-                }
                 
-                if (audioData == null) {
-                    LogUtils.e(CLASS_NAME, "Failed to load audio data")
-                    throw IllegalStateException("Failed to load audio data")
-                }
+                    if (audioData == null) {
+                        LogUtils.e(CLASS_NAME, "Failed to load audio data")
+                        throw IllegalStateException("Failed to load audio data")
+                    }
                 
-                LogUtils.d(CLASS_NAME, """
-                    Audio data loaded successfully:
-                    - data size: ${audioData.data.size} bytes
-                    - sampleRate: ${audioData.sampleRate}
-                    - channels: ${audioData.channels}
-                    - bitDepth: ${audioData.bitDepth}
-                    - durationMs: ${audioData.durationMs}
-                """.trimIndent())
+                    LogUtils.d(CLASS_NAME, """
+                        Audio data loaded successfully:
+                        - data size: ${audioData.data.size} bytes
+                        - sampleRate: ${audioData.sampleRate}
+                        - channels: ${audioData.channels}
+                        - bitDepth: ${audioData.bitDepth}
+                        - durationMs: ${audioData.durationMs}
+                    """.trimIndent())
 
-                // Validate that we have enough audio data for processing
-                if (audioData.data.size == 0 || audioData.durationMs < windowSizeMs) {
-                    LogUtils.e(CLASS_NAME, "Audio data is too short for spectrogram analysis: ${audioData.durationMs}ms, data size: ${audioData.data.size} bytes")
-                    throw IllegalArgumentException(
-                        "Audio data is too short for spectrogram analysis. " +
-                        "Duration: ${audioData.durationMs}ms, minimum required: ${windowSizeMs}ms"
+                    // Validate that we have enough audio data for processing
+                    if (audioData.data.size == 0 || audioData.durationMs < windowSizeMs) {
+                        LogUtils.e(CLASS_NAME, "Audio data is too short for spectrogram analysis: ${audioData.durationMs}ms, data size: ${audioData.data.size} bytes")
+                        throw IllegalArgumentException(
+                            "Audio data is too short for spectrogram analysis. " +
+                            "Duration: ${audioData.durationMs}ms, minimum required: ${windowSizeMs}ms"
+                        )
+                    }
+
+                    // Compute mel-spectrogram
+                    LogUtils.d(CLASS_NAME, "Computing mel-spectrogram...")
+                    val spectrogramData = audioProcessor.extractMelSpectrogram(
+                        audioData = audioData,
+                        windowSizeMs = windowSizeMs.toFloat(),
+                        hopLengthMs = hopLengthMs.toFloat(),
+                        nMels = nMels,
+                        fMin = fMin.toFloat(),
+                        fMax = fMax?.toFloat() ?: (audioData.sampleRate.toFloat() / 2),
+                        normalize = normalize,
+                        logScaling = logScale,
+                        windowType = windowType
                     )
+                
+                    LogUtils.d(CLASS_NAME, "Mel-spectrogram computed successfully with ${spectrogramData.spectrogram.size} time steps")
+
+                    // Convert to map for React Native
+                    val result = mapOf(
+                        "spectrogram" to spectrogramData.spectrogram.map { it.toList() },
+                        "sampleRate" to audioData.sampleRate,
+                        "nMels" to nMels,
+                        "timeSteps" to spectrogramData.spectrogram.size,
+                        "durationMs" to audioData.durationMs
+                    )
+                
+                    LogUtils.d(CLASS_NAME, "Returning result with ${result["timeSteps"]} time steps and $nMels mel bands")
+                    promise.resolve(result)
+                } catch (e: Exception) {
+                    LogUtils.e(CLASS_NAME, "Failed to extract mel-spectrogram: ${e.message}")
+                    LogUtils.e(CLASS_NAME, "Stack trace: ${e.stackTraceToString()}")
+                    promise.reject("SPECTROGRAM_ERROR", e.message ?: "Unknown error", e)
                 }
-
-                // Compute mel-spectrogram
-                LogUtils.d(CLASS_NAME, "Computing mel-spectrogram...")
-                val spectrogramData = audioProcessor.extractMelSpectrogram(
-                    audioData = audioData,
-                    windowSizeMs = windowSizeMs.toFloat(),
-                    hopLengthMs = hopLengthMs.toFloat(),
-                    nMels = nMels,
-                    fMin = fMin.toFloat(),
-                    fMax = fMax?.toFloat() ?: (audioData.sampleRate.toFloat() / 2),
-                    normalize = normalize,
-                    logScaling = logScale,
-                    windowType = windowType
-                )
-                
-                LogUtils.d(CLASS_NAME, "Mel-spectrogram computed successfully with ${spectrogramData.spectrogram.size} time steps")
-
-                // Convert to map for React Native
-                val result = mapOf(
-                    "spectrogram" to spectrogramData.spectrogram.map { it.toList() },
-                    "sampleRate" to audioData.sampleRate,
-                    "nMels" to nMels,
-                    "timeSteps" to spectrogramData.spectrogram.size,
-                    "durationMs" to audioData.durationMs
-                )
-                
-                LogUtils.d(CLASS_NAME, "Returning result with ${result["timeSteps"]} time steps and $nMels mel bands")
-                promise.resolve(result)
-            } catch (e: Exception) {
-                LogUtils.e(CLASS_NAME, "Failed to extract mel-spectrogram: ${e.message}")
-                LogUtils.e(CLASS_NAME, "Stack trace: ${e.stackTraceToString()}")
-                promise.reject("SPECTROGRAM_ERROR", e.message ?: "Unknown error", e)
             }
         }
 
         OnDestroy {
+            // Cancel in-flight prepare/trim/extract coroutines so promises
+            // and event sends do not outlive the React context. Use
+            // cancelChildren rather than cancel() so the scope itself stays
+            // usable: Expo can re-invoke definition() on dev-client reloads
+            // while keeping the same module instance, and a fully cancelled
+            // scope would silently no-op every subsequent launch.
+            coroutineScope.coroutineContext.cancelChildren()
             AudioRecorderManager.destroy()
         }
 
@@ -669,271 +677,278 @@ class AudioStudioModule : Module(), EventSender {
 
 
         AsyncFunction("extractAudioAnalysis") { options: Map<String, Any>, promise: Promise ->
-            try {
-                val fileUri = requireNotNull(options["fileUri"] as? String) { "fileUri is required" }
-                
-                // Get time or byte range options
-                val startTimeMs = options["startTimeMs"] as? Number
-                val endTimeMs = options["endTimeMs"] as? Number
-                val position = options["position"] as? Number
-                val length = options["length"] as? Number
-                val segmentDurationMs = (options["segmentDurationMs"] as? Number)?.toInt() ?: 100
-                
-                // Validate ranges - can have time range OR byte range OR no range
-                val hasTimeRange = startTimeMs != null && endTimeMs != null
-                val hasByteRange = position != null && length != null
-                
-                // Only throw if both ranges are provided
-                if (hasTimeRange && hasByteRange) {
-                    throw IllegalArgumentException("Cannot specify both time range and byte range")
-                }
+            // Off the shared executor so other JS calls don't block during
+            // multi-second analysis on large files.
+            coroutineScope.launch(Dispatchers.IO) {
+                try {
+                    val fileUri = requireNotNull(options["fileUri"] as? String) { "fileUri is required" }
 
-                // Get decoding options with default configuration
-                val defaultConfig = DecodingConfig(
-                    targetSampleRate = null,
-                    targetChannels = 1, // Default to mono
-                    targetBitDepth = 16,
-                    normalizeAudio = false
-                )
+                    // Get time or byte range options
+                    val startTimeMs = options["startTimeMs"] as? Number
+                    val endTimeMs = options["endTimeMs"] as? Number
+                    val position = options["position"] as? Number
+                    val length = options["length"] as? Number
+                    val segmentDurationMs = (options["segmentDurationMs"] as? Number)?.toInt() ?: 100
                 
-                val config = (options["decodingOptions"] as? Map<String, Any>)?.let { decodingOptionsMap ->
-                    DecodingConfig(
-                        targetSampleRate = decodingOptionsMap["targetSampleRate"] as? Int,
-                        targetChannels = decodingOptionsMap["targetChannels"] as? Int,
-                        targetBitDepth = (decodingOptionsMap["targetBitDepth"] as? Int) ?: 16,
-                        normalizeAudio = (decodingOptionsMap["normalizeAudio"] as? Boolean) ?: false
+                    // Validate ranges - can have time range OR byte range OR no range
+                    val hasTimeRange = startTimeMs != null && endTimeMs != null
+                    val hasByteRange = position != null && length != null
+                
+                    // Only throw if both ranges are provided
+                    if (hasTimeRange && hasByteRange) {
+                        throw IllegalArgumentException("Cannot specify both time range and byte range")
+                    }
+
+                    // Get decoding options with default configuration
+                    val defaultConfig = DecodingConfig(
+                        targetSampleRate = null,
+                        targetChannels = 1, // Default to mono
+                        targetBitDepth = 16,
+                        normalizeAudio = false
                     )
-                } ?: defaultConfig
-
-                // Load audio data based on range type (or full file if no range specified)
-                val audioData = when {
-                    hasByteRange -> {
-                        val format = audioProcessor.getAudioFormat(fileUri) 
-                            ?: throw IllegalArgumentException("Could not determine audio format")
-                        
-                        // Calculate time range from byte position
-                        val bytesPerSecond = format.sampleRate * format.channels * (format.bitDepth / 8)
-                        val effectiveStartTimeMs = (position!!.toLong() * 1000) / bytesPerSecond
-                        val effectiveEndTimeMs = effectiveStartTimeMs + (length!!.toLong() * 1000) / bytesPerSecond
-                        
-                        LogUtils.d(CLASS_NAME, "Loading audio with byte range: position=$position, length=$length")
-                        
-                        audioProcessor.loadAudioRange(
-                            fileUri = fileUri,
-                            startTimeMs = effectiveStartTimeMs,
-                            endTimeMs = effectiveEndTimeMs,
-                            config = config
+                
+                    val config = (options["decodingOptions"] as? Map<String, Any>)?.let { decodingOptionsMap ->
+                        DecodingConfig(
+                            targetSampleRate = decodingOptionsMap["targetSampleRate"] as? Int,
+                            targetChannels = decodingOptionsMap["targetChannels"] as? Int,
+                            targetBitDepth = (decodingOptionsMap["targetBitDepth"] as? Int) ?: 16,
+                            normalizeAudio = (decodingOptionsMap["normalizeAudio"] as? Boolean) ?: false
                         )
-                    }
-                    hasTimeRange -> {
-                        LogUtils.d(CLASS_NAME, "Loading audio with time range: startTimeMs=$startTimeMs, endTimeMs=$endTimeMs")
+                    } ?: defaultConfig
+
+                    // Load audio data based on range type (or full file if no range specified)
+                    val audioData = when {
+                        hasByteRange -> {
+                            val format = audioProcessor.getAudioFormat(fileUri) 
+                                ?: throw IllegalArgumentException("Could not determine audio format")
                         
-                        audioProcessor.loadAudioRange(
-                            fileUri = fileUri,
-                            startTimeMs = startTimeMs!!.toLong(),
-                            endTimeMs = endTimeMs!!.toLong(),
-                            config = config
-                        )
-                    }
-                    else -> {
-                        LogUtils.d(CLASS_NAME, "Loading entire audio file")
-                        audioProcessor.loadAudioFromAnyFormat(fileUri, config)
-                    }
-                } ?: throw IllegalStateException("Failed to load audio data")
+                            // Calculate time range from byte position
+                            val bytesPerSecond = format.sampleRate * format.channels * (format.bitDepth / 8)
+                            val effectiveStartTimeMs = (position!!.toLong() * 1000) / bytesPerSecond
+                            val effectiveEndTimeMs = effectiveStartTimeMs + (length!!.toLong() * 1000) / bytesPerSecond
+                        
+                            LogUtils.d(CLASS_NAME, "Loading audio with byte range: position=$position, length=$length")
+                        
+                            audioProcessor.loadAudioRange(
+                                fileUri = fileUri,
+                                startTimeMs = effectiveStartTimeMs,
+                                endTimeMs = effectiveEndTimeMs,
+                                config = config
+                            )
+                        }
+                        hasTimeRange -> {
+                            LogUtils.d(CLASS_NAME, "Loading audio with time range: startTimeMs=$startTimeMs, endTimeMs=$endTimeMs")
+                        
+                            audioProcessor.loadAudioRange(
+                                fileUri = fileUri,
+                                startTimeMs = startTimeMs!!.toLong(),
+                                endTimeMs = endTimeMs!!.toLong(),
+                                config = config
+                            )
+                        }
+                        else -> {
+                            LogUtils.d(CLASS_NAME, "Loading entire audio file")
+                            audioProcessor.loadAudioFromAnyFormat(fileUri, config)
+                        }
+                    } ?: throw IllegalStateException("Failed to load audio data")
 
-                val featuresMap = options["features"] as? Map<*, *>
-                val features = Features.parseFeatureOptions(featuresMap)
+                    val featuresMap = options["features"] as? Map<*, *>
+                    val features = Features.parseFeatureOptions(featuresMap)
 
-                val recordingConfig = RecordingConfig(
-                    sampleRate = audioData.sampleRate,
-                    channels = audioData.channels,
-                    encoding = when (audioData.bitDepth) {
-                        8 -> "pcm_8bit"
-                        16 -> "pcm_16bit"
-                        32 -> "pcm_32bit"
-                        else -> throw IllegalArgumentException("Unsupported bit depth: ${audioData.bitDepth}")
-                    },
-                    segmentDurationMs = segmentDurationMs,
-                    features = features
-                )
+                    val recordingConfig = RecordingConfig(
+                        sampleRate = audioData.sampleRate,
+                        channels = audioData.channels,
+                        encoding = when (audioData.bitDepth) {
+                            8 -> "pcm_8bit"
+                            16 -> "pcm_16bit"
+                            32 -> "pcm_32bit"
+                            else -> throw IllegalArgumentException("Unsupported bit depth: ${audioData.bitDepth}")
+                        },
+                        segmentDurationMs = segmentDurationMs,
+                        features = features
+                    )
 
-                LogUtils.d(CLASS_NAME, "extractAudioAnalysis: $recordingConfig")
-                audioProcessor.resetCumulativeAmplitudeRange()
+                    LogUtils.d(CLASS_NAME, "extractAudioAnalysis: $recordingConfig")
+                    audioProcessor.resetCumulativeAmplitudeRange()
 
-                val analysisData = audioProcessor.processAudioData(audioData.data, recordingConfig)
-                promise.resolve(analysisData.toDictionary())
-            } catch (e: Exception) {
-                LogUtils.e(CLASS_NAME, "Failed to extract audio analysis: ${e.message}", e)
-                promise.reject("PROCESSING_ERROR", e.message ?: "Unknown error", e)
+                    val analysisData = audioProcessor.processAudioData(audioData.data, recordingConfig)
+                    promise.resolve(analysisData.toDictionary())
+                } catch (e: Exception) {
+                    LogUtils.e(CLASS_NAME, "Failed to extract audio analysis: ${e.message}", e)
+                    promise.reject("PROCESSING_ERROR", e.message ?: "Unknown error", e)
+                }
             }
         }
 
         AsyncFunction("extractAudioData") { options: Map<String, Any>, promise: Promise ->
-            try {
-                val fileUri = requireNotNull(options["fileUri"] as? String) { "fileUri is required" }
-                val startTimeMs = options["startTimeMs"] as? Number
-                val endTimeMs = options["endTimeMs"] as? Number
-                val position = options["position"] as? Number
-                val length = options["length"] as? Number
+            // Off the shared executor so concurrent JS calls don't block.
+            coroutineScope.launch(Dispatchers.IO) {
+                try {
+                    val fileUri = requireNotNull(options["fileUri"] as? String) { "fileUri is required" }
+                    val startTimeMs = options["startTimeMs"] as? Number
+                    val endTimeMs = options["endTimeMs"] as? Number
+                    val position = options["position"] as? Number
+                    val length = options["length"] as? Number
                 
-                // Validate that we have either time range or byte range, but not both and not neither
-                val hasTimeRange = startTimeMs != null && endTimeMs != null
-                val hasByteRange = position != null && length != null
+                    // Validate that we have either time range or byte range, but not both and not neither
+                    val hasTimeRange = startTimeMs != null && endTimeMs != null
+                    val hasByteRange = position != null && length != null
                 
-                if (!hasTimeRange && !hasByteRange) {
-                    throw IllegalArgumentException("Must specify either time range (startTimeMs, endTimeMs) or byte range (position, length)")
-                }
-                if (hasTimeRange && hasByteRange) {
-                    throw IllegalArgumentException("Cannot specify both time range and byte range")
-                }
-                
-                // Get decoding options
-                val decodingOptionsMap = options["decodingOptions"] as? Map<String, Any>
-                val decodingConfig = if (decodingOptionsMap != null) {
-                    DecodingConfig(
-                        targetSampleRate = decodingOptionsMap["targetSampleRate"] as? Int,
-                        targetChannels = decodingOptionsMap["targetChannels"] as? Int,
-                        targetBitDepth = (decodingOptionsMap["targetBitDepth"] as? Int) ?: 16,
-                        normalizeAudio = (decodingOptionsMap["normalizeAudio"] as? Boolean) ?: false
-                    ).also {
-                        LogUtils.d(CLASS_NAME, """
-                            Using decoding config:
-                            - targetSampleRate: ${it.targetSampleRate ?: "original"}
-                            - targetChannels: ${it.targetChannels ?: "original"}
-                            - targetBitDepth: ${it.targetBitDepth}
-                            - normalizeAudio: ${it.normalizeAudio}
-                        """.trimIndent())
+                    if (!hasTimeRange && !hasByteRange) {
+                        throw IllegalArgumentException("Must specify either time range (startTimeMs, endTimeMs) or byte range (position, length)")
                     }
-                } else null
+                    if (hasTimeRange && hasByteRange) {
+                        throw IllegalArgumentException("Cannot specify both time range and byte range")
+                    }
+                
+                    // Get decoding options
+                    val decodingOptionsMap = options["decodingOptions"] as? Map<String, Any>
+                    val decodingConfig = if (decodingOptionsMap != null) {
+                        DecodingConfig(
+                            targetSampleRate = decodingOptionsMap["targetSampleRate"] as? Int,
+                            targetChannels = decodingOptionsMap["targetChannels"] as? Int,
+                            targetBitDepth = (decodingOptionsMap["targetBitDepth"] as? Int) ?: 16,
+                            normalizeAudio = (decodingOptionsMap["normalizeAudio"] as? Boolean) ?: false
+                        ).also {
+                            LogUtils.d(CLASS_NAME, """
+                                Using decoding config:
+                                - targetSampleRate: ${it.targetSampleRate ?: "original"}
+                                - targetChannels: ${it.targetChannels ?: "original"}
+                                - targetBitDepth: ${it.targetBitDepth}
+                                - normalizeAudio: ${it.normalizeAudio}
+                            """.trimIndent())
+                        }
+                    } else null
 
-                val audioData = if (hasByteRange) {
-                    val format = audioProcessor.getAudioFormat(fileUri) 
-                        ?: throw IllegalArgumentException("Could not determine audio format")
+                    val audioData = if (hasByteRange) {
+                        val format = audioProcessor.getAudioFormat(fileUri) 
+                            ?: throw IllegalArgumentException("Could not determine audio format")
                     
-                    // Calculate time range from byte position
-                    val bytesPerSecond = format.sampleRate * format.channels * (format.bitDepth / 8)
-                    val effectiveStartTimeMs = (position!!.toLong() * 1000) / bytesPerSecond
-                    val effectiveEndTimeMs = effectiveStartTimeMs + (length!!.toLong() * 1000) / bytesPerSecond
+                        // Calculate time range from byte position
+                        val bytesPerSecond = format.sampleRate * format.channels * (format.bitDepth / 8)
+                        val effectiveStartTimeMs = (position!!.toLong() * 1000) / bytesPerSecond
+                        val effectiveEndTimeMs = effectiveStartTimeMs + (length!!.toLong() * 1000) / bytesPerSecond
                     
+                        LogUtils.d(CLASS_NAME, """
+                            Converting byte range to time range:
+                            - position: $position bytes
+                            - length: $length bytes
+                            - bytesPerSecond: $bytesPerSecond
+                            - effectiveStartTimeMs: $effectiveStartTimeMs
+                            - effectiveEndTimeMs: $effectiveEndTimeMs
+                        """.trimIndent())
+                    
+                        audioProcessor.loadAudioRange(
+                            fileUri = fileUri,
+                            startTimeMs = effectiveStartTimeMs,
+                            endTimeMs = effectiveEndTimeMs,
+                            config = decodingConfig
+                        )
+                    } else {
+                        // Must be time range due to earlier validation
+                        LogUtils.d(CLASS_NAME, """
+                            Using time range:
+                            - startTimeMs: $startTimeMs
+                            - endTimeMs: $endTimeMs
+                        """.trimIndent())
+                    
+                        audioProcessor.loadAudioRange(
+                            fileUri = fileUri,
+                            startTimeMs = startTimeMs!!.toLong(),
+                            endTimeMs = endTimeMs!!.toLong(),
+                            config = decodingConfig
+                        )
+                    } ?: throw IllegalStateException("Failed to load audio data")
+
                     LogUtils.d(CLASS_NAME, """
-                        Converting byte range to time range:
-                        - position: $position bytes
-                        - length: $length bytes
-                        - bytesPerSecond: $bytesPerSecond
-                        - effectiveStartTimeMs: $effectiveStartTimeMs
-                        - effectiveEndTimeMs: $effectiveEndTimeMs
+                        Audio data loaded successfully:
+                        - data size: ${audioData.data.size} bytes
+                        - sampleRate: ${audioData.sampleRate}
+                        - channels: ${audioData.channels}
+                        - bitDepth: ${audioData.bitDepth}
+                        - durationMs: ${audioData.durationMs}
                     """.trimIndent())
-                    
-                    audioProcessor.loadAudioRange(
-                        fileUri = fileUri,
-                        startTimeMs = effectiveStartTimeMs,
-                        endTimeMs = effectiveEndTimeMs,
-                        config = decodingConfig
-                    )
-                } else {
-                    // Must be time range due to earlier validation
-                    LogUtils.d(CLASS_NAME, """
-                        Using time range:
-                        - startTimeMs: $startTimeMs
-                        - endTimeMs: $endTimeMs
-                    """.trimIndent())
-                    
-                    audioProcessor.loadAudioRange(
-                        fileUri = fileUri,
-                        startTimeMs = startTimeMs!!.toLong(),
-                        endTimeMs = endTimeMs!!.toLong(),
-                        config = decodingConfig
-                    )
-                } ?: throw IllegalStateException("Failed to load audio data")
 
-                LogUtils.d(CLASS_NAME, """
-                    Audio data loaded successfully:
-                    - data size: ${audioData.data.size} bytes
-                    - sampleRate: ${audioData.sampleRate}
-                    - channels: ${audioData.channels}
-                    - bitDepth: ${audioData.bitDepth}
-                    - durationMs: ${audioData.durationMs}
-                """.trimIndent())
-
-                val includeNormalizedData = options["includeNormalizedData"] as? Boolean ?: false
-                val includeBase64Data = options["includeBase64Data"] as? Boolean ?: false
-                val includeWavHeader = options["includeWavHeader"] as? Boolean ?: false
-                val bytesPerSample = audioData.bitDepth / 8
-                val samples = audioData.data.size / (bytesPerSample * audioData.channels)
+                    val includeNormalizedData = options["includeNormalizedData"] as? Boolean ?: false
+                    val includeBase64Data = options["includeBase64Data"] as? Boolean ?: false
+                    val includeWavHeader = options["includeWavHeader"] as? Boolean ?: false
+                    val bytesPerSample = audioData.bitDepth / 8
+                    val samples = audioData.data.size / (bytesPerSample * audioData.channels)
                 
-                // Create the result map
-                val resultMap = mutableMapOf<String, Any>()
+                    // Create the result map
+                    val resultMap = mutableMapOf<String, Any>()
                 
-                // Add WAV header if requested
-                if (includeWavHeader) {
-                    // Use ByteArrayOutputStream to write the WAV header and data
-                    val outputStream = java.io.ByteArrayOutputStream()
-                    val audioFileHandler = AudioFileHandler(appContext.reactContext!!.filesDir)
+                    // Add WAV header if requested
+                    if (includeWavHeader) {
+                        // Use ByteArrayOutputStream to write the WAV header and data
+                        val outputStream = java.io.ByteArrayOutputStream()
+                        val audioFileHandler = AudioFileHandler(appContext.reactContext!!.filesDir)
                     
-                    // Write the WAV header
-                    audioFileHandler.writeWavHeader(
-                        outputStream,
-                        audioData.sampleRate,
-                        audioData.channels,
-                        audioData.bitDepth
-                    )
+                        // Write the WAV header
+                        audioFileHandler.writeWavHeader(
+                            outputStream,
+                            audioData.sampleRate,
+                            audioData.channels,
+                            audioData.bitDepth
+                        )
                     
-                    // Write the PCM data
-                    outputStream.write(audioData.data)
+                        // Write the PCM data
+                        outputStream.write(audioData.data)
                     
-                    // Get the complete WAV data
-                    val wavData = outputStream.toByteArray()
+                        // Get the complete WAV data
+                        val wavData = outputStream.toByteArray()
                     
-                    resultMap["pcmData"] = wavData
-                    resultMap["hasWavHeader"] = true
+                        resultMap["pcmData"] = wavData
+                        resultMap["hasWavHeader"] = true
                     
-                    LogUtils.d(CLASS_NAME, "Added WAV header to PCM data, total size: ${wavData.size} bytes")
-                } else {
-                    resultMap["pcmData"] = audioData.data
-                    resultMap["hasWavHeader"] = false
+                        LogUtils.d(CLASS_NAME, "Added WAV header to PCM data, total size: ${wavData.size} bytes")
+                    } else {
+                        resultMap["pcmData"] = audioData.data
+                        resultMap["hasWavHeader"] = false
+                    }
+                
+                    // Add the rest of the data
+                    resultMap.putAll(mapOf(
+                        "sampleRate" to audioData.sampleRate,
+                        "channels" to audioData.channels,
+                        "bitDepth" to audioData.bitDepth,
+                        "durationMs" to audioData.durationMs,
+                        "format" to "pcm_${audioData.bitDepth}bit",
+                        "samples" to samples
+                    ))
+                
+                    // Add checksum if requested
+                    if (options["computeChecksum"] == true) {
+                        val crc32 = CRC32()
+                        crc32.update(audioData.data)
+                        resultMap["checksum"] = crc32.value.toInt()
+                    
+                        LogUtils.d(CLASS_NAME, "Computed CRC32 checksum: ${crc32.value}")
+                    }
+                
+                    if (includeNormalizedData) {
+                        val float32Data = AudioFormatUtils.convertByteArrayToFloatArray(
+                            audioData.data,
+                            "pcm_${audioData.bitDepth}bit"
+                        )
+                        resultMap["normalizedData"] = float32Data
+                    }
+                
+                    if (includeBase64Data) {
+                        // Convert the PCM data to a base64 string
+                        val base64Data = android.util.Base64.encodeToString(
+                            audioData.data, 
+                            android.util.Base64.NO_WRAP
+                        )
+                        resultMap["base64Data"] = base64Data
+                    }
+                
+                    promise.resolve(resultMap)
+                } catch (e: Exception) {
+                    LogUtils.e(CLASS_NAME, "Failed to extract audio data: ${e.message}")
+                    LogUtils.e(CLASS_NAME, "Stack trace: ${e.stackTraceToString()}")
+                    promise.reject("PROCESSING_ERROR", e.message ?: "Unknown error", e)
                 }
-                
-                // Add the rest of the data
-                resultMap.putAll(mapOf(
-                    "sampleRate" to audioData.sampleRate,
-                    "channels" to audioData.channels,
-                    "bitDepth" to audioData.bitDepth,
-                    "durationMs" to audioData.durationMs,
-                    "format" to "pcm_${audioData.bitDepth}bit",
-                    "samples" to samples
-                ))
-                
-                // Add checksum if requested
-                if (options["computeChecksum"] == true) {
-                    val crc32 = CRC32()
-                    crc32.update(audioData.data)
-                    resultMap["checksum"] = crc32.value.toInt()
-                    
-                    LogUtils.d(CLASS_NAME, "Computed CRC32 checksum: ${crc32.value}")
-                }
-                
-                if (includeNormalizedData) {
-                    val float32Data = AudioFormatUtils.convertByteArrayToFloatArray(
-                        audioData.data,
-                        "pcm_${audioData.bitDepth}bit"
-                    )
-                    resultMap["normalizedData"] = float32Data
-                }
-                
-                if (includeBase64Data) {
-                    // Convert the PCM data to a base64 string
-                    val base64Data = android.util.Base64.encodeToString(
-                        audioData.data, 
-                        android.util.Base64.NO_WRAP
-                    )
-                    resultMap["base64Data"] = base64Data
-                }
-                
-                promise.resolve(resultMap)
-            } catch (e: Exception) {
-                LogUtils.e(CLASS_NAME, "Failed to extract audio data: ${e.message}")
-                LogUtils.e(CLASS_NAME, "Stack trace: ${e.stackTraceToString()}")
-                promise.reject("PROCESSING_ERROR", e.message ?: "Unknown error", e)
             }
         }
     }
