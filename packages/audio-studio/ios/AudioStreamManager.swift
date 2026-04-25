@@ -1061,19 +1061,20 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         // RunLoop; prepareRecording runs on audioLifecycleQueue which has
         // no running RunLoop, so the work has to land on main.
         //
-        // .async is sufficient for the prepare → start ordering: this dispatch
-        // is enqueued before the promise.resolve hop in AudioStudioModule
-        // (which also goes through DispatchQueue.main), and main is FIFO, so
-        // initializeNotifications always runs before JS observes the resolve
-        // and queues startRecording. Using .async also avoids a forward
-        // deadlock hazard if a future caller ever invokes prepareRecording
-        // synchronously from main.
+        // Use .sync (with a Thread.isMainThread fast path) so the manager
+        // exists before prepareRecording returns. The direct-start path —
+        // startRecording calling prepareRecording recursively on the same
+        // audioLifecycleQueue and then continuing on to notificationManager?.
+        // startUpdates(...) without ever yielding to main — would otherwise
+        // see a nil manager and silently skip notification updates.
+        // No deadlock: the dispatch architecture never blocks main waiting
+        // on audioLifecycleQueue.
         if settings.showNotification {
             if Thread.isMainThread {
                 initializeNotifications()
             } else {
-                DispatchQueue.main.async { [weak self] in
-                    self?.initializeNotifications()
+                DispatchQueue.main.sync {
+                    self.initializeNotifications()
                 }
             }
         }
