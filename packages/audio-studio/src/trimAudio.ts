@@ -34,7 +34,10 @@ function sliceAudioBuffer(
     return out
 }
 
-function encodeBufferToWav(buffer: AudioBuffer, bitDepth: BitDepth): ArrayBuffer {
+function encodeBufferToWav(
+    buffer: AudioBuffer,
+    bitDepth: BitDepth
+): ArrayBuffer {
     const { length, numberOfChannels, sampleRate } = buffer
     const channels: Float32Array[] = []
     for (let c = 0; c < numberOfChannels; c++) {
@@ -44,7 +47,9 @@ function encodeBufferToWav(buffer: AudioBuffer, bitDepth: BitDepth): ArrayBuffer
     for (let i = 0; i < length; i++) {
         for (let c = 0; c < numberOfChannels; c++) {
             const clamped = Math.max(-1, Math.min(1, channels[c][i]))
-            interleavedData[i * numberOfChannels + c] = Math.round(clamped * 32767)
+            interleavedData[i * numberOfChannels + c] = Math.round(
+                clamped * 32767
+            )
         }
     }
     return writeWavHeader({
@@ -322,7 +327,10 @@ export async function trimAudio(
             }
 
             if (format === 'wav') {
-                outputData = encodeBufferToWav(resultBuffer, targetBitDepth as BitDepth)
+                outputData = encodeBufferToWav(
+                    resultBuffer,
+                    targetBitDepth as BitDepth
+                )
                 outputMimeType = 'audio/wav'
             } else if (format === 'opus') {
                 try {
@@ -338,7 +346,10 @@ export async function trimAudio(
                     console.warn(
                         `Failed to encode to ${format}, falling back to WAV: ${error}`
                     )
-                    outputData = encodeBufferToWav(resultBuffer, targetBitDepth as BitDepth)
+                    outputData = encodeBufferToWav(
+                        resultBuffer,
+                        targetBitDepth as BitDepth
+                    )
                     outputMimeType = 'audio/wav'
                 }
             } else {
@@ -346,7 +357,10 @@ export async function trimAudio(
                 console.warn(
                     `Format ${format} not supported on web, using WAV instead`
                 )
-                outputData = encodeBufferToWav(resultBuffer, targetBitDepth as BitDepth)
+                outputData = encodeBufferToWav(
+                    resultBuffer,
+                    targetBitDepth as BitDepth
+                )
                 outputMimeType = 'audio/wav'
             }
 

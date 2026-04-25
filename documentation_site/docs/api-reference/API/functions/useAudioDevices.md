@@ -8,7 +8,7 @@
 
 > **useAudioDevices**(): `object`
 
-Defined in: [src/hooks/useAudioDevices.ts:9](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/hooks/useAudioDevices.ts#L9)
+Defined in: [src/hooks/useAudioDevices.ts:9](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/hooks/useAudioDevices.ts#L9)
 
 React hook for managing audio input devices
 

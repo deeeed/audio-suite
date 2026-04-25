@@ -6,7 +6,7 @@
 
 # Interface: ExtractAudioDataOptions
 
-Defined in: [src/AudioStudio.types.ts:590](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L590)
+Defined in: [src/AudioStudio.types.ts:590](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L590)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [src/AudioStudio.types.ts:590](https://github.com/deeeed/audiolab/bl
 
 > `optional` **computeChecksum**: `boolean`
 
-Defined in: [src/AudioStudio.types.ts:610](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L610)
+Defined in: [src/AudioStudio.types.ts:610](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L610)
 
 Compute the checksum of the PCM data
 
@@ -24,7 +24,7 @@ Compute the checksum of the PCM data
 
 > `optional` **decodingOptions**: [`DecodingConfig`](DecodingConfig.md)
 
-Defined in: [src/AudioStudio.types.ts:612](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L612)
+Defined in: [src/AudioStudio.types.ts:612](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L612)
 
 Target config for the normalized audio (Android and Web)
 
@@ -34,7 +34,7 @@ Target config for the normalized audio (Android and Web)
 
 > `optional` **endTimeMs**: `number`
 
-Defined in: [src/AudioStudio.types.ts:596](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L596)
+Defined in: [src/AudioStudio.types.ts:596](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L596)
 
 End time in milliseconds (for time-based range)
 
@@ -44,7 +44,7 @@ End time in milliseconds (for time-based range)
 
 > **fileUri**: `string`
 
-Defined in: [src/AudioStudio.types.ts:592](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L592)
+Defined in: [src/AudioStudio.types.ts:592](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L592)
 
 URI of the audio file to extract data from
 
@@ -54,7 +54,7 @@ URI of the audio file to extract data from
 
 > `optional` **includeBase64Data**: `boolean`
 
-Defined in: [src/AudioStudio.types.ts:604](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L604)
+Defined in: [src/AudioStudio.types.ts:604](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L604)
 
 Include base64 encoded string representation of the audio data
 
@@ -64,7 +64,7 @@ Include base64 encoded string representation of the audio data
 
 > `optional` **includeNormalizedData**: `boolean`
 
-Defined in: [src/AudioStudio.types.ts:602](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L602)
+Defined in: [src/AudioStudio.types.ts:602](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L602)
 
 Include normalized audio data in [-1, 1] range
 
@@ -74,7 +74,7 @@ Include normalized audio data in [-1, 1] range
 
 > `optional` **includeWavHeader**: `boolean`
 
-Defined in: [src/AudioStudio.types.ts:606](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L606)
+Defined in: [src/AudioStudio.types.ts:606](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L606)
 
 Include WAV header in the PCM data (makes it a valid WAV file)
 
@@ -84,7 +84,7 @@ Include WAV header in the PCM data (makes it a valid WAV file)
 
 > `optional` **length**: `number`
 
-Defined in: [src/AudioStudio.types.ts:600](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L600)
+Defined in: [src/AudioStudio.types.ts:600](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L600)
 
 Length in bytes to extract (for byte-based range)
 
@@ -94,7 +94,7 @@ Length in bytes to extract (for byte-based range)
 
 > `optional` **logger**: [`ConsoleLike`](../type-aliases/ConsoleLike.md)
 
-Defined in: [src/AudioStudio.types.ts:608](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L608)
+Defined in: [src/AudioStudio.types.ts:608](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L608)
 
 Logger for debugging - can pass console directly.
 
@@ -104,7 +104,7 @@ Logger for debugging - can pass console directly.
 
 > `optional` **position**: `number`
 
-Defined in: [src/AudioStudio.types.ts:598](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L598)
+Defined in: [src/AudioStudio.types.ts:598](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L598)
 
 Start position in bytes (for byte-based range)
 
@@ -114,6 +114,6 @@ Start position in bytes (for byte-based range)
 
 > `optional` **startTimeMs**: `number`
 
-Defined in: [src/AudioStudio.types.ts:594](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L594)
+Defined in: [src/AudioStudio.types.ts:594](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L594)
 
 Start time in milliseconds (for time-based range)

@@ -6,7 +6,7 @@
 
 # Interface: TranscriberData
 
-Defined in: [src/AudioStudio.types.ts:127](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L127)
+Defined in: [src/AudioStudio.types.ts:127](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L127)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [src/AudioStudio.types.ts:127](https://github.com/deeeed/audiolab/bl
 
 > **chunks**: [`Chunk`](Chunk.md)[]
 
-Defined in: [src/AudioStudio.types.ts:139](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L139)
+Defined in: [src/AudioStudio.types.ts:139](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L139)
 
 Array of transcribed text chunks with timestamps
 
@@ -24,7 +24,7 @@ Array of transcribed text chunks with timestamps
 
 > **endTime**: `number`
 
-Defined in: [src/AudioStudio.types.ts:137](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L137)
+Defined in: [src/AudioStudio.types.ts:137](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L137)
 
 End time of the transcription in milliseconds
 
@@ -34,7 +34,7 @@ End time of the transcription in milliseconds
 
 > **id**: `string`
 
-Defined in: [src/AudioStudio.types.ts:129](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L129)
+Defined in: [src/AudioStudio.types.ts:129](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L129)
 
 Unique identifier for the transcription
 
@@ -44,7 +44,7 @@ Unique identifier for the transcription
 
 > **isBusy**: `boolean`
 
-Defined in: [src/AudioStudio.types.ts:131](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L131)
+Defined in: [src/AudioStudio.types.ts:131](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L131)
 
 Indicates if the transcriber is currently processing
 
@@ -54,7 +54,7 @@ Indicates if the transcriber is currently processing
 
 > **startTime**: `number`
 
-Defined in: [src/AudioStudio.types.ts:135](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L135)
+Defined in: [src/AudioStudio.types.ts:135](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L135)
 
 Start time of the transcription in milliseconds
 
@@ -64,6 +64,6 @@ Start time of the transcription in milliseconds
 
 > **text**: `string`
 
-Defined in: [src/AudioStudio.types.ts:133](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L133)
+Defined in: [src/AudioStudio.types.ts:133](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L133)
 
 Complete transcribed text

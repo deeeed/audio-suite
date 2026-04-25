@@ -6,7 +6,7 @@
 
 # Interface: AudioDataEventRaw
 
-Defined in: [src/AudioStudio.types.ts:57](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L57)
+Defined in: [src/AudioStudio.types.ts:57](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L57)
 
 ## Extends
 
@@ -18,7 +18,7 @@ Defined in: [src/AudioStudio.types.ts:57](https://github.com/deeeed/audiolab/blo
 
 > `optional` **compression**: [`CompressionInfo`](CompressionInfo.md) & `object`
 
-Defined in: [src/AudioStudio.types.ts:51](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L51)
+Defined in: [src/AudioStudio.types.ts:51](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L51)
 
 Information about compression if enabled, including the compressed data chunk
 
@@ -40,7 +40,7 @@ Base64 (native) or Blob (web) encoded compressed data chunk
 
 > **data**: `string` \| `Float32Array`\<`ArrayBufferLike`\> \| `Int16Array`\<`ArrayBufferLike`\>
 
-Defined in: [src/AudioStudio.types.ts:59](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L59)
+Defined in: [src/AudioStudio.types.ts:59](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L59)
 
 Audio data as base64 string (native), Float32Array (web), or Int16Array (web)
 
@@ -50,7 +50,7 @@ Audio data as base64 string (native), Float32Array (web), or Int16Array (web)
 
 > **eventDataSize**: `number`
 
-Defined in: [src/AudioStudio.types.ts:47](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L47)
+Defined in: [src/AudioStudio.types.ts:47](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L47)
 
 Size of the current data chunk in bytes
 
@@ -64,7 +64,7 @@ Size of the current data chunk in bytes
 
 > **fileUri**: `string`
 
-Defined in: [src/AudioStudio.types.ts:45](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L45)
+Defined in: [src/AudioStudio.types.ts:45](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L45)
 
 URI to the file being recorded
 
@@ -78,7 +78,7 @@ URI to the file being recorded
 
 > **position**: `number`
 
-Defined in: [src/AudioStudio.types.ts:43](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L43)
+Defined in: [src/AudioStudio.types.ts:43](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L43)
 
 Current position in the audio stream in bytes
 
@@ -92,7 +92,7 @@ Current position in the audio stream in bytes
 
 > `optional` **streamFormat**: `"raw"`
 
-Defined in: [src/AudioStudio.types.ts:60](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L60)
+Defined in: [src/AudioStudio.types.ts:60](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L60)
 
 ***
 
@@ -100,7 +100,7 @@ Defined in: [src/AudioStudio.types.ts:60](https://github.com/deeeed/audiolab/blo
 
 > **totalSize**: `number`
 
-Defined in: [src/AudioStudio.types.ts:49](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L49)
+Defined in: [src/AudioStudio.types.ts:49](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L49)
 
 Total size of the recording so far in bytes
 

@@ -6,7 +6,7 @@
 
 # Interface: AudioRecording
 
-Defined in: [src/AudioStudio.types.ts:142](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L142)
+Defined in: [src/AudioStudio.types.ts:142](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L142)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [src/AudioStudio.types.ts:142](https://github.com/deeeed/audiolab/bl
 
 > `optional` **analysisData**: [`AudioAnalysis`](AudioAnalysis.md)
 
-Defined in: [src/AudioStudio.types.ts:164](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L164)
+Defined in: [src/AudioStudio.types.ts:164](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L164)
 
 Analysis data for the recording if processing was enabled
 
@@ -24,7 +24,7 @@ Analysis data for the recording if processing was enabled
 
 > **bitDepth**: [`BitDepth`](../type-aliases/BitDepth.md)
 
-Defined in: [src/AudioStudio.types.ts:156](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L156)
+Defined in: [src/AudioStudio.types.ts:156](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L156)
 
 Bit depth of the audio (8, 16, or 32 bits)
 
@@ -34,7 +34,7 @@ Bit depth of the audio (8, 16, or 32 bits)
 
 > **channels**: `number`
 
-Defined in: [src/AudioStudio.types.ts:154](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L154)
+Defined in: [src/AudioStudio.types.ts:154](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L154)
 
 Number of audio channels (1 for mono, 2 for stereo)
 
@@ -44,7 +44,7 @@ Number of audio channels (1 for mono, 2 for stereo)
 
 > `optional` **compression**: [`CompressionInfo`](CompressionInfo.md) & `object`
 
-Defined in: [src/AudioStudio.types.ts:166](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L166)
+Defined in: [src/AudioStudio.types.ts:166](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L166)
 
 Information about compression if enabled, including the URI to the compressed file
 
@@ -62,7 +62,7 @@ URI to the compressed audio file
 
 > `optional` **createdAt**: `number`
 
-Defined in: [src/AudioStudio.types.ts:160](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L160)
+Defined in: [src/AudioStudio.types.ts:160](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L160)
 
 Timestamp when the recording was created
 
@@ -72,7 +72,7 @@ Timestamp when the recording was created
 
 > **durationMs**: `number`
 
-Defined in: [src/AudioStudio.types.ts:148](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L148)
+Defined in: [src/AudioStudio.types.ts:148](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L148)
 
 Duration of the recording in milliseconds
 
@@ -82,7 +82,7 @@ Duration of the recording in milliseconds
 
 > **filename**: `string`
 
-Defined in: [src/AudioStudio.types.ts:146](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L146)
+Defined in: [src/AudioStudio.types.ts:146](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L146)
 
 Filename of the recorded audio
 
@@ -92,7 +92,7 @@ Filename of the recorded audio
 
 > **fileUri**: `string`
 
-Defined in: [src/AudioStudio.types.ts:144](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L144)
+Defined in: [src/AudioStudio.types.ts:144](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L144)
 
 URI to the recorded audio file
 
@@ -102,7 +102,7 @@ URI to the recorded audio file
 
 > **mimeType**: `string`
 
-Defined in: [src/AudioStudio.types.ts:152](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L152)
+Defined in: [src/AudioStudio.types.ts:152](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L152)
 
 MIME type of the recorded audio
 
@@ -112,7 +112,7 @@ MIME type of the recorded audio
 
 > **sampleRate**: [`SampleRate`](../type-aliases/SampleRate.md)
 
-Defined in: [src/AudioStudio.types.ts:158](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L158)
+Defined in: [src/AudioStudio.types.ts:158](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L158)
 
 Sample rate of the audio in Hz
 
@@ -122,7 +122,7 @@ Sample rate of the audio in Hz
 
 > **size**: `number`
 
-Defined in: [src/AudioStudio.types.ts:150](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L150)
+Defined in: [src/AudioStudio.types.ts:150](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L150)
 
 Size of the recording in bytes
 
@@ -132,6 +132,6 @@ Size of the recording in bytes
 
 > `optional` **transcripts**: [`TranscriberData`](TranscriberData.md)[]
 
-Defined in: [src/AudioStudio.types.ts:162](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L162)
+Defined in: [src/AudioStudio.types.ts:162](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L162)
 
 Array of transcription data if available

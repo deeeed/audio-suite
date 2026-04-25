@@ -8,7 +8,7 @@ const WASM_VERSION = '3.0.2'
 const DEFAULT_WASM_CDN = `https://cdn.jsdelivr.net/npm/@siteed/audio-studio@${WASM_VERSION}/prebuilt/wasm/mel-spectrogram.js`
 
 let _wasmUrl: string = DEFAULT_WASM_CDN
-const _resetListeners: Array<() => void> = []
+const _resetListeners: (() => void)[] = []
 
 export function _registerModuleReset(fn: () => void): void {
     _resetListeners.push(fn)

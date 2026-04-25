@@ -15,7 +15,8 @@ function loadScriptTag(url: string): Promise<void> {
         const script = document.createElement('script')
         script.src = url
         script.onload = () => resolve()
-        script.onerror = () => reject(new Error(`Failed to load script: ${url}`))
+        script.onerror = () =>
+            reject(new Error(`Failed to load script: ${url}`))
         document.head.appendChild(script)
     })
 }
@@ -25,13 +26,17 @@ export function getWasmModule(): Promise<AudioFeaturesWasmModule> {
         modulePromise = (async () => {
             const url = getMelSpectrogramWasmUrl()
             // Try ESM import first; fall back to <script> tag for UMD modules
-            const mod = await import(/* webpackIgnore: true */ /* @vite-ignore */ url)
+            const mod = await import(
+                /* webpackIgnore: true */ /* @vite-ignore */ url
+            )
             let factory: unknown = mod.default ?? mod
             if (typeof factory !== 'function') {
                 // UMD fallback: load via <script> tag so the top-level `var` becomes a global and
                 // document.currentScript.src is set (Emscripten uses it to locate the .wasm binary).
                 await loadScriptTag(url)
-                factory = (globalThis as Record<string, unknown>)[WASM_GLOBAL_NAME]
+                factory = (globalThis as Record<string, unknown>)[
+                    WASM_GLOBAL_NAME
+                ]
             }
             if (typeof factory !== 'function') {
                 throw new TypeError(

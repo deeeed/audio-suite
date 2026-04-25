@@ -6,9 +6,9 @@
 
 # Function: extractAudioData()
 
-> **extractAudioData**(`props`): `Promise`\<`any`\>
+> **extractAudioData**(`props`): `Promise`\<[`ExtractedAudioData`](../interfaces/ExtractedAudioData.md)\>
 
-Defined in: [src/AudioAnalysis/extractAudioData.ts:6](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioAnalysis/extractAudioData.ts#L6)
+Defined in: [src/AudioAnalysis/extractAudioData.ts:13](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioAnalysis/extractAudioData.ts#L13)
 
 ## Parameters
 
@@ -18,4 +18,4 @@ Defined in: [src/AudioAnalysis/extractAudioData.ts:6](https://github.com/deeeed/
 
 ## Returns
 
-`Promise`\<`any`\>
+`Promise`\<[`ExtractedAudioData`](../interfaces/ExtractedAudioData.md)\>

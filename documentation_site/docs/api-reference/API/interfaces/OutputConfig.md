@@ -6,7 +6,7 @@
 
 # Interface: OutputConfig
 
-Defined in: [src/AudioStudio.types.ts:347](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L347)
+Defined in: [src/AudioStudio.types.ts:347](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L347)
 
 Configuration for audio output files during recording
 
@@ -16,7 +16,7 @@ Configuration for audio output files during recording
 
 > `optional` **compressed**: `object`
 
-Defined in: [src/AudioStudio.types.ts:361](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L361)
+Defined in: [src/AudioStudio.types.ts:361](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L361)
 
 Configuration for the compressed output file
 
@@ -55,7 +55,7 @@ Note: iOS always produces M4A containers and ignores this flag
 
 > `optional` **primary**: `object`
 
-Defined in: [src/AudioStudio.types.ts:351](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L351)
+Defined in: [src/AudioStudio.types.ts:351](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L351)
 
 Configuration for the primary (uncompressed) output file
 

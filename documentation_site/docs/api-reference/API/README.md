@@ -18,6 +18,7 @@
 - [AudioDeviceCapabilities](interfaces/AudioDeviceCapabilities.md)
 - [AudioFeatures](interfaces/AudioFeatures.md)
 - [AudioFeaturesOptions](interfaces/AudioFeaturesOptions.md)
+- [AudioFeaturesWasmResult](interfaces/AudioFeaturesWasmResult.md)
 - [AudioRangeOptions](interfaces/AudioRangeOptions.md)
 - [AudioRecording](interfaces/AudioRecording.md)
 - [AudioSessionConfig](interfaces/AudioSessionConfig.md)

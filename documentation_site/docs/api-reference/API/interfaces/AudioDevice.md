@@ -6,7 +6,7 @@
 
 # Interface: AudioDevice
 
-Defined in: [src/AudioStudio.types.ts:317](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L317)
+Defined in: [src/AudioStudio.types.ts:317](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L317)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [src/AudioStudio.types.ts:317](https://github.com/deeeed/audiolab/bl
 
 > **capabilities**: [`AudioDeviceCapabilities`](AudioDeviceCapabilities.md)
 
-Defined in: [src/AudioStudio.types.ts:327](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L327)
+Defined in: [src/AudioStudio.types.ts:327](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L327)
 
 Audio capabilities for the device
 
@@ -24,7 +24,7 @@ Audio capabilities for the device
 
 > **id**: `string`
 
-Defined in: [src/AudioStudio.types.ts:319](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L319)
+Defined in: [src/AudioStudio.types.ts:319](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L319)
 
 Unique identifier for the device
 
@@ -34,7 +34,7 @@ Unique identifier for the device
 
 > **isAvailable**: `boolean`
 
-Defined in: [src/AudioStudio.types.ts:329](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L329)
+Defined in: [src/AudioStudio.types.ts:329](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L329)
 
 Whether the device is currently available
 
@@ -44,7 +44,7 @@ Whether the device is currently available
 
 > **isDefault**: `boolean`
 
-Defined in: [src/AudioStudio.types.ts:325](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L325)
+Defined in: [src/AudioStudio.types.ts:325](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L325)
 
 Whether this is the system default device
 
@@ -54,7 +54,7 @@ Whether this is the system default device
 
 > **name**: `string`
 
-Defined in: [src/AudioStudio.types.ts:321](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L321)
+Defined in: [src/AudioStudio.types.ts:321](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L321)
 
 Human-readable name of the device
 
@@ -64,6 +64,6 @@ Human-readable name of the device
 
 > **type**: `string`
 
-Defined in: [src/AudioStudio.types.ts:323](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L323)
+Defined in: [src/AudioStudio.types.ts:323](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L323)
 
 Device type (builtin_mic, bluetooth, etc.)

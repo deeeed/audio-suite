@@ -6,7 +6,7 @@
 
 # Interface: AudioDeviceCapabilities
 
-Defined in: [src/AudioStudio.types.ts:302](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L302)
+Defined in: [src/AudioStudio.types.ts:302](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L302)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [src/AudioStudio.types.ts:302](https://github.com/deeeed/audiolab/bl
 
 > **bitDepths**: `number`[]
 
-Defined in: [src/AudioStudio.types.ts:308](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L308)
+Defined in: [src/AudioStudio.types.ts:308](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L308)
 
 Supported bit depths for the device
 
@@ -24,7 +24,7 @@ Supported bit depths for the device
 
 > **channelCounts**: `number`[]
 
-Defined in: [src/AudioStudio.types.ts:306](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L306)
+Defined in: [src/AudioStudio.types.ts:306](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L306)
 
 Supported channel counts for the device
 
@@ -34,7 +34,7 @@ Supported channel counts for the device
 
 > `optional` **hasAutomaticGainControl**: `boolean`
 
-Defined in: [src/AudioStudio.types.ts:314](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L314)
+Defined in: [src/AudioStudio.types.ts:314](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L314)
 
 Whether the device supports automatic gain control
 
@@ -44,7 +44,7 @@ Whether the device supports automatic gain control
 
 > `optional` **hasEchoCancellation**: `boolean`
 
-Defined in: [src/AudioStudio.types.ts:310](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L310)
+Defined in: [src/AudioStudio.types.ts:310](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L310)
 
 Whether the device supports echo cancellation
 
@@ -54,7 +54,7 @@ Whether the device supports echo cancellation
 
 > `optional` **hasNoiseSuppression**: `boolean`
 
-Defined in: [src/AudioStudio.types.ts:312](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L312)
+Defined in: [src/AudioStudio.types.ts:312](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L312)
 
 Whether the device supports noise suppression
 
@@ -64,6 +64,6 @@ Whether the device supports noise suppression
 
 > **sampleRates**: `number`[]
 
-Defined in: [src/AudioStudio.types.ts:304](https://github.com/deeeed/audiolab/blob/290409aae8d1160e1952a5ee1961ce3864fbb0c8/packages/audio-studio/src/AudioStudio.types.ts#L304)
+Defined in: [src/AudioStudio.types.ts:304](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L304)
 
 Supported sample rates for the device
