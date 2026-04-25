@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+## [3.0.5] - 2026-04-25
+### Changed
+- fix(audio-studio): don't start notification on prepareRecording (Android) (#364) ([5d40d7e](https://github.com/deeeed/audiolab/commit/5d40d7e730f2b74459d319979fd9c112891b10f2))
+- docs: update api references for v3.0.4 ([12421ee](https://github.com/deeeed/audiolab/commit/12421ee6146187888492b957c0eee428fcab3e8b))
+- chore(audio-studio): release @siteed/audio-studio@3.0.4 ([3a5b7da](https://github.com/deeeed/audiolab/commit/3a5b7da8f4289a599d928dce01f262ab97398143))
 ## [3.0.4] - 2026-04-25
 ### Changed
 - fix(audio-studio): move module ops off main thread + fix iOS stop crash (#363) ([1a07d2d](https://github.com/deeeed/audiolab/commit/1a07d2d9222bfac1083b00d6de992fcb2a3be42d))
@@ -344,7 +349,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Audio features extraction during recording
 - Consistent WAV PCM recording format across all platforms
 
-[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.0.4...HEAD
+[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.0.5...HEAD
+[3.0.5]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.0.4...@siteed/audio-studio@3.0.5
 [3.0.4]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.0.3...@siteed/audio-studio@3.0.4
 [3.0.3]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.0.2...@siteed/audio-studio@3.0.3
 [3.0.2]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.0.2-beta.2...@siteed/audio-studio@3.0.2
