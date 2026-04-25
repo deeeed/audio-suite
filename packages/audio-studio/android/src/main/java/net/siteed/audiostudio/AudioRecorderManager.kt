@@ -455,49 +455,55 @@ class AudioRecorderManager(
     }
 
     private fun initializePhoneStateListener() {
-        try {
-            LogUtils.d(CLASS_NAME, "Initializing phone state listener...")
+        // The legacy PhoneStateListener (API < 31) requires a Looper on the
+        // thread that constructs it; calling listen() also expects the same.
+        // prepareRecording now runs on Dispatchers.IO (no Looper), so we
+        // marshal the whole registration to the main thread's Looper. The
+        // API 31+ path uses context.mainExecutor and is thread-safe, but we
+        // route everything through main for consistency.
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            try {
+                LogUtils.d(CLASS_NAME, "Initializing phone state listener...")
 
-            if (permissionUtils.checkPhoneStatePermission()) {
-                LogUtils.d(CLASS_NAME, "Phone state permission granted")
+                if (permissionUtils.checkPhoneStatePermission()) {
+                    LogUtils.d(CLASS_NAME, "Phone state permission granted")
 
-                val localTelephonyManager = telephonyManager
-                if (localTelephonyManager != null) {
-                    try {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                            // API 31+: Use modern TelephonyCallback which reliably fires on Android 12+
-                            val callback = object : TelephonyCallback(), TelephonyCallback.CallStateListener {
-                                override fun onCallStateChanged(state: Int) {
-                                    handleCallStateChanged(state)
+                    val localTelephonyManager = telephonyManager
+                    if (localTelephonyManager != null) {
+                        try {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                val callback = object : TelephonyCallback(), TelephonyCallback.CallStateListener {
+                                    override fun onCallStateChanged(state: Int) {
+                                        handleCallStateChanged(state)
+                                    }
                                 }
-                            }
-                            telephonyCallback = callback
-                            localTelephonyManager.registerTelephonyCallback(context.mainExecutor, callback)
-                            LogUtils.d(CLASS_NAME, "Successfully registered TelephonyCallback (API 31+)")
-                        } else {
-                            // Legacy: PhoneStateListener for API < 31
-                            phoneStateListener = object : PhoneStateListener() {
-                                @Deprecated("Deprecated in API 31")
-                                override fun onCallStateChanged(state: Int, phoneNumber: String?) {
-                                    handleCallStateChanged(state)
+                                telephonyCallback = callback
+                                localTelephonyManager.registerTelephonyCallback(context.mainExecutor, callback)
+                                LogUtils.d(CLASS_NAME, "Successfully registered TelephonyCallback (API 31+)")
+                            } else {
+                                phoneStateListener = object : PhoneStateListener() {
+                                    @Deprecated("Deprecated in API 31")
+                                    override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+                                        handleCallStateChanged(state)
+                                    }
                                 }
+                                localTelephonyManager.listen(phoneStateListener, PhoneStateListener.LISTEN_CALL_STATE)
+                                LogUtils.d(CLASS_NAME, "Successfully registered PhoneStateListener (legacy)")
                             }
-                            localTelephonyManager.listen(phoneStateListener, PhoneStateListener.LISTEN_CALL_STATE)
-                            LogUtils.d(CLASS_NAME, "Successfully registered PhoneStateListener (legacy)")
+                        } catch (e: SecurityException) {
+                            LogUtils.w(CLASS_NAME, "Missing permission for phone state listener: ${e.message}")
+                        } catch (e: Exception) {
+                            LogUtils.e(CLASS_NAME, "Failed to register phone state listener", e)
                         }
-                    } catch (e: SecurityException) {
-                        LogUtils.w(CLASS_NAME, "Missing permission for phone state listener: ${e.message}")
-                    } catch (e: Exception) {
-                        LogUtils.e(CLASS_NAME, "Failed to register phone state listener", e)
+                    } else {
+                        LogUtils.w(CLASS_NAME, "TelephonyManager is null, phone call interruption handling disabled (device may not have telephony service)")
                     }
                 } else {
-                    LogUtils.w(CLASS_NAME, "TelephonyManager is null, phone call interruption handling disabled (device may not have telephony service)")
+                    LogUtils.w(CLASS_NAME, "READ_PHONE_STATE permission not granted, phone call interruption handling disabled")
                 }
-            } else {
-                LogUtils.w(CLASS_NAME, "READ_PHONE_STATE permission not granted, phone call interruption handling disabled")
+            } catch (e: Exception) {
+                LogUtils.e(CLASS_NAME, "Failed to initialize phone state listener", e)
             }
-        } catch (e: Exception) {
-            LogUtils.e(CLASS_NAME, "Failed to initialize phone state listener", e)
         }
     }
 

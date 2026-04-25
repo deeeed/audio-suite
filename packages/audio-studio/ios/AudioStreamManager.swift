@@ -1056,9 +1056,15 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             Logger.debug("AudioStreamManager", "AudioProcessor activated successfully.")
         }
         
-        // Prepare notifications if enabled but don't show yet
+        // Prepare notifications if enabled but don't show yet.
+        // initializeNotifications schedules a Timer on the current thread's
+        // RunLoop; prepareRecording now runs on a background queue with no
+        // running RunLoop, so dispatch this to main to keep the elapsed-time
+        // / Now Playing updates firing reliably.
         if settings.showNotification {
-            initializeNotifications()
+            DispatchQueue.main.async { [weak self] in
+                self?.initializeNotifications()
+            }
         }
         
         // Mark preparation as complete
