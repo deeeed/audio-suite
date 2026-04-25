@@ -17,7 +17,7 @@ import java.util.zip.CRC32
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -651,9 +651,12 @@ class AudioStudioModule : Module(), EventSender {
 
         OnDestroy {
             // Cancel in-flight prepare/trim/extract coroutines so promises
-            // and event sends do not outlive the React context. SupervisorJob
-            // alone does not get cancelled by Expo automatically.
-            coroutineScope.cancel()
+            // and event sends do not outlive the React context. Use
+            // cancelChildren rather than cancel() so the scope itself stays
+            // usable: Expo can re-invoke definition() on dev-client reloads
+            // while keeping the same module instance, and a fully cancelled
+            // scope would silently no-op every subsequent launch.
+            coroutineScope.coroutineContext.cancelChildren()
             AudioRecorderManager.destroy()
         }
 

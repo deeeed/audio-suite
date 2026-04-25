@@ -1059,16 +1059,21 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         // Prepare notifications if enabled but don't show yet.
         // initializeNotifications schedules a Timer on the current thread's
         // RunLoop; prepareRecording runs on audioLifecycleQueue which has
-        // no running RunLoop. Hop to main *synchronously* so notificationManager
-        // is constructed before prepareRecording returns — otherwise a
-        // back-to-back startRecording would race past the async block and
-        // see notificationManager still nil.
+        // no running RunLoop, so the work has to land on main.
+        //
+        // .async is sufficient for the prepare → start ordering: this dispatch
+        // is enqueued before the promise.resolve hop in AudioStudioModule
+        // (which also goes through DispatchQueue.main), and main is FIFO, so
+        // initializeNotifications always runs before JS observes the resolve
+        // and queues startRecording. Using .async also avoids a forward
+        // deadlock hazard if a future caller ever invokes prepareRecording
+        // synchronously from main.
         if settings.showNotification {
             if Thread.isMainThread {
                 initializeNotifications()
             } else {
-                DispatchQueue.main.sync {
-                    self.initializeNotifications()
+                DispatchQueue.main.async { [weak self] in
+                    self?.initializeNotifications()
                 }
             }
         }
@@ -1649,13 +1654,9 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
            settings.enableProcessing,
            let _ = self.audioProcessor {
             let dataToAnalyze = takeAccumulatedAnalysisSnapshot()
-            if dataToAnalyze.isEmpty {
-                // Nothing to analyze yet; reset clock so we don't spin
-                self.lastEmissionTimeAnalysis = currentTime
-                return
-            }
             self.lastEmissionTimeAnalysis = currentTime
 
+            if !dataToAnalyze.isEmpty {
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self = self, let processor = self.audioProcessor, let settings = self.recordingSettings else {
                     // Logger.debug("Analysis Dispatch SKIP: self, processor, or settings nil")
@@ -1685,6 +1686,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
                          Logger.debug("Analysis Dispatch FAIL: processor.processAudioBuffer returned nil")
                     }
                 }
+            }
             }
             // Logger.debug("Dispatched analysis task.") // Optional: Re-enable if needed
         }
