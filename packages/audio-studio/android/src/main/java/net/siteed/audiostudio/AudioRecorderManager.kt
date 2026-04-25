@@ -954,30 +954,28 @@ class AudioRecorderManager(
 
             audioRecord?.startRecording()
             isPaused.set(false)
-            _isRecording.set(true)
             isFirstChunk = true
+            recordingStartTime = System.currentTimeMillis()
 
-            if (!isPaused.get()) {
-                recordingStartTime = System.currentTimeMillis()
-            }
-
-            // Start notification + service only when actually recording (#298)
-            // Previously these fired in initializeRecordingResources, which is also
-            // reached from prepareRecording — causing the notification timer to start
-            // on prepare. Mirrors iOS fix.
+            // Start notification + foreground service before flipping isRecording (#298, #288).
+            // Previously the notification block fired in initializeRecordingResources, which is
+            // also reached from prepareRecording, so the notification timer started on prepare.
+            // Mirrors iOS fix in AudioStreamManager.swift. Service start is shared by both
+            // showNotification and keepAwake gates and must precede _isRecording=true so
+            // getStatus() can't observe (isRecording=true && !isServiceRunning).
+            val needsService = (recordingConfig.showNotification || recordingConfig.keepAwake) &&
+                enableBackgroundAudio
             if (recordingConfig.showNotification && enableBackgroundAudio) {
                 notificationManager.initialize(recordingConfig)
                 notificationManager.startUpdates(recordingStartTime)
+            }
+            if (needsService) {
                 AudioRecordingService.startService(context)
             }
 
+            _isRecording.set(true)
             recordingThread = Thread { recordingProcess() }.apply { start() }
 
-            // Start service if keepAwake is true, but only if background audio is enabled (#288)
-            if (recordingConfig.keepAwake && enableBackgroundAudio) {
-                AudioRecordingService.startService(context)
-            }
-            
             return true
 
         } catch (e: Exception) {
