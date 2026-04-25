@@ -1058,12 +1058,18 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         
         // Prepare notifications if enabled but don't show yet.
         // initializeNotifications schedules a Timer on the current thread's
-        // RunLoop; prepareRecording now runs on a background queue with no
-        // running RunLoop, so dispatch this to main to keep the elapsed-time
-        // / Now Playing updates firing reliably.
+        // RunLoop; prepareRecording runs on audioLifecycleQueue which has
+        // no running RunLoop. Hop to main *synchronously* so notificationManager
+        // is constructed before prepareRecording returns — otherwise a
+        // back-to-back startRecording would race past the async block and
+        // see notificationManager still nil.
         if settings.showNotification {
-            DispatchQueue.main.async { [weak self] in
-                self?.initializeNotifications()
+            if Thread.isMainThread {
+                initializeNotifications()
+            } else {
+                DispatchQueue.main.sync {
+                    self.initializeNotifications()
+                }
             }
         }
         

@@ -17,6 +17,7 @@ import java.util.zip.CRC32
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -649,6 +650,10 @@ class AudioStudioModule : Module(), EventSender {
         }
 
         OnDestroy {
+            // Cancel in-flight prepare/trim/extract coroutines so promises
+            // and event sends do not outlive the React context. SupervisorJob
+            // alone does not get cancelled by Expo automatically.
+            coroutineScope.cancel()
             AudioRecorderManager.destroy()
         }
 
