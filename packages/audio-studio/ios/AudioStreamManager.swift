@@ -75,6 +75,54 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
     private var lastBufferTimeAnalysis: AVAudioTime?
     private var accumulatedAnalysisData = Data()
 
+    // Guards accumulatedData and accumulatedAnalysisData. The audio tap
+    // appends from the render thread while emit/pause/stop snapshot-and-clear
+    // from other threads. Without this lock, base64EncodedString crashed
+    // mid-flush (issue #314) and short emissions were occasionally dropped.
+    private let accumulatedDataLock = NSLock()
+
+    /// Append the same chunk to both buffers under the lock.
+    /// Called from the audio tap thread.
+    private func appendAccumulated(_ data: Data) {
+        accumulatedDataLock.lock()
+        accumulatedData.append(data)
+        accumulatedAnalysisData.append(data)
+        accumulatedDataLock.unlock()
+    }
+
+    /// Atomically snapshot accumulatedData and clear it. Empty Data if buffer was empty.
+    private func takeAccumulatedSnapshot() -> Data {
+        accumulatedDataLock.lock()
+        defer { accumulatedDataLock.unlock() }
+        let snapshot = accumulatedData
+        accumulatedData.removeAll()
+        return snapshot
+    }
+
+    /// Atomically snapshot accumulatedAnalysisData and clear it.
+    private func takeAccumulatedAnalysisSnapshot() -> Data {
+        accumulatedDataLock.lock()
+        defer { accumulatedDataLock.unlock() }
+        let snapshot = accumulatedAnalysisData
+        accumulatedAnalysisData.removeAll()
+        return snapshot
+    }
+
+    /// Clear both buffers atomically (lifecycle resets).
+    private func resetAccumulated() {
+        accumulatedDataLock.lock()
+        accumulatedData.removeAll()
+        accumulatedAnalysisData.removeAll()
+        accumulatedDataLock.unlock()
+    }
+
+    /// Current size of accumulatedData for logs/probes.
+    private func accumulatedDataSize() -> Int {
+        accumulatedDataLock.lock()
+        defer { accumulatedDataLock.unlock() }
+        return accumulatedData.count
+    }
+
 
 
     private var fileManager = FileManager.default
@@ -848,8 +896,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         emissionIntervalAnalysis = max(10.0, Double(settings.intervalAnalysis ?? 500)) / 1000.0
         lastEmissionTime = nil // Will be set when recording starts
         lastEmissionTimeAnalysis = nil // Will be set when recording starts
-        accumulatedData.removeAll()
-        accumulatedAnalysisData.removeAll()
+        resetAccumulated()
         totalDataSize = 0
         totalDataSizeAnalysis = 0
         totalPausedDuration = 0
@@ -1176,16 +1223,12 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         Logger.debug("Pausing recording...")
         
         // Emit any remaining audio data before pausing
-        if !accumulatedData.isEmpty {
-            Logger.debug("Emitting final audio chunk of \(accumulatedData.count) bytes before pausing")
+        let finalData = takeAccumulatedSnapshot()
+        if !finalData.isEmpty {
+            Logger.debug("Emitting final audio chunk of \(finalData.count) bytes before pausing")
             let recordingTime = currentRecordingDuration()
             let finalTotalSize = self.totalDataSize
-            
-            // Create a copy of accumulated data to avoid race conditions
-            let finalData = accumulatedData
-            accumulatedData.removeAll()
-            
-            // Notify delegate with final audio data
+
             delegate?.audioStreamManager(
                 self,
                 didReceiveAudioData: finalData,
@@ -1541,9 +1584,9 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         }
 
         // --- Event Emission & Analysis (Always Happens) ---
-        // Audio streaming is independent of file output settings
-        accumulatedData.append(dataToWrite)
-        accumulatedAnalysisData.append(dataToWrite)
+        // Audio streaming is independent of file output settings.
+        // Lock-protected append: see accumulatedDataLock for rationale.
+        appendAccumulated(dataToWrite)
 
         if recordingSettings?.showNotification == true {
             updateNotificationDuration()
@@ -1554,34 +1597,36 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
 
         // Emit AudioData event
         if let lastEmission = self.lastEmissionTime {
-            // Log emission evaluation every 10th buffer
             if debugBufferCounter % 10 == 0 {
                 let timeGap = currentTime.timeIntervalSince(lastEmission)
                 let isTimeReady = timeGap >= emissionInterval
-                Logger.debug("EMISSION DEBUG: Time since last: \(timeGap)s, Threshold: \(emissionInterval)s, Ready: \(isTimeReady), DataSize: \(accumulatedData.count) bytes")
+                Logger.debug("EMISSION DEBUG: Time since last: \(timeGap)s, Threshold: \(emissionInterval)s, Ready: \(isTimeReady), DataSize: \(accumulatedDataSize()) bytes")
             }
-            
-            if currentTime.timeIntervalSince(lastEmission) >= emissionInterval,
-               !accumulatedData.isEmpty {
-                let dataToEmit = accumulatedData
-                let recordingTime = currentRecordingDuration()
-                self.lastEmissionTime = currentTime
-                self.lastEmittedSize = currentTotalSize
-                accumulatedData.removeAll()
-                let compressionInfo = buildCompressionInfo()
-                
-                Logger.debug("EMISSION SUCCESS: Emitting \(dataToEmit.count) bytes at recording time \(recordingTime)s")
-                
-                delegate?.audioStreamManager(
-                    self,
-                    didReceiveAudioData: dataToEmit,
-                    recordingTime: recordingTime,
-                    totalDataSize: currentTotalSize,
-                    compressionInfo: compressionInfo
-                )
+
+            if currentTime.timeIntervalSince(lastEmission) >= emissionInterval {
+                // Atomic snapshot+clear avoids the race that crashed
+                // base64EncodedString in the delegate (issue #314) and
+                // stops short writes from being dropped between read
+                // and clear.
+                let dataToEmit = takeAccumulatedSnapshot()
+                if !dataToEmit.isEmpty {
+                    let recordingTime = currentRecordingDuration()
+                    self.lastEmissionTime = currentTime
+                    self.lastEmittedSize = currentTotalSize
+                    let compressionInfo = buildCompressionInfo()
+
+                    Logger.debug("EMISSION SUCCESS: Emitting \(dataToEmit.count) bytes at recording time \(recordingTime)s")
+
+                    delegate?.audioStreamManager(
+                        self,
+                        didReceiveAudioData: dataToEmit,
+                        recordingTime: recordingTime,
+                        totalDataSize: currentTotalSize,
+                        compressionInfo: compressionInfo
+                    )
+                }
             }
         } else {
-            // This case occurs when lastEmissionTime is nil (either first run or after reset)
             Logger.debug("EMISSION DEBUG: lastEmissionTime is nil, setting to current time")
             lastEmissionTime = currentTime
         }
@@ -1590,11 +1635,14 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         if let lastEmissionAnalysis = self.lastEmissionTimeAnalysis,
            currentTime.timeIntervalSince(lastEmissionAnalysis) >= emissionIntervalAnalysis,
            settings.enableProcessing,
-           let _ = self.audioProcessor,
-           !accumulatedAnalysisData.isEmpty {
-            let dataToAnalyze = accumulatedAnalysisData
+           let _ = self.audioProcessor {
+            let dataToAnalyze = takeAccumulatedAnalysisSnapshot()
+            if dataToAnalyze.isEmpty {
+                // Nothing to analyze yet; reset clock so we don't spin
+                self.lastEmissionTimeAnalysis = currentTime
+                return
+            }
             self.lastEmissionTimeAnalysis = currentTime
-            accumulatedAnalysisData.removeAll()
 
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self = self, let processor = self.audioProcessor, let settings = self.recordingSettings else {
@@ -1743,24 +1791,23 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         
         Logger.debug("Stopping recording...")
         
-        // IMPORTANT: Emit any remaining audio data before stopping the engine
-        if isRecording && !accumulatedData.isEmpty {
-            Logger.debug("Emitting final audio chunk of \(accumulatedData.count) bytes before stopping")
-            let recordingTime = currentRecordingDuration()
-            let finalTotalSize = self.totalDataSize // Use current total size
-            
-            // Create a copy of accumulated data to avoid race conditions
-            let finalData = accumulatedData
-            accumulatedData.removeAll()
-            
-            // Notify delegate with final audio data
-            delegate?.audioStreamManager(
-                self,
-                didReceiveAudioData: finalData,
-                recordingTime: recordingTime,
-                totalDataSize: finalTotalSize,
-                compressionInfo: buildCompressionInfo()
-            )
+        // IMPORTANT: Emit any remaining audio data before stopping the engine.
+        // Atomic snapshot avoids the race documented in #314.
+        if isRecording {
+            let finalData = takeAccumulatedSnapshot()
+            if !finalData.isEmpty {
+                Logger.debug("Emitting final audio chunk of \(finalData.count) bytes before stopping")
+                let recordingTime = currentRecordingDuration()
+                let finalTotalSize = self.totalDataSize
+
+                delegate?.audioStreamManager(
+                    self,
+                    didReceiveAudioData: finalData,
+                    recordingTime: recordingTime,
+                    totalDataSize: finalTotalSize,
+                    compressionInfo: buildCompressionInfo()
+                )
+            }
         }
 
         disableWakeLock()
@@ -1903,8 +1950,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             lastEmittedSize = 0
             lastEmittedSizeAnalysis = 0
             lastEmittedCompressedSize = 0
-            accumulatedData.removeAll()
-            accumulatedAnalysisData.removeAll()
+            resetAccumulated()
             recordingUUID = nil
             totalDataSize = 0
             
@@ -1969,8 +2015,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             self.lastEmittedSize = 0
             self.lastEmittedSizeAnalysis = 0
             self.lastEmittedCompressedSize = 0
-            self.accumulatedData.removeAll()
-            self.accumulatedAnalysisData.removeAll()
+            self.resetAccumulated()
             self.recordingUUID = nil
             self.totalDataSize = 0
             self.cachedWavFileSize = 0
@@ -2172,16 +2217,16 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
                 Logger.debug("Recording was manually paused, leaving engine paused after fallback.")
             }
 
-            // Emit any remaining audio data from the previous device before resetting timers
-            if !accumulatedData.isEmpty {
-                Logger.debug("Emitting final audio chunk of \(accumulatedData.count) bytes from previous device")
+            // Emit any remaining audio data from the previous device, then
+            // wipe both buffers atomically (analysis buffer is discarded since
+            // we want to start fresh on the fallback device).
+            let finalData = takeAccumulatedSnapshot()
+            _ = takeAccumulatedAnalysisSnapshot()
+            if !finalData.isEmpty {
+                Logger.debug("Emitting final audio chunk of \(finalData.count) bytes from previous device")
                 let recordingTime = currentRecordingDuration()
                 let finalTotalSize = self.totalDataSize
-                
-                // Create a copy of accumulated data to avoid race conditions
-                let finalData = accumulatedData
-                
-                // Notify delegate with final audio data from previous device
+
                 delegate?.audioStreamManager(
                     self,
                     didReceiveAudioData: finalData,
@@ -2190,15 +2235,10 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
                     compressionInfo: buildCompressionInfo()
                 )
             }
-            
+
             // Reset emission timers to force new data emission with the fallback device
             lastEmissionTime = Date() // Reset to force immediate emission
             lastEmissionTimeAnalysis = Date() // Reset analysis timer too
-            
-            // Important: Do not reset totalDataSize here - it needs to be maintained
-            // We only clear the buffers to start accumulating new data from the fallback device
-            accumulatedData.removeAll() // Clear any partial data from previous device
-            accumulatedAnalysisData.removeAll() // Clear analysis data buffer
             Logger.debug("Emission timers reset. Current totalDataSize: \(totalDataSize)")
 
             // CRITICAL: Multiple scheduled recovery attempts
@@ -2208,14 +2248,13 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
                     Logger.debug("FALLBACK RECOVERY: Checking for data at \(delaySeconds)s")
                     
                     // Force an immediate emission if data is being received but not emitted
-                    if !self.accumulatedData.isEmpty {
+                    let dataToEmit = self.takeAccumulatedSnapshot()
+                    if !dataToEmit.isEmpty {
                         Logger.debug("FALLBACK RECOVERY: Forcing emission from accumulated data after \(delaySeconds)s (total size: \(self.totalDataSize))")
-                        let dataToEmit = self.accumulatedData
                         let recordingTime = self.currentRecordingDuration()
                         let totalSize = self.totalDataSize
-                        
+
                         self.lastEmissionTime = Date() // Reset the emission timer
-                        self.accumulatedData.removeAll() // Clear the buffer
                         
                         // Direct delegate call with accumulated data
                         self.delegate?.audioStreamManager(
