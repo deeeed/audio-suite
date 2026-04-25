@@ -909,12 +909,6 @@ class AudioRecorderManager(
                 LogUtils.d(CLASS_NAME, "Skipping primary file creation - primary output is disabled")
             }
 
-            if (recordingConfig.showNotification && enableBackgroundAudio) {
-                notificationManager.initialize(recordingConfig)
-                notificationManager.startUpdates(System.currentTimeMillis())
-                AudioRecordingService.startService(context)
-            }
-
             acquireWakeLock()
             audioProcessor.resetCumulativeAmplitudeRange()
             return true
@@ -967,8 +961,18 @@ class AudioRecorderManager(
                 recordingStartTime = System.currentTimeMillis()
             }
 
+            // Start notification + service only when actually recording (#298)
+            // Previously these fired in initializeRecordingResources, which is also
+            // reached from prepareRecording — causing the notification timer to start
+            // on prepare. Mirrors iOS fix.
+            if (recordingConfig.showNotification && enableBackgroundAudio) {
+                notificationManager.initialize(recordingConfig)
+                notificationManager.startUpdates(recordingStartTime)
+                AudioRecordingService.startService(context)
+            }
+
             recordingThread = Thread { recordingProcess() }.apply { start() }
-            
+
             // Start service if keepAwake is true, but only if background audio is enabled (#288)
             if (recordingConfig.keepAwake && enableBackgroundAudio) {
                 AudioRecordingService.startService(context)
