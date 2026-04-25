@@ -16,6 +16,7 @@ import expo.modules.interfaces.permissions.Permissions
 import java.util.zip.CRC32
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -31,7 +32,7 @@ class AudioStudioModule : Module(), EventSender {
     private var enableNotificationHandling: Boolean = false // Default to false until we check manifest
     private var enableBackgroundAudio: Boolean = false // Default to false until we check manifest
     private var enableDeviceDetection: Boolean = false // Default to false until we check manifest
-    private val coroutineScope = CoroutineScope(Dispatchers.Main)
+    private val coroutineScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private val audioFileHandler by lazy { 
         AudioFileHandler(appContext.reactContext?.filesDir ?: throw IllegalStateException("React context not available")) 
@@ -183,28 +184,27 @@ class AudioStudioModule : Module(), EventSender {
 
 
         AsyncFunction("prepareRecording") { options: Map<String, Any?>, promise: Promise ->
-            try {
-                // If notifications are requested but permission not in manifest, modify options
-                if (options["showNotification"] as? Boolean == true && !enableNotificationHandling) {
-                    val modifiedOptions = options.toMutableMap()
-                    modifiedOptions["showNotification"] = false
-                    LogUtils.d(CLASS_NAME, "Notification permission not in manifest, disabling showNotification")
-                    
-                    if (audioRecorderManager.prepareRecording(modifiedOptions)) {
+            // Heavy native init (AudioRecord probe, MediaRecorder.prepare, file I/O)
+            // must run off the main thread to keep the JS/UI thread responsive.
+            // Module-scoped Job ensures cancellation on module destroy.
+            coroutineScope.launch(Dispatchers.IO) {
+                try {
+                    val opts = if (options["showNotification"] as? Boolean == true && !enableNotificationHandling) {
+                        LogUtils.d(CLASS_NAME, "Notification permission not in manifest, disabling showNotification")
+                        options.toMutableMap().apply { this["showNotification"] = false }
+                    } else {
+                        options
+                    }
+
+                    if (audioRecorderManager.prepareRecording(opts)) {
                         promise.resolve(true)
                     } else {
                         promise.reject("PREPARE_ERROR", "Failed to prepare recording", null)
                     }
-                } else {
-                    if (audioRecorderManager.prepareRecording(options)) {
-                        promise.resolve(true)
-                    } else {
-                        promise.reject("PREPARE_ERROR", "Failed to prepare recording", null)
-                    }
+                } catch (e: Exception) {
+                    LogUtils.e(CLASS_NAME, "Error preparing recording", e)
+                    promise.reject("PREPARE_ERROR", "Failed to prepare recording: ${e.message}", e)
                 }
-            } catch (e: Exception) {
-                LogUtils.e(CLASS_NAME, "Error preparing recording", e)
-                promise.reject("PREPARE_ERROR", "Failed to prepare recording: ${e.message}", e)
             }
         }
 
@@ -368,93 +368,92 @@ class AudioStudioModule : Module(), EventSender {
         }
 
         AsyncFunction("trimAudio") { options: Map<String, Any>, promise: Promise ->
-            try {
-                val fileUri = options["fileUri"] as? String ?: run {
-                    promise.reject("INVALID_URI", "fileUri is required", null)
-                    return@AsyncFunction
-                }
+            // Trim does heavy decode/encode + file I/O — must run off the
+            // shared module executor so other JS calls don't queue behind it.
+            coroutineScope.launch(Dispatchers.IO) {
+                try {
+                    val fileUri = options["fileUri"] as? String ?: run {
+                        promise.reject("INVALID_URI", "fileUri is required", null)
+                        return@launch
+                    }
 
-                LogUtils.d(CLASS_NAME, "trimAudio called with fileUri: $fileUri")
-                LogUtils.d(CLASS_NAME, "Full options: $options")
+                    LogUtils.d(CLASS_NAME, "trimAudio called with fileUri: $fileUri")
+                    LogUtils.d(CLASS_NAME, "Full options: $options")
 
-                val mode = options["mode"] as? String ?: "single"
-                val startTimeMs = (options["startTimeMs"] as? Number)?.toLong()
-                val endTimeMs = (options["endTimeMs"] as? Number)?.toLong()
-                
-                @Suppress("UNCHECKED_CAST")
-                val rawRanges = options["ranges"] as? List<Map<String, Any>>
-                val ranges = rawRanges?.map { range ->
-                    mapOf(
-                        "startTimeMs" to ((range["startTimeMs"] as? Number)?.toLong() ?: 0L),
-                        "endTimeMs" to ((range["endTimeMs"] as? Number)?.toLong() ?: 0L)
+                    val mode = options["mode"] as? String ?: "single"
+                    val startTimeMs = (options["startTimeMs"] as? Number)?.toLong()
+                    val endTimeMs = (options["endTimeMs"] as? Number)?.toLong()
+
+                    @Suppress("UNCHECKED_CAST")
+                    val rawRanges = options["ranges"] as? List<Map<String, Any>>
+                    val ranges = rawRanges?.map { range ->
+                        mapOf(
+                            "startTimeMs" to ((range["startTimeMs"] as? Number)?.toLong() ?: 0L),
+                            "endTimeMs" to ((range["endTimeMs"] as? Number)?.toLong() ?: 0L)
+                        )
+                    }
+
+                    val outputFileName = options["outputFileName"] as? String
+
+                    @Suppress("UNCHECKED_CAST")
+                    var outputFormatMap = options["outputFormat"] as? Map<String, Any>
+
+                    if (outputFormatMap != null) {
+                        val format = outputFormatMap["format"] as? String
+                        if (format != null && format != "wav" && format != "aac" && format != "opus") {
+                            LogUtils.w(CLASS_NAME, "Requested format '$format' is not fully supported. Using 'aac' instead.")
+                            val newOutputFormat = HashMap<String, Any>(outputFormatMap)
+                            newOutputFormat["format"] = "aac"
+                            outputFormatMap = newOutputFormat
+                        }
+                    }
+
+                    LogUtils.d(CLASS_NAME, "Output format options: $outputFormatMap")
+
+                    val progressListener = object : AudioTrimmer.ProgressListener {
+                        override fun onProgress(progress: Float, bytesProcessed: Long, totalBytes: Long) {
+                            sendEvent(Constants.TRIM_PROGRESS_EVENT, mapOf(
+                                "progress" to progress,
+                                "bytesProcessed" to bytesProcessed,
+                                "totalBytes" to totalBytes
+                            ))
+                        }
+                    }
+
+                    val startTime = System.currentTimeMillis()
+
+                    val result = audioTrimmer.trimAudio(
+                        fileUri = fileUri,
+                        mode = mode,
+                        startTimeMs = startTimeMs,
+                        endTimeMs = endTimeMs,
+                        ranges = ranges,
+                        outputFileName = outputFileName,
+                        outputFormat = outputFormatMap,
+                        progressListener = progressListener
                     )
+
+                    val processingTimeMs = System.currentTimeMillis() - startTime
+
+                    val resultWithProcessingTime = result.toMutableMap()
+                    resultWithProcessingTime["processingInfo"] = mapOf(
+                        "durationMs" to processingTimeMs
+                    )
+
+                    LogUtils.d(CLASS_NAME, "Trim operation completed successfully in ${processingTimeMs}ms: $result")
+                    promise.resolve(resultWithProcessingTime)
+                } catch (e: Exception) {
+                    LogUtils.e(CLASS_NAME, "Error trimming audio: ${e.message}", e)
+                    promise.reject("TRIM_ERROR", "Error trimming audio: ${e.message}", e)
                 }
-                
-                val outputFileName = options["outputFileName"] as? String
-                
-                @Suppress("UNCHECKED_CAST")
-                var outputFormatMap = options["outputFormat"] as? Map<String, Any>
-                
-                // Validate output format if provided
-                if (outputFormatMap != null) {
-                    val format = outputFormatMap["format"] as? String
-                    if (format != null && format != "wav" && format != "aac" && format != "opus") {
-                        LogUtils.w(CLASS_NAME, "Requested format '$format' is not fully supported. Using 'aac' instead.")
-                        // Create a new map with the corrected format
-                        val newOutputFormat = HashMap<String, Any>(outputFormatMap)
-                        newOutputFormat["format"] = "aac"
-                        outputFormatMap = newOutputFormat
-                    }
-                }
-                
-                LogUtils.d(CLASS_NAME, "Output format options: $outputFormatMap")
-                
-                // Create progress listener
-                val progressListener = object : AudioTrimmer.ProgressListener {
-                    override fun onProgress(progress: Float, bytesProcessed: Long, totalBytes: Long) {
-                        sendEvent(Constants.TRIM_PROGRESS_EVENT, mapOf(
-                            "progress" to progress,
-                            "bytesProcessed" to bytesProcessed,
-                            "totalBytes" to totalBytes
-                        ))
-                    }
-                }
-
-                // Record start time
-                val startTime = System.currentTimeMillis()
-
-                // Perform the trim operation
-                val result = audioTrimmer.trimAudio(
-                    fileUri = fileUri,
-                    mode = mode,
-                    startTimeMs = startTimeMs,
-                    endTimeMs = endTimeMs,
-                    ranges = ranges,
-                    outputFileName = outputFileName,
-                    outputFormat = outputFormatMap,
-                    progressListener = progressListener
-                )
-
-                // Calculate processing time
-                val processingTimeMs = System.currentTimeMillis() - startTime
-                
-                // Add processing time to result
-                val resultWithProcessingTime = result.toMutableMap()
-                resultWithProcessingTime["processingInfo"] = mapOf(
-                    "durationMs" to processingTimeMs
-                )
-
-                LogUtils.d(CLASS_NAME, "Trim operation completed successfully in ${processingTimeMs}ms: $result")
-                promise.resolve(resultWithProcessingTime)
-            } catch (e: Exception) {
-                LogUtils.e(CLASS_NAME, "Error trimming audio: ${e.message}", e)
-                promise.reject("TRIM_ERROR", "Error trimming audio: ${e.message}", e)
             }
         }
 
         AsyncFunction("extractMelSpectrogram") { options: Map<String, Any>, promise: Promise ->
+            // Heavy DSP: file decode + STFT + mel projection. Off the shared
+            // module executor so other JS calls don't block.
+            coroutineScope.launch(Dispatchers.IO) {
             try {
-                // Log all incoming options for debugging
                 LogUtils.d(CLASS_NAME, "extractMelSpectrogram called with options: $options")
                 
                 // Extract required parameters with detailed logging
@@ -646,6 +645,7 @@ class AudioStudioModule : Module(), EventSender {
                 LogUtils.e(CLASS_NAME, "Stack trace: ${e.stackTraceToString()}")
                 promise.reject("SPECTROGRAM_ERROR", e.message ?: "Unknown error", e)
             }
+            }
         }
 
         OnDestroy {
@@ -669,9 +669,12 @@ class AudioStudioModule : Module(), EventSender {
 
 
         AsyncFunction("extractAudioAnalysis") { options: Map<String, Any>, promise: Promise ->
+            // Off the shared executor so other JS calls don't block during
+            // multi-second analysis on large files.
+            coroutineScope.launch(Dispatchers.IO) {
             try {
                 val fileUri = requireNotNull(options["fileUri"] as? String) { "fileUri is required" }
-                
+
                 // Get time or byte range options
                 val startTimeMs = options["startTimeMs"] as? Number
                 val endTimeMs = options["endTimeMs"] as? Number
@@ -766,9 +769,12 @@ class AudioStudioModule : Module(), EventSender {
                 LogUtils.e(CLASS_NAME, "Failed to extract audio analysis: ${e.message}", e)
                 promise.reject("PROCESSING_ERROR", e.message ?: "Unknown error", e)
             }
+            }
         }
 
         AsyncFunction("extractAudioData") { options: Map<String, Any>, promise: Promise ->
+            // Off the shared executor so concurrent JS calls don't block.
+            coroutineScope.launch(Dispatchers.IO) {
             try {
                 val fileUri = requireNotNull(options["fileUri"] as? String) { "fileUri is required" }
                 val startTimeMs = options["startTimeMs"] as? Number
@@ -934,6 +940,7 @@ class AudioStudioModule : Module(), EventSender {
                 LogUtils.e(CLASS_NAME, "Failed to extract audio data: ${e.message}")
                 LogUtils.e(CLASS_NAME, "Stack trace: ${e.stackTraceToString()}")
                 promise.reject("PROCESSING_ERROR", e.message ?: "Unknown error", e)
+            }
             }
         }
     }
