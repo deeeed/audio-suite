@@ -24,6 +24,14 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
     private let notificationIdentifier = "audio_recording_notification"
     private var deviceManager = AudioDeviceManager()
     private var deviceChangeObserver: Any?
+
+    // Serial queue for AVAudioEngine lifecycle ops (prepare/start/stop).
+    // Prevents concurrent mutation of shared engine state and keeps callers
+    // off the main thread to avoid UI freezes during heavy native init.
+    private let audioLifecycleQueue = DispatchQueue(
+        label: "net.siteed.audiostudio.lifecycle",
+        qos: .userInitiated
+    )
         
     public func definition() -> ModuleDefinition {
         Name("AudioStudio")
@@ -220,30 +228,37 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                         }
                     }
 
-                    if let result = self.streamManager.startRecording(settings: settings) {
-                        var resultDict: [String: Any] = [
-                            "fileUri": result.fileUri,
-                            "channels": result.channels,
-                            "bitDepth": result.bitDepth,
-                            "sampleRate": result.sampleRate,
-                            "mimeType": result.mimeType,
-                        ]
+                    // Serialize on lifecycle queue: avoids racing with prepare/stop
+                    // and keeps the JS/UI thread responsive while audio session
+                    // and AVAudioEngine come up.
+                    self.audioLifecycleQueue.async {
+                        let result = self.streamManager.startRecording(settings: settings)
+                        DispatchQueue.main.async {
+                            if let result = result {
+                                var resultDict: [String: Any] = [
+                                    "fileUri": result.fileUri,
+                                    "channels": result.channels,
+                                    "bitDepth": result.bitDepth,
+                                    "sampleRate": result.sampleRate,
+                                    "mimeType": result.mimeType,
+                                ]
 
-                        // Add compression info if available
-                        if let compression = result.compression {
-                            resultDict["compression"] = [
-                                "compressedFileUri": compression.compressedFileUri,
-                                "mimeType": compression.mimeType,
-                                "bitrate": compression.bitrate,
-                                "format": compression.format
-                            ]
+                                if let compression = result.compression {
+                                    resultDict["compression"] = [
+                                        "compressedFileUri": compression.compressedFileUri,
+                                        "mimeType": compression.mimeType,
+                                        "bitrate": compression.bitrate,
+                                        "format": compression.format
+                                    ]
+                                }
+
+                                Logger.info("AudioStudioModule", "Recording started successfully")
+                                promise.resolve(resultDict)
+                            } else {
+                                Logger.error("AudioStudioModule", "Failed to start recording")
+                                promise.reject("ERROR", "Failed to start recording.")
+                            }
                         }
-
-                        Logger.info("AudioStudioModule", "Recording started successfully")
-                        promise.resolve(resultDict)
-                    } else {
-                        Logger.error("AudioStudioModule", "Failed to start recording")
-                        promise.reject("ERROR", "Failed to start recording.")
                     }
 
                 case .failure(let error):
@@ -275,21 +290,28 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                     promise.reject("PERMISSION_DENIED", "Recording permission has not been granted")
                     return
                 }
-                
+
                 // Create settings with validation
                 let settingsResult = RecordingSettings.fromDictionary(options)
-                
+
                 switch settingsResult {
                 case .success(let settings):
-                    Logger.debug("AudioStudioModule", "prepareRecording: Settings parsed successfully. Calling streamManager.prepareRecording")
-                    if self.streamManager.prepareRecording(settings: settings) {
-                        Logger.info("AudioStudioModule", "prepareRecording: Preparation successful.")
-                        promise.resolve(true)
-                    } else {
-                        Logger.error("AudioStudioModule", "prepareRecording: streamManager.prepareRecording returned false.")
-                        promise.reject("ERROR", "Failed to prepare recording.")
+                    Logger.debug("AudioStudioModule", "prepareRecording: Settings parsed. Dispatching to serial audio queue.")
+                    // Serial queue prevents concurrent AVAudioEngine mutation if
+                    // prepare/start/stop overlap. Off-main keeps UI responsive.
+                    self.audioLifecycleQueue.async {
+                        let ok = self.streamManager.prepareRecording(settings: settings)
+                        DispatchQueue.main.async {
+                            if ok {
+                                Logger.info("AudioStudioModule", "prepareRecording: Preparation successful.")
+                                promise.resolve(true)
+                            } else {
+                                Logger.error("AudioStudioModule", "prepareRecording: streamManager.prepareRecording returned false.")
+                                promise.reject("ERROR", "Failed to prepare recording.")
+                            }
+                        }
                     }
-                    
+
                 case .failure(let error):
                     promise.reject("INVALID_SETTINGS", error.localizedDescription)
                 }
@@ -314,36 +336,43 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
         ///   - promise: A promise to resolve with the recording result or reject with an error.
         AsyncFunction("stopRecording") { (promise: Promise) in
             Logger.debug("AudioStudioModule", "stopRecording called.")
-            
-            if let recordingResult = self.streamManager.stopRecording() {
-                var resultDict: [String: Any] = [
-                    "fileUri": recordingResult.fileUri,
-                    "filename": recordingResult.filename,
-                    "durationMs": recordingResult.duration,
-                    "size": recordingResult.size,
-                    "channels": recordingResult.channels,
-                    "bitDepth": recordingResult.bitDepth,
-                    "sampleRate": recordingResult.sampleRate,
-                    "mimeType": recordingResult.mimeType,
-                    "createdAt": Date().timeIntervalSince1970 * 1000,
-                ]
-                
-                // Add compression info if available
-                if let compression = recordingResult.compression {
-                    resultDict["compression"] = [
-                        "compressedFileUri": compression.compressedFileUri,
-                        "mimeType": compression.mimeType,
-                        "bitrate": compression.bitrate,
-                        "format": compression.format,
-                        "size": compression.size
-                    ]
+
+            // Serialize on lifecycle queue: stop flushes file handles and
+            // tears down AVAudioEngine; must not race with start/prepare and
+            // must not block the JS/UI thread.
+            self.audioLifecycleQueue.async {
+                let recordingResult = self.streamManager.stopRecording()
+                DispatchQueue.main.async {
+                    if let recordingResult = recordingResult {
+                        var resultDict: [String: Any] = [
+                            "fileUri": recordingResult.fileUri,
+                            "filename": recordingResult.filename,
+                            "durationMs": recordingResult.duration,
+                            "size": recordingResult.size,
+                            "channels": recordingResult.channels,
+                            "bitDepth": recordingResult.bitDepth,
+                            "sampleRate": recordingResult.sampleRate,
+                            "mimeType": recordingResult.mimeType,
+                            "createdAt": Date().timeIntervalSince1970 * 1000,
+                        ]
+
+                        if let compression = recordingResult.compression {
+                            resultDict["compression"] = [
+                                "compressedFileUri": compression.compressedFileUri,
+                                "mimeType": compression.mimeType,
+                                "bitrate": compression.bitrate,
+                                "format": compression.format,
+                                "size": compression.size
+                            ]
+                        }
+
+                        Logger.info("AudioStudioModule", "stopRecording: Recording stopped successfully. fileUri: \(recordingResult.fileUri), size: \(recordingResult.size)")
+                        promise.resolve(resultDict)
+                    } else {
+                        Logger.error("AudioStudioModule", "stopRecording: streamManager.stopRecording returned nil.")
+                        promise.reject("ERROR", "Failed to stop recording or no recording in progress.")
+                    }
                 }
-                
-                Logger.info("AudioStudioModule", "stopRecording: Recording stopped successfully. fileUri: \(recordingResult.fileUri), size: \(recordingResult.size)")
-                promise.resolve(resultDict)
-            } else {
-                Logger.error("AudioStudioModule", "stopRecording: streamManager.stopRecording returned nil.")
-                promise.reject("ERROR", "Failed to stop recording or no recording in progress.")
             }
         }
         
@@ -609,95 +638,89 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                 return
             }
 
-            do {
-                let audioFile = try AVAudioFile(forReading: url)
-                let format = audioFile.processingFormat
-                let sampleRate = format.sampleRate
-                let channels = Int(format.channelCount)
-                let bitDepth = audioFile.fileFormat.settings[AVLinearPCMBitDepthKey] as? Int ?? 16
+            // File decode + frame read can take 100s of ms on large files.
+            // Move off main to keep JS/UI responsive.
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let audioFile = try AVAudioFile(forReading: url)
+                    let format = audioFile.processingFormat
+                    let sampleRate = format.sampleRate
+                    let channels = Int(format.channelCount)
+                    let bitDepth = audioFile.fileFormat.settings[AVLinearPCMBitDepthKey] as? Int ?? 16
 
-                // Calculate frame positions
-                let startFrame: AVAudioFramePosition
-                let endFrame: AVAudioFramePosition
+                    let startFrame: AVAudioFramePosition
+                    let endFrame: AVAudioFramePosition
 
-                if hasTimeRange {
-                    startFrame = AVAudioFramePosition(startTimeMs! * sampleRate / 1000.0)
-                    endFrame = AVAudioFramePosition(endTimeMs! * sampleRate / 1000.0)
-                } else {
-                    // Convert byte position to frame position
-                    let bytesPerFrame = Int64(channels * (bitDepth / 8))
-                    startFrame = AVAudioFramePosition(position!) / bytesPerFrame
-                    endFrame = startFrame + (AVAudioFramePosition(length!) / bytesPerFrame)
-                }
+                    if hasTimeRange {
+                        startFrame = AVAudioFramePosition(startTimeMs! * sampleRate / 1000.0)
+                        endFrame = AVAudioFramePosition(endTimeMs! * sampleRate / 1000.0)
+                    } else {
+                        let bytesPerFrame = Int64(channels * (bitDepth / 8))
+                        startFrame = AVAudioFramePosition(position!) / bytesPerFrame
+                        endFrame = startFrame + (AVAudioFramePosition(length!) / bytesPerFrame)
+                    }
 
-                // Validate frame range
-                guard startFrame >= 0 && endFrame <= audioFile.length && startFrame < endFrame else {
-                    promise.reject("INVALID_RANGE", "Invalid range specified")
-                    return
-                }
+                    guard startFrame >= 0 && endFrame <= audioFile.length && startFrame < endFrame else {
+                        promise.reject("INVALID_RANGE", "Invalid range specified")
+                        return
+                    }
 
-                let frameCount = AVAudioFrameCount(endFrame - startFrame)
-                
-                
-                // Pass both options separately - normalizeAudio from decodingOptions, and includeNormalizedData as is
-                let decodingConfig = DecodingConfig.fromDictionary(decodingOptions)
-                
-                let (pcmData, normalizedData, base64Data) = try extractRawAudioData(
-                    from: url,
-                    startFrame: startFrame,
-                    frameCount: frameCount,
-                    format: format,
-                    decodingConfig: decodingConfig,
-                    includeNormalizedData: includeNormalizedData,
-                    includeBase64Data: includeBase64Data
-                )
+                    let frameCount = AVAudioFrameCount(endFrame - startFrame)
 
-                var resultDict: [String: Any] = [:]
-                
-                if includeWavHeader {
-                    // Create WAV header and prepend it to the PCM data
-                    let wavData = createWavHeader(
-                        pcmData: pcmData,
-                        sampleRate: Int(sampleRate),
-                        channels: channels,
-                        bitDepth: bitDepth
+                    let decodingConfig = DecodingConfig.fromDictionary(decodingOptions)
+
+                    let (pcmData, normalizedData, base64Data) = try extractRawAudioData(
+                        from: url,
+                        startFrame: startFrame,
+                        frameCount: frameCount,
+                        format: format,
+                        decodingConfig: decodingConfig,
+                        includeNormalizedData: includeNormalizedData,
+                        includeBase64Data: includeBase64Data
                     )
-                    resultDict["pcmData"] = wavData
-                    resultDict["hasWavHeader"] = true
-                } else {
-                    resultDict["pcmData"] = pcmData
-                    resultDict["hasWavHeader"] = false
-                }
-                
-                // Add the rest of the data
-                resultDict["sampleRate"] = Int(sampleRate)
-                resultDict["channels"] = channels
-                resultDict["bitDepth"] = bitDepth
-                resultDict["durationMs"] = Int(Double(frameCount) * 1000.0 / sampleRate)
-                resultDict["format"] = "pcm_\(bitDepth)bit"
-                resultDict["samples"] = Int(frameCount) * channels
-                
-                // Add normalized data if requested, regardless of normalization setting
-                if includeNormalizedData {
-                    resultDict["normalizedData"] = normalizedData
-                }
-                
-                // Add checksum if requested
-                if options["computeChecksum"] as? Bool == true {
-                    let checksum = calculateCRC32(data: pcmData)
-                    resultDict["checksum"] = Int(checksum)
-                    
-                    Logger.debug("AudioStudioModule", "Computed CRC32 checksum: \(checksum)")
-                }
-                
-                if let includeBase64Data = options["includeBase64Data"] as? Bool, includeBase64Data {
-                    resultDict["base64Data"] = base64Data
-                }
-                
-                promise.resolve(resultDict)
 
-            } catch {
-                promise.reject("PROCESSING_ERROR", "Failed to process audio file: \(error.localizedDescription)")
+                    var resultDict: [String: Any] = [:]
+
+                    if includeWavHeader {
+                        let wavData = createWavHeader(
+                            pcmData: pcmData,
+                            sampleRate: Int(sampleRate),
+                            channels: channels,
+                            bitDepth: bitDepth
+                        )
+                        resultDict["pcmData"] = wavData
+                        resultDict["hasWavHeader"] = true
+                    } else {
+                        resultDict["pcmData"] = pcmData
+                        resultDict["hasWavHeader"] = false
+                    }
+
+                    resultDict["sampleRate"] = Int(sampleRate)
+                    resultDict["channels"] = channels
+                    resultDict["bitDepth"] = bitDepth
+                    resultDict["durationMs"] = Int(Double(frameCount) * 1000.0 / sampleRate)
+                    resultDict["format"] = "pcm_\(bitDepth)bit"
+                    resultDict["samples"] = Int(frameCount) * channels
+
+                    if includeNormalizedData {
+                        resultDict["normalizedData"] = normalizedData
+                    }
+
+                    if options["computeChecksum"] as? Bool == true {
+                        let checksum = calculateCRC32(data: pcmData)
+                        resultDict["checksum"] = Int(checksum)
+                        Logger.debug("AudioStudioModule", "Computed CRC32 checksum: \(checksum)")
+                    }
+
+                    if let includeBase64Data = options["includeBase64Data"] as? Bool, includeBase64Data {
+                        resultDict["base64Data"] = base64Data
+                    }
+
+                    promise.resolve(resultDict)
+
+                } catch {
+                    promise.reject("PROCESSING_ERROR", "Failed to process audio file: \(error.localizedDescription)")
+                }
             }
         }
         
@@ -710,90 +733,90 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
         ///   - promise: A promise to resolve with the extracted mel spectrogram data or reject with an error.
         /// - Returns: Promise to be resolved with mel spectrogram data.
         AsyncFunction("extractMelSpectrogram") { (options: [String: Any], promise: Promise) in
-            do {
-                guard let fileUri = options["fileUri"] as? String else {
-                    throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "fileUri is required"])
-                }
-                guard let windowSizeMs = options["windowSizeMs"] as? Double else {
-                    throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "windowSizeMs is required"])
-                }
-                guard let hopLengthMs = options["hopLengthMs"] as? Double else {
-                    throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "hopLengthMs is required"])
-                }
-                guard let nMels = options["nMels"] as? Int ?? (options["nMels"] as? Double).map({ Int($0) }) else {
-                    throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "nMels is required"])
-                }
-
-                let fMin = Float(options["fMin"] as? Double ?? 0.0)
-                let fMaxParam = options["fMax"] as? Double
-                let windowType = options["windowType"] as? String ?? "hann"
-                let logScale = options["logScale"] as? Bool ?? true
-                let normalize = options["normalize"] as? Bool ?? false
-                let startTimeMs = options["startTimeMs"] as? Double
-                let endTimeMs = options["endTimeMs"] as? Double
-
-                // Load audio file to PCM float samples
-                let audioData = try loadAudioFile(fileUri)
-                let sampleRate = audioData.sampleRate
-                var samples = audioData.samples
-
-                // Apply time range trimming if specified
-                if let startMs = startTimeMs {
-                    let startSample = Int(startMs * Double(sampleRate) / 1000.0)
-                    let endSample: Int
-                    if let endMs = endTimeMs {
-                        endSample = min(Int(endMs * Double(sampleRate) / 1000.0), samples.count)
-                    } else {
-                        endSample = samples.count
+            // Heavy DSP: file decode + STFT + mel projection. Multi-second on
+            // large files. Move off main to keep JS/UI responsive.
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    guard let fileUri = options["fileUri"] as? String else {
+                        throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "fileUri is required"])
                     }
-                    if startSample < endSample && startSample < samples.count {
-                        samples = Array(samples[startSample..<endSample])
+                    guard let windowSizeMs = options["windowSizeMs"] as? Double else {
+                        throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "windowSizeMs is required"])
                     }
+                    guard let hopLengthMs = options["hopLengthMs"] as? Double else {
+                        throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "hopLengthMs is required"])
+                    }
+                    guard let nMels = options["nMels"] as? Int ?? (options["nMels"] as? Double).map({ Int($0) }) else {
+                        throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "nMels is required"])
+                    }
+
+                    let fMin = Float(options["fMin"] as? Double ?? 0.0)
+                    let fMaxParam = options["fMax"] as? Double
+                    let windowType = options["windowType"] as? String ?? "hann"
+                    let logScale = options["logScale"] as? Bool ?? true
+                    let normalize = options["normalize"] as? Bool ?? false
+                    let startTimeMs = options["startTimeMs"] as? Double
+                    let endTimeMs = options["endTimeMs"] as? Double
+
+                    let audioData = try loadAudioFile(fileUri)
+                    let sampleRate = audioData.sampleRate
+                    var samples = audioData.samples
+
+                    if let startMs = startTimeMs {
+                        let startSample = Int(startMs * Double(sampleRate) / 1000.0)
+                        let endSample: Int
+                        if let endMs = endTimeMs {
+                            endSample = min(Int(endMs * Double(sampleRate) / 1000.0), samples.count)
+                        } else {
+                            endSample = samples.count
+                        }
+                        if startSample < endSample && startSample < samples.count {
+                            samples = Array(samples[startSample..<endSample])
+                        }
+                    }
+
+                    let fMax = fMaxParam.map { Float($0) } ?? Float(sampleRate) / 2.0
+
+                    let windowSizeSamples = Int(windowSizeMs * Double(sampleRate) / 1000.0)
+                    let hopLengthSamples = Int(hopLengthMs * Double(sampleRate) / 1000.0)
+
+                    let windowTypeInt: Int32 = windowType.lowercased() == "hamming" ? 1 : 0
+
+                    guard let result = samples.withUnsafeBufferPointer({ bufferPtr -> [AnyHashable: Any]? in
+                        guard let baseAddress = bufferPtr.baseAddress else { return nil }
+                        return MelSpectrogramWrapper.compute(
+                            withSamples: baseAddress,
+                            numSamples: Int32(samples.count),
+                            sampleRate: Int32(sampleRate),
+                            fftLength: 2048,
+                            windowSizeSamples: Int32(windowSizeSamples),
+                            hopLengthSamples: Int32(hopLengthSamples),
+                            nMels: Int32(nMels),
+                            fMin: fMin,
+                            fMax: fMax,
+                            windowType: windowTypeInt,
+                            logScale: logScale,
+                            normalize: normalize
+                        )
+                    }) else {
+                        throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "Audio data is too short for spectrogram analysis"])
+                    }
+
+                    let timeSteps = result["timeSteps"] as! Int
+                    let durationMs = Double(samples.count) / Double(sampleRate) * 1000.0
+
+                    let output: [String: Any] = [
+                        "spectrogram": result["spectrogram"]!,
+                        "sampleRate": sampleRate,
+                        "nMels": nMels,
+                        "timeSteps": timeSteps,
+                        "durationMs": durationMs
+                    ]
+
+                    promise.resolve(output)
+                } catch {
+                    promise.reject("SPECTROGRAM_ERROR", "Failed to extract mel spectrogram: \(error.localizedDescription)")
                 }
-
-                let fMax = fMaxParam.map { Float($0) } ?? Float(sampleRate) / 2.0
-
-                // Convert ms to samples
-                let windowSizeSamples = Int(windowSizeMs * Double(sampleRate) / 1000.0)
-                let hopLengthSamples = Int(hopLengthMs * Double(sampleRate) / 1000.0)
-
-                let windowTypeInt: Int32 = windowType.lowercased() == "hamming" ? 1 : 0
-
-                // Call shared C++ implementation via ObjC++ wrapper
-                guard let result = samples.withUnsafeBufferPointer({ bufferPtr -> [AnyHashable: Any]? in
-                    guard let baseAddress = bufferPtr.baseAddress else { return nil }
-                    return MelSpectrogramWrapper.compute(
-                        withSamples: baseAddress,
-                        numSamples: Int32(samples.count),
-                        sampleRate: Int32(sampleRate),
-                        fftLength: 2048,
-                        windowSizeSamples: Int32(windowSizeSamples),
-                        hopLengthSamples: Int32(hopLengthSamples),
-                        nMels: Int32(nMels),
-                        fMin: fMin,
-                        fMax: fMax,
-                        windowType: windowTypeInt,
-                        logScale: logScale,
-                        normalize: normalize
-                    )
-                }) else {
-                    throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "Audio data is too short for spectrogram analysis"])
-                }
-
-                let timeSteps = result["timeSteps"] as! Int
-                let durationMs = Double(samples.count) / Double(sampleRate) * 1000.0
-
-                let output: [String: Any] = [
-                    "spectrogram": result["spectrogram"]!,
-                    "sampleRate": sampleRate,
-                    "nMels": nMels,
-                    "timeSteps": timeSteps,
-                    "durationMs": durationMs
-                ]
-
-                promise.resolve(output)
-            } catch {
-                promise.reject("SPECTROGRAM_ERROR", "Failed to extract mel spectrogram: \(error.localizedDescription)")
             }
         }
         
