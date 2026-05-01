@@ -1417,17 +1417,7 @@ class AudioRecorderManager(
                        "audioManager.mode=${audioManager.mode}, " +
                        "audioManager.isBluetoothScoOn=${audioManager.isBluetoothScoOn}")
             
-            // Trust phone state more than audio manager state
-            if (callState == TelephonyManager.CALL_STATE_RINGING || 
-                callState == TelephonyManager.CALL_STATE_OFFHOOK) {
-                return true
-            }
-            
-            // Only check audio manager mode as secondary indicator
-            return audioManager.mode == AudioManager.MODE_IN_CALL || 
-                   audioManager.mode == AudioManager.MODE_IN_COMMUNICATION
-            
-            // Remove audioManager.isBluetoothScoOn check as it can be erroneously true after disconnection
+            return AndroidCallState.isOngoingCall(callState, audioManager.mode)
         } catch (e: Exception) {
             LogUtils.e(CLASS_NAME, "Error checking call state: ${e.message}")
             return false
@@ -2166,6 +2156,22 @@ class AudioRecorderManager(
             cleanup()
             isPrepared = false
             return false
+        }
+    }
+}
+
+internal object AndroidCallState {
+    /**
+     * Telephony call state wins when known. AudioManager mode is only a fallback
+     * for unknown state because some Android devices leave it stale after calls.
+     */
+    fun isOngoingCall(callState: Int?, audioMode: Int): Boolean {
+        return when (callState) {
+            TelephonyManager.CALL_STATE_RINGING,
+            TelephonyManager.CALL_STATE_OFFHOOK -> true
+            TelephonyManager.CALL_STATE_IDLE -> false
+            else -> audioMode == AudioManager.MODE_IN_CALL ||
+                audioMode == AudioManager.MODE_IN_COMMUNICATION
         }
     }
 }
