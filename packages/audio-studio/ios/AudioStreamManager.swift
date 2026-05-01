@@ -14,6 +14,7 @@ import UserNotifications
 
 // Constants
 internal let WAV_HEADER_SIZE: Int64 = 44  // Standard WAV header is 44 bytes
+internal let MIN_AAC_COMPRESSED_SAMPLE_RATE: Double = 44100.0
 
 // Helper to convert to little-endian byte array
 extension UInt32 {
@@ -166,6 +167,28 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
     // Performance optimization: Cache file sizes during recording
     private var cachedWavFileSize: Int64 = 0
     private var cachedCompressedFileSize: Int64 = 0
+
+    /// Returns an AVAudioRecorder-compatible sample rate for AAC sidecar files.
+    ///
+    /// The primary WAV path can resample emitted PCM to `settings.sampleRate`,
+    /// but the compressed sidecar is produced by AVAudioRecorder directly from
+    /// the active audio session. AVAudioRecorder fails to prepare AAC/M4A files
+    /// below 44.1 kHz, so keep valid requested rates and otherwise use the
+    /// active session rate when available, falling back to 44.1 kHz.
+    internal static func compatibleAACCompressedSampleRate(
+        requestedSampleRate: Double,
+        sessionSampleRate: Double
+    ) -> Double {
+        if requestedSampleRate >= MIN_AAC_COMPRESSED_SAMPLE_RATE {
+            return requestedSampleRate
+        }
+
+        if sessionSampleRate.isFinite && sessionSampleRate >= MIN_AAC_COMPRESSED_SAMPLE_RATE {
+            return sessionSampleRate
+        }
+
+        return MIN_AAC_COMPRESSED_SAMPLE_RATE
+    }
 
     /// Initializes the AudioStreamManager
     override init() {
@@ -995,10 +1018,27 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
 
             // Setup compressed recording if enabled
             if settings.output.compressed.enabled {
+                let isAACCompressedOutput = settings.output.compressed.format == "aac"
+                let compressedSampleRate: Double
+                if isAACCompressedOutput {
+                    compressedSampleRate = Self.compatibleAACCompressedSampleRate(
+                        requestedSampleRate: settings.sampleRate,
+                        sessionSampleRate: session.sampleRate
+                    )
+                } else {
+                    compressedSampleRate = settings.sampleRate
+                }
+                if isAACCompressedOutput && compressedSampleRate != settings.sampleRate {
+                    Logger.debug(
+                        "AudioStreamManager",
+                        "Adjusted compressed AAC sample rate from \(settings.sampleRate)Hz to \(compressedSampleRate)Hz for AVAudioRecorder compatibility"
+                    )
+                }
+
                 // Create compressed settings
                 let compressedSettings: [String: Any] = [
-                    AVFormatIDKey: settings.output.compressed.format == "aac" ? kAudioFormatMPEG4AAC : kAudioFormatOpus,
-                    AVSampleRateKey: Float64(settings.sampleRate),
+                    AVFormatIDKey: isAACCompressedOutput ? kAudioFormatMPEG4AAC : kAudioFormatOpus,
+                    AVSampleRateKey: compressedSampleRate,
                     AVNumberOfChannelsKey: settings.numberOfChannels,
                     AVEncoderBitRateKey: settings.output.compressed.bitrate,
                     AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,

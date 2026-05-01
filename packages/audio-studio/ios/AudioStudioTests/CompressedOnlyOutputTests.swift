@@ -22,6 +22,46 @@ class CompressedOnlyOutputTests: XCTestCase {
     }
     
     // MARK: - Test Compressed-Only Output (Issue #244)
+
+    func testAACCompressedSampleRateFallsBackForLowRequestedRate() {
+        XCTAssertEqual(
+            AudioStreamManager.compatibleAACCompressedSampleRate(
+                requestedSampleRate: 16000,
+                sessionSampleRate: 48000
+            ),
+            48000,
+            "Low requested sample rates should use the active session rate when it is AAC-compatible"
+        )
+
+        XCTAssertEqual(
+            AudioStreamManager.compatibleAACCompressedSampleRate(
+                requestedSampleRate: 16000,
+                sessionSampleRate: 0
+            ),
+            44100,
+            "Low requested sample rates should never be passed directly to AVAudioRecorder for AAC"
+        )
+    }
+
+    func testAACCompressedSampleRateKeepsCompatibleRequestedRate() {
+        XCTAssertEqual(
+            AudioStreamManager.compatibleAACCompressedSampleRate(
+                requestedSampleRate: 44100,
+                sessionSampleRate: 48000
+            ),
+            44100,
+            "Already-compatible requested sample rates should preserve existing behavior"
+        )
+
+        XCTAssertEqual(
+            AudioStreamManager.compatibleAACCompressedSampleRate(
+                requestedSampleRate: 48000,
+                sessionSampleRate: 44100
+            ),
+            48000,
+            "High requested sample rates should not be reduced to the session rate"
+        )
+    }
     
     func testCompressedOnlyOutputWithAAC() {
         // Given: Recording settings with primary disabled and compressed enabled (AAC)
