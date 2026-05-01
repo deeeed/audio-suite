@@ -6,7 +6,7 @@
 
 # Interface: AudioSessionConfig
 
-Defined in: [src/AudioStudio.types.ts:190](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L190)
+Defined in: [src/AudioStudio.types.ts:193](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L193)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [src/AudioStudio.types.ts:190](https://github.com/deeeed/audiolab/bl
 
 > `optional` **category**: `"Ambient"` \| `"SoloAmbient"` \| `"Playback"` \| `"Record"` \| `"PlayAndRecord"` \| `"MultiRoute"`
 
-Defined in: [src/AudioStudio.types.ts:200](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L200)
+Defined in: [src/AudioStudio.types.ts:203](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L203)
 
 Audio session category that defines the audio behavior
 - 'Ambient': Audio continues with silent switch, mixes with other audio
@@ -30,7 +30,7 @@ Audio session category that defines the audio behavior
 
 > `optional` **categoryOptions**: (`"MixWithOthers"` \| `"DuckOthers"` \| `"InterruptSpokenAudioAndMixWithOthers"` \| `"AllowBluetooth"` \| `"AllowBluetoothA2DP"` \| `"AllowAirPlay"` \| `"DefaultToSpeaker"`)[]
 
-Defined in: [src/AudioStudio.types.ts:237](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L237)
+Defined in: [src/AudioStudio.types.ts:240](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L240)
 
 Options that modify the behavior of the audio session category
 - 'MixWithOthers': Allows mixing with other active audio sessions
@@ -47,7 +47,7 @@ Options that modify the behavior of the audio session category
 
 > `optional` **mode**: `"Default"` \| `"VoiceChat"` \| `"VideoChat"` \| `"GameChat"` \| `"VideoRecording"` \| `"Measurement"` \| `"MoviePlayback"` \| `"SpokenAudio"`
 
-Defined in: [src/AudioStudio.types.ts:218](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L218)
+Defined in: [src/AudioStudio.types.ts:221](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L221)
 
 Audio session mode that defines the behavior for specific use cases
 - 'Default': Standard audio behavior

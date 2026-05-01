@@ -6,7 +6,7 @@
 
 # Interface: RecordingInterruptionEvent
 
-Defined in: [src/AudioStudio.types.ts:295](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L295)
+Defined in: [src/AudioStudio.types.ts:298](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L298)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [src/AudioStudio.types.ts:295](https://github.com/deeeed/audiolab/bl
 
 > **isPaused**: `boolean`
 
-Defined in: [src/AudioStudio.types.ts:299](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L299)
+Defined in: [src/AudioStudio.types.ts:302](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L302)
 
 Indicates whether the recording is paused due to the interruption
 
@@ -24,6 +24,6 @@ Indicates whether the recording is paused due to the interruption
 
 > **reason**: [`RecordingInterruptionReason`](../type-aliases/RecordingInterruptionReason.md)
 
-Defined in: [src/AudioStudio.types.ts:297](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L297)
+Defined in: [src/AudioStudio.types.ts:300](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L300)
 
 The reason for the recording interruption

@@ -8,7 +8,7 @@
 
 > **extractAudioData**(`props`): `Promise`\<[`ExtractedAudioData`](../interfaces/ExtractedAudioData.md)\>
 
-Defined in: [src/AudioAnalysis/extractAudioData.ts:13](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioAnalysis/extractAudioData.ts#L13)
+Defined in: [src/AudioAnalysis/extractAudioData.ts:13](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/extractAudioData.ts#L13)
 
 ## Parameters
 

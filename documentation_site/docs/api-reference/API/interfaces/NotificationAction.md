@@ -6,7 +6,7 @@
 
 # Interface: NotificationAction
 
-Defined in: [src/AudioStudio.types.ts:564](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L564)
+Defined in: [src/AudioStudio.types.ts:578](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L578)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [src/AudioStudio.types.ts:564](https://github.com/deeeed/audiolab/bl
 
 > `optional` **icon**: `string`
 
-Defined in: [src/AudioStudio.types.ts:572](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L572)
+Defined in: [src/AudioStudio.types.ts:586](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L586)
 
 Icon to be displayed for the action (Android only)
 
@@ -24,7 +24,7 @@ Icon to be displayed for the action (Android only)
 
 > **identifier**: `string`
 
-Defined in: [src/AudioStudio.types.ts:569](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L569)
+Defined in: [src/AudioStudio.types.ts:583](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L583)
 
 Unique identifier for the action
 
@@ -34,6 +34,6 @@ Unique identifier for the action
 
 > **title**: `string`
 
-Defined in: [src/AudioStudio.types.ts:566](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L566)
+Defined in: [src/AudioStudio.types.ts:580](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L580)
 
 Display title for the action

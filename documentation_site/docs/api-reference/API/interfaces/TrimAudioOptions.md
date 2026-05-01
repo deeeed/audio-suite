@@ -6,7 +6,7 @@
 
 # Interface: TrimAudioOptions
 
-Defined in: [src/AudioStudio.types.ts:743](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L743)
+Defined in: [src/AudioStudio.types.ts:757](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L757)
 
 Options for configuring the audio trimming operation.
 
@@ -16,7 +16,7 @@ Options for configuring the audio trimming operation.
 
 > `optional` **decodingOptions**: [`DecodingConfig`](DecodingConfig.md)
 
-Defined in: [src/AudioStudio.types.ts:823](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L823)
+Defined in: [src/AudioStudio.types.ts:837](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L837)
 
 Options for decoding the input audio file.
 - See `DecodingConfig` for details.
@@ -27,7 +27,7 @@ Options for decoding the input audio file.
 
 > `optional` **endTimeMs**: `number`
 
-Defined in: [src/AudioStudio.types.ts:775](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L775)
+Defined in: [src/AudioStudio.types.ts:789](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L789)
 
 The end time in milliseconds for the `'single'` mode.
 - If not provided, trimming extends to the end of the audio.
@@ -38,7 +38,7 @@ The end time in milliseconds for the `'single'` mode.
 
 > **fileUri**: `string`
 
-Defined in: [src/AudioStudio.types.ts:747](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L747)
+Defined in: [src/AudioStudio.types.ts:761](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L761)
 
 The URI of the audio file to trim.
 
@@ -48,7 +48,7 @@ The URI of the audio file to trim.
 
 > `optional` **mode**: `"single"` \| `"keep"` \| `"remove"`
 
-Defined in: [src/AudioStudio.types.ts:756](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L756)
+Defined in: [src/AudioStudio.types.ts:770](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L770)
 
 The mode of trimming to apply.
 - `'single'`: Trims the audio to a single range defined by `startTimeMs` and `endTimeMs`.
@@ -67,7 +67,7 @@ The mode of trimming to apply.
 
 > `optional` **outputFileName**: `string`
 
-Defined in: [src/AudioStudio.types.ts:780](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L780)
+Defined in: [src/AudioStudio.types.ts:794](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L794)
 
 The name of the output file. If not provided, a default name will be generated.
 
@@ -77,7 +77,7 @@ The name of the output file. If not provided, a default name will be generated.
 
 > `optional` **outputFormat**: `object`
 
-Defined in: [src/AudioStudio.types.ts:785](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L785)
+Defined in: [src/AudioStudio.types.ts:799](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L799)
 
 Configuration for the output audio format.
 
@@ -124,7 +124,7 @@ The sample rate of the output audio in Hertz (Hz).
 
 > `optional` **ranges**: [`TimeRange`](TimeRange.md)[]
 
-Defined in: [src/AudioStudio.types.ts:763](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L763)
+Defined in: [src/AudioStudio.types.ts:777](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L777)
 
 An array of time ranges to keep or remove, depending on the `mode`.
 - Required for `'keep'` and `'remove'` modes.
@@ -136,7 +136,7 @@ An array of time ranges to keep or remove, depending on the `mode`.
 
 > `optional` **startTimeMs**: `number`
 
-Defined in: [src/AudioStudio.types.ts:769](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L769)
+Defined in: [src/AudioStudio.types.ts:783](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L783)
 
 The start time in milliseconds for the `'single'` mode.
 - If not provided, trimming starts from the beginning of the audio (0 ms).

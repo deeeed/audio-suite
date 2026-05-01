@@ -6,7 +6,7 @@
 
 # Interface: NotificationConfig
 
-Defined in: [src/AudioStudio.types.ts:514](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L514)
+Defined in: [src/AudioStudio.types.ts:528](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L528)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [src/AudioStudio.types.ts:514](https://github.com/deeeed/audiolab/bl
 
 > `optional` **android**: `object`
 
-Defined in: [src/AudioStudio.types.ts:525](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L525)
+Defined in: [src/AudioStudio.types.ts:539](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L539)
 
 Android-specific notification configuration
 
@@ -84,7 +84,7 @@ Configuration for the waveform visualization in the notification
 
 > `optional` **icon**: `string`
 
-Defined in: [src/AudioStudio.types.ts:522](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L522)
+Defined in: [src/AudioStudio.types.ts:536](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L536)
 
 Icon to be displayed in the notification (resource name or URI)
 
@@ -94,7 +94,7 @@ Icon to be displayed in the notification (resource name or URI)
 
 > `optional` **ios**: `object`
 
-Defined in: [src/AudioStudio.types.ts:558](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L558)
+Defined in: [src/AudioStudio.types.ts:572](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L572)
 
 iOS-specific notification configuration
 
@@ -110,7 +110,7 @@ Identifier for the notification category (used for grouping similar notification
 
 > `optional` **text**: `string`
 
-Defined in: [src/AudioStudio.types.ts:519](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L519)
+Defined in: [src/AudioStudio.types.ts:533](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L533)
 
 Main text content of the notification
 
@@ -120,6 +120,6 @@ Main text content of the notification
 
 > `optional` **title**: `string`
 
-Defined in: [src/AudioStudio.types.ts:516](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L516)
+Defined in: [src/AudioStudio.types.ts:530](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L530)
 
 Title of the notification

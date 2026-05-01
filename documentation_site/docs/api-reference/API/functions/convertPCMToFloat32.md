@@ -8,7 +8,7 @@
 
 > **convertPCMToFloat32**(`__namedParameters`): `Promise`\<\{ `max`: `number`; `min`: `number`; `pcmValues`: `Float32Array`; \}\>
 
-Defined in: [src/utils/convertPCMToFloat32.ts:69](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/utils/convertPCMToFloat32.ts#L69)
+Defined in: [src/utils/convertPCMToFloat32.ts:69](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/utils/convertPCMToFloat32.ts#L69)
 
 ## Parameters
 

@@ -6,7 +6,7 @@
 
 # Interface: StartRecordingResult
 
-Defined in: [src/AudioStudio.types.ts:172](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L172)
+Defined in: [src/AudioStudio.types.ts:175](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L175)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [src/AudioStudio.types.ts:172](https://github.com/deeeed/audiolab/bl
 
 > `optional` **bitDepth**: [`BitDepth`](../type-aliases/BitDepth.md)
 
-Defined in: [src/AudioStudio.types.ts:180](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L180)
+Defined in: [src/AudioStudio.types.ts:183](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L183)
 
 Bit depth of the audio (8, 16, or 32 bits)
 
@@ -24,7 +24,7 @@ Bit depth of the audio (8, 16, or 32 bits)
 
 > `optional` **channels**: `number`
 
-Defined in: [src/AudioStudio.types.ts:178](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L178)
+Defined in: [src/AudioStudio.types.ts:181](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L181)
 
 Number of audio channels (1 for mono, 2 for stereo)
 
@@ -34,7 +34,7 @@ Number of audio channels (1 for mono, 2 for stereo)
 
 > `optional` **compression**: [`CompressionInfo`](CompressionInfo.md) & `object`
 
-Defined in: [src/AudioStudio.types.ts:184](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L184)
+Defined in: [src/AudioStudio.types.ts:187](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L187)
 
 Information about compression if enabled, including the URI to the compressed file
 
@@ -52,7 +52,7 @@ URI to the compressed audio file
 
 > **fileUri**: `string`
 
-Defined in: [src/AudioStudio.types.ts:174](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L174)
+Defined in: [src/AudioStudio.types.ts:177](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L177)
 
 URI to the file being recorded
 
@@ -62,7 +62,7 @@ URI to the file being recorded
 
 > **mimeType**: `string`
 
-Defined in: [src/AudioStudio.types.ts:176](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L176)
+Defined in: [src/AudioStudio.types.ts:179](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L179)
 
 MIME type of the recording
 
@@ -72,6 +72,6 @@ MIME type of the recording
 
 > `optional` **sampleRate**: [`SampleRate`](../type-aliases/SampleRate.md)
 
-Defined in: [src/AudioStudio.types.ts:182](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L182)
+Defined in: [src/AudioStudio.types.ts:185](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L185)
 
 Sample rate of the audio in Hz

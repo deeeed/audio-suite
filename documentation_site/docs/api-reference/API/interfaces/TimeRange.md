@@ -6,7 +6,7 @@
 
 # Interface: TimeRange
 
-Defined in: [src/AudioStudio.types.ts:728](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L728)
+Defined in: [src/AudioStudio.types.ts:742](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L742)
 
 Defines a time range in milliseconds for trimming operations.
 
@@ -16,7 +16,7 @@ Defines a time range in milliseconds for trimming operations.
 
 > **endTimeMs**: `number`
 
-Defined in: [src/AudioStudio.types.ts:737](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L737)
+Defined in: [src/AudioStudio.types.ts:751](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L751)
 
 The end time of the range in milliseconds.
 
@@ -26,6 +26,6 @@ The end time of the range in milliseconds.
 
 > **startTimeMs**: `number`
 
-Defined in: [src/AudioStudio.types.ts:732](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L732)
+Defined in: [src/AudioStudio.types.ts:746](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L746)
 
 The start time of the range in milliseconds.
