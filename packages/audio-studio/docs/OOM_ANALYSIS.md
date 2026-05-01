@@ -86,6 +86,29 @@ if (shouldProcessAnalysis) {
 - `processAudioData()` method is now deprecated and not called during recording
 - Kept for potential future use but documented as unused
 
+## JavaScript Analysis Retention
+
+`useAudioRecorder` also maintains a full analysis history in JavaScript so
+`stopRecording().analysisData` can include every analysis data point. This is
+useful for short recordings and post-recording visualization, but it grows with
+recording duration. For long-running sessions that consume `onAudioAnalysis`
+chunks or only need the hook's recent live `analysisData` window, set
+`keepFullAnalysis: false` in `RecordingConfig`. This flag only has an effect
+when `enableProcessing: true`.
+
+This option does not disable native analysis processing or per-callback
+analysis events; it only skips the full-history array retained by the hook.
+
+```ts
+await startRecording({
+  enableProcessing: true,
+  keepFullAnalysis: false,
+  onAudioAnalysis: async (analysis) => {
+    // Use this chunk for live VAD, meters, or streaming decisions.
+  },
+})
+```
+
 ## Testing Recommendations
 
 1. **Long Recording Test**

@@ -113,6 +113,26 @@ await startRecording({
 
 ## Audio Analysis
 
+For live analysis during recording, `useAudioRecorder` keeps a recent analysis
+window in `analysisData` for visualization and, by default, also retains the
+full analysis history so `stopRecording().analysisData` can describe the whole
+recording. This option only matters when `enableProcessing: true`. For
+long-running sessions that only need live callbacks, disable the full-history
+retention to avoid unbounded JS memory growth:
+
+```typescript
+await startRecording({
+  sampleRate: 16000,
+  channels: 1,
+  enableProcessing: true,
+  keepFullAnalysis: false,
+  onAudioAnalysis: async (analysis) => {
+    // Consume each analysis chunk without retaining the full recording history.
+    updateVoiceActivity(analysis.dataPoints);
+  },
+});
+```
+
 ```typescript
 import { extractAudioAnalysis, extractPreview, extractMelSpectrogram, trimAudio } from '@siteed/audio-studio';
 
