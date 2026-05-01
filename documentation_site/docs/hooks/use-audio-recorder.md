@@ -140,7 +140,7 @@ The `useAudioRecorder` hook returns an object with the following properties:
 - **durationMs**: `number` - Duration of the recording in milliseconds.
 - **size**: `number` - Size of the recorded audio in bytes.
 - **compression**: `CompressionInfo | undefined` - Information about compression if enabled.
-- **analysisData**: `AudioAnalysis | undefined` - Analysis data for the recording. Only available if `enableProcessing` is set to `true` in the `startRecording` configuration.
+- **analysisData**: `AudioAnalysis | undefined` - Recent live analysis data for the recording. Only available if `enableProcessing` is set to `true` in the `startRecording` configuration.
 
 ## RecordingConfig Options
 
@@ -151,6 +151,7 @@ The `startRecording` function accepts a configuration object with the following 
 | `interval` | `number` | Interval in milliseconds at which to emit recording data |
 | `intervalAnalysis` | `number` | Interval in milliseconds at which to emit analysis data |
 | `enableProcessing` | `boolean` | Whether to enable audio analysis |
+| `keepFullAnalysis` | `boolean` | Whether to retain the full live-analysis history for `stopRecording().analysisData` when processing is enabled. Defaults to `true`; set to `false` for long-running live analysis. |
 | `sampleRate` | `16000 \| 44100 \| 48000` | Sample rate in Hz |
 | `channels` | `1 \| 2` | Number of audio channels (1 for mono, 2 for stereo) |
 | `encoding` | `'pcm_8bit' \| 'pcm_16bit' \| 'pcm_32bit'` | PCM encoding format |
@@ -159,6 +160,27 @@ The `startRecording` function accepts a configuration object with the following 
 | `onAudioAnalysis` | `(analysisEvent: AudioAnalysisEvent) => Promise<void>` | Callback for audio analysis data |
 | `onRecordingInterrupted` | `(event: RecordingInterruptionEvent) => void` | Callback for recording interruptions |
 | `autoResumeAfterInterruption` | `boolean` | Whether to automatically resume recording after an interruption |
+
+### Long-Running Analysis Retention
+
+When `enableProcessing: true`, `analysisData` remains available as a recent live window and `onAudioAnalysis` still receives each chunk. By default, `useAudioRecorder` also keeps the full analysis history so `stopRecording().analysisData` can describe the whole recording.
+
+For long recordings where you only need live meters, VAD, or streaming decisions, set `keepFullAnalysis: false`:
+
+```tsx
+await startRecording({
+    enableProcessing: true,
+    keepFullAnalysis: false,
+    onAudioAnalysis: async (analysis) => {
+        updateMeter(analysis.dataPoints)
+    },
+})
+
+const result = await stopRecording()
+console.log(result.analysisData) // undefined when full-history retention is disabled
+```
+
+This flag does not disable analysis processing or callbacks; it only skips retaining every analysis data point in the hook for the final stop result. If you need full analysis after a long recording, run `extractAudioAnalysis()` on the saved file after stopping.
 
 ### Phone Call Handling
 

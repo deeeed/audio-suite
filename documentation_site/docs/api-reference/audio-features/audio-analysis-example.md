@@ -313,6 +313,22 @@ const result = await extractAudioAnalysis({
 });
 ```
 
+## Live vs. Post-Recording Analysis
+
+The example above records with `enableProcessing: true`, which enables live analysis. By default, the recorder also retains the full live-analysis history for `stopRecording().analysisData`. For long-running sessions where you only need live callbacks and will run `extractAudioAnalysis()` after stop, start recording with `keepFullAnalysis: false`:
+
+```tsx
+await startRecording({
+  sampleRate: 44100,
+  channels: 1,
+  encoding: 'pcm_16bit',
+  enableProcessing: true,
+  keepFullAnalysis: false
+});
+```
+
+This keeps `onAudioAnalysis` and the hook's recent `analysisData` window working, but omits `recordingResult.analysisData` from the stop result.
+
 ## Performance Tips
 
 - For longer recordings, consider analyzing in chunks by specifying time ranges:

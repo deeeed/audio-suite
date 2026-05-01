@@ -20,12 +20,18 @@ export interface AudioRecording {
     channels: number
     bitDepth: BitDepth
     sampleRate: SampleRate
-    analysisData?: AudioAnalysis // Analysis data for the recording depending on enableProcessing flag
+    analysisData?: AudioAnalysis // Full recording analysis when enableProcessing is true and keepFullAnalysis is not false
     compression?: CompressionInfo & {
         compressedFileUri: string
     }
 }
 ```
+
+## Analysis Data Retention
+
+`analysisData` is included in the stop result when recording used `enableProcessing: true` and full-history retention was not disabled. If the recording was started with `keepFullAnalysis: false`, live analysis still runs during recording, but `stopRecording().analysisData` is omitted to avoid retaining the full analysis history in JavaScript memory.
+
+For long recordings that need complete post-recording analysis, call `extractAudioAnalysis()` with the saved `fileUri` after stopping instead of retaining every live analysis chunk.
 
 ## Example Usage
 

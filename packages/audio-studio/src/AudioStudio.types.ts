@@ -160,7 +160,10 @@ export interface AudioRecording {
     createdAt?: number
     /** Array of transcription data if available */
     transcripts?: TranscriberData[]
-    /** Analysis data for the recording if processing was enabled */
+    /**
+     * Full analysis data for the recording if processing was enabled and
+     * `keepFullAnalysis` was not set to `false`.
+     */
     analysisData?: AudioAnalysis
     /** Information about compression if enabled, including the URI to the compressed file */
     compression?: CompressionInfo & {

@@ -16,7 +16,8 @@ Defined in: [src/AudioStudio.types.ts:142](https://github.com/deeeed/audiolab/bl
 
 Defined in: [src/AudioStudio.types.ts:164](https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L164)
 
-Analysis data for the recording if processing was enabled
+Full analysis data for the recording if processing was enabled and
+`keepFullAnalysis` was not set to `false`.
 
 ***
 

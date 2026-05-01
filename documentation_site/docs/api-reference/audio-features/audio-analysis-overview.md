@@ -103,4 +103,4 @@ const analysisProps = {
 - For real-time analysis, consider using a lower sample rate
 - Processing large audio files may be resource-intensive; consider processing in chunks
 
-For more detailed information about specific audio features and extraction methods, see the [Audio Features](./audio-analysis) and [extractAudioAnalysis](./extract-audio-analysis) documentation. 
+For more detailed information about specific audio features and extraction methods, see the [Audio Features](./audio-analysis.md) and [extractAudioAnalysis](./extract-audio-analysis.md) documentation.
