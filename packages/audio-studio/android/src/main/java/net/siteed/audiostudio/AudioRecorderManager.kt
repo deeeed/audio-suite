@@ -118,7 +118,7 @@ class AudioRecorderManager(
     private var audioFocusRequest: Any? = null  // Type Any to handle both old and new APIs
     private var phoneStateListener: PhoneStateListener? = null
     private var telephonyCallback: Any? = null  // TelephonyCallback for API 31+, typed as Any to avoid class verification issues on older APIs
-    private var pausedBySystemInterruption = false
+    private val pausedBySystemInterruption = AtomicBoolean(false)
     private var telephonyManager: TelephonyManager? = null
         get() {
             if (field == null) {
@@ -431,9 +431,9 @@ class AudioRecorderManager(
                         autoResumeAfterInterruption = autoResume,
                         isRecording = _isRecording.get(),
                         isPaused = isPaused.get(),
-                        pausedBySystemInterruption = pausedBySystemInterruption
+                        pausedBySystemInterruption = pausedBySystemInterruption.get()
                     )
-                    LogUtils.d(CLASS_NAME, "Call ended, handling auto-resume (enabled: $autoResume, pausedBySystemInterruption: $pausedBySystemInterruption)")
+                    LogUtils.d(CLASS_NAME, "Call ended, handling auto-resume (enabled: $autoResume, pausedBySystemInterruption: ${pausedBySystemInterruption.get()})")
                     if (shouldAutoResume) {
                         mainHandler.post {
                             resumeRecording(object : Promise {
@@ -961,7 +961,7 @@ class AudioRecorderManager(
 
             audioRecord?.startRecording()
             isPaused.set(false)
-            pausedBySystemInterruption = false
+            pausedBySystemInterruption.set(false)
             isFirstChunk = true
             recordingStartTime = System.currentTimeMillis()
 
@@ -1182,7 +1182,7 @@ class AudioRecorderManager(
                 // Reset the timing variables
                 _isRecording.set(false)
                 isPaused.set(false)
-                pausedBySystemInterruption = false
+                pausedBySystemInterruption.set(false)
                 totalRecordedTime = 0
                 pausedDuration = 0
             } catch (e: Exception) {
@@ -1267,7 +1267,7 @@ class AudioRecorderManager(
             }
             
             LogUtils.d(CLASS_NAME, "⏺️ Recording resumed successfully")
-            pausedBySystemInterruption = false
+            pausedBySystemInterruption.set(false)
             promise.resolve("Recording resumed")
         } catch (e: Exception) {
             LogUtils.e(CLASS_NAME, "⏺️ Failed to resume recording: ${e.message}", e)
@@ -1291,7 +1291,7 @@ class AudioRecorderManager(
             
             lastPauseTime = System.currentTimeMillis()
             isPaused.set(true)
-            pausedBySystemInterruption = isSystemInterruption
+            pausedBySystemInterruption.set(isSystemInterruption)
 
             if (recordingConfig.showNotification) {
                 notificationManager.pauseUpdates()
@@ -1766,7 +1766,7 @@ class AudioRecorderManager(
                 
                 _isRecording.set(false)
                 isPaused.set(false)
-                pausedBySystemInterruption = false
+                pausedBySystemInterruption.set(false)
                 isPrepared = false  // Reset prepared state
                 
                 if (::recordingConfig.isInitialized && recordingConfig.showNotification) {
@@ -1949,7 +1949,7 @@ class AudioRecorderManager(
                             autoResumeAfterInterruption = autoResume,
                             isRecording = _isRecording.get(),
                             isPaused = isPaused.get(),
-                            pausedBySystemInterruption = pausedBySystemInterruption
+                            pausedBySystemInterruption = pausedBySystemInterruption.get()
                         )) {
                         mainHandler.post {
                             resumeRecording(object : Promise {
@@ -2023,7 +2023,7 @@ class AudioRecorderManager(
                             autoResumeAfterInterruption = autoResume,
                             isRecording = _isRecording.get(),
                             isPaused = isPaused.get(),
-                            pausedBySystemInterruption = pausedBySystemInterruption
+                            pausedBySystemInterruption = pausedBySystemInterruption.get()
                         )) {
                         mainHandler.post {
                             resumeRecording(object : Promise {
