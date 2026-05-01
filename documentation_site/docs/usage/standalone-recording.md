@@ -46,7 +46,7 @@ export default function App() {
       size,
       isRecording,
       isPaused,
-      analysisData, // Audio analysis data if enableProcessing is true
+      analysisData, // Recent live audio analysis data if enableProcessing is true
       compression, // Compression information if compression is enabled
   } = useAudioRecorder()
   const [audioResult, setAudioResult] = useState<AudioRecording | null>(null)
@@ -62,6 +62,8 @@ export default function App() {
     const config: RecordingConfig = {
         interval: 500, // Emit recording data every 500ms
         enableProcessing: true, // Enable audio analysis
+        // Optional: set keepFullAnalysis: false for long-running live analysis
+        // when you do not need stopRecording().analysisData to include the full history.
         sampleRate: 44100, // Sample rate in Hz (16000, 44100, or 48000)
         channels: 1, // Mono recording
         encoding: 'pcm_16bit', // PCM encoding (pcm_8bit, pcm_16bit, pcm_32bit)
@@ -168,6 +170,23 @@ export default function App() {
       </>
   )
 }
+```
+
+## Long-Running Live Analysis
+
+If a recording can run for a long time and you only need live analysis updates, keep processing enabled but opt out of final full-history retention:
+
+```tsx
+const config: RecordingConfig = {
+    enableProcessing: true,
+    keepFullAnalysis: false,
+    onAudioAnalysis: async (analysisEvent) => {
+        // Update live UI or send this chunk to your service.
+    },
+}
+```
+
+With `keepFullAnalysis: false`, the hook still updates the recent `analysisData` window and still calls `onAudioAnalysis`, but `stopRecording().analysisData` is omitted. Use this for live VAD, meters, or streaming workflows that do not need every analysis point kept in JavaScript memory.
 
 ## API Reference
 
@@ -196,4 +215,4 @@ const recorder = useAudioRecorder(options?: UseAudioRecorderProps)
 | `durationMs` | `number` | Duration of the current recording in milliseconds |
 | `size` | `number` | Size of the recorded audio in bytes |
 | `compression` | `CompressionInfo \| undefined` | Information about compression if enabled |
-| `analysisData` | `AudioAnalysis \| undefined` | Analysis data for the recording if processing was enabled |
+| `analysisData` | `AudioAnalysis \| undefined` | Recent live analysis data for the recording if processing was enabled |

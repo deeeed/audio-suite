@@ -35,6 +35,7 @@ export interface RecordingConfig {
 
     // Audio processing settings
     enableProcessing?: boolean // Enable audio processing (default is false)
+    keepFullAnalysis?: boolean // Retain the full live-analysis history for stopRecording().analysisData (default is true)
     pointsPerSecond?: number // Number of data points to extract per second of audio (default is 10)
     algorithm?: AmplitudeAlgorithm // Algorithm to use for amplitude computation (default is "rms")
     features?: AudioFeaturesOptions // Feature options to extract (default is empty)
@@ -118,6 +119,39 @@ const realtimeConfig = {
   }
 };
 ```
+
+## Live Analysis Retention {#live-analysis-retention}
+
+When `enableProcessing: true`, `useAudioRecorder` exposes two live-analysis paths:
+
+- `analysisData` in hook state keeps a recent rolling window for visualizers and meters.
+- `onAudioAnalysis` receives each emitted analysis chunk as recording continues.
+
+By default, the hook also keeps the full analysis history and attaches it to `stopRecording().analysisData`. This preserves existing behavior and is convenient for short recordings or post-recording charts, but the retained data grows with recording duration. For long-running sessions that only need the live state or callback chunks, set `keepFullAnalysis: false`.
+
+```tsx
+await startRecording({
+  sampleRate: 16000,
+  channels: 1,
+  enableProcessing: true,
+  keepFullAnalysis: false,
+  intervalAnalysis: 250,
+  onAudioAnalysis: async (analysis) => {
+    // Use this chunk for live VAD, meters, or streaming decisions.
+    updateVoiceActivity(analysis.dataPoints)
+  },
+})
+
+const result = await stopRecording()
+console.log(result.analysisData) // undefined when keepFullAnalysis is false
+```
+
+Important behavior:
+
+- `keepFullAnalysis` only has an effect when `enableProcessing: true`.
+- It does **not** disable native audio processing, the live `analysisData` window, or `onAudioAnalysis` events.
+- It only controls whether the hook retains the full JavaScript history for `stopRecording().analysisData`.
+- If you need a full-recording analysis after a long session, prefer running `extractAudioAnalysis()` on the saved file after recording stops instead of retaining every live chunk in memory.
 
 ## Platform Differences
 
@@ -350,7 +384,7 @@ await startRecording({
 
 The library provides flexible control over which audio files are created during recording. You can choose to save uncompressed WAV files, compressed audio files, both, or neither (for streaming-only scenarios).
 
-> **⚠️ Breaking Change (Web)**: The web-specific `web.storeUncompressedAudio` option has been removed and replaced with `output.primary.enabled`. See the [Breaking Changes Guide](../../../docs/BREAKING_CHANGES_OUTPUT_CONFIG.md) for migration details.
+> **⚠️ Breaking Change (Web)**: The web-specific `web.storeUncompressedAudio` option has been removed and replaced with `output.primary.enabled`. See the [Output Configuration](#output-configuration) section below for migration details.
 
 ### Configuration Structure
 

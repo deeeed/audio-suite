@@ -91,6 +91,22 @@ Enable audio processing (default is false)
 
 ***
 
+### keepFullAnalysis?
+
+> `optional` **keepFullAnalysis**: `boolean`
+
+Defined in: [src/AudioStudio.types.ts:447](https://github.com/deeeed/audiolab/blob/main/packages/audio-studio/src/AudioStudio.types.ts#L447)
+
+Whether `useAudioRecorder` should retain every audio-analysis data point
+and attach the full history to `stopRecording().analysisData`.
+
+Defaults to `true` for backwards compatibility. Set to `false` for
+long-running recordings when you only need live `analysisData` state or
+per-callback `onAudioAnalysis` chunks; this avoids unbounded JS memory
+growth in the hook without disabling native analysis processing.
+
+***
+
 ### encoding?
 
 > `optional` **encoding**: [`EncodingType`](../type-aliases/EncodingType.md)

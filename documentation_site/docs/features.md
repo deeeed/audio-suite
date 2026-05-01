@@ -12,7 +12,7 @@ sidebar_label: Features
 
 - **Real-time audio streaming** with configurable quality settings across all platforms
 - **Zero-latency recording** with [prepareRecording](api-reference/recording-config.md#zero-latency-recording) API to eliminate startup delay
-- **Dual-stream recording** with simultaneous raw PCM and [compressed formats](api-reference/recording-config.md#compression-settings) (OPUS/AAC)
+- **Dual-stream recording** with simultaneous raw PCM and [compressed formats](api-reference/recording-config.md#output-configuration) (OPUS/AAC)
 - **Audio device detection and selection** for choosing specific microphones or input sources
 - **Intelligent interruption handling** with automatic pause/resume during phone calls
 - **Background recording** support with keep-awake functionality
