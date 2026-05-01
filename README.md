@@ -57,9 +57,8 @@ Full-featured demo app showcasing all packages — available on [App Store](http
 - [x] Zero-latency recording (`prepareRecording` API)
 - [x] Sherpa-ONNX integration into audio-studio
 - [x] Speaker diarization example (in Sherpa Voice app)
-- [ ] Beta channel for regression testing
-- [ ] Custom VAD example app
-- [ ] Cross-platform e2e validation for feature extraction
+- [x] Custom VAD example app (integrated to audio playground)
+- [x] Cross-platform e2e validation for feature extraction
 
 ## License
 
