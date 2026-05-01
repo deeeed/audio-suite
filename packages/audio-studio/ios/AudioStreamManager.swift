@@ -272,17 +272,11 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {
                 let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
                 Logger.debug("AudioStreamManager", "Interruption options - shouldResume: \(options.contains(.shouldResume))")
-                
-                // Calculate pause duration if we have a pause start time
-                if let pauseStart = currentPauseStart {
-                    let pauseDuration = Date().timeIntervalSince(pauseStart)
-                    totalPausedDuration += pauseDuration
-                    currentPauseStart = nil
-                    Logger.debug("AudioStreamManager", "Added interruption pause duration: \(pauseDuration), total paused: \(totalPausedDuration)")
-                }
-                
+
                 // Auto-resume only if this interruption paused the recording.
                 // If the user had already paused, preserve that intent.
+                // Keep currentPauseStart active until the actual resume so duration accounting
+                // excludes the full paused interval, including any post-interruption delay.
                 if AutoResumePolicy.shouldAutoResume(
                     autoResumeAfterInterruption: autoResumeAfterInterruption,
                     isRecording: isRecording,
