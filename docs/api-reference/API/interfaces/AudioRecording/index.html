@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.8.1">
 <title data-rh="true">AudioRecording | Expo Audio Studio</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://deeeed.github.io/audiolab/docs/img/icon-192x192.png"><meta data-rh="true" name="twitter:image" content="https://deeeed.github.io/audiolab/docs/img/icon-192x192.png"><meta data-rh="true" property="og:url" content="https://deeeed.github.io/audiolab/docs/api-reference/API/interfaces/AudioRecording/"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="AudioRecording | Expo Audio Studio"><meta data-rh="true" name="description" content="@siteed/audio-studio"><meta data-rh="true" property="og:description" content="@siteed/audio-studio"><link data-rh="true" rel="icon" href="/audiolab/docs/img/favicon.ico"><link data-rh="true" rel="canonical" href="https://deeeed.github.io/audiolab/docs/api-reference/API/interfaces/AudioRecording/"><link data-rh="true" rel="alternate" href="https://deeeed.github.io/audiolab/docs/api-reference/API/interfaces/AudioRecording/" hreflang="en"><link data-rh="true" rel="alternate" href="https://deeeed.github.io/audiolab/docs/api-reference/API/interfaces/AudioRecording/" hreflang="x-default"><link rel="stylesheet" href="/audiolab/docs/assets/css/styles.814bc15c.css">
-<script src="/audiolab/docs/assets/js/runtime~main.1bfc793d.js" defer="defer"></script>
+<script src="/audiolab/docs/assets/js/runtime~main.9b8d3bdb.js" defer="defer"></script>
 <script src="/audiolab/docs/assets/js/main.fe4a2970.js" defer="defer"></script>
 </head>
 <body class="navigation-with-keyboard">
@@ -15,34 +15,35 @@
 <hr>
 <p><a href="/audiolab/docs/api-reference/API/">@siteed/audio-studio</a> / AudioRecording</p>
 <h1>Interface: AudioRecording</h1>
-<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L142" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:142</a></p>
+<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L142" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:142</a></p>
 <h2 class="anchor anchorWithStickyNavbar_LWe7" id="properties">Properties<a href="#properties" class="hash-link" aria-label="Direct link to Properties" title="Direct link to Properties">​</a></h2>
 <h3 class="anchor anchorWithStickyNavbar_LWe7" id="analysisdata">analysisData?<a href="#analysisdata" class="hash-link" aria-label="Direct link to analysisData?" title="Direct link to analysisData?">​</a></h3>
 <blockquote>
 <p><code>optional</code> <strong>analysisData</strong>: <a href="/audiolab/docs/api-reference/API/interfaces/AudioAnalysis/"><code>AudioAnalysis</code></a></p>
 </blockquote>
-<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L164" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:164</a></p>
-<p>Analysis data for the recording if processing was enabled</p>
+<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L167" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:167</a></p>
+<p>Full analysis data for the recording if processing was enabled and
+<code>keepFullAnalysis</code> was not set to <code>false</code>.</p>
 <hr>
 <h3 class="anchor anchorWithStickyNavbar_LWe7" id="bitdepth">bitDepth<a href="#bitdepth" class="hash-link" aria-label="Direct link to bitDepth" title="Direct link to bitDepth">​</a></h3>
 <blockquote>
 <p><strong>bitDepth</strong>: <a href="/audiolab/docs/api-reference/API/type-aliases/BitDepth/"><code>BitDepth</code></a></p>
 </blockquote>
-<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L156" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:156</a></p>
+<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L156" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:156</a></p>
 <p>Bit depth of the audio (8, 16, or 32 bits)</p>
 <hr>
 <h3 class="anchor anchorWithStickyNavbar_LWe7" id="channels">channels<a href="#channels" class="hash-link" aria-label="Direct link to channels" title="Direct link to channels">​</a></h3>
 <blockquote>
 <p><strong>channels</strong>: <code>number</code></p>
 </blockquote>
-<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L154" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:154</a></p>
+<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L154" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:154</a></p>
 <p>Number of audio channels (1 for mono, 2 for stereo)</p>
 <hr>
 <h3 class="anchor anchorWithStickyNavbar_LWe7" id="compression">compression?<a href="#compression" class="hash-link" aria-label="Direct link to compression?" title="Direct link to compression?">​</a></h3>
 <blockquote>
 <p><code>optional</code> <strong>compression</strong>: <a href="/audiolab/docs/api-reference/API/interfaces/CompressionInfo/"><code>CompressionInfo</code></a> &amp; <code>object</code></p>
 </blockquote>
-<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L166" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:166</a></p>
+<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L169" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:169</a></p>
 <p>Information about compression if enabled, including the URI to the compressed file</p>
 <h4 class="anchor anchorWithStickyNavbar_LWe7" id="type-declaration">Type declaration<a href="#type-declaration" class="hash-link" aria-label="Direct link to Type declaration" title="Direct link to Type declaration">​</a></h4>
 <h5 class="anchor anchorWithStickyNavbar_LWe7" id="compressedfileuri">compressedFileUri<a href="#compressedfileuri" class="hash-link" aria-label="Direct link to compressedFileUri" title="Direct link to compressedFileUri">​</a></h5>
@@ -55,56 +56,56 @@
 <blockquote>
 <p><code>optional</code> <strong>createdAt</strong>: <code>number</code></p>
 </blockquote>
-<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L160" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:160</a></p>
+<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L160" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:160</a></p>
 <p>Timestamp when the recording was created</p>
 <hr>
 <h3 class="anchor anchorWithStickyNavbar_LWe7" id="durationms">durationMs<a href="#durationms" class="hash-link" aria-label="Direct link to durationMs" title="Direct link to durationMs">​</a></h3>
 <blockquote>
 <p><strong>durationMs</strong>: <code>number</code></p>
 </blockquote>
-<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L148" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:148</a></p>
+<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L148" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:148</a></p>
 <p>Duration of the recording in milliseconds</p>
 <hr>
 <h3 class="anchor anchorWithStickyNavbar_LWe7" id="filename">filename<a href="#filename" class="hash-link" aria-label="Direct link to filename" title="Direct link to filename">​</a></h3>
 <blockquote>
 <p><strong>filename</strong>: <code>string</code></p>
 </blockquote>
-<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L146" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:146</a></p>
+<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L146" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:146</a></p>
 <p>Filename of the recorded audio</p>
 <hr>
 <h3 class="anchor anchorWithStickyNavbar_LWe7" id="fileuri">fileUri<a href="#fileuri" class="hash-link" aria-label="Direct link to fileUri" title="Direct link to fileUri">​</a></h3>
 <blockquote>
 <p><strong>fileUri</strong>: <code>string</code></p>
 </blockquote>
-<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L144" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:144</a></p>
+<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L144" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:144</a></p>
 <p>URI to the recorded audio file</p>
 <hr>
 <h3 class="anchor anchorWithStickyNavbar_LWe7" id="mimetype">mimeType<a href="#mimetype" class="hash-link" aria-label="Direct link to mimeType" title="Direct link to mimeType">​</a></h3>
 <blockquote>
 <p><strong>mimeType</strong>: <code>string</code></p>
 </blockquote>
-<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L152" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:152</a></p>
+<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L152" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:152</a></p>
 <p>MIME type of the recorded audio</p>
 <hr>
 <h3 class="anchor anchorWithStickyNavbar_LWe7" id="samplerate">sampleRate<a href="#samplerate" class="hash-link" aria-label="Direct link to sampleRate" title="Direct link to sampleRate">​</a></h3>
 <blockquote>
 <p><strong>sampleRate</strong>: <a href="/audiolab/docs/api-reference/API/type-aliases/SampleRate/"><code>SampleRate</code></a></p>
 </blockquote>
-<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L158" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:158</a></p>
+<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L158" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:158</a></p>
 <p>Sample rate of the audio in Hz</p>
 <hr>
 <h3 class="anchor anchorWithStickyNavbar_LWe7" id="size">size<a href="#size" class="hash-link" aria-label="Direct link to size" title="Direct link to size">​</a></h3>
 <blockquote>
 <p><strong>size</strong>: <code>number</code></p>
 </blockquote>
-<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L150" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:150</a></p>
+<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L150" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:150</a></p>
 <p>Size of the recording in bytes</p>
 <hr>
 <h3 class="anchor anchorWithStickyNavbar_LWe7" id="transcripts">transcripts?<a href="#transcripts" class="hash-link" aria-label="Direct link to transcripts?" title="Direct link to transcripts?">​</a></h3>
 <blockquote>
 <p><code>optional</code> <strong>transcripts</strong>: <a href="/audiolab/docs/api-reference/API/interfaces/TranscriberData/"><code>TranscriberData</code></a>[]</p>
 </blockquote>
-<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/3a5b7da8f4289a599d928dce01f262ab97398143/packages/audio-studio/src/AudioStudio.types.ts#L162" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:162</a></p>
+<p>Defined in: <a href="https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L162" target="_blank" rel="noopener noreferrer">src/AudioStudio.types.ts:162</a></p>
 <p>Array of transcription data if available</p></div></article><nav class="docusaurus-mt-lg pagination-nav" aria-label="Docs pages"></nav></div></div><div class="col col--3"><div class="tableOfContents_bqdL thin-scrollbar theme-doc-toc-desktop"><ul class="table-of-contents table-of-contents__left-border"><li><a href="#properties" class="table-of-contents__link toc-highlight">Properties</a><ul><li><a href="#analysisdata" class="table-of-contents__link toc-highlight">analysisData?</a></li><li><a href="#bitdepth" class="table-of-contents__link toc-highlight">bitDepth</a></li><li><a href="#channels" class="table-of-contents__link toc-highlight">channels</a></li><li><a href="#compression" class="table-of-contents__link toc-highlight">compression?</a></li><li><a href="#createdat" class="table-of-contents__link toc-highlight">createdAt?</a></li><li><a href="#durationms" class="table-of-contents__link toc-highlight">durationMs</a></li><li><a href="#filename" class="table-of-contents__link toc-highlight">filename</a></li><li><a href="#fileuri" class="table-of-contents__link toc-highlight">fileUri</a></li><li><a href="#mimetype" class="table-of-contents__link toc-highlight">mimeType</a></li><li><a href="#samplerate" class="table-of-contents__link toc-highlight">sampleRate</a></li><li><a href="#size" class="table-of-contents__link toc-highlight">size</a></li><li><a href="#transcripts" class="table-of-contents__link toc-highlight">transcripts?</a></li></ul></li></ul></div></div></div></div></main></div></div></div></div>
 </body>
 </html>
