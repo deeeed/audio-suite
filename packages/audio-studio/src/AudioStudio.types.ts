@@ -432,6 +432,17 @@ export interface RecordingConfig {
     /** Enable audio processing (default is false) */
     enableProcessing?: boolean
 
+    /**
+     * Whether `useAudioRecorder` should retain every audio-analysis data point
+     * and attach the full history to `stopRecording().analysisData`.
+     *
+     * Defaults to `true` for backwards compatibility. Set to `false` for
+     * long-running recordings when you only need live `analysisData` state or
+     * per-callback `onAudioAnalysis` chunks; this avoids unbounded JS memory
+     * growth in the hook without disabling native analysis processing.
+     */
+    keepFullAnalysis?: boolean
+
     /** iOS-specific configuration */
     ios?: IOSConfig
 

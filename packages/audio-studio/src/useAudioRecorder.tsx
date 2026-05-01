@@ -156,6 +156,10 @@ interface HandleAudioAnalysisProps {
     visualizationDuration: number
 }
 
+function shouldKeepFullAnalysis(config?: RecordingConfig | null): boolean {
+    return config?.keepFullAnalysis !== false
+}
+
 export function useAudioRecorder({
     logger,
     audioWorkletUrl,
@@ -232,10 +236,15 @@ export function useAudioRecorder({
                 ...analysis.dataPoints,
             ]
 
-            const fullCombinedDataPoints = [
-                ...(fullAnalysisRef.current?.dataPoints ?? []),
-                ...analysis.dataPoints,
-            ]
+            const keepFullAnalysis = shouldKeepFullAnalysis(
+                recordingConfigRef.current
+            )
+            const fullCombinedDataPoints = keepFullAnalysis
+                ? [
+                      ...(fullAnalysisRef.current?.dataPoints ?? []),
+                      ...analysis.dataPoints,
+                  ]
+                : undefined
 
             // Calculate the new duration
             // The number of segments is based on how many segments of segmentDurationMs can fit in visualizationDuration
@@ -257,13 +266,15 @@ export function useAudioRecorder({
                 )
             }
 
-            // Keep the full data points
-            fullAnalysisRef.current = {
-                ...fullAnalysisRef.current,
-                dataPoints: fullCombinedDataPoints,
+            // Keep the full data points when requested for stopRecording().analysisData.
+            if (keepFullAnalysis && fullCombinedDataPoints) {
+                fullAnalysisRef.current = {
+                    ...fullAnalysisRef.current,
+                    dataPoints: fullCombinedDataPoints,
+                }
+                fullAnalysisRef.current.durationMs =
+                    fullCombinedDataPoints.length * analysis.segmentDurationMs
             }
-            fullAnalysisRef.current.durationMs =
-                fullCombinedDataPoints.length * analysis.segmentDurationMs
             savedAnalysisData.dataPoints = combinedDataPoints
             savedAnalysisData.bitDepth =
                 analysis.bitDepth || savedAnalysisData.bitDepth
@@ -284,9 +295,11 @@ export function useAudioRecorder({
                 min: newMin,
                 max: newMax,
             }
-            fullAnalysisRef.current.amplitudeRange = {
-                min: newMin,
-                max: newMax,
+            if (keepFullAnalysis) {
+                fullAnalysisRef.current.amplitudeRange = {
+                    min: newMin,
+                    max: newMax,
+                }
             }
 
             logger?.debug(
@@ -523,6 +536,7 @@ export function useAudioRecorder({
                 onAudioStream,
                 onRecordingInterrupted,
                 onAudioAnalysis,
+                keepFullAnalysis: _keepFullAnalysis,
                 ...options
             } = validatedOptions
             const { enableProcessing } = options
@@ -579,6 +593,7 @@ export function useAudioRecorder({
                 onAudioStream,
                 onRecordingInterrupted,
                 onAudioAnalysis,
+                keepFullAnalysis: _keepFullAnalysis,
                 ...options
             } = recordingOptions
 
@@ -603,7 +618,14 @@ export function useAudioRecorder({
         logger?.debug(`stoping recording`)
 
         const stopResult: AudioRecording = await audioStudio.stopRecording()
-        stopResult.analysisData = fullAnalysisRef.current
+        if (shouldKeepFullAnalysis(recordingConfigRef.current)) {
+            stopResult.analysisData = fullAnalysisRef.current
+        } else {
+            // `keepFullAnalysis` is a hook-level retention policy. If a platform
+            // starts returning native analysisData in the future, keep opt-out
+            // semantics explicit and avoid leaking a full history here.
+            delete stopResult.analysisData
+        }
 
         if (analysisListenerRef.current) {
             analysisListenerRef.current.remove()
