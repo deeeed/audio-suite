@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+## [3.1.0] - 2026-05-01
+### Changed
+- fix(audio-studio): preserve pause intent across interruptions (#375) ([2f0f731](https://github.com/deeeed/audiolab/commit/2f0f731e412f45fc81c4fe46bec2abd3f15b4824))
+- fix(android): avoid recorder crashes from stale system callbacks (#374) ([34a9bc0](https://github.com/deeeed/audiolab/commit/34a9bc0c2f7c4e3e569862e8db43710abbde9043))
+- Document when to avoid retaining live analysis history (#373) ([aa617b0](https://github.com/deeeed/audiolab/commit/aa617b048dd790218dda43ec2ed21e0abaf38daf))
+- Let long-running analysis skip full history retention (#372) ([13c230c](https://github.com/deeeed/audiolab/commit/13c230cde655131a3a7c9472d294b2d432f79d50))
+- Keep low-rate iOS AAC recordings from losing compressed output (#371) ([a689eb0](https://github.com/deeeed/audiolab/commit/a689eb03c7436429bd3bf997430f7f7c842b2e57))
+- chore(audio-studio): release @siteed/audio-studio@3.0.5 ([9dff021](https://github.com/deeeed/audiolab/commit/9dff0219993803d29a03946cf81fe2bedb541cab))
 ## [3.0.5] - 2026-04-25
 ### Changed
 - fix(audio-studio): don't start notification on prepareRecording (Android) (#364) ([5d40d7e](https://github.com/deeeed/audiolab/commit/5d40d7e730f2b74459d319979fd9c112891b10f2))
@@ -349,7 +357,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Audio features extraction during recording
 - Consistent WAV PCM recording format across all platforms
 
-[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.0.5...HEAD
+[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.1.0...HEAD
+[3.1.0]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.0.5...@siteed/audio-studio@3.1.0
 [3.0.5]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.0.4...@siteed/audio-studio@3.0.5
 [3.0.4]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.0.3...@siteed/audio-studio@3.0.4
 [3.0.3]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.0.2...@siteed/audio-studio@3.0.3
