@@ -413,7 +413,7 @@ class AudioStudioModule : Module(), EventSender {
 
                     val progressListener = object : AudioTrimmer.ProgressListener {
                         override fun onProgress(progress: Float, bytesProcessed: Long, totalBytes: Long) {
-                            sendEvent(Constants.TRIM_PROGRESS_EVENT, mapOf(
+                            safeSendEvent(Constants.TRIM_PROGRESS_EVENT, mapOf(
                                 "progress" to progress,
                                 "bytesProcessed" to bytesProcessed,
                                 "totalBytes" to totalBytes
@@ -989,7 +989,7 @@ class AudioStudioModule : Module(), EventSender {
                         }
                         
                         // Notify JS about the disconnection
-                        sendEvent(Constants.DEVICE_CHANGED_EVENT, bundleOf(
+                        safeSendEvent(Constants.DEVICE_CHANGED_EVENT, bundleOf(
                             "type" to "deviceDisconnected",
                             "deviceId" to deviceId
                         ))
@@ -1004,7 +1004,7 @@ class AudioStudioModule : Module(), EventSender {
         audioDeviceManager.onDeviceConnected = { deviceId ->
             LogUtils.d(CLASS_NAME, "📱 Device connected: $deviceId")
             // Notify JS about the connection
-            sendEvent(Constants.DEVICE_CHANGED_EVENT, bundleOf(
+            safeSendEvent(Constants.DEVICE_CHANGED_EVENT, bundleOf(
                 "type" to "deviceConnected",
                 "deviceId" to deviceId
             ))
@@ -1014,7 +1014,7 @@ class AudioStudioModule : Module(), EventSender {
         audioDeviceManager.onDeviceDisconnected = { deviceId ->
             LogUtils.d(CLASS_NAME, "📱 Device disconnected: $deviceId")
             // Notify JS about the disconnection
-            sendEvent(Constants.DEVICE_CHANGED_EVENT, bundleOf(
+            safeSendEvent(Constants.DEVICE_CHANGED_EVENT, bundleOf(
                 "type" to "deviceDisconnected",
                 "deviceId" to deviceId
             ))
@@ -1023,6 +1023,18 @@ class AudioStudioModule : Module(), EventSender {
         audioProcessor = AudioProcessor(filesDir)
     }
     
+    private fun safeSendEvent(eventName: String, params: Bundle) {
+        AndroidEventEmitter.safeSend(CLASS_NAME, eventName) {
+            sendEvent(eventName, params)
+        }
+    }
+
+    private fun safeSendEvent(eventName: String, params: Map<String, Any?>) {
+        AndroidEventEmitter.safeSend(CLASS_NAME, eventName) {
+            sendEvent(eventName, params)
+        }
+    }
+
     /**
      * Handles audio device disconnection based on the recording configuration
      */
@@ -1055,7 +1067,7 @@ class AudioStudioModule : Module(), EventSender {
                         
                         // Notify JS about fallback
                         LogUtils.d(CLASS_NAME, "📱 Sending deviceFallback event to JS")
-                        sendEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
+                        safeSendEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
                             "reason" to "deviceFallback",
                             "isPaused" to false,
                             "deviceId" to deviceId
@@ -1070,7 +1082,7 @@ class AudioStudioModule : Module(), EventSender {
                                 // Notify AudioRecorderManager to handle device change while paused
                                 audioRecorderManager.handleDeviceChange()
                                 
-                                sendEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
+                                safeSendEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
                                     "reason" to "deviceSwitchFailed",
                                     "isPaused" to true
                                 ))
@@ -1090,7 +1102,7 @@ class AudioStudioModule : Module(), EventSender {
                             // Notify AudioRecorderManager to handle device change while paused
                             audioRecorderManager.handleDeviceChange()
                             
-                            sendEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
+                            safeSendEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
                                 "reason" to "deviceDisconnected",
                                 "isPaused" to true
                             ))
@@ -1112,7 +1124,7 @@ class AudioStudioModule : Module(), EventSender {
                         // Notify AudioRecorderManager to handle device change while paused
                         audioRecorderManager.handleDeviceChange()
                         
-                        sendEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
+                        safeSendEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
                             "reason" to "deviceDisconnected",
                             "isPaused" to true
                         ))
@@ -1128,6 +1140,18 @@ class AudioStudioModule : Module(), EventSender {
 
     override fun sendExpoEvent(eventName: String, params: Bundle) {
         LogUtils.d(CLASS_NAME, "Sending event: $eventName")
-        this@AudioStudioModule.sendEvent(eventName, params)
+        safeSendEvent(eventName, params)
+    }
+}
+
+internal object AndroidEventEmitter {
+    fun safeSend(className: String, eventName: String, send: () -> Unit): Boolean {
+        return try {
+            send()
+            true
+        } catch (e: Exception) {
+            LogUtils.e(className, "Failed to send event $eventName: ${e.message}", e)
+            false
+        }
     }
 }
