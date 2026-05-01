@@ -153,6 +153,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
     
     // Add property to track auto-resume preference
     private var autoResumeAfterInterruption: Bool = false
+    private var pausedBySystemInterruption: Bool = false
     
     // Add these properties
     private var emissionInterval: TimeInterval = 1.0  // Default 1 second
@@ -254,7 +255,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             // Store the pause start time if not already paused
             if !wasSuspended {
                 currentPauseStart = Date()
-                pauseRecording()
+                pauseRecording(isSystemInterruption: true)
             }
             
             // Always notify delegate of interruption
@@ -271,17 +272,17 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {
                 let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
                 Logger.debug("AudioStreamManager", "Interruption options - shouldResume: \(options.contains(.shouldResume))")
-                
-                // Calculate pause duration if we have a pause start time
-                if let pauseStart = currentPauseStart {
-                    let pauseDuration = Date().timeIntervalSince(pauseStart)
-                    totalPausedDuration += pauseDuration
-                    currentPauseStart = nil
-                    Logger.debug("AudioStreamManager", "Added interruption pause duration: \(pauseDuration), total paused: \(totalPausedDuration)")
-                }
-                
-                // For phone calls, we should auto-resume if enabled, regardless of previous pause state
-                if autoResumeAfterInterruption && isRecording {
+
+                // Auto-resume only if this interruption paused the recording.
+                // If the user had already paused, preserve that intent.
+                // Keep currentPauseStart active until the actual resume so duration accounting
+                // excludes the full paused interval, including any post-interruption delay.
+                if AutoResumePolicy.shouldAutoResume(
+                    autoResumeAfterInterruption: autoResumeAfterInterruption,
+                    isRecording: isRecording,
+                    isPaused: isPaused,
+                    pausedBySystemInterruption: pausedBySystemInterruption
+                ) {
                     // Add a longer delay for phone calls and ensure proper session setup
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
                         guard let self = self else { return }
@@ -507,6 +508,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
                 // If we can't restart, officially pause the recording
                 if !isPaused {
                     isPaused = true
+                    pausedBySystemInterruption = false
                     // Notify delegate
                     delegate?.audioStreamManager(self, didPauseRecording: Date())
                 }
@@ -929,6 +931,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         lastEmittedCompressedSize = 0
         lastEmittedCompressedSizeAnalysis = 0
         isPaused = false
+        pausedBySystemInterruption = false
 
         // Create recording file first (unless primary output is disabled)
         if settings.output.primary.enabled {
@@ -1175,6 +1178,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             lastEmissionTimeAnalysis = Date()
             isRecording = true
             isPaused = false
+            pausedBySystemInterruption = false
             
             // Start the audio engine
             try audioEngine.start()
@@ -1261,6 +1265,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         compressedFileURL = nil // Restore
         audioProcessor = nil // Restore
         recordingSettings = nil
+        pausedBySystemInterruption = false
         isPrepared = false // Restore
         // --- End restored lines and removed log ---
         
@@ -1268,7 +1273,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
     }
 
     /// Pauses the current audio recording.
-    func pauseRecording() {
+    func pauseRecording(isSystemInterruption: Bool = false) {
         guard isRecording, !isPaused else { return }
         
         Logger.debug("Pausing recording...")
@@ -1294,6 +1299,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         
         // Update state
         isPaused = true
+        pausedBySystemInterruption = isSystemInterruption
         
         // Stop the engine but don't remove the tap
         audioEngine.pause()
@@ -1342,6 +1348,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             
             // Update state
             isPaused = false
+            pausedBySystemInterruption = false
             
             // Update notification state if enabled
             if recordingSettings?.showNotification == true {
@@ -1890,6 +1897,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         let wasRecording = isRecording
         isRecording = false
         isPaused = false
+        pausedBySystemInterruption = false
         isPrepared = false // Reset preparation state
         
         // If we were only prepared but never started recording, clean up and return nil
@@ -2389,6 +2397,22 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         try session.setCategory(category, mode: mode, options: options)
         
         Logger.debug("AudioStreamManager", "Audio session configured with category: \(category), mode: \(mode), options: \(options)")
+    }
+}
+
+internal struct AutoResumePolicy {
+    /// Auto-resume only when a system interruption caused the pause.
+    /// User-initiated pauses must remain paused after the interruption ends.
+    static func shouldAutoResume(
+        autoResumeAfterInterruption: Bool,
+        isRecording: Bool,
+        isPaused: Bool,
+        pausedBySystemInterruption: Bool
+    ) -> Bool {
+        return autoResumeAfterInterruption &&
+            isRecording &&
+            isPaused &&
+            pausedBySystemInterruption
     }
 }
 
