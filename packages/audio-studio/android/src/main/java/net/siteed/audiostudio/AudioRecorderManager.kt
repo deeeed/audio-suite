@@ -118,6 +118,7 @@ class AudioRecorderManager(
     private var audioFocusRequest: Any? = null  // Type Any to handle both old and new APIs
     private var phoneStateListener: PhoneStateListener? = null
     private var telephonyCallback: Any? = null  // TelephonyCallback for API 31+, typed as Any to avoid class verification issues on older APIs
+    private var pausedBySystemInterruption = false
     private var telephonyManager: TelephonyManager? = null
         get() {
             if (field == null) {
@@ -408,7 +409,7 @@ class AudioRecorderManager(
                 if (_isRecording.get() && !isPaused.get()) {
                     LogUtils.d(CLASS_NAME, "Pausing recording due to incoming/ongoing call")
                     mainHandler.post {
-                        pauseRecording(object : Promise {
+                        pauseRecordingForSystemInterruption(object : Promise {
                             override fun resolve(value: Any?) {
                                 LogUtils.d(CLASS_NAME, "Successfully paused recording due to call")
                                 eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
@@ -426,8 +427,14 @@ class AudioRecorderManager(
             TelephonyManager.CALL_STATE_IDLE -> {
                 if (_isRecording.get() && isPaused.get()) {
                     val autoResume = if (::recordingConfig.isInitialized) recordingConfig.autoResumeAfterInterruption else false
-                    LogUtils.d(CLASS_NAME, "Call ended, handling auto-resume (enabled: $autoResume)")
-                    if (autoResume) {
+                    val shouldAutoResume = InterruptionAutoResumePolicy.shouldAutoResume(
+                        autoResumeAfterInterruption = autoResume,
+                        isRecording = _isRecording.get(),
+                        isPaused = isPaused.get(),
+                        pausedBySystemInterruption = pausedBySystemInterruption
+                    )
+                    LogUtils.d(CLASS_NAME, "Call ended, handling auto-resume (enabled: $autoResume, pausedBySystemInterruption: $pausedBySystemInterruption)")
+                    if (shouldAutoResume) {
                         mainHandler.post {
                             resumeRecording(object : Promise {
                                 override fun resolve(value: Any?) {
@@ -443,7 +450,7 @@ class AudioRecorderManager(
                             })
                         }
                     } else {
-                        LogUtils.d(CLASS_NAME, "Auto-resume disabled, staying paused")
+                        LogUtils.d(CLASS_NAME, "Auto-resume not permitted, staying paused")
                         eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
                             "reason" to "phoneCallEnded",
                             "isPaused" to true
@@ -954,6 +961,7 @@ class AudioRecorderManager(
 
             audioRecord?.startRecording()
             isPaused.set(false)
+            pausedBySystemInterruption = false
             isFirstChunk = true
             recordingStartTime = System.currentTimeMillis()
 
@@ -1174,6 +1182,7 @@ class AudioRecorderManager(
                 // Reset the timing variables
                 _isRecording.set(false)
                 isPaused.set(false)
+                pausedBySystemInterruption = false
                 totalRecordedTime = 0
                 pausedDuration = 0
             } catch (e: Exception) {
@@ -1258,6 +1267,7 @@ class AudioRecorderManager(
             }
             
             LogUtils.d(CLASS_NAME, "⏺️ Recording resumed successfully")
+            pausedBySystemInterruption = false
             promise.resolve("Recording resumed")
         } catch (e: Exception) {
             LogUtils.e(CLASS_NAME, "⏺️ Failed to resume recording: ${e.message}", e)
@@ -1267,12 +1277,21 @@ class AudioRecorderManager(
     }
 
     fun pauseRecording(promise: Promise) {
+        pauseRecording(promise, isSystemInterruption = false)
+    }
+
+    private fun pauseRecordingForSystemInterruption(promise: Promise) {
+        pauseRecording(promise, isSystemInterruption = true)
+    }
+
+    private fun pauseRecording(promise: Promise, isSystemInterruption: Boolean) {
         if (_isRecording.get() && !isPaused.get()) {
             audioRecord?.stop()
             compressedRecorder?.pause()
             
             lastPauseTime = System.currentTimeMillis()
             isPaused.set(true)
+            pausedBySystemInterruption = isSystemInterruption
 
             if (recordingConfig.showNotification) {
                 notificationManager.pauseUpdates()
@@ -1747,6 +1766,7 @@ class AudioRecorderManager(
                 
                 _isRecording.set(false)
                 isPaused.set(false)
+                pausedBySystemInterruption = false
                 isPrepared = false  // Reset prepared state
                 
                 if (::recordingConfig.isInitialized && recordingConfig.showNotification) {
@@ -1909,9 +1929,8 @@ class AudioRecorderManager(
                 AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
                     if (_isRecording.get() && !isPaused.get()) {
                         mainHandler.post {
-                            pauseRecording(object : Promise {
+                            pauseRecordingForSystemInterruption(object : Promise {
                                 override fun resolve(value: Any?) {
-                                    isPaused.set(true)
                                     eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
                                         "reason" to "audioFocusLoss",
                                         "isPaused" to true
@@ -1926,7 +1945,12 @@ class AudioRecorderManager(
                 }
                 AudioManager.AUDIOFOCUS_GAIN -> {
                     val autoResume = if (::recordingConfig.isInitialized) recordingConfig.autoResumeAfterInterruption else false
-                    if (_isRecording.get() && isPaused.get() && autoResume) {
+                    if (InterruptionAutoResumePolicy.shouldAutoResume(
+                            autoResumeAfterInterruption = autoResume,
+                            isRecording = _isRecording.get(),
+                            isPaused = isPaused.get(),
+                            pausedBySystemInterruption = pausedBySystemInterruption
+                        )) {
                         mainHandler.post {
                             resumeRecording(object : Promise {
                                 override fun resolve(value: Any?) {
@@ -1975,9 +1999,8 @@ class AudioRecorderManager(
                     // Only pause for permanent focus loss (like phone calls)
                     if (_isRecording.get() && !isPaused.get()) {
                         mainHandler.post {
-                            pauseRecording(object : Promise {
+                            pauseRecordingForSystemInterruption(object : Promise {
                                 override fun resolve(value: Any?) {
-                                    isPaused.set(true)
                                     eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
                                         "reason" to "audioFocusLoss",
                                         "isPaused" to true
@@ -1996,7 +2019,12 @@ class AudioRecorderManager(
                 }
                 AudioManager.AUDIOFOCUS_GAIN -> {
                     val autoResume = if (::recordingConfig.isInitialized) recordingConfig.autoResumeAfterInterruption else false
-                    if (_isRecording.get() && isPaused.get() && autoResume) {
+                    if (InterruptionAutoResumePolicy.shouldAutoResume(
+                            autoResumeAfterInterruption = autoResume,
+                            isRecording = _isRecording.get(),
+                            isPaused = isPaused.get(),
+                            pausedBySystemInterruption = pausedBySystemInterruption
+                        )) {
                         mainHandler.post {
                             resumeRecording(object : Promise {
                                 override fun resolve(value: Any?) {
@@ -2173,5 +2201,23 @@ internal object AndroidCallState {
             else -> audioMode == AudioManager.MODE_IN_CALL ||
                 audioMode == AudioManager.MODE_IN_COMMUNICATION
         }
+    }
+}
+
+internal object InterruptionAutoResumePolicy {
+    /**
+     * Auto-resume is only allowed when the pause was caused by a system interruption.
+     * User-initiated pauses must stay paused even after phone/audio focus interruptions end.
+     */
+    fun shouldAutoResume(
+        autoResumeAfterInterruption: Boolean,
+        isRecording: Boolean,
+        isPaused: Boolean,
+        pausedBySystemInterruption: Boolean
+    ): Boolean {
+        return autoResumeAfterInterruption &&
+            isRecording &&
+            isPaused &&
+            pausedBySystemInterruption
     }
 }
