@@ -1,5 +1,6 @@
 import ExpoModulesCore
 import AudioStudio
+import React
 
 public class PlaygroundAPIModule: Module {
   // Get the audio module using the correct method from ModuleRegistry
@@ -66,8 +67,7 @@ public class PlaygroundAPIModule: Module {
 
   // Get the Essentia module through React Native bridge
   private var essentiaModule: Any? {
-    guard let context = appContext,
-          let bridge = context.reactBridge else {
+    guard let bridge = RCTBridge.current() else {
         print("[PlaygroundAPI] Warning: No React bridge available")
         return nil
     }
