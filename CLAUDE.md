@@ -89,6 +89,22 @@ Each returns `{ op, status: 'pending' }` immediately. Poll `getLastResult()` for
 - Background recording requires special permissions configuration
 - **VPN Interference**: Disconnect VPNs during iOS E2E tests; Android uses ADB port forwarding (VPN-resistant)
 
+## Dependency Strategy (Expo / React Native)
+
+This monorepo uses Yarn 4 with `nodeLinker: node-modules` and `nmHoistingLimits: workspaces`. Each workspace gets its own `node_modules`, which makes it easy for nested packages to ship duplicate copies of `react`, `react-native`, or `@react-navigation/*`. Two copies of any of these in one bundle = silent context Symbol mismatch and a `<Stack>` / `<SceneView>` "Element type is invalid" crash that points at an unrelated provider in the stack trace.
+
+Guard rails in place:
+- Root `package.json` `resolutions` pins `react`, `react-dom`, `@react-navigation/{native,native-stack,bottom-tabs}` to one version per name.
+- Each app's `@react-navigation/*` pins are tight enough that only one version satisfies them (no loose `^7.0.0` ranges).
+- `apps/playground/metro.config.cjs` force-resolves `react`, `react-dom`, and `react/jsx-{,dev-}runtime` to the playground copy via `resolveRequest`, and lists every nested workspace under `packageRoots` so blacklisted duplicates are excluded.
+- `yarn check:deps` (`scripts/check-runtime-deps.sh`) walks `node_modules` and fails if any singleton package has more than one copy inside a workspace. Run after every dep change and before merging upgrade PRs.
+
+When bumping Expo or React Native:
+1. Run `yarn expo install --check` and apply the recommended versions.
+2. Tighten `@react-navigation/*` pins to expo-router's required floor (see `node_modules/expo-router/package.json` dependencies).
+3. Re-run `yarn install` and `yarn check:deps`.
+4. If `check:deps` fails, add the offending package to root `resolutions` and reinstall.
+
 ## iOS Simulator
 
 Standard: **iPhone 16 Pro Max** — use `yarn setup:ios-simulator` for consistent setup.

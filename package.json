@@ -8,7 +8,8 @@
     ],
     "scripts": {
         "format": "prettier --write .",
-        "android:ort:check": "bash scripts/check-android-ort-compat.sh"
+        "android:ort:check": "bash scripts/check-android-ort-compat.sh",
+        "check:deps": "bash scripts/check-runtime-deps.sh"
     },
     "nohoist": [
         "**/react-native",
