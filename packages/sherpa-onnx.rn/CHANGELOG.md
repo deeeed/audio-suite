@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Android**: `KotlinApiOverrides.patch` regenerated against `v1.13.0` upstream Kotlin API; `OfflineRecognizer.kt` and `OnlineRecognizer.kt` taken upstream-verbatim now that prior wrapper-side ABI overrides are landed upstream
 - **Android**: `OrtAndroidOverrides.patch` regenerated against `v1.13.0` upstream Android build scripts
 - **iOS**: VAD handler updated for new `ten_vad` field in `SherpaOnnxVadModelConfig` (Ten VAD opt-in deferred; default zero-init preserves Silero VAD behavior)
-- **iOS**: forked `SherpaOnnx.swift` from upstream `swift-api-examples/` into wrapper-owned `ios/native/SherpaOnnx.swift`. Decouples the wrapper from upstream "example" Swift API churn (e.g. v1.13.0 made `recognizer`/`stream` private breaking direct field access). Wrapper now owns the file outright; upstream changes no longer auto-propagate via build script copy.
+- **iOS**: forked `SherpaOnnx.swift` from upstream `swift-api-examples/` into wrapper-owned `ios/native/SherpaOnnx.swift`. Decouples the wrapper from upstream "example" Swift API churn (e.g. v1.13.0 made `recognizer`/`stream` private breaking direct field access). Wrapper now owns the file outright; upstream changes no longer auto-propagate via build script copy. New helper script `scripts/check-swift-drift.sh` surfaces upstream additions on each version bump so they can be hand-ported when relevant.
 - **iOS**: `build-sherpa-ios.sh` no longer copies `swift-api-examples/SherpaOnnx*` to `prebuilt/swift/`; orphaned dir removed.
 - **iOS**: `sherpa-onnx-rn.podspec` source_files entry for `prebuilt/swift/sherpa-onnx/SherpaOnnx.swift` removed (now picked up via `ios/native/*.swift` glob); `prepare_command` no longer patches the import line (wrapper-owned file already has `import CSherpaOnnx`).
 - **Patches**: Pinned version note in `patches/README` updated to `v1.13.0`
@@ -23,8 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Stale per-file kotlin patches (`AudioTagging.patch`, `OfflineRecognizer.patch`, `OnlineRecognizer.patch`, `Tts.patch`) remain in `patches/` for history; only `KotlinApiOverrides.patch` and `OrtAndroidOverrides.patch` are wired into the build pipeline
 
 ### Validation
-- **Android**: arm64 Sherpa runtime links against ONNX Runtime `VERS_1.24.x` (verify after rebuild)
-- **App**: `apps/sherpa-voice` regression suite (TTS / offline ASR / online ASR / VAD / diarization / audio tagging) passes against rebuilt prebuilts
+- **Android**: rebuilt arm64/armeabi-v7a/x86_64 jniLibs link against ONNX Runtime `VERS_1.24.3` (imported and exported symbol versions match per `prebuilt/android/build-metadata.json`)
+- **App**: `apps/sherpa-voice` end-to-end ASR (init / decode / release) verified on Android (Pixel 6a) and iOS sim (`sherpa-voice-1`) via `__AGENTIC__.testASR('streaming')` — transcript correct on streaming-zipformer-en-20m-mobile
+
+### APK / IPA size impact (heads-up for downstream consumers)
+ORT 1.24.3 is meaningfully larger than 1.23.2. Rebuilt Android `libonnxruntime.so` sizes:
+- arm64-v8a: ~24.6 MB
+- armeabi-v7a: ~17.5 MB
+- x86_64: ~29.9 MB
+
+Expect roughly **+6-8 MB per arch in APK output** vs the prior v1.23.2-linked release.
 
 ## [1.1.2] - 2026-03-30
 
