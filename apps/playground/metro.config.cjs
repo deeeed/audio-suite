@@ -18,6 +18,8 @@ const libRoot = path.resolve(monorepoRoot, 'packages/audio-studio')
 const playgroundApiRoot = path.resolve(monorepoRoot, 'packages/playgroundapi')
 const essentiaRoot = path.resolve(monorepoRoot, 'packages/react-native-essentia')
 const sherpaRoot = path.resolve(monorepoRoot, 'packages/sherpa-onnx.rn')
+const agenticDevRoot = path.resolve(monorepoRoot, 'packages/agentic-dev')
+const moonshineRoot = path.resolve(monorepoRoot, 'packages/moonshine.rn')
 
 const modules = [
     'react-native-paper',
@@ -39,7 +41,7 @@ const extraNodeModules = modules.reduce((acc, name) => {
 }, {})
 
 // Prevent metro from resolving duplicate packages in all workspace packages
-const packageRoots = [uiRoot, libRoot, playgroundApiRoot, essentiaRoot, sherpaRoot]
+const packageRoots = [uiRoot, libRoot, playgroundApiRoot, essentiaRoot, sherpaRoot, agenticDevRoot, moonshineRoot]
 const duplicatePackageBlocks = packageRoots.flatMap((pkgRoot) =>
     modules.map(
         (m) =>
@@ -179,18 +181,20 @@ config.resolver = {
                     monorepoRoot + '/packages/sherpa-onnx.rn/src/index.ts',
                 type: 'sourceFile',
             }
-            // } else if (moduleName === "react" || moduleName === "react-dom") {
-            //     // console.log(
-            //     //   `Resolving ${moduleName} to ${path.resolve(projectRoot, `node_modules/${moduleName}`)}`,
-            //     // );
-            //     // Force resolution to the local versions specified in extraNodeModules
-            //     return {
-            //       filePath: path.resolve(
-            //         projectRoot,
-            //         `node_modules/${moduleName}/index.js`,
-            //       ),
-            //       type: "sourceFile",
-            //     };
+        } else if (
+            moduleName === 'react' ||
+            moduleName === 'react-dom' ||
+            moduleName.startsWith('react/') ||
+            moduleName.startsWith('react-dom/')
+        ) {
+            const subPath = moduleName.includes('/')
+                ? moduleName.slice(moduleName.indexOf('/') + 1) + '.js'
+                : 'index.js'
+            const pkgName = moduleName.split('/')[0]
+            return {
+                filePath: path.resolve(projectRoot, 'node_modules', pkgName, subPath),
+                type: 'sourceFile',
+            }
         }
         // Ensure you call the default resolver.
         return context.resolveRequest(context, moduleName, platform)
