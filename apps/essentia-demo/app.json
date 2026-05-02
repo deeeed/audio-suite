@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.deeeed.essentiademo",
+      "bundleIdentifier": "net.siteed.essentiademo",
       "appleTeamId": "G5DZE7G2V4"
     },
     "android": {
@@ -17,7 +17,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.deeeed.essentiademo"
+      "package": "net.siteed.essentiademo"
     },
     "web": {
       "bundler": "metro",

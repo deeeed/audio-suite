@@ -1,4 +1,4 @@
-package com.deeeed.essentiademo
+package net.siteed.essentiademo
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

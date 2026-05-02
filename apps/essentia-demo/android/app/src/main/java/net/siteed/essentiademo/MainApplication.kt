@@ -1,4 +1,4 @@
-package com.deeeed.essentiademo
+package net.siteed.essentiademo
 
 import android.app.Application
 import android.content.res.Configuration
