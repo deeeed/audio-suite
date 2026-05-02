@@ -1,0 +1,291 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index d76784bd..40195c54 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -66,6 +66,7 @@ option(SHERPA_ONNX_ENABLE_WASM_VAD "Whether to enable WASM for VAD" OFF)
+ option(SHERPA_ONNX_ENABLE_WASM_VAD_ASR "Whether to enable WASM for VAD+ASR" OFF)
+ option(SHERPA_ONNX_ENABLE_WASM_NODEJS "Whether to enable WASM for NodeJS" OFF)
+ option(SHERPA_ONNX_ENABLE_WASM_SPEECH_ENHANCEMENT "Whether to enable WASM for speech enhancement" OFF)
++option(SHERPA_ONNX_ENABLE_WASM_COMBINED "Whether to enable combined WASM (all features, wrapper-carried)" OFF)
+ option(SHERPA_ONNX_ENABLE_BINARY "Whether to build binaries" ${SUGGEST_BUILD_BINARIES})
+ option(SHERPA_ONNX_ENABLE_TTS "Whether to build TTS related code" ON)
+ option(SHERPA_ONNX_ENABLE_SPEAKER_DIARIZATION "Whether to build speaker diarization related code" ON)
+diff --git a/build-wasm-simd-combined.sh b/build-wasm-simd-combined.sh
+new file mode 100755
+index 00000000..428bdb9f
+--- /dev/null
++++ b/build-wasm-simd-combined.sh
+@@ -0,0 +1,59 @@
++#!/usr/bin/env bash
++# Wrapper-carried combined wasm build (siteed/sherpa-onnx.rn).
++# Builds a single sherpa-onnx-wasm-combined.{js,wasm} that exports all
++# feature C-API symbols (ASR, TTS, VAD, KWS, denoiser, speaker
++# diarization). No assets are preloaded into the bundle — model files
++# are mounted at runtime by JS.
++
++set -ex
++
++if [ x"$EMSCRIPTEN" == x"" ]; then
++  if ! command -v emcc &> /dev/null; then
++    echo "Please install emscripten first"
++    echo ""
++    echo "git clone https://github.com/emscripten-core/emsdk.git"
++    echo "cd emsdk && ./emsdk install 4.0.7 && ./emsdk activate 4.0.7"
++    echo "source ./emsdk_env.sh"
++    exit 1
++  else
++    EMSCRIPTEN=$(dirname $(realpath $(which emcc)))
++    emcc --version
++  fi
++fi
++
++export EMSCRIPTEN=$EMSCRIPTEN
++echo "EMSCRIPTEN: $EMSCRIPTEN"
++if [ ! -f $EMSCRIPTEN/cmake/Modules/Platform/Emscripten.cmake ]; then
++  echo "Cannot find $EMSCRIPTEN/cmake/Modules/Platform/Emscripten.cmake"
++  exit 1
++fi
++
++mkdir -p build-wasm-simd-combined
++pushd build-wasm-simd-combined
++
++export SHERPA_ONNX_IS_USING_BUILD_WASM_SH=ON
++
++cmake \
++  -DCMAKE_INSTALL_PREFIX=./install \
++  -DCMAKE_BUILD_TYPE=Release \
++  -DCMAKE_TOOLCHAIN_FILE=$EMSCRIPTEN/cmake/Modules/Platform/Emscripten.cmake \
++  \
++  -DSHERPA_ONNX_ENABLE_PYTHON=OFF \
++  -DSHERPA_ONNX_ENABLE_TESTS=OFF \
++  -DSHERPA_ONNX_ENABLE_CHECK=OFF \
++  -DBUILD_SHARED_LIBS=OFF \
++  -DSHERPA_ONNX_ENABLE_PORTAUDIO=OFF \
++  -DSHERPA_ONNX_ENABLE_JNI=OFF \
++  -DSHERPA_ONNX_ENABLE_C_API=ON \
++  -DSHERPA_ONNX_ENABLE_TTS=ON \
++  -DSHERPA_ONNX_ENABLE_WEBSOCKET=OFF \
++  -DSHERPA_ONNX_ENABLE_GPU=OFF \
++  -DSHERPA_ONNX_ENABLE_WASM=ON \
++  -DSHERPA_ONNX_ENABLE_WASM_COMBINED=ON \
++  -DSHERPA_ONNX_ENABLE_BINARY=OFF \
++  -DSHERPA_ONNX_LINK_LIBSTDCPP_STATICALLY=OFF \
++  ..
++make -j2
++make install
++
++ls -lh install/bin/wasm/combined
+diff --git a/wasm/CMakeLists.txt b/wasm/CMakeLists.txt
+index 0f18d313..2ea46af9 100644
+--- a/wasm/CMakeLists.txt
++++ b/wasm/CMakeLists.txt
+@@ -29,3 +29,7 @@ endif()
+ if(SHERPA_ONNX_ENABLE_WASM_NODEJS)
+   add_subdirectory(nodejs)
+ endif()
++
++if(SHERPA_ONNX_ENABLE_WASM_COMBINED)
++  add_subdirectory(combined)
++endif()
+diff --git a/wasm/asr/CMakeLists.txt b/wasm/asr/CMakeLists.txt
+index 5b0b3074..10e4955b 100644
+--- a/wasm/asr/CMakeLists.txt
++++ b/wasm/asr/CMakeLists.txt
+@@ -54,7 +54,8 @@ if (NOT CMAKE_EXECUTABLE_SUFFIX STREQUAL ".js")
+ endif()
+ # set(CMAKE_EXECUTABLE_SUFFIX ".html")
+ 
+-add_executable(sherpa-onnx-wasm-main-asr sherpa-onnx-wasm-main-asr.cc)
++add_executable(sherpa-onnx-wasm-main-asr sherpa-onnx-wasm-main-asr.cc
++  ${CMAKE_SOURCE_DIR}/../../wasm-shim/libcxx_fs_shim.cc)
+ target_link_libraries(sherpa-onnx-wasm-main-asr sherpa-onnx-c-api)
+ install(TARGETS sherpa-onnx-wasm-main-asr DESTINATION bin/wasm/asr)
+ 
+diff --git a/wasm/combined/CMakeLists.txt b/wasm/combined/CMakeLists.txt
+new file mode 100644
+index 00000000..889449cc
+--- /dev/null
++++ b/wasm/combined/CMakeLists.txt
+@@ -0,0 +1,152 @@
++# Combined WASM target — wrapper-carried (siteed/sherpa-onnx.rn).
++# Builds ONE wasm bundle exporting C-API symbols across all features
++# (ASR online+offline, TTS, VAD, KWS, speech enhancement, speaker
++# diarization, audio tagging, language ID, punctuation, speaker ID).
++# No preloaded model assets — wrapper consumers load model files at
++# runtime via the Emscripten virtual FS.
++
++if(NOT $ENV{SHERPA_ONNX_IS_USING_BUILD_WASM_SH})
++  message(FATAL_ERROR "Please use ./build-wasm-simd-combined.sh to build for wasm combined")
++endif()
++
++set(exported_functions
++  MyPrint
++  CopyHeap
++  # online ASR
++  SherpaOnnxCreateOnlineRecognizer
++  SherpaOnnxCreateOnlineStream
++  SherpaOnnxDecodeOnlineStream
++  SherpaOnnxDestroyOnlineRecognizer
++  SherpaOnnxDestroyOnlineRecognizerResult
++  SherpaOnnxDestroyOnlineStream
++  SherpaOnnxDestroyOnlineStreamResultJson
++  SherpaOnnxGetOnlineStreamResult
++  SherpaOnnxGetOnlineStreamResultAsJson
++  SherpaOnnxIsOnlineStreamReady
++  SherpaOnnxOnlineStreamAcceptWaveform
++  SherpaOnnxOnlineStreamGetOption
++  SherpaOnnxOnlineStreamInputFinished
++  SherpaOnnxOnlineStreamIsEndpoint
++  SherpaOnnxOnlineStreamReset
++  SherpaOnnxOnlineStreamSetOption
++  # offline ASR
++  SherpaOnnxAcceptWaveformOffline
++  SherpaOnnxCreateOfflineRecognizer
++  SherpaOnnxCreateOfflineStream
++  SherpaOnnxDecodeMultipleOfflineStreams
++  SherpaOnnxDecodeOfflineStream
++  SherpaOnnxDestroyOfflineRecognizer
++  SherpaOnnxDestroyOfflineRecognizerResult
++  SherpaOnnxDestroyOfflineStream
++  SherpaOnnxDestroyOfflineStreamResultJson
++  SherpaOnnxGetOfflineStreamResult
++  SherpaOnnxGetOfflineStreamResultAsJson
++  SherpaOnnxOfflineStreamGetOption
++  SherpaOnnxOfflineStreamSetOption
++  # TTS
++  SherpaOnnxCreateOfflineTts
++  SherpaOnnxDestroyOfflineTts
++  SherpaOnnxDestroyOfflineTtsGeneratedAudio
++  SherpaOnnxOfflineTtsGenerate
++  SherpaOnnxOfflineTtsGenerateWithCallback
++  SherpaOnnxOfflineTtsGenerateWithConfig
++  SherpaOnnxOfflineTtsNumSpeakers
++  SherpaOnnxOfflineTtsSampleRate
++  # VAD
++  SherpaOnnxCreateCircularBuffer
++  SherpaOnnxDestroyCircularBuffer
++  SherpaOnnxCircularBufferPush
++  SherpaOnnxCircularBufferGet
++  SherpaOnnxCircularBufferFree
++  SherpaOnnxCircularBufferPop
++  SherpaOnnxCircularBufferSize
++  SherpaOnnxCircularBufferHead
++  SherpaOnnxCircularBufferReset
++  SherpaOnnxCreateVoiceActivityDetector
++  SherpaOnnxDestroyVoiceActivityDetector
++  SherpaOnnxVoiceActivityDetectorAcceptWaveform
++  SherpaOnnxVoiceActivityDetectorEmpty
++  SherpaOnnxVoiceActivityDetectorDetected
++  SherpaOnnxVoiceActivityDetectorPop
++  SherpaOnnxVoiceActivityDetectorClear
++  SherpaOnnxVoiceActivityDetectorFront
++  SherpaOnnxDestroySpeechSegment
++  SherpaOnnxVoiceActivityDetectorReset
++  SherpaOnnxVoiceActivityDetectorFlush
++  # KWS
++  SherpaOnnxCreateKeywordSpotter
++  SherpaOnnxCreateKeywordStream
++  SherpaOnnxDecodeKeywordStream
++  SherpaOnnxDestroyKeywordResult
++  SherpaOnnxDestroyKeywordSpotter
++  SherpaOnnxGetKeywordResult
++  SherpaOnnxIsKeywordStreamReady
++  SherpaOnnxResetKeywordStream
++  # Speech enhancement
++  SherpaOnnxCreateOfflineSpeechDenoiser
++  SherpaOnnxCreateOnlineSpeechDenoiser
++  SherpaOnnxDestroyDenoisedAudio
++  SherpaOnnxDestroyOfflineSpeechDenoiser
++  SherpaOnnxDestroyOnlineSpeechDenoiser
++  SherpaOnnxOfflineSpeechDenoiserGetSampleRate
++  SherpaOnnxOfflineSpeechDenoiserRun
++  SherpaOnnxOnlineSpeechDenoiserGetFrameShiftInSamples
++  SherpaOnnxOnlineSpeechDenoiserGetSampleRate
++  SherpaOnnxOnlineSpeechDenoiserRun
++  SherpaOnnxOnlineSpeechDenoiserFlush
++  SherpaOnnxOnlineSpeechDenoiserReset
++  # Speaker diarization
++  SherpaOnnxCreateOfflineSpeakerDiarization
++  SherpaOnnxDestroyOfflineSpeakerDiarization
++  SherpaOnnxOfflineSpeakerDiarizationDestroyResult
++  SherpaOnnxOfflineSpeakerDiarizationDestroySegment
++  SherpaOnnxOfflineSpeakerDiarizationGetSampleRate
++  SherpaOnnxOfflineSpeakerDiarizationProcess
++  SherpaOnnxOfflineSpeakerDiarizationProcessWithCallback
++  SherpaOnnxOfflineSpeakerDiarizationResultGetNumSegments
++  SherpaOnnxOfflineSpeakerDiarizationResultSortByStartTime
++  SherpaOnnxOfflineSpeakerDiarizationSetConfig
++  # Wave I/O
++  SherpaOnnxFreeWave
++  SherpaOnnxReadWave
++  SherpaOnnxReadWaveFromBinaryData
++  SherpaOnnxWriteWave
++  SherpaOnnxFileExists
++)
++set(mangled_exported_functions)
++foreach(x IN LISTS exported_functions)
++  list(APPEND mangled_exported_functions "_${x}")
++endforeach()
++list(JOIN mangled_exported_functions "," all_exported_functions)
++
++include_directories(${CMAKE_SOURCE_DIR})
++set(MY_FLAGS " -s FORCE_FILESYSTEM=1 -s INITIAL_MEMORY=512MB -s ALLOW_MEMORY_GROWTH=1")
++string(APPEND MY_FLAGS " -sSTACK_SIZE=10485760 ") # 10MB
++string(APPEND MY_FLAGS " -sALLOW_TABLE_GROWTH ")
++string(APPEND MY_FLAGS " -sEXPORTED_FUNCTIONS=[${all_exported_functions}] ")
++string(APPEND MY_FLAGS " -sEXPORTED_RUNTIME_METHODS=['ccall','stringToUTF8','setValue','getValue','lengthBytesUTF8','UTF8ToString','HEAPU8','HEAP16','HEAP32','HEAPU32','HEAPF32','HEAPF64','addFunction','removeFunction'] ")
++string(APPEND MY_FLAGS " -sMODULARIZE=1 -sEXPORT_NAME=createSherpaOnnx ")
++
++message(STATUS "MY_FLAGS: ${MY_FLAGS}")
++
++set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${MY_FLAGS}")
++set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${MY_FLAGS}")
++set(CMAKE_EXECUTABLE_LINKER_FLAGS "${CMAKE_EXECUTABLE_LINKER_FLAGS} ${MY_FLAGS}")
++
++if (NOT CMAKE_EXECUTABLE_SUFFIX STREQUAL ".js")
++  message(FATAL_ERROR "The default suffix for building executables should be .js!")
++endif()
++
++add_executable(sherpa-onnx-wasm-combined
++  sherpa-onnx-wasm-main-combined.cc
++  ${CMAKE_SOURCE_DIR}/../../wasm-shim/libcxx_fs_shim.cc)
++target_link_libraries(sherpa-onnx-wasm-combined sherpa-onnx-c-api)
++install(TARGETS sherpa-onnx-wasm-combined DESTINATION bin/wasm/combined)
++
++install(
++  FILES
++    "$<TARGET_FILE_DIR:sherpa-onnx-wasm-combined>/sherpa-onnx-wasm-combined.js"
++    "$<TARGET_FILE_DIR:sherpa-onnx-wasm-combined>/sherpa-onnx-wasm-combined.wasm"
++  DESTINATION
++    bin/wasm/combined
++)
+diff --git a/wasm/combined/sherpa-onnx-wasm-main-combined.cc b/wasm/combined/sherpa-onnx-wasm-main-combined.cc
+new file mode 100644
+index 00000000..f7398231
+--- /dev/null
++++ b/wasm/combined/sherpa-onnx-wasm-main-combined.cc
+@@ -0,0 +1,24 @@
++// wasm/combined/sherpa-onnx-wasm-main-combined.cc
++//
++// Wrapper-carried combined wasm entry point. Exports all C-API symbols
++// across ASR, TTS, VAD, KWS, speech enhancement, and speaker diarization
++// in a single .wasm bundle so consumers don't need to load N feature
++// modules separately. C-API symbols come from libsherpa-onnx-c-api.a;
++// only CopyHeap is provided locally.
++
++#include <stdio.h>
++
++#include <algorithm>
++#include <cstdint>
++
++#include "sherpa-onnx/c-api/c-api.h"
++
++extern "C" {
++
++void CopyHeap(const char *src, int32_t num_bytes, char *dst) {
++  std::copy(src, src + num_bytes, dst);
++}
++
++void MyPrint(const char *p) { fprintf(stderr, "%s\n", p); }
++
++}

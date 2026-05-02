@@ -7,6 +7,8 @@ UPSTREAM_DIR="$SCRIPT_DIR/third_party/sherpa-onnx"
 PATCHES=(
   "patches/OrtAndroidOverrides.patch"
   "patches/OrtIOSOverrides.patch"
+  "patches/OrtWasmOverrides.patch"
+  "patches/CombinedWasmTarget.patch"
 )
 
 if [ ! -d "$UPSTREAM_DIR/.git" ]; then

@@ -180,14 +180,37 @@ function buildOfflineAsrPlan(
         useInverseTextNormalization: config.useItn ?? true,
       };
       break;
-    case 'qwen3':
-      // Qwen3-ASR ships a `tokenizer/` directory rather than a single
-      // tokens.txt file. The web pipeline currently only mounts individual
-      // files into MEMFS (no directory enumeration), so the Qwen3 backend
-      // is gated to native platforms for now. Tracked as web follow-up.
-      throw new Error(
-        'qwen3 ASR is not yet supported on web — the tokenizer directory cannot be mounted via single-file fetch. Use a native platform.'
-      );
+    case 'qwen3': {
+      // Qwen3-ASR ships a `tokenizer/` directory. The wasm bundle includes
+      // Qwen3 code paths (built from sherpa-onnx v1.13.0 source). Caller
+      // must enumerate the tokenizer file list via config.qwen3.tokenizerFiles
+      // (relative paths inside the tokenizer/ dir) so each file can be
+      // fetched into MEMFS individually.
+      const tokenizerFiles = config.qwen3?.tokenizerFiles ?? [
+        'tokenizer.json',
+        'tokenizer_config.json',
+        'special_tokens_map.json',
+        'vocab.json',
+        'merges.txt',
+      ];
+      const tokenizerDir = `${modelDir}/tokenizer`;
+      // Pre-register tokenizer files on the plan so worker path also fetches them
+      for (const fname of tokenizerFiles) {
+        files.push({
+          url: `${fetchBase}/tokenizer/${fname}`,
+          fsPath: `${tokenizerDir}/${fname}`,
+        });
+      }
+      mc.qwen3 = {
+        encoder: f('encoder', 'encoder.int8.onnx'),
+        decoder: f('decoder', 'decoder.int8.onnx'),
+        convFrontend: f('convFrontend', 'conv-frontend.onnx'),
+        tokenizer: tokenizerDir,
+        maxTotalLen: config.qwen3?.maxTotalLen ?? 0,
+        maxNewTokens: config.qwen3?.maxNewTokens ?? 0,
+      };
+      break;
+    }
     default:
       throw new Error(`Unsupported offline model type on web: ${rawType}`);
   }

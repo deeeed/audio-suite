@@ -592,6 +592,14 @@ export interface AsrModelConfig {
     topP?: number;
     /** Random seed for reproducible sampling. Default: 42. */
     seed?: number;
+    /**
+     * Web only: explicit list of tokenizer file names to fetch into MEMFS,
+     * relative to `<modelBaseUrl>/tokenizer/`. Defaults cover stock HF
+     * tokenizers (tokenizer.json, tokenizer_config.json,
+     * special_tokens_map.json, vocab.json, merges.txt). Native platforms
+     * load the tokenizer directory directly and ignore this field.
+     */
+    tokenizerFiles?: string[];
   };
 
   /**

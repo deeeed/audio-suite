@@ -90,6 +90,9 @@ if [ ! -d "third_party/sherpa-onnx" ]; then
   exit 1
 fi
 
+# Apply upstream patches (idempotent: skips if already applied)
+./apply-upstream-patches.sh
+
 # Check if libraries already exist and we're not forcing a rebuild
 if [ "$FORCE_REBUILD" = false ] && [ -d "prebuilt/web" ] && [ "$(ls -A prebuilt/web/*.js 2>/dev/null)" ]; then
   echo -e "${GREEN}WASM build artifacts already exist. Skipping rebuild.${NC}"
