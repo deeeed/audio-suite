@@ -187,14 +187,15 @@ config.resolver = {
             moduleName.startsWith('react/') ||
             moduleName.startsWith('react-dom/')
         ) {
-            const subPath = moduleName.includes('/')
-                ? moduleName.slice(moduleName.indexOf('/') + 1) + '.js'
-                : 'index.js'
-            const pkgName = moduleName.split('/')[0]
-            return {
-                filePath: path.resolve(projectRoot, 'node_modules', pkgName, subPath),
-                type: 'sourceFile',
-            }
+            // Resolve from the playground root so the default resolver walks
+            // its node_modules first. This handles subpaths (e.g. `react/jsx-runtime`,
+            // `react-dom/client`) using the package's own exports/main entries
+            // instead of guessing the file layout.
+            return context.resolveRequest(
+                { ...context, originModulePath: path.join(projectRoot, 'index.js') },
+                moduleName,
+                platform
+            )
         }
         // Ensure you call the default resolver.
         return context.resolveRequest(context, moduleName, platform)

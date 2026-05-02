@@ -15,8 +15,26 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Single find walk for all singleton package paths, then group with awk.
+# Prune large irrelevant trees first for speed: yarn cache, CocoaPods,
+# gradle build outputs, git internals.
+#
+# Note on workspace attribution: a copy at `apps/x/node_modules/react` and one
+# at root `node_modules/react` are intentionally treated as different workspaces
+# and are NOT compared. Cross-workspace dedupe is enforced by `resolutions` and
+# Metro `resolveRequest`, not by this script.
 RESULT=$(
   find "$ROOT_DIR" \
+    \( \
+      -type d \( \
+        -name .git -o \
+        -name .yarn -o \
+        -name Pods -o \
+        -name build -o \
+        -name .gradle -o \
+        -name .next -o \
+        -name dist \
+      \) -prune \
+    \) -o \
     \( \
       -path "*/node_modules/react/package.json" -o \
       -path "*/node_modules/react-dom/package.json" -o \
@@ -26,8 +44,7 @@ RESULT=$(
       -path "*/node_modules/@react-navigation/bottom-tabs/package.json" -o \
       -path "*/node_modules/@react-navigation/core/package.json" -o \
       -path "*/node_modules/@react-navigation/elements/package.json" \
-    \) \
-    -not -path "*/.git/*" 2>/dev/null \
+    \) -print 2>/dev/null \
   | grep -Ev '/@expo/cli/static/|/@types/|/canary-full/|/example/' \
   | awk -F/ '
       {
