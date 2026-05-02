@@ -82,7 +82,8 @@ import AVFoundation
                 modelDir: modelDir, modelType: modelType, modelFiles: modelFiles,
                 numThreads: numThreads, debug: debug, sampleRate: sampleRate,
                 featureDim: featureDim, decodingMethod: decodingMethod,
-                maxActivePaths: maxActivePaths, provider: provider
+                maxActivePaths: maxActivePaths, provider: provider,
+                config: config
             )
         }
     }
@@ -176,12 +177,39 @@ import AVFoundation
     private func initOfflineAsr(
         modelDir: String, modelType: String, modelFiles: [String: String],
         numThreads: Int, debug: Bool, sampleRate: Int, featureDim: Int,
-        decodingMethod: String, maxActivePaths: Int, provider: String
+        decodingMethod: String, maxActivePaths: Int, provider: String,
+        config: NSDictionary
     ) -> NSDictionary {
         NSLog("%@ Initializing OFFLINE ASR, modelType=%@", SherpaOnnxASRHandler.TAG, modelType)
 
         let tokensFile = modelFiles["tokens"] ?? "tokens.txt"
-        let tokensPath = (modelDir as NSString).appendingPathComponent(tokensFile)
+        // Qwen3 ships its own tokenizer directory and does not consume a
+        // root-level tokens.txt; pass an empty path so upstream skips the
+        // missing-file check.
+        let tokensPath = (modelType == "qwen3")
+            ? ""
+            : (modelDir as NSString).appendingPathComponent(tokensFile)
+
+        // Optional fields read from the JS config dict; defaults match the
+        // upstream OfflineModelConfig defaults when the field is absent.
+        let language = config["language"] as? String ?? ""
+        let task = config["task"] as? String ?? "transcribe"
+        let useItn = config["useItn"] as? Bool ?? true
+        let usePunct = config["usePunct"] as? Bool ?? true
+        let hotwords = config["hotwords"] as? String ?? ""
+        // Qwen3 generation params: prefer flattened TurboModule keys, fall back to a
+        // nested `qwen3` dict for callers that bypass the SherpaOnnxAPI flatten layer.
+        let qwen3Nested = config["qwen3"] as? [String: Any] ?? [:]
+        func qwen3Int(_ flatKey: String, _ nestedKey: String, _ defaultValue: Int) -> Int {
+            if let v = config[flatKey] as? Int { return v }
+            if let v = qwen3Nested[nestedKey] as? Int { return v }
+            return defaultValue
+        }
+        func qwen3Float(_ flatKey: String, _ nestedKey: String, _ defaultValue: Float) -> Float {
+            if let v = (config[flatKey] as? NSNumber)?.floatValue { return v }
+            if let v = (qwen3Nested[nestedKey] as? NSNumber)?.floatValue { return v }
+            return defaultValue
+        }
 
         // Build model-specific configs using upstream helpers
         var transducerConfig = sherpaOnnxOfflineTransducerModelConfig()
@@ -192,6 +220,8 @@ import AVFoundation
         var senseVoiceConfig = sherpaOnnxOfflineSenseVoiceModelConfig()
         var tdnnConfig = sherpaOnnxOfflineTdnnModelConfig()
         var fireRedAsrConfig = sherpaOnnxOfflineFireRedAsrModelConfig()
+        var qwen3Config = sherpaOnnxOfflineQwen3ASRModelConfig()
+        var cohereTranscribeConfig = sherpaOnnxOfflineCohereTranscribeModelConfig()
 
         switch modelType {
         case "transducer", "zipformer", "zipformer2":
@@ -216,7 +246,8 @@ import AVFoundation
             whisperConfig = sherpaOnnxOfflineWhisperModelConfig(
                 encoder: (modelDir as NSString).appendingPathComponent(encoderFile),
                 decoder: (modelDir as NSString).appendingPathComponent(decoderFile),
-                language: "en", task: "transcribe"
+                language: language.isEmpty ? "en" : language,
+                task: task
             )
 
         case "nemo_ctc", "nemo_transducer":
@@ -241,7 +272,8 @@ import AVFoundation
             let modelFile = modelFiles["model"] ?? "model.onnx"
             senseVoiceConfig = sherpaOnnxOfflineSenseVoiceModelConfig(
                 model: (modelDir as NSString).appendingPathComponent(modelFile),
-                language: "", useInverseTextNormalization: true
+                language: language,
+                useInverseTextNormalization: useItn
             )
 
         case "fire_red_asr":
@@ -250,6 +282,35 @@ import AVFoundation
             fireRedAsrConfig = sherpaOnnxOfflineFireRedAsrModelConfig(
                 encoder: (modelDir as NSString).appendingPathComponent(encoderFile),
                 decoder: (modelDir as NSString).appendingPathComponent(decoderFile)
+            )
+
+        case "qwen3":
+            let convFrontendFile = modelFiles["convFrontend"] ?? "conv_frontend.onnx"
+            let encoderFile = modelFiles["encoder"] ?? "encoder.int8.onnx"
+            let decoderFile = modelFiles["decoder"] ?? "decoder.int8.onnx"
+            let tokenizerName = modelFiles["tokenizer"] ?? "tokenizer"
+            qwen3Config = sherpaOnnxOfflineQwen3ASRModelConfig(
+                convFrontend: (modelDir as NSString).appendingPathComponent(convFrontendFile),
+                encoder: (modelDir as NSString).appendingPathComponent(encoderFile),
+                decoder: (modelDir as NSString).appendingPathComponent(decoderFile),
+                tokenizer: (modelDir as NSString).appendingPathComponent(tokenizerName),
+                maxTotalLen: qwen3Int("qwen3MaxTotalLen", "maxTotalLen", 512),
+                maxNewTokens: qwen3Int("qwen3MaxNewTokens", "maxNewTokens", 128),
+                temperature: qwen3Float("qwen3Temperature", "temperature", 1e-6),
+                topP: qwen3Float("qwen3TopP", "topP", 0.8),
+                seed: qwen3Int("qwen3Seed", "seed", 42),
+                hotwords: hotwords
+            )
+
+        case "cohere_transcribe":
+            let encoderFile = modelFiles["encoder"] ?? "encoder.int8.onnx"
+            let decoderFile = modelFiles["decoder"] ?? "decoder.int8.onnx"
+            cohereTranscribeConfig = sherpaOnnxOfflineCohereTranscribeModelConfig(
+                encoder: (modelDir as NSString).appendingPathComponent(encoderFile),
+                decoder: (modelDir as NSString).appendingPathComponent(decoderFile),
+                language: language,
+                usePunct: usePunct,
+                useInverseTextNormalization: useItn
             )
 
         default:
@@ -269,7 +330,9 @@ import AVFoundation
             modelType: modelType,
             senseVoice: senseVoiceConfig,
             moonshine: moonshineConfig,
-            fireRedAsr: fireRedAsrConfig
+            fireRedAsr: fireRedAsrConfig,
+            qwen3Asr: qwen3Config,
+            cohereTranscribe: cohereTranscribeConfig
         )
 
         let featConfig = sherpaOnnxFeatureConfig(sampleRate: sampleRate, featureDim: featureDim)

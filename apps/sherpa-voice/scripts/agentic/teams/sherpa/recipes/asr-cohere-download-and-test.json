@@ -1,0 +1,28 @@
+{
+  "title": "Sherpa voice Cohere Transcribe download + bridge roundtrip",
+  "description": "Downloads the Cohere Transcribe 14-lang int8 model (~274 MB) on-device via __AGENTIC__.downloadModel, polls until status === 'downloaded', then runs the testASR('cohere', _, 'en') roundtrip with English `test_wavs/en.wav`. Validates the new `language` / `usePunct` / `useItn` plumbing through the wrapper handlers.",
+  "validate": {
+    "workflow": {
+      "entry": "cohere-download-and-test",
+      "pre_conditions": [
+        "sherpa.agentic_ready"
+      ],
+      "nodes": {
+        "cohere-download-and-test": {
+          "action": "call",
+          "ref": "asr-download-and-test",
+          "params": {
+            "modelId": "cohere-transcribe-14-lang-int8-2026-04-01",
+            "alias": "cohere",
+            "language": "en"
+          },
+          "next": "done"
+        },
+        "done": {
+          "action": "end",
+          "status": "pass"
+        }
+      }
+    }
+  }
+}

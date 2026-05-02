@@ -308,6 +308,21 @@ RCT_EXPORT_METHOD(initAsr:(JS::NativeSherpaOnnxSpec::SpecInitAsrConfig &)config
     auto maxActivePaths = config.maxActivePaths();
     NSString *provider = config.provider();
 
+    // Optional ASR-side hints / generation knobs
+    NSString *language = config.language();
+    NSString *task = config.task();
+    auto useItn = config.useItn();
+    NSString *srcLang = config.srcLang();
+    NSString *tgtLang = config.tgtLang();
+    auto usePnc = config.usePnc();
+    auto usePunct = config.usePunct();
+    NSString *hotwords = config.hotwords();
+    auto qwen3MaxTotalLen = config.qwen3MaxTotalLen();
+    auto qwen3MaxNewTokens = config.qwen3MaxNewTokens();
+    auto qwen3Temperature = config.qwen3Temperature();
+    auto qwen3TopP = config.qwen3TopP();
+    auto qwen3Seed = config.qwen3Seed();
+
     // Model file paths (flattened from modelFiles object)
     NSString *modelFileEncoder = config.modelFileEncoder();
     NSString *modelFileDecoder = config.modelFileDecoder();
@@ -317,6 +332,8 @@ RCT_EXPORT_METHOD(initAsr:(JS::NativeSherpaOnnxSpec::SpecInitAsrConfig &)config
     NSString *modelFilePreprocessor = config.modelFilePreprocessor();
     NSString *modelFileUncachedDecoder = config.modelFileUncachedDecoder();
     NSString *modelFileCachedDecoder = config.modelFileCachedDecoder();
+    NSString *modelFileConvFrontend = config.modelFileConvFrontend();
+    NSString *modelFileTokenizer = config.modelFileTokenizer();
 
     NSMutableDictionary *configDict = [NSMutableDictionary dictionary];
     if (modelDir) [configDict setObject:modelDir forKey:@"modelDir"];
@@ -330,6 +347,19 @@ RCT_EXPORT_METHOD(initAsr:(JS::NativeSherpaOnnxSpec::SpecInitAsrConfig &)config
     if (decodingMethod) [configDict setObject:decodingMethod forKey:@"decodingMethod"];
     if (maxActivePaths) [configDict setObject:@(*maxActivePaths) forKey:@"maxActivePaths"];
     if (provider) [configDict setObject:provider forKey:@"provider"];
+    if (language) [configDict setObject:language forKey:@"language"];
+    if (task) [configDict setObject:task forKey:@"task"];
+    if (useItn) [configDict setObject:@(*useItn) forKey:@"useItn"];
+    if (srcLang) [configDict setObject:srcLang forKey:@"srcLang"];
+    if (tgtLang) [configDict setObject:tgtLang forKey:@"tgtLang"];
+    if (usePnc) [configDict setObject:@(*usePnc) forKey:@"usePnc"];
+    if (usePunct) [configDict setObject:@(*usePunct) forKey:@"usePunct"];
+    if (hotwords) [configDict setObject:hotwords forKey:@"hotwords"];
+    if (qwen3MaxTotalLen) [configDict setObject:@(*qwen3MaxTotalLen) forKey:@"qwen3MaxTotalLen"];
+    if (qwen3MaxNewTokens) [configDict setObject:@(*qwen3MaxNewTokens) forKey:@"qwen3MaxNewTokens"];
+    if (qwen3Temperature) [configDict setObject:@(*qwen3Temperature) forKey:@"qwen3Temperature"];
+    if (qwen3TopP) [configDict setObject:@(*qwen3TopP) forKey:@"qwen3TopP"];
+    if (qwen3Seed) [configDict setObject:@(*qwen3Seed) forKey:@"qwen3Seed"];
 
     // Build modelFiles sub-dictionary
     NSMutableDictionary *modelFiles = [NSMutableDictionary dictionary];
@@ -341,6 +371,8 @@ RCT_EXPORT_METHOD(initAsr:(JS::NativeSherpaOnnxSpec::SpecInitAsrConfig &)config
     if (modelFilePreprocessor) [modelFiles setObject:modelFilePreprocessor forKey:@"preprocessor"];
     if (modelFileUncachedDecoder) [modelFiles setObject:modelFileUncachedDecoder forKey:@"uncachedDecoder"];
     if (modelFileCachedDecoder) [modelFiles setObject:modelFileCachedDecoder forKey:@"cachedDecoder"];
+    if (modelFileConvFrontend) [modelFiles setObject:modelFileConvFrontend forKey:@"convFrontend"];
+    if (modelFileTokenizer) [modelFiles setObject:modelFileTokenizer forKey:@"tokenizer"];
     if (modelFiles.count > 0) [configDict setObject:modelFiles forKey:@"modelFiles"];
 
     @try {

@@ -151,6 +151,16 @@ export interface Spec extends TurboModule {
     srcLang?: string;
     tgtLang?: string;
     usePnc?: boolean;
+    // Cohere Transcribe punctuation toggle
+    usePunct?: boolean;
+    // Qwen3-ASR hotwords (comma-separated UTF-8)
+    hotwords?: string;
+    // Qwen3-ASR generation params (flattened for TurboModule codegen)
+    qwen3MaxTotalLen?: number;
+    qwen3MaxNewTokens?: number;
+    qwen3Temperature?: number;
+    qwen3TopP?: number;
+    qwen3Seed?: number;
     // modelFiles fields flattened for TurboModule compat
     modelFileEncoder?: string;
     modelFileDecoder?: string;
@@ -160,6 +170,8 @@ export interface Spec extends TurboModule {
     modelFilePreprocessor?: string;
     modelFileUncachedDecoder?: string;
     modelFileCachedDecoder?: string;
+    modelFileConvFrontend?: string;
+    modelFileTokenizer?: string;
   }): Promise<{
     success: boolean;
     sampleRate?: number;

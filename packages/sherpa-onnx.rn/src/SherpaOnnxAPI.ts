@@ -141,6 +141,8 @@ const nativeAdapter: ApiInterface = {
       srcLang: config.srcLang,
       tgtLang: config.tgtLang,
       usePnc: config.usePnc,
+      usePunct: config.usePunct,
+      hotwords: config.hotwords,
     };
     if (config.modelFiles) {
       nativeConfig.modelFileEncoder = config.modelFiles.encoder;
@@ -151,6 +153,15 @@ const nativeAdapter: ApiInterface = {
       nativeConfig.modelFilePreprocessor = config.modelFiles.preprocessor;
       nativeConfig.modelFileUncachedDecoder = config.modelFiles.uncachedDecoder;
       nativeConfig.modelFileCachedDecoder = config.modelFiles.cachedDecoder;
+      nativeConfig.modelFileConvFrontend = config.modelFiles.convFrontend;
+      nativeConfig.modelFileTokenizer = config.modelFiles.tokenizer;
+    }
+    if (config.qwen3) {
+      nativeConfig.qwen3MaxTotalLen = config.qwen3.maxTotalLen;
+      nativeConfig.qwen3MaxNewTokens = config.qwen3.maxNewTokens;
+      nativeConfig.qwen3Temperature = config.qwen3.temperature;
+      nativeConfig.qwen3TopP = config.qwen3.topP;
+      nativeConfig.qwen3Seed = config.qwen3.seed;
     }
     return NativeSherpaOnnx.initAsr(nativeConfig as any);
   },

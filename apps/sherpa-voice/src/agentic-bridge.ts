@@ -1304,8 +1304,11 @@ if (__DEV__) {
         // One-shot ASR test: init + recognize + release
         // testASR('whisper', wavPath?) — use whisper-small-multilingual
         // testASR('streaming', wavPath?) — use streaming-zipformer-en-20m-mobile
+        // testASR('qwen3', wavPath?) — use Qwen3-ASR 0.6B int8 (Mandarin test wav)
+        // testASR('cohere', wavPath?, language?) — use Cohere Transcribe 14-lang
+        //   (`language` defaults to 'en'; bundled test wavs: en.wav, de.wav, zh.wav)
         // testASR('offline', wavPath?) — alias for whisper
-        testASR: (modelAlias?: string, wavPath?: string) => {
+        testASR: (modelAlias?: string, wavPath?: string, language?: string) => {
             const op = 'asrTest'
             _lastAsyncResult = { op, status: 'pending' }
             void (async () => {
@@ -1333,6 +1336,45 @@ if (__DEV__) {
                                 encoder: 'encoder-epoch-99-avg-1.int8.onnx',
                                 decoder: 'decoder-epoch-99-avg-1.onnx',
                                 joiner: 'joiner-epoch-99-avg-1.int8.onnx',
+                                tokens: 'tokens.txt',
+                            },
+                        }
+                    } else if (alias === 'qwen3') {
+                        const dir = `${MODELS_BASE}/qwen3-asr-0.6B-int8-2026-03-25/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25`
+                        defaultWav = dir + '/test_wavs/raokouling.wav'
+                        config = {
+                            modelDir: dir,
+                            modelType: 'qwen3',
+                            numThreads: 2,
+                            decodingMethod: 'greedy_search',
+                            streaming: false,
+                            debug: false,
+                            provider: 'cpu',
+                            modelFiles: {
+                                encoder: 'encoder.int8.onnx',
+                                decoder: 'decoder.int8.onnx',
+                                convFrontend: 'conv_frontend.onnx',
+                                tokenizer: 'tokenizer',
+                            },
+                        }
+                    } else if (alias === 'cohere' || alias === 'cohere_transcribe') {
+                        const dir = `${MODELS_BASE}/cohere-transcribe-14-lang-int8-2026-04-01/sherpa-onnx-cohere-transcribe-14-lang-int8-2026-04-01`
+                        const lang = (language ?? 'en').toLowerCase()
+                        defaultWav = dir + `/test_wavs/${lang}.wav`
+                        config = {
+                            modelDir: dir,
+                            modelType: 'cohere_transcribe',
+                            numThreads: 2,
+                            decodingMethod: 'greedy_search',
+                            streaming: false,
+                            debug: false,
+                            provider: 'cpu',
+                            language: lang,
+                            usePunct: true,
+                            useItn: true,
+                            modelFiles: {
+                                encoder: 'encoder.int8.onnx',
+                                decoder: 'decoder.int8.onnx',
                                 tokens: 'tokens.txt',
                             },
                         }

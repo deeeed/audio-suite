@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UPSTREAM_DIR="$SCRIPT_DIR/third_party/sherpa-onnx"
 PATCHES=(
   "patches/OrtAndroidOverrides.patch"
+  "patches/OrtIOSOverrides.patch"
 )
 
 if [ ! -d "$UPSTREAM_DIR/.git" ]; then

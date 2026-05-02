@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **ASR backends**: Qwen3-ASR + Cohere Transcribe (both new in upstream `v1.13.0`)
+  - TS `AsrModelConfig.modelType` extends with `'qwen3'` and `'cohere_transcribe'`; new optional fields `hotwords`, `usePunct`, `qwen3.{maxTotalLen, maxNewTokens, temperature, topP, seed}`, `modelFiles.{convFrontend, tokenizer}`
+  - iOS Swift handler + Android Kotlin handler grow matching `case "qwen3"` / `case "cohere_transcribe"` branches
+  - JS bridge (`SherpaOnnxAPI.ts`) flattens nested `qwen3.*` and new `modelFiles.*` keys for TurboModule strict marshalling
+  - Existing `whisper` / `sense_voice` cases now honor the JS-passed `language` / `task` / `useItn` instead of hardcoded defaults (regression fix uncovered while wiring Cohere)
+- **iOS infrastructure**:
+  - `OrtIOSOverrides.patch`: bumps upstream `build-ios.sh` ORT pin from `1.17.1` to `1.22.1` (latest available iOS xcframework on `csukuangfj/onnxruntime-libs`); env override via `SITEED_SHERPA_ONNX_IOS_ORT_VERSION`. Required because Cohere Transcribe (exported 2026-04-01) silent-fails on ORT 1.17.1 (init succeeds, inference returns empty transcript)
+  - Bridge module `SherpaOnnxRnModule.mm` extended to read `language`, `task`, `useItn`, `srcLang`, `tgtLang`, `usePnc`, `usePunct`, `hotwords`, qwen3-flat fields, `modelFileConvFrontend`, `modelFileTokenizer` from the TurboModule spec into the handler dict (previously dropped silently)
+  - Codegen artifacts regenerated via `yarn regenerate-codegen` (committed `ios/codegen/SherpaOnnxSpec/SherpaOnnxSpec.h` + `*-generated.mm` were stale from March 14)
+- **Web (TS surface only)**: `case 'cohere_transcribe'` added in `src/web/features/asr.ts`. `'qwen3'` case throws an explicit not-yet-supported error (Qwen3 ships a `tokenizer/` directory that the web pipeline can't mount via single-file fetch). Runtime-blocked behind a separate wasm rebuild (see Notes).
+- **App (`apps/sherpa-voice`)**:
+  - `models.ts` + `useModelConfig.ts` registry entries for `qwen3-asr-0.6B-int8-2026-03-25` and `cohere-transcribe-14-lang-int8-2026-04-01`
+  - `agentic-bridge.ts` `testASR(alias, wavPath?, language?)` extended with `'qwen3'` and `'cohere'` aliases (Cohere accepts a third arg for language hint, defaults to `'en'`)
+  - New flows + recipes:
+    - `flows/asr-qwen3-roundtrip.json` + `recipes/asr-qwen3-roundtrip.json`
+    - `flows/asr-cohere-roundtrip.json` + `recipes/asr-cohere-roundtrip.json`
+    - `flows/asr-download-and-test.json` + `recipes/asr-{qwen3,cohere}-download-and-test.json` (composite: in-app download via `__AGENTIC__.downloadModel`, then run the bridge roundtrip)
+    - `flows/asr-ui-validate.json` + `recipes/asr-ui-validate-{cohere,qwen3}.json` — parametrized UI-flow recipe (model picker -> init -> audio picker -> recognize -> read transcript). Works for short model lists; longer lists require manual scrolling because the recipe runner only interpolates `{{params.X}}` into `expression`/`assert` and the bridge's `findFiberByTestId` doesn't reach off-screen virtualized items reliably. Tracked as a follow-up.
+  - `app/(tabs)/features/asr.tsx`: added `testID="model-picker-list"` so a future `scroll` action can target the model list.
+
+### Validation
+- **Android (Pixel 6a, ORT 1.24.3)**: Cohere recipe PASS — JFK quote *"Ask not what your country can do for you, ask what you can do for your country."* (init 12.9s / infer 5.5s / release 350ms)
+- **Android**: Qwen3 recipe PASS — Mandarin tongue-twister (raokouling.wav) transcribed correctly (init 4.9s / infer 14.5s / release 260ms)
+- **iOS sim `sherpa-voice-1` (ORT 1.22.1)**: Cohere recipe PASS — same JFK quote (init 6.4s / infer 2.9s / release 152ms)
+- **iOS sim**: Qwen3 recipe PASS — same Mandarin transcript (init 1.6s / infer 7.7s / release 102ms)
+- All four platform×backend combinations validate the new wrapper code paths end-to-end (TS config -> bridge -> native handler -> upstream C-API -> tokens decoded)
+
+### Known limitations
+- Web wasm rebuild against ORT `1.24.3` does not link due to emscripten libc++ missing `std::filesystem::__absolute` / `path::__filename` symbols required by the new ORT. The `case 'cohere_transcribe'` branch is wired in `src/web/features/asr.ts` but unrunnable until either upstream sherpa-onnx pins a wasm-compatible ORT or emscripten is upgraded. Tracked as a separate follow-up.
+- Qwen3 web is gated by an explicit throw — the model ships a `tokenizer/` directory (multiple files) and the web pipeline only supports single-file MEMFS mounts.
+- iOS sim runtime evidence above came from sideloaded models (Android-extracted, tar-piped to the sim's app sandbox) rather than the in-app download flow, because the in-app download tracking entered "downloading" / "extracting" states that the AsyncStorage registry didn't reset cleanly across reinstalls during validation. The wrapper code path is the same in both cases; UI-flow validation is doable manually following the recipe.
+
 ### Changed
 - **Upstream**: Bump vendored sherpa-onnx baseline to `v1.13.0` (was `v1.12.34`)
 - **Android**: ORT pin bumped `1.23.2` -> `1.24.3` to match upstream `v1.13.0`

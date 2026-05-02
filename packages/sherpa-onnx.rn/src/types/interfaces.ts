@@ -494,7 +494,9 @@ export interface AsrModelConfig {
     | 'dolphin'
     | 'zipformer'
     | 'lstm'
-    | 'zipformer2';
+    | 'zipformer2'
+    | 'qwen3'
+    | 'cohere_transcribe';
   numThreads?: number;
   decodingMethod?: 'greedy_search' | 'beam_search';
   maxActivePaths?: number;
@@ -507,6 +509,10 @@ export interface AsrModelConfig {
     preprocessor?: string;
     uncachedDecoder?: string;
     cachedDecoder?: string;
+    /** Qwen3-ASR: filename of conv frontend onnx (default `conv_frontend.onnx`). */
+    convFrontend?: string;
+    /** Qwen3-ASR: directory name (relative to `modelDir`) holding the tokenizer files. */
+    tokenizer?: string;
   };
   /**
    * Whether to use streaming (online) recognition.
@@ -557,6 +563,36 @@ export interface AsrModelConfig {
    * Default: true
    */
   usePnc?: boolean;
+
+  /**
+   * Cohere Transcribe punctuation toggle. Non-zero adds punctuation to the
+   * decoded output. Default: true (matches upstream default).
+   */
+  usePunct?: boolean;
+
+  /**
+   * Hotwords for Qwen3-ASR (comma-separated UTF-8 string). Empty means none.
+   * For other backends, use `hotwordsFile` on the recognizer config (not yet
+   * exposed via the wrapper).
+   */
+  hotwords?: string;
+
+  /**
+   * Qwen3-ASR generation parameters. All optional — defaults match the
+   * upstream `OfflineQwen3AsrModelConfig` defaults.
+   */
+  qwen3?: {
+    /** Maximum total tokens (prompt + completion). Default: 512. */
+    maxTotalLen?: number;
+    /** Maximum newly generated tokens. Default: 128. */
+    maxNewTokens?: number;
+    /** Sampling temperature. Default: 1e-6 (near-greedy). */
+    temperature?: number;
+    /** Nucleus sampling top-p. Default: 0.8. */
+    topP?: number;
+    /** Random seed for reproducible sampling. Default: 42. */
+    seed?: number;
+  };
 
   /**
    * Enable debug mode for detailed logs

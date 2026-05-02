@@ -171,6 +171,23 @@ function buildOfflineAsrPlan(
     case 'nemo_ctc': case 'wenet_ctc': case 'zipformer2_ctc':
       mc.nemoCtc = { model: f('model', 'model.onnx') };
       break;
+    case 'cohere_transcribe':
+      mc.cohereTranscribe = {
+        encoder: f('encoder', 'encoder.int8.onnx'),
+        decoder: f('decoder', 'decoder.int8.onnx'),
+        language: config.language ?? '',
+        usePunct: config.usePunct ?? true,
+        useInverseTextNormalization: config.useItn ?? true,
+      };
+      break;
+    case 'qwen3':
+      // Qwen3-ASR ships a `tokenizer/` directory rather than a single
+      // tokens.txt file. The web pipeline currently only mounts individual
+      // files into MEMFS (no directory enumeration), so the Qwen3 backend
+      // is gated to native platforms for now. Tracked as web follow-up.
+      throw new Error(
+        'qwen3 ASR is not yet supported on web — the tokenizer directory cannot be mounted via single-file fetch. Use a native platform.'
+      );
     default:
       throw new Error(`Unsupported offline model type on web: ${rawType}`);
   }

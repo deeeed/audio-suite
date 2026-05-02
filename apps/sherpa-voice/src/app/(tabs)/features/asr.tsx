@@ -127,7 +127,7 @@ export default function AsrScreen() {
             </View>
           )
         ) : (
-          <>
+          <View testID="model-picker-list">
             {visibleModels.map((model) => {
               const isSelected = selectedModelId === model.metadata.id;
               const badge = getModelBadge(model.metadata.id);
@@ -166,7 +166,7 @@ export default function AsrScreen() {
             <TouchableOpacity onPress={() => router.push('/(tabs)/models?type=asr')} style={{ marginTop: 4, alignItems: 'center' }}>
               <Text variant="bodyMedium" style={{ color: theme.colors.primary }}>Download more models →</Text>
             </TouchableOpacity>
-          </>
+          </View>
         )}
       </Section>
 
