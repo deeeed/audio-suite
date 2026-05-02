@@ -1,15 +1,15 @@
 diff --git a/build-android-arm64-v8a.sh b/build-android-arm64-v8a.sh
-index df5c805f..3cea17cd 100755
+index d590a990..1feb9ac2 100755
 --- a/build-android-arm64-v8a.sh
 +++ b/build-android-arm64-v8a.sh
 @@ -68,9 +68,15 @@ fi
  
  echo "ANDROID_NDK: $ANDROID_NDK"
  sleep 1
--onnxruntime_version=1.23.2
+-onnxruntime_version=1.24.3
 -
 -if [ $BUILD_SHARED_LIBS == ON ]; then
-+onnxruntime_version=${SITEED_SHERPA_ONNX_ORT_VERSION:-1.23.2}
++onnxruntime_version=${SITEED_SHERPA_ONNX_ORT_VERSION:-1.24.3}
 +
 +if [ -n "${SITEED_SHERPA_ONNX_ORT_LIB_DIR:-}" ] && [ -n "${SITEED_SHERPA_ONNX_ORT_INCLUDE_DIR:-}" ]; then
 +  export SHERPA_ONNXRUNTIME_LIB_DIR=$SITEED_SHERPA_ONNX_ORT_LIB_DIR
@@ -22,17 +22,17 @@ index df5c805f..3cea17cd 100755
      mkdir -p $onnxruntime_version
      pushd $onnxruntime_version
 diff --git a/build-android-armv7-eabi.sh b/build-android-armv7-eabi.sh
-index 7d379703..280346f6 100755
+index 327fca10..304b12d4 100755
 --- a/build-android-armv7-eabi.sh
 +++ b/build-android-armv7-eabi.sh
 @@ -69,9 +69,15 @@ fi
  echo "ANDROID_NDK: $ANDROID_NDK"
  sleep 1
  
--onnxruntime_version=1.23.2
+-onnxruntime_version=1.24.3
 -
 -if [ $BUILD_SHARED_LIBS == ON ]; then
-+onnxruntime_version=${SITEED_SHERPA_ONNX_ORT_VERSION:-1.23.2}
++onnxruntime_version=${SITEED_SHERPA_ONNX_ORT_VERSION:-1.24.3}
 +
 +if [ -n "${SITEED_SHERPA_ONNX_ORT_LIB_DIR:-}" ] && [ -n "${SITEED_SHERPA_ONNX_ORT_INCLUDE_DIR:-}" ]; then
 +  export SHERPA_ONNXRUNTIME_LIB_DIR=$SITEED_SHERPA_ONNX_ORT_LIB_DIR
@@ -45,17 +45,17 @@ index 7d379703..280346f6 100755
      mkdir -p $onnxruntime_version
      pushd $onnxruntime_version
 diff --git a/build-android-x86-64.sh b/build-android-x86-64.sh
-index 60b17d3c..6ece0099 100755
+index ac755690..127c8b40 100755
 --- a/build-android-x86-64.sh
 +++ b/build-android-x86-64.sh
 @@ -69,9 +69,15 @@ fi
  echo "ANDROID_NDK: $ANDROID_NDK"
  sleep 1
  
--onnxruntime_version=1.23.2
+-onnxruntime_version=1.24.3
 -
 -if [ $BUILD_SHARED_LIBS == ON ]; then
-+onnxruntime_version=${SITEED_SHERPA_ONNX_ORT_VERSION:-1.23.2}
++onnxruntime_version=${SITEED_SHERPA_ONNX_ORT_VERSION:-1.24.3}
 +
 +if [ -n "${SITEED_SHERPA_ONNX_ORT_LIB_DIR:-}" ] && [ -n "${SITEED_SHERPA_ONNX_ORT_INCLUDE_DIR:-}" ]; then
 +  export SHERPA_ONNXRUNTIME_LIB_DIR=$SITEED_SHERPA_ONNX_ORT_LIB_DIR

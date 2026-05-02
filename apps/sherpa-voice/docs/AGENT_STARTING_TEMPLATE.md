@@ -48,7 +48,7 @@ Expected: `{ op: 'validateLib', status: 'success', result: { loaded: true, statu
 
 ```bash
 # First navigate to TTS feature screen and load a model via the UI
-scripts/agentic/app-navigate.sh "/feature/tts"
+scripts/agentic/app-navigate.sh "/features/tts"
 
 # Then test generation
 scripts/agentic/app-state.sh eval "__AGENTIC__.testTTS('Hello from the agentic bridge.')"

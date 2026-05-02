@@ -1,4 +1,4 @@
-Sherpa-ONNX Patch Inventory for v1.12.34
+Sherpa-ONNX Patch Inventory for v1.13.0
 ========================================
 
 These patches track our modifications to upstream sherpa-onnx sources and
@@ -14,7 +14,7 @@ The shipped Android wrapper lives in:
 `android/scripts/sync-kotlin-api.sh` copies the vendored upstream files into the
 shipped Android wrapper and reapplies `KotlinApiOverrides.patch`.
 
-Pinned version: v1.12.34
+Pinned version: v1.13.0
 
 
 Files patched
@@ -36,6 +36,18 @@ KotlinApiOverrides.patch
   - applied automatically by `android/scripts/sync-kotlin-api.sh`
 
 
+Deprecated (kept for history, not wired into the build pipeline)
+----------------------------------------------------------------
+The following per-file patches predate the unified `KotlinApiOverrides.patch`
+flow and are no longer applied by any script. They are retained only as a
+historical reference and may be deleted in a follow-up cleanup.
+
+  AudioTagging.patch
+  OfflineRecognizer.patch
+  OnlineRecognizer.patch
+  Tts.patch
+
+
 How to apply on version upgrade
 --------------------------------
 When setup.sh is updated to a new upstream version:
@@ -52,3 +64,14 @@ Note:
   via `git apply`, so its paths are relative to the upstream checkout root.
 - `KotlinApiOverrides.patch` is relative to the repo root and targets the
   shipped Android wrapper paths under `packages/sherpa-onnx.rn/android/...`.
+
+Swift API drift
+---------------
+The wrapper ships its own copy of `SherpaOnnx.swift` at `ios/native/`
+(forked from upstream `swift-api-examples/`). It is NOT regenerated from
+upstream by any build step. On every upstream version bump, run
+
+  bash packages/sherpa-onnx.rn/scripts/check-swift-drift.sh
+
+to surface upstream additions (new model backends, helpers) that may need
+to be hand-ported into the wrapper-owned copy.

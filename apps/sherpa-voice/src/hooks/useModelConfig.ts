@@ -159,7 +159,7 @@ const MODEL_CONFIGS: Record<string, PredefinedModelConfig> = {
         id: 'streaming-zipformer-en-kroko-2025-08-06',
         modelType: 'asr',
         asrConfig: {
-            modelType: 'zipformer',
+            modelType: 'zipformer2',
             numThreads: DEFAULT_NUM_THREADS,
             decodingMethod: 'greedy_search',
             maxActivePaths: DEFAULT_MAX_ACTIVE_PATHS,

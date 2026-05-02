@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # build-sherpa-android.sh
-# Build Sherpa-onnx for Android platforms from k2-fsa/sherpa-onnx v1.12.34
+# Build Sherpa-onnx for Android platforms from k2-fsa/sherpa-onnx v1.13.0
 # Run ./setup.sh first to clone the upstream repository.
 
 set -e
@@ -16,7 +16,7 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-SITEED_SHERPA_ONNX_ORT_VERSION="${SITEED_SHERPA_ONNX_ORT_VERSION:-1.23.2}"
+SITEED_SHERPA_ONNX_ORT_VERSION="${SITEED_SHERPA_ONNX_ORT_VERSION:-1.24.3}"
 
 extract_ort_symbol_version() {
   local library_path="$1"

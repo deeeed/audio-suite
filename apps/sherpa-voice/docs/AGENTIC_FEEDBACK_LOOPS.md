@@ -19,11 +19,11 @@ scripts/agentic/app-state.sh eval "<JS expression>"
 scripts/agentic/app-navigate.sh "/(tabs)/home"
 scripts/agentic/app-navigate.sh "/(tabs)/features"
 scripts/agentic/app-navigate.sh "/(tabs)/models"
-scripts/agentic/app-navigate.sh "/feature/tts"
-scripts/agentic/app-navigate.sh "/feature/asr"
-scripts/agentic/app-navigate.sh "/feature/audio-tagging"
-scripts/agentic/app-navigate.sh "/feature/speaker-id"
-scripts/agentic/app-navigate.sh "/feature/kws"
+scripts/agentic/app-navigate.sh "/features/tts"
+scripts/agentic/app-navigate.sh "/features/asr"
+scripts/agentic/app-navigate.sh "/features/audio-tagging"
+scripts/agentic/app-navigate.sh "/features/speaker-id"
+scripts/agentic/app-navigate.sh "/features/kws"
 
 # Screenshot
 scripts/agentic/screenshot.sh my-label

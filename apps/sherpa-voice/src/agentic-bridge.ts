@@ -43,11 +43,21 @@ import { resolveModelDir } from './utils/fileUtils'
 import { getAsrModelConfigById } from './hooks/useModelConfig'
 import { readMonoPcm16Wav } from './utils/wav'
 
-// Platform-aware model base directory
-const MODELS_BASE =
-    Platform.OS === 'android'
-        ? '/data/data/net.siteed.sherpavoice/files/models'
-        : `${(FileSystem.documentDirectory ?? '').replace('file://', '')}models`
+// App-variant-aware model base directory (matches the actual sandbox path
+// of the running build, e.g. .../net.siteed.sherpavoice.development/files/models).
+// FileSystem.documentDirectory is null only on web/SSR — bridge tests are
+// native-only, so a null here is a real bug. Fail loudly instead of building
+// a relative path that the native bridge would silently misinterpret.
+function _resolveModelsBase() {
+    const docDir = FileSystem.documentDirectory
+    if (!docDir) {
+        throw new Error(
+            '[agentic-bridge] FileSystem.documentDirectory is null; cannot resolve MODELS_BASE. The agentic bridge is native-only.'
+        )
+    }
+    return `${docDir.replace('file://', '')}models`
+}
+const MODELS_BASE = _resolveModelsBase()
 
 // State holders updated by AgenticBridgeSync component
 let _routeInfo: { pathname: string; segments: string[] } = {
