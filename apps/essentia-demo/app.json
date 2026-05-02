@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
+    "scheme": "audio-essentia",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
@@ -40,6 +40,10 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "autolinking": {
+      "nativeModulesDir": "../../packages/",
+      "exclude": ["@siteed/moonshine.rn", "@siteed/sherpa-onnx.rn"]
     }
   }
 }

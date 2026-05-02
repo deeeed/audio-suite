@@ -58,7 +58,8 @@
   "private": true,
   "expo": {
     "autolinking": {
-      "nativeModulesDir": "../../packages/"
+      "nativeModulesDir": "../../packages/",
+      "exclude": ["@siteed/moonshine.rn", "@siteed/sherpa-onnx.rn"]
     }
   }
 }
