@@ -48,12 +48,25 @@ RESULT=$(
   | grep -Ev '/@expo/cli/static/|/@types/|/canary-full/|/example/' \
   | awk -F/ '
       {
-        idx = 0
-        for (i = 1; i <= NF; i++) if ($i == "node_modules") idx = i
+        # Workspace boundary = directory holding the FIRST node_modules in
+        # the path. A nested copy under
+        #   apps/x/node_modules/foo/node_modules/react
+        # must be attributed to apps/x (not apps/x/.../foo) so it can be
+        # compared against apps/x/node_modules/react and flagged as a dup.
+        first_idx = 0
+        last_idx  = 0
+        for (i = 1; i <= NF; i++) {
+          if ($i == "node_modules") {
+            if (first_idx == 0) first_idx = i
+            last_idx = i
+          }
+        }
         workspace = ""
-        for (i = 1; i < idx; i++) workspace = workspace "/" $i
-        pkg = $(idx + 1)
-        if (pkg ~ /^@/) pkg = pkg "/" $(idx + 2)
+        for (i = 1; i < first_idx; i++) workspace = workspace "/" $i
+        # Package name is read from the last node_modules (the actual host
+        # of this package.json), supporting scoped packages.
+        pkg = $(last_idx + 1)
+        if (pkg ~ /^@/) pkg = pkg "/" $(last_idx + 2)
         key = workspace "|" pkg
         count[key]++
         path[key, count[key]] = $0
