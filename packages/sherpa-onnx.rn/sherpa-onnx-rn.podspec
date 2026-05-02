@@ -22,8 +22,7 @@ Pod::Spec.new do |s|
     "ios/bridge/*.{h,m,mm,swift}",
     "ios/native/*.{h,m,mm,swift}",
     "ios/handlers/*.{h,m,mm,swift}",
-    "ios/utils/*.{h,m,mm,swift}",
-    "prebuilt/swift/sherpa-onnx/SherpaOnnx.swift"
+    "ios/utils/*.{h,m,mm,swift}"
   ]
 
   # Initialize preserve_paths once
@@ -80,15 +79,6 @@ Pod::Spec.new do |s|
 
   # Set up initial symlinks to device libraries - this runs during pod installation
   s.prepare_command = <<-CMD
-    # Patch upstream SherpaOnnx.swift to import our C module (file is gitignored)
-    SWIFT_WRAPPER="prebuilt/swift/sherpa-onnx/SherpaOnnx.swift"
-    if [ -f "$SWIFT_WRAPPER" ] && ! grep -q "import CSherpaOnnx" "$SWIFT_WRAPPER"; then
-      echo "Patching $SWIFT_WRAPPER to add 'import CSherpaOnnx'"
-      sed -i '' '/^import Foundation/a\\
-import CSherpaOnnx
-' "$SWIFT_WRAPPER"
-    fi
-
     echo "Creating prebuilt/ios/current directory"
     mkdir -p prebuilt/ios/current
     

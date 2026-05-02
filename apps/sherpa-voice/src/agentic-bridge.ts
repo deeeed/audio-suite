@@ -44,10 +44,7 @@ import { getAsrModelConfigById } from './hooks/useModelConfig'
 import { readMonoPcm16Wav } from './utils/wav'
 
 // Platform-aware model base directory
-const MODELS_BASE =
-    Platform.OS === 'android'
-        ? '/data/data/net.siteed.sherpavoice/files/models'
-        : `${(FileSystem.documentDirectory ?? '').replace('file://', '')}models`
+const MODELS_BASE = `${(FileSystem.documentDirectory ?? '').replace('file://', '')}models`
 
 // State holders updated by AgenticBridgeSync component
 let _routeInfo: { pathname: string; segments: string[] } = {

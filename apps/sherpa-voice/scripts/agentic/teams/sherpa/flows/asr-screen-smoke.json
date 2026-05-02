@@ -9,7 +9,7 @@
       "nodes": {
         "nav-asr": {
           "action": "navigate",
-          "target": "/feature/asr",
+          "target": "/features/asr",
           "next": "wait-init-button"
         },
         "wait-init-button": {

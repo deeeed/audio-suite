@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # build-sherpa-ios.sh
-# Build Sherpa-onnx for iOS platforms from k2-fsa/sherpa-onnx v1.12.34
+# Build Sherpa-onnx for iOS platforms from k2-fsa/sherpa-onnx v1.13.0
 # Run ./setup.sh first to clone the upstream repository.
 
 set -e
@@ -73,11 +73,6 @@ echo -e "${BLUE}Copying ONNX Runtime libraries for simulator...${NC}"
 cp "$ORT_IOS_DIR/onnxruntime.xcframework/ios-arm64_x86_64-simulator/libonnxruntime.a" prebuilt/ios/simulator/
 cp -f "$ORT_IOS_DIR/onnxruntime.xcframework/ios-arm64_x86_64-simulator/onnxruntime.a" prebuilt/ios/simulator/
 
-# Also copy the combined sherpa-onnx.a files
-echo -e "${BLUE}Copying combined sherpa-onnx libraries...${NC}"
-cp third_party/sherpa-onnx/build-ios/build/os64/sherpa-onnx.a prebuilt/ios/device/
-cp third_party/sherpa-onnx/build-ios/build/simulator/sherpa-onnx.a prebuilt/ios/simulator/
-
 # Copy headers with correct structure
 mkdir -p prebuilt/include/sherpa-onnx/c-api
 cp third_party/sherpa-onnx/sherpa-onnx/c-api/*.h prebuilt/include/sherpa-onnx/c-api/
@@ -87,11 +82,11 @@ echo -e "${BLUE}Copying ONNX Runtime headers...${NC}"
 mkdir -p prebuilt/include/onnxruntime
 cp -R "$ORT_IOS_DIR/onnxruntime.xcframework/Headers/"* prebuilt/include/onnxruntime/
 
-# Copy Swift API files
-echo -e "${BLUE}Copying Swift API files...${NC}"
-mkdir -p prebuilt/swift/sherpa-onnx
-cp third_party/sherpa-onnx/swift-api-examples/SherpaOnnx.swift prebuilt/swift/sherpa-onnx/
-cp third_party/sherpa-onnx/swift-api-examples/SherpaOnnx-Bridging-Header.h prebuilt/swift/sherpa-onnx/
+# Note: the wrapper now ships its own copy of SherpaOnnx.swift at
+# `ios/native/SherpaOnnx.swift` (forked from upstream `swift-api-examples/`).
+# It is NOT regenerated from upstream by this script — manual updates only.
+# This decouples the wrapper from upstream's example API churn (e.g. v1.13.0
+# made `recognizer`/`stream` private which broke direct field access).
 
 # Headers are already copied to prebuilt/include/sherpa-onnx/c-api/ above
 # No need for iOS-specific duplication

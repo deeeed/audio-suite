@@ -45,10 +45,10 @@ simulator_app_installed() {
 
 resolve_ios_workspace_and_scheme() {
   local variant="$1"
-  local workspace_basename="AudioPlayground"
+  local workspace_basename="${AGENTIC_IOS_WORKSPACE_PRODUCTION:-AudioPlayground}"
 
   if [ "$variant" != "production" ]; then
-    workspace_basename="AudioDevPlayground"
+    workspace_basename="${AGENTIC_IOS_WORKSPACE_DEV:-AudioDevPlayground}"
   fi
 
   local workspace_path="ios/${workspace_basename}.xcworkspace"

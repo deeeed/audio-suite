@@ -62,12 +62,22 @@ import CSherpaOnnx
         // Build VadModelConfig
         let providerC = strdup(provider)!
 
+        var tenVadConfig = SherpaOnnxTenVadModelConfig(
+            model: nil,
+            threshold: 0,
+            min_silence_duration: 0,
+            min_speech_duration: 0,
+            window_size: 0,
+            max_speech_duration: 0
+        )
+
         var vadConfig = SherpaOnnxVadModelConfig(
             silero_vad: sileroConfig,
             sample_rate: Int32(sampleRate),
             num_threads: numThreads,
             provider: providerC,
-            debug: debug ? 1 : 0
+            debug: debug ? 1 : 0,
+            ten_vad: tenVadConfig
         )
 
         let vadPtr = SherpaOnnxCreateVoiceActivityDetector(&vadConfig, bufferSizeInSeconds)
