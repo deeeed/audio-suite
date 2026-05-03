@@ -100,7 +100,7 @@
     "react-native": "*"
   },
   "packageManager": "yarn@4.2.2",
-  "moonshineVersion": "v0.0.51",
+  "moonshineVersion": "v0.0.59",
   "eslintConfig": {
     "root": true,
     "extends": [
@@ -164,6 +164,6 @@
     "languages": "kotlin-swift",
     "version": "0.48.3"
   },
-  "moonshineJsVersion": "0.1.29",
-  "moonshineJsGitHead": "e32209e0a71017b879c7ea1a93cbc48593aabde9"
+  "moonshineJsVersion": "0.2.0",
+  "moonshineJsGitHead": "59c9c83669e464d3e3f00d85c850d4327bef9009"
 }

@@ -31,21 +31,28 @@ buildscript {
 apply plugin: "com.android.library"
 apply plugin: "kotlin-android"
 
-def moonshineAndroidUseSource = getEnvOrProp(
-  'SITEED_MOONSHINE_ANDROID_USE_SOURCE',
-  'siteedMoonshineAndroidUseSource',
-  '0'
-) == '1'
 def moonshineAndroidAar = getEnvOrProp('SITEED_MOONSHINE_ANDROID_AAR', 'siteedMoonshineAndroidAar', null)
 def moonshineAndroidSourceAar = getEnvOrProp(
   'SITEED_MOONSHINE_ANDROID_SOURCE_AAR',
   'siteedMoonshineAndroidSourceAar',
   new File(projectDir, '../prebuilt/android/moonshine-voice-source-release.aar').absolutePath
 )
+// Default: use the locally built source AAR when present (development /
+// monorepo workflow). When the AAR is absent (typical for npm-published
+// consumers — package.json excludes it), fall back to the Maven coordinate so
+// builds do not fail with "source-built AAR is missing".
+def moonshineAndroidUseSourceOverride = getEnvOrProp(
+  'SITEED_MOONSHINE_ANDROID_USE_SOURCE',
+  'siteedMoonshineAndroidUseSource',
+  null
+)
+def moonshineAndroidUseSource = moonshineAndroidUseSourceOverride != null
+  ? moonshineAndroidUseSourceOverride == '1'
+  : file(moonshineAndroidSourceAar).exists()
 def moonshineAndroidMavenCoord = getEnvOrProp(
   'SITEED_MOONSHINE_ANDROID_MAVEN_COORD',
   'siteedMoonshineAndroidMavenCoord',
-  'ai.moonshine:moonshine-voice:0.0.51'
+  'ai.moonshine:moonshine-voice:0.0.59'
 )
 def moonshineAndroidMavenRepo = getEnvOrProp(
   'SITEED_MOONSHINE_ANDROID_MAVEN_REPO',

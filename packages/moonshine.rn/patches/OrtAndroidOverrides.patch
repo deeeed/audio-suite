@@ -1,60 +1,10 @@
-diff --git a/android/java/main/java/ai/moonshine/voice/JNI.java b/android/java/main/java/ai/moonshine/voice/JNI.java
-index c63618f..8c17b29 100644
---- a/android/java/main/java/ai/moonshine/voice/JNI.java
-+++ b/android/java/main/java/ai/moonshine/voice/JNI.java
-@@ -12,6 +12,7 @@ public class JNI {
-     public static final int MOONSHINE_MODEL_ARCH_BASE_STREAMING = 3;
-     public static final int MOONSHINE_MODEL_ARCH_SMALL_STREAMING = 4;
-     public static final int MOONSHINE_MODEL_ARCH_MEDIUM_STREAMING = 5;
-+    public static final int MOONSHINE_EMBEDDING_MODEL_ARCH_GEMMA_300M = 0;
- 
-     public static final int MOONSHINE_FLAG_FORCE_UPDATE = 1 << 0;
- 
-@@ -48,6 +49,36 @@ public class JNI {
-     public static native Transcript moonshineTranscribeStream(int transcriber_handle,
-             int stream_handle, int flags);
- 
-+    public static native int moonshineCreateIntentRecognizer(
-+            String path,
-+            int model_arch,
-+            String model_variant,
-+            float threshold);
-+
-+    public static native void moonshineFreeIntentRecognizer(int intent_recognizer_handle);
-+
-+    public static native int moonshineRegisterIntent(
-+            int intent_recognizer_handle,
-+            String trigger_phrase);
-+
-+    public static native int moonshineUnregisterIntent(
-+            int intent_recognizer_handle,
-+            String trigger_phrase);
-+
-+    public static native String[] moonshineProcessUtteranceDetailed(
-+            int intent_recognizer_handle,
-+            String utterance);
-+
-+    public static native int moonshineSetIntentThreshold(
-+            int intent_recognizer_handle,
-+            float threshold);
-+
-+    public static native float moonshineGetIntentThreshold(int intent_recognizer_handle);
-+
-+    public static native int moonshineGetIntentCount(int intent_recognizer_handle);
-+
-+    public static native int moonshineClearIntents(int intent_recognizer_handle);
-+
-     static boolean isLibraryLoaded = false;
- 
-     public static void ensureLibraryLoaded() {
 diff --git a/android/java/main/java/ai/moonshine/voice/Transcriber.java b/android/java/main/java/ai/moonshine/voice/Transcriber.java
-index 02b3691..34be6eb 100644
 --- a/android/java/main/java/ai/moonshine/voice/Transcriber.java
 +++ b/android/java/main/java/ai/moonshine/voice/Transcriber.java
 @@ -25,7 +25,7 @@ import java.util.HashMap;
  import java.util.concurrent.ConcurrentHashMap;
  import java.util.Map;
- 
+
 -public class Transcriber {
 +public class Transcriber implements AutoCloseable {
    private int transcriberHandle = -1;
@@ -63,7 +13,7 @@ index 02b3691..34be6eb 100644
 @@ -85,18 +85,22 @@ public class Transcriber {
      this.getDefaultStreamHandle();
    }
- 
+
 -  protected void finalize() throws Throwable {
 +  @Override
 +  public synchronized void close() {
@@ -78,245 +28,19 @@ index 02b3691..34be6eb 100644
        this.transcriberHandle = -1;
      }
    }
- 
+
 +  protected void finalize() throws Throwable { this.close(); }
 +
    public Transcript transcribeWithoutStreaming(float[] audioData,
                                                 int sampleRate) {
      return JNI.moonshineTranscribeWithoutStreaming(this.transcriberHandle,
-diff --git a/android/moonshine-jni/moonshine-jni.cpp b/android/moonshine-jni/moonshine-jni.cpp
-index b4e6c9a..74af23e 100644
---- a/android/moonshine-jni/moonshine-jni.cpp
-+++ b/android/moonshine-jni/moonshine-jni.cpp
-@@ -1,7 +1,9 @@
- #include <jni.h>
- 
- #include <memory>
-+#include <mutex>
- #include <string>
-+#include <unordered_map>
- #include <vector>
- 
- #include <android/log.h>
-@@ -14,6 +16,12 @@
- #include "utf8.h"
- 
- namespace {
-+struct intent_match_t {
-+  std::string trigger_phrase;
-+  std::string utterance;
-+  float similarity;
-+};
-+
- jclass get_class(JNIEnv *env, const char *className) {
-   jclass clazz = env->FindClass(className);
-   if (clazz == nullptr) {
-@@ -210,6 +218,40 @@ jobject c_transcript_to_jobject(JNIEnv *env, struct transcript_t *transcript) {
-   return jtranscript;
- }
- 
-+std::mutex intent_match_mutex;
-+std::unordered_map<int32_t, intent_match_t> last_intent_match_map;
-+
-+void clear_last_intent_match(int32_t intent_recognizer_handle) {
-+  std::lock_guard<std::mutex> lock(intent_match_mutex);
-+  last_intent_match_map.erase(intent_recognizer_handle);
-+}
-+
-+jobjectArray intent_match_to_jobject(JNIEnv *env,
-+                                     const intent_match_t &intent_match) {
-+  jclass stringClass = get_class(env, "java/lang/String");
-+  jobjectArray result = env->NewObjectArray(3, stringClass, nullptr);
-+  env->SetObjectArrayElement(
-+      result, 0, env->NewStringUTF(intent_match.trigger_phrase.c_str()));
-+  env->SetObjectArrayElement(result, 1,
-+                             env->NewStringUTF(intent_match.utterance.c_str()));
-+  env->SetObjectArrayElement(
-+      result, 2,
-+      env->NewStringUTF(std::to_string(intent_match.similarity).c_str()));
-+  return result;
-+}
-+
-+void store_intent_match(void *user_data, const char *trigger_phrase,
-+                        const char *utterance, float similarity) {
-+  const int32_t intent_recognizer_handle =
-+      static_cast<int32_t>(reinterpret_cast<intptr_t>(user_data));
-+  std::lock_guard<std::mutex> lock(intent_match_mutex);
-+  intent_match_t intent_match;
-+  intent_match.trigger_phrase = trigger_phrase ? trigger_phrase : "";
-+  intent_match.utterance = utterance ? utterance : "";
-+  intent_match.similarity = similarity;
-+  last_intent_match_map[intent_recognizer_handle] = intent_match;
-+}
-+
- }  // namespace
- 
- extern "C" JNIEXPORT jint JNICALL
-@@ -438,4 +480,155 @@ Java_ai_moonshine_voice_JNI_moonshineTranscribeStream(JNIEnv *env,
-     LOGE("moonshineTranscribeStream: %s\n", e.what());
-     return nullptr;
-   }
--} 
-+}
-+
-+extern "C" JNIEXPORT jint JNICALL
-+Java_ai_moonshine_voice_JNI_moonshineCreateIntentRecognizer(
-+    JNIEnv *env, jobject /* this */, jstring path, jint model_arch,
-+    jstring model_variant, jfloat threshold) {
-+  try {
-+    const char *path_str = path == nullptr ? nullptr
-+                                           : env->GetStringUTFChars(path, nullptr);
-+    const char *model_variant_str =
-+        model_variant == nullptr ? nullptr
-+                                 : env->GetStringUTFChars(model_variant, nullptr);
-+    return moonshine_create_intent_recognizer(path_str, model_arch,
-+                                              model_variant_str, threshold);
-+  } catch (const std::exception &e) {
-+    LOGE("moonshineCreateIntentRecognizer: %s\n", e.what());
-+    return MOONSHINE_ERROR_UNKNOWN;
-+  }
-+}
-+
-+extern "C" JNIEXPORT void JNICALL
-+Java_ai_moonshine_voice_JNI_moonshineFreeIntentRecognizer(
-+    JNIEnv * /* env */, jobject /* this */, jint intent_recognizer_handle) {
-+  try {
-+    clear_last_intent_match(intent_recognizer_handle);
-+    moonshine_free_intent_recognizer(intent_recognizer_handle);
-+  } catch (const std::exception &e) {
-+    LOGE("moonshineFreeIntentRecognizer: %s\n", e.what());
-+  }
-+}
-+
-+extern "C" JNIEXPORT jint JNICALL
-+Java_ai_moonshine_voice_JNI_moonshineRegisterIntent(
-+    JNIEnv *env, jobject /* this */, jint intent_recognizer_handle,
-+    jstring trigger_phrase) {
-+  try {
-+    if (trigger_phrase == nullptr) {
-+      return MOONSHINE_ERROR_INVALID_ARGUMENT;
-+    }
-+    const char *trigger_phrase_str =
-+        env->GetStringUTFChars(trigger_phrase, nullptr);
-+    return moonshine_register_intent(intent_recognizer_handle,
-+                                     trigger_phrase_str, store_intent_match,
-+                                     reinterpret_cast<void *>(
-+                                         static_cast<intptr_t>(
-+                                             intent_recognizer_handle)));
-+  } catch (const std::exception &e) {
-+    LOGE("moonshineRegisterIntent: %s\n", e.what());
-+    return MOONSHINE_ERROR_UNKNOWN;
-+  }
-+}
-+
-+extern "C" JNIEXPORT jint JNICALL
-+Java_ai_moonshine_voice_JNI_moonshineUnregisterIntent(
-+    JNIEnv *env, jobject /* this */, jint intent_recognizer_handle,
-+    jstring trigger_phrase) {
-+  try {
-+    if (trigger_phrase == nullptr) {
-+      return MOONSHINE_ERROR_INVALID_ARGUMENT;
-+    }
-+    const char *trigger_phrase_str =
-+        env->GetStringUTFChars(trigger_phrase, nullptr);
-+    return moonshine_unregister_intent(intent_recognizer_handle,
-+                                       trigger_phrase_str);
-+  } catch (const std::exception &e) {
-+    LOGE("moonshineUnregisterIntent: %s\n", e.what());
-+    return MOONSHINE_ERROR_UNKNOWN;
-+  }
-+}
-+
-+extern "C" JNIEXPORT jobjectArray JNICALL
-+Java_ai_moonshine_voice_JNI_moonshineProcessUtteranceDetailed(
-+    JNIEnv *env, jobject /* this */, jint intent_recognizer_handle,
-+    jstring utterance) {
-+  try {
-+    if (utterance == nullptr) {
-+      jclass exceptionClass = get_class(env, "java/lang/IllegalArgumentException");
-+      env->ThrowNew(exceptionClass, "Moonshine utterance is required");
-+      return nullptr;
-+    }
-+    clear_last_intent_match(intent_recognizer_handle);
-+    const char *utterance_str = env->GetStringUTFChars(utterance, nullptr);
-+    const int32_t result =
-+        moonshine_process_utterance(intent_recognizer_handle, utterance_str);
-+    if (result < 0) {
-+      jclass exceptionClass = get_class(env, "java/lang/RuntimeException");
-+      env->ThrowNew(exceptionClass, moonshine_error_to_string(result));
-+      return nullptr;
-+    }
-+    if (result == 0) {
-+      return nullptr;
-+    }
-+
-+    std::lock_guard<std::mutex> lock(intent_match_mutex);
-+    auto match = last_intent_match_map.find(intent_recognizer_handle);
-+    if (match == last_intent_match_map.end()) {
-+      return nullptr;
-+    }
-+    return intent_match_to_jobject(env, match->second);
-+  } catch (const std::exception &e) {
-+    LOGE("moonshineProcessUtteranceDetailed: %s\n", e.what());
-+    jclass exceptionClass = get_class(env, "java/lang/RuntimeException");
-+    env->ThrowNew(exceptionClass, e.what());
-+    return nullptr;
-+  }
-+}
-+
-+extern "C" JNIEXPORT jint JNICALL
-+Java_ai_moonshine_voice_JNI_moonshineSetIntentThreshold(
-+    JNIEnv * /* env */, jobject /* this */, jint intent_recognizer_handle,
-+    jfloat threshold) {
-+  try {
-+    return moonshine_set_intent_threshold(intent_recognizer_handle, threshold);
-+  } catch (const std::exception &e) {
-+    LOGE("moonshineSetIntentThreshold: %s\n", e.what());
-+    return MOONSHINE_ERROR_UNKNOWN;
-+  }
-+}
-+
-+extern "C" JNIEXPORT jfloat JNICALL
-+Java_ai_moonshine_voice_JNI_moonshineGetIntentThreshold(
-+    JNIEnv * /* env */, jobject /* this */, jint intent_recognizer_handle) {
-+  try {
-+    return moonshine_get_intent_threshold(intent_recognizer_handle);
-+  } catch (const std::exception &e) {
-+    LOGE("moonshineGetIntentThreshold: %s\n", e.what());
-+    return static_cast<jfloat>(MOONSHINE_ERROR_UNKNOWN);
-+  }
-+}
-+
-+extern "C" JNIEXPORT jint JNICALL
-+Java_ai_moonshine_voice_JNI_moonshineGetIntentCount(
-+    JNIEnv * /* env */, jobject /* this */, jint intent_recognizer_handle) {
-+  try {
-+    return moonshine_get_intent_count(intent_recognizer_handle);
-+  } catch (const std::exception &e) {
-+    LOGE("moonshineGetIntentCount: %s\n", e.what());
-+    return MOONSHINE_ERROR_UNKNOWN;
-+  }
-+}
-+
-+extern "C" JNIEXPORT jint JNICALL
-+Java_ai_moonshine_voice_JNI_moonshineClearIntents(
-+    JNIEnv * /* env */, jobject /* this */, jint intent_recognizer_handle) {
-+  try {
-+    clear_last_intent_match(intent_recognizer_handle);
-+    return moonshine_clear_intents(intent_recognizer_handle);
-+  } catch (const std::exception &e) {
-+    LOGE("moonshineClearIntents: %s\n", e.what());
-+    return MOONSHINE_ERROR_UNKNOWN;
-+  }
-+}
 diff --git a/build.gradle.kts b/build.gradle.kts
-index eb56dd9..60c37b2 100644
 --- a/build.gradle.kts
 +++ b/build.gradle.kts
 @@ -5,6 +5,28 @@ plugins {
      id("com.vanniktech.maven.publish") version "0.28.0"
  }
- 
+
 +fun envOrProp(envName: String, propName: String, fallback: String? = null): String? {
 +    val envValue = System.getenv(envName)?.trim()
 +    if (!envValue.isNullOrEmpty()) {
@@ -363,10 +87,9 @@ index eb56dd9..60c37b2 100644
          }
      }
 diff --git a/core/CMakeLists.txt b/core/CMakeLists.txt
-index 6ddd02f..7a23603 100644
 --- a/core/CMakeLists.txt
 +++ b/core/CMakeLists.txt
-@@ -90,7 +90,7 @@ target_include_directories(moonshine PRIVATE
+@@ -97,7 +97,7 @@ target_include_directories(moonshine PRIVATE
      ${CMAKE_CURRENT_LIST_DIR}/moonshine-utils
      ${CMAKE_CURRENT_LIST_DIR}/ort-utils
      ${CMAKE_CURRENT_LIST_DIR}/bin-tokenizer
@@ -374,42 +97,29 @@ index 6ddd02f..7a23603 100644
 +    ${ONNXRUNTIME_INCLUDE_DIR}
      ${CMAKE_CURRENT_LIST_DIR}/third-party/utf-8/
  )
- 
-@@ -501,4 +501,4 @@ if (NOT WIN32 OR NOT MOONSHINE_BUILD_SHARED)
-     target_link_libraries(online-clusterer-test PRIVATE
-         moonshine
-     )
--endif()
-\ No newline at end of file
-+endif()
+
 diff --git a/core/ort-utils/CMakeLists.txt b/core/ort-utils/CMakeLists.txt
-index 091e538..7c8335d 100644
 --- a/core/ort-utils/CMakeLists.txt
 +++ b/core/ort-utils/CMakeLists.txt
 @@ -31,7 +31,7 @@ target_compile_options(ort-utils PRIVATE
- 
+
  target_include_directories(ort-utils PRIVATE
      ${MOONSHINE_UTILS_INCLUDE_DIR}
 -    ${CMAKE_CURRENT_LIST_DIR}/../third-party/onnxruntime/include
 +    ${ONNXRUNTIME_INCLUDE_DIR}
  )
- 
+
  if (ANDROID)
-@@ -69,9 +69,9 @@ target_include_directories(ort-utils-test PRIVATE
+@@ -69,7 +69,7 @@ target_include_directories(ort-utils-test PRIVATE
      ${CMAKE_CURRENT_LIST_DIR}
      ${CMAKE_CURRENT_LIST_DIR}/../moonshine-utils
      ${CMAKE_CURRENT_LIST_DIR}/../third-party/doctest
 -    ${CMAKE_CURRENT_LIST_DIR}/../third-party/onnxruntime/include
 +    ${ONNXRUNTIME_INCLUDE_DIR}
  )
- 
+
  target_link_libraries(ort-utils-test PRIVATE
-     ort-utils
--)
-\ No newline at end of file
-+)
 diff --git a/core/third-party/onnxruntime/find-ort-library-path.cmake b/core/third-party/onnxruntime/find-ort-library-path.cmake
-index 9200048..7b356e2 100644
 --- a/core/third-party/onnxruntime/find-ort-library-path.cmake
 +++ b/core/third-party/onnxruntime/find-ort-library-path.cmake
 @@ -1,4 +1,16 @@
@@ -430,10 +140,3 @@ index 9200048..7b356e2 100644
      # Detect Android ABI and map to library directory name
      if(ANDROID_ABI STREQUAL "armeabi-v7a")
          set(ONNXRUNTIME_ABI_DIR "armeabi-v7a")
-@@ -45,4 +57,4 @@ if(WIN32)
-         COMMENT "Copying onnxruntime DLL to executable directory to prevent loading from system libraries"
-     )
- endif()
--endfunction()
-\ No newline at end of file
-+endfunction()

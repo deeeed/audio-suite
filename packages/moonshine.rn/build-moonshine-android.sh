@@ -40,6 +40,63 @@ sanitize_metadata_path() {
   echo "[external override]"
 }
 
+decouple_bundled_ort_in_aar() {
+  # Strip the only versioned ORT symbol moonshine imports so libmoonshine.so
+  # accepts any libonnxruntime.so the host APK ships. Without this, a
+  # multi-package APK that also pulls in sherpa-onnx.rn (which bundles ORT
+  # 1.24.x) ends up with both packages providing lib/arm64-v8a/libonnxruntime.so
+  # — gradle pickFirst silently drops one, and if sherpa's wins, moonshine's
+  # `OrtGetApiBase@VERS_1.23.0` lookup fails and dlopen reports
+  # "Failed to load moonshine-jni library".
+  #
+  # `OrtGetApiBase` is moonshine's only versioned ORT import; every later ORT
+  # call goes through the C API table that function returns. Clearing its
+  # version requirement makes the lookup match any ORT default-version export
+  # (sherpa's `OrtGetApiBase@@VERS_1.24.3`, our own `@@VERS_1.23.0`, etc).
+  # The host ORT must be >= 1.23 (the API version moonshine was compiled
+  # against); older runtimes hand back an API table missing entries
+  # libmoonshine.so will dereference.
+  #
+  # The AAR keeps shipping its own libonnxruntime.so so standalone consumers
+  # (apps that pull in only moonshine.rn) still load successfully. Apps that
+  # also include sherpa-onnx.rn typically rely on AGP's default duplicate-lib
+  # handling; if a build fails on duplicate libonnxruntime.so, the consumer
+  # can add `packagingOptions.pickFirst "**/libonnxruntime.so"` in app
+  # build.gradle.
+  local aar_path="$1"
+  if ! command -v patchelf >/dev/null 2>&1; then
+    echo -e "${RED}Error: patchelf is required to clear the ONNX Runtime symbol version.${NC}" >&2
+    echo -e "${RED}Install with 'brew install patchelf' (macOS) or 'apt-get install patchelf' (Linux).${NC}" >&2
+    exit 1
+  fi
+
+  local stage="$(mktemp -d)"
+  trap "rm -rf \"$stage\"" RETURN
+
+  unzip -q "$aar_path" -d "$stage"
+  local jni_dir="$stage/jni"
+  if [ ! -d "$jni_dir" ]; then
+    return
+  fi
+
+  local touched=0
+  for abi_dir in "$jni_dir"/*; do
+    [ -d "$abi_dir" ] || continue
+    for consumer in "$abi_dir/libmoonshine.so" "$abi_dir/libmoonshine-jni.so"; do
+      [ -f "$consumer" ] || continue
+      patchelf --clear-symbol-version OrtGetApiBase "$consumer"
+      touched=1
+    done
+  done
+
+  if [ "$touched" = "0" ]; then
+    return
+  fi
+
+  rm -f "$aar_path"
+  ( cd "$stage" && zip -qr "$aar_path" . )
+}
+
 extract_ort_symbol_version() {
   local library_path="$1"
   if ! command -v llvm-readobj >/dev/null 2>&1; then
@@ -181,6 +238,8 @@ fi
 
 cp "$AAR_SOURCE" "$OUTPUT_AAR"
 
+decouple_bundled_ort_in_aar "$OUTPUT_AAR"
+
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -188,6 +247,11 @@ MOONSHINE_IMPORTED_ORT_VERSION="unknown"
 MOONSHINE_PACKAGED_ORT_VERSION="unknown"
 if unzip -p "$OUTPUT_AAR" jni/arm64-v8a/libmoonshine.so > "$TMP_DIR/libmoonshine.so" 2>/dev/null; then
   MOONSHINE_IMPORTED_ORT_VERSION="$(extract_ort_symbol_version "$TMP_DIR/libmoonshine.so")"
+  # decouple_bundled_ort_in_aar strips the version requirement from the only
+  # versioned ORT import. Report that explicitly so metadata isn't misleading.
+  if [ -z "$MOONSHINE_IMPORTED_ORT_VERSION" ]; then
+    MOONSHINE_IMPORTED_ORT_VERSION="stripped"
+  fi
 fi
 if unzip -p "$OUTPUT_AAR" jni/arm64-v8a/libonnxruntime.so > "$TMP_DIR/libonnxruntime.so" 2>/dev/null; then
   MOONSHINE_PACKAGED_ORT_VERSION="$(extract_ort_symbol_version "$TMP_DIR/libonnxruntime.so")"

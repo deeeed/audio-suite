@@ -1,9 +1,9 @@
 {
-  "moonshineVersion": "v0.0.51",
+  "moonshineVersion": "v0.0.59",
   "androidAbis": "arm64-v8a",
   "onnxRuntimeVersionHint": "upstream-bundled",
   "onnxRuntimeLibPathOverride": "",
   "onnxRuntimeIncludeDirOverride": "",
-  "arm64ImportedOrtSymbolVersion": "1.23.0",
+  "arm64ImportedOrtSymbolVersion": "stripped",
   "arm64PackagedOrtSymbolVersion": "1.23.0"
 }

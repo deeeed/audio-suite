@@ -69,10 +69,12 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
   companion object {
     const val EVENT_NAME = "MoonshineTranscriptEvent"
     const val NAME = "Moonshine"
+    private const val DEFAULT_INTENT_THRESHOLD = 0.7f
   }
 
   private val transcriberStates = ConcurrentHashMap<String, TranscriberState>()
   private val intentRecognizerHandles = ConcurrentHashMap<String, Int>()
+  private val intentThresholds = ConcurrentHashMap<String, Float>()
   private val transcriberCounter = AtomicInteger(1)
   private var defaultTranscriberId: String? = null
 
@@ -194,18 +196,18 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
         if (config.hasKey("threshold") && !config.isNull("threshold")) {
           config.getDouble("threshold").toFloat()
         } else {
-          0.7f
+          DEFAULT_INTENT_THRESHOLD
         }
 
       val handle = MoonshineDirectJni.createIntentRecognizer(
         modelRoot.absolutePath,
         modelArch,
-        modelVariant,
-        threshold
+        modelVariant
       )
       requireNonNegativeHandle(handle, "create intent recognizer")
       val intentId = intentRecognizerIdForHandle(handle)
       intentRecognizerHandles[intentId] = handle
+      intentThresholds[intentId] = threshold
 
       val result = successMap()
       result.putString("intentRecognizerId", intentId)
@@ -296,15 +298,8 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
   @ReactMethod
   fun getIntentThreshold(intentRecognizerId: String, promise: Promise) {
     try {
-      val handle = parseIntentRecognizerId(intentRecognizerId)
-      val threshold = MoonshineDirectJni.getIntentThreshold(handle)
-      if (threshold < 0f) {
-        throw IllegalStateException(
-          "Failed to get Moonshine intent threshold: ${
-            MoonshineDirectJni.errorToString(threshold.toInt())
-          }"
-        )
-      }
+      parseIntentRecognizerId(intentRecognizerId)
+      val threshold = intentThresholds[intentRecognizerId] ?: DEFAULT_INTENT_THRESHOLD
       promise.resolve(threshold.toDouble())
     } catch (error: Throwable) {
       promise.reject("MOONSHINE_ERROR", error.message, error)
@@ -362,13 +357,14 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
   fun processUtterance(intentRecognizerId: String, utterance: String, promise: Promise) {
     try {
       val handle = parseIntentRecognizerId(intentRecognizerId)
-      val match = MoonshineDirectJni.processUtterance(handle, utterance)
+      val threshold = intentThresholds[intentRecognizerId] ?: DEFAULT_INTENT_THRESHOLD
+      val match = MoonshineDirectJni.getClosestIntent(handle, utterance, threshold)
       val result = successMap()
       result.putBoolean("matched", match != null)
       if (match != null) {
         val matchMap = Arguments.createMap()
         matchMap.putString("triggerPhrase", match.triggerPhrase)
-        matchMap.putString("utterance", match.utterance)
+        matchMap.putString("utterance", utterance)
         matchMap.putDouble("similarity", match.similarity.toDouble())
         result.putMap("match", matchMap)
       }
@@ -409,6 +405,7 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
       val handle = parseIntentRecognizerId(intentRecognizerId)
       MoonshineDirectJni.freeIntentRecognizer(handle)
       intentRecognizerHandles.remove(intentRecognizerId)
+      intentThresholds.remove(intentRecognizerId)
       promise.resolve(successMap())
     } catch (error: Throwable) {
       promise.reject("MOONSHINE_ERROR", error.message, error)
@@ -460,11 +457,8 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
   @ReactMethod
   fun setIntentThreshold(intentRecognizerId: String, threshold: Double, promise: Promise) {
     try {
-      val handle = parseIntentRecognizerId(intentRecognizerId)
-      requireNoError(
-        MoonshineDirectJni.setIntentThreshold(handle, threshold.toFloat()),
-        "set intent threshold"
-      )
+      parseIntentRecognizerId(intentRecognizerId)
+      intentThresholds[intentRecognizerId] = threshold.toFloat()
       promise.resolve(successMap())
     } catch (error: Throwable) {
       promise.reject("MOONSHINE_ERROR", error.message, error)
@@ -1146,6 +1140,7 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
       }
     }
     intentRecognizerHandles.clear()
+    intentThresholds.clear()
   }
 
   private fun releaseStreamState(state: TranscriberState, streamHandle: Int) {

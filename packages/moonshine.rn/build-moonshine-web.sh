@@ -5,21 +5,23 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PACKAGE_DIR="$SCRIPT_DIR"
 OUTPUT_DIR="$PACKAGE_DIR/prebuilt/web"
-TMP_DIR="$(mktemp -d)"
-trap 'rm -rf "$TMP_DIR"' EXIT
 
 MOONSHINE_JS_VERSION="$(node -p "require('$PACKAGE_DIR/package.json').moonshineJsVersion")"
 MOONSHINE_JS_GIT_HEAD="$(node -p "require('$PACKAGE_DIR/package.json').moonshineJsGitHead")"
 
 mkdir -p "$OUTPUT_DIR"
+# Wipe stale local models (e.g. medium/ from prior builds) so the layout always
+# matches the current CDN-pulled set.
 rm -rf "$OUTPUT_DIR/model"
 
-cd "$TMP_DIR"
-npm pack "@moonshine-ai/moonshine-js@${MOONSHINE_JS_VERSION}" >/dev/null
-tar -xzf ./*.tgz
+# Tiny + base quantized models are pulled directly from the canonical CDN; we
+# do not need any moonshine-js bundle output, only its model directory layout.
+mkdir -p "$OUTPUT_DIR/model/tiny/quantized"
+curl -fsSL "https://download.moonshine.ai/model/tiny/quantized/encoder_model.onnx" \
+  -o "$OUTPUT_DIR/model/tiny/quantized/encoder_model.onnx"
+curl -fsSL "https://download.moonshine.ai/model/tiny/quantized/decoder_model_merged.onnx" \
+  -o "$OUTPUT_DIR/model/tiny/quantized/decoder_model_merged.onnx"
 
-mkdir -p "$OUTPUT_DIR/model"
-cp -R "$TMP_DIR/package/dist/model/." "$OUTPUT_DIR/model/"
 mkdir -p "$OUTPUT_DIR/model/base/quantized"
 curl -fsSL "https://download.moonshine.ai/model/base/quantized/encoder_model.onnx" \
   -o "$OUTPUT_DIR/model/base/quantized/encoder_model.onnx"
@@ -31,7 +33,7 @@ cat > "$OUTPUT_DIR/build-metadata.json" <<EOF
   "moonshineJsVersion": "${MOONSHINE_JS_VERSION}",
   "moonshineJsGitHead": "${MOONSHINE_JS_GIT_HEAD}",
   "models": ["tiny", "base"],
-  "source": "npm:@moonshine-ai/moonshine-js",
+  "source": "cdn:download.moonshine.ai",
   "generatedAt": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 }
 EOF
