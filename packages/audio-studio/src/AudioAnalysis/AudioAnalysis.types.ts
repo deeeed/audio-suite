@@ -14,6 +14,12 @@ export interface DecodingConfig {
     targetBitDepth?: BitDepth
     /** Whether to normalize audio levels (Android and Web) */
     normalizeAudio?: boolean
+    /**
+     * RMS threshold below which a segment is flagged silent.
+     * Range 0..1. Default 0.01.
+     * Currently applied as a JS post-process so the same behavior holds across iOS/Android/Web.
+     */
+    silenceRmsThreshold?: number
 }
 
 /**
@@ -184,6 +190,13 @@ export interface PreviewOptions extends AudioRangeOptions {
      * - normalizeAudio: false
      */
     decodingOptions?: DecodingConfig
+    /**
+     * Optional callback fired once per data point as the preview becomes available.
+     * Today the native module returns the full analysis in one shot; the points are then
+     * micro-batched on the JS side so consumers can render bars incrementally.
+     * Native progressive streaming is a future enhancement.
+     */
+    onPointReady?: (point: DataPoint, index: number, total: number) => void
 }
 
 /**

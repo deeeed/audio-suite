@@ -61,6 +61,15 @@ export {
     useSharedAudioRecorder,
 }
 
+export {
+    AudioExtractionError,
+    mapExtractionError,
+} from './errors/AudioExtractionError'
+export type {
+    AudioExtractionErrorCode,
+    AudioExtractionErrorPayload,
+} from './errors/AudioExtractionError'
+
 // Export all types
 export type * from './AudioAnalysis/AudioAnalysis.types'
 export type * from './AudioStudio.types'

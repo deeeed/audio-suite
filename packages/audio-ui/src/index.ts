@@ -1,11 +1,15 @@
 // packages/audio-ui/src/index.ts
 
+export * from './AudioPlayerWidget/AudioPlayerWidget'
+export * from './AudioTimeRangeSelector/AudioTimeRangeSelector'
 export * from './AudioVisualizer/AudioVisualiser.types'
 export * from './AudioVisualizer/AudioVisualizer'
-export * from './RecordButton/RecordButton'
-export * from './Waveform/Waveform'
-export * from './AudioTimeRangeSelector/AudioTimeRangeSelector'
 export * from './DecibelGauge/DecibelGauge'
 export * from './DecibelMeter/DecibelMeter'
 export * from './MelSpectrogramVisualizer/MelSpectrogramVisualizer'
 export * from './MelSpectrogramVisualizer/useLiveMelSpectrogram'
+export * from './RecordButton/RecordButton'
+export * from './Waveform/Waveform'
+export * from './WaveformPreview/SilenceTrack'
+export * from './WaveformPreview/WaveformPreview'
+export * from './hooks/useWaveformLayout'
