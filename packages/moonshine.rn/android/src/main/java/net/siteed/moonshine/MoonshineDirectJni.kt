@@ -73,7 +73,10 @@ internal object MoonshineDirectJni {
     ensureLoaded()
     val matches: Array<IntentMatch>? =
       JNI.moonshineGetClosestIntents(intentRecognizerHandle, utterance, threshold)
-    if (matches == null || matches.isEmpty()) {
+    if (matches == null) {
+      throw RuntimeException("moonshineGetClosestIntents failed")
+    }
+    if (matches.isEmpty()) {
       return null
     }
     val top = matches[0]
