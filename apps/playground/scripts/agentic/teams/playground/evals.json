@@ -18,5 +18,10 @@
     "description": "Current state of the ASR benchmark page",
     "expression": "JSON.stringify(globalThis.__AGENTIC__?.getPageState?.() || null)",
     "async": false
+  },
+  "moonshine-intent-state": {
+    "description": "Current state of the Moonshine intent demo page",
+    "expression": "JSON.stringify(globalThis.__AGENTIC__?.getPageState?.() || null)",
+    "async": false
   }
 }
