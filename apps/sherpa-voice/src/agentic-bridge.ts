@@ -962,13 +962,15 @@ if (__DEV__) {
                     if (!baseConfig) {
                         throw new Error(`Missing ASR config for ${modelId}`)
                     }
+                    const modelType = baseConfig.modelType ?? 'transducer'
                     const initConfig = {
                         modelDir,
                         modelBaseUrl:
                             Platform.OS === 'web'
-                                ? getWebModelBaseUrl('asr')
+                                ? (getWebAsrBackend(modelType)?.modelBaseUrl
+                                    ?? getWebModelBaseUrl('asr'))
                                 : undefined,
-                        modelType: baseConfig.modelType ?? 'transducer',
+                        modelType,
                         numThreads: baseConfig.numThreads,
                         decodingMethod:
                             baseConfig.decodingMethod ?? 'greedy_search',
