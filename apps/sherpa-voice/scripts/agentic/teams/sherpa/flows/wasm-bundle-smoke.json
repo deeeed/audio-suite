@@ -1,0 +1,47 @@
+{
+  "title": "Sherpa voice WASM bundle smoke test (web)",
+  "validate": {
+    "workflow": {
+      "entry": "wait-wasm-ready",
+      "pre_conditions": [
+        "sherpa.agentic_ready"
+      ],
+      "nodes": {
+        "wait-wasm-ready": {
+          "action": "eval_async",
+          "expression": "(function(){return new Promise(function(resolve){var i=0;function tick(){if(typeof window.SherpaOnnx==='object' && typeof window.SherpaOnnx.ASR==='object' && typeof window.SherpaOnnx.ASR.loadModel==='function'){resolve({ready:true,asrKeys:Object.keys(window.SherpaOnnx.ASR),topLevelKeys:Object.keys(window.SherpaOnnx)});return;}i++;if(i>=120){resolve({ready:false,reason:'timeout',i:i});return;}setTimeout(tick,500);}tick();});})()",
+          "assert": {
+            "operator": "eq",
+            "field": "ready",
+            "value": true
+          },
+          "next": "verify-cohere-symbols"
+        },
+        "verify-cohere-symbols": {
+          "action": "eval_async",
+          "expression": "(async function(){const r=await fetch('/wasm/sherpa-onnx-wasm-combined.wasm');const buf=await r.arrayBuffer();const bytes=new Uint8Array(buf);const decoder=new TextDecoder('utf-8',{fatal:false});const text=decoder.decode(bytes);return {sizeBytes:buf.byteLength,hasCohere:text.includes('cohere-transcribe'),hasQwen3:text.includes('qwen3-asr')};})()",
+          "assert": {
+            "operator": "eq",
+            "field": "hasCohere",
+            "value": true
+          },
+          "next": "verify-qwen3-symbols"
+        },
+        "verify-qwen3-symbols": {
+          "action": "eval_async",
+          "expression": "(async function(){const r=await fetch('/wasm/sherpa-onnx-wasm-combined.wasm');const buf=await r.arrayBuffer();const bytes=new Uint8Array(buf);const decoder=new TextDecoder('utf-8',{fatal:false});const text=decoder.decode(bytes);return {sizeBytes:buf.byteLength,hasQwen3:text.includes('qwen3-asr')};})()",
+          "assert": {
+            "operator": "eq",
+            "field": "hasQwen3",
+            "value": true
+          },
+          "next": "done"
+        },
+        "done": {
+          "action": "end",
+          "status": "pass"
+        }
+      }
+    }
+  }
+}
