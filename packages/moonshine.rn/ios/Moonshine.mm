@@ -11,6 +11,7 @@
 static NSString *const MoonshineEventName = @"MoonshineTranscriptEvent";
 static NSString *const MoonshineErrorDomain = @"net.siteed.moonshine";
 static const NSInteger MoonshineErrorCodeGeneric = -1;
+static const float kMoonshineDefaultIntentThreshold = 0.7f;
 
 namespace {
 
@@ -450,7 +451,7 @@ RCT_EXPORT_METHOD(createIntentRecognizer:(NSDictionary *)config
     }
     int32_t modelArch = [self resolveIntentModelArch:config];
     NSString *modelVariant = StringFromValue(config[@"modelVariant"]);
-    float threshold = NumberFromValue(config[@"threshold"]) != nil ? NumberFromValue(config[@"threshold"]).floatValue : 0.7f;
+    float threshold = NumberFromValue(config[@"threshold"]) != nil ? NumberFromValue(config[@"threshold"]).floatValue : kMoonshineDefaultIntentThreshold;
 
     int32_t handle = moonshine_create_intent_recognizer(
         modelPath.UTF8String,
@@ -578,7 +579,7 @@ RCT_EXPORT_METHOD(getIntentThreshold:(NSString *)intentRecognizerId
                   rejecter:(RCTPromiseRejectBlock)reject) {
   @try {
     [self parseIntentRecognizerId:intentRecognizerId];
-    NSNumber *threshold = self.intentThresholds[intentRecognizerId] ?: @(0.7);
+    NSNumber *threshold = self.intentThresholds[intentRecognizerId] ?: @(kMoonshineDefaultIntentThreshold);
     resolve(threshold);
   } @catch (id exception) {
     RejectPromiseWithError(reject, MoonshineNSErrorFromException(exception));
@@ -666,7 +667,7 @@ RCT_EXPORT_METHOD(processUtterance:(NSString *)intentRecognizerId
       ThrowNSError(@"Moonshine utterance is required");
     }
     int32_t handle = [self parseIntentRecognizerId:intentRecognizerId];
-    NSNumber *thresholdNumber = self.intentThresholds[intentRecognizerId] ?: @(0.7);
+    NSNumber *thresholdNumber = self.intentThresholds[intentRecognizerId] ?: @(kMoonshineDefaultIntentThreshold);
     float threshold = thresholdNumber.floatValue;
 
     moonshine_intent_match_t *matches = nullptr;

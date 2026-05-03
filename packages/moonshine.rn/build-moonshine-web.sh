@@ -5,12 +5,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PACKAGE_DIR="$SCRIPT_DIR"
 OUTPUT_DIR="$PACKAGE_DIR/prebuilt/web"
-UPSTREAM_JS_DIR="$PACKAGE_DIR/third_party/moonshine-js"
-
-if [ ! -d "$UPSTREAM_JS_DIR/.git" ]; then
-  echo "Error: upstream MoonshineJS checkout missing. Run ./setup.sh first." >&2
-  exit 1
-fi
 
 MOONSHINE_JS_VERSION="$(node -p "require('$PACKAGE_DIR/package.json').moonshineJsVersion")"
 MOONSHINE_JS_GIT_HEAD="$(node -p "require('$PACKAGE_DIR/package.json').moonshineJsGitHead")"
