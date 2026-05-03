@@ -40,6 +40,57 @@ sanitize_metadata_path() {
   echo "[external override]"
 }
 
+decouple_bundled_ort_in_aar() {
+  # In a multi-package monorepo APK other React Native native modules
+  # (notably sherpa-onnx.rn) ship their own libonnxruntime.so. Both copies
+  # land at lib/arm64-v8a/libonnxruntime.so during APK packaging and gradle
+  # pickFirst silently drops one. When the surviving copy is sherpa's ORT
+  # 1.24.x, dlopen of libmoonshine.so fails because moonshine's only
+  # versioned import is `OrtGetApiBase@VERS_1.23.0` (a single entry point;
+  # everything else goes through the C API table that the function returns).
+  #
+  # Fix: strip the version requirement from that one symbol so it resolves to
+  # whichever ORT export wins (sherpa's `OrtGetApiBase@@VERS_1.24.3` is the
+  # default version and answers the unversioned lookup). Then drop moonshine's
+  # bundled libonnxruntime.so from the AAR — the consumer APK already has one.
+  local aar_path="$1"
+  if ! command -v patchelf >/dev/null 2>&1; then
+    echo -e "${RED}Error: patchelf is required to clear the ONNX Runtime symbol version.${NC}" >&2
+    echo -e "${RED}Install with 'brew install patchelf' (macOS) or 'apt-get install patchelf' (Linux).${NC}" >&2
+    exit 1
+  fi
+
+  local stage="$(mktemp -d)"
+  trap "rm -rf \"$stage\"" RETURN
+
+  unzip -q "$aar_path" -d "$stage"
+  local jni_dir="$stage/jni"
+  if [ ! -d "$jni_dir" ]; then
+    return
+  fi
+
+  local touched=0
+  for abi_dir in "$jni_dir"/*; do
+    [ -d "$abi_dir" ] || continue
+    for consumer in "$abi_dir/libmoonshine.so" "$abi_dir/libmoonshine-jni.so"; do
+      [ -f "$consumer" ] || continue
+      patchelf --clear-symbol-version OrtGetApiBase "$consumer"
+      touched=1
+    done
+    if [ -f "$abi_dir/libonnxruntime.so" ]; then
+      rm -f "$abi_dir/libonnxruntime.so"
+      touched=1
+    fi
+  done
+
+  if [ "$touched" = "0" ]; then
+    return
+  fi
+
+  rm -f "$aar_path"
+  ( cd "$stage" && zip -qr "$aar_path" . )
+}
+
 extract_ort_symbol_version() {
   local library_path="$1"
   if ! command -v llvm-readobj >/dev/null 2>&1; then
@@ -180,6 +231,8 @@ if [ -z "$AAR_SOURCE" ] || [ ! -f "$AAR_SOURCE" ]; then
 fi
 
 cp "$AAR_SOURCE" "$OUTPUT_AAR"
+
+decouple_bundled_ort_in_aar "$OUTPUT_AAR"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT

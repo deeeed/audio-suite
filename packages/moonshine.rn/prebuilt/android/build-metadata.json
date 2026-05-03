@@ -4,6 +4,6 @@
   "onnxRuntimeVersionHint": "upstream-bundled",
   "onnxRuntimeLibPathOverride": "",
   "onnxRuntimeIncludeDirOverride": "",
-  "arm64ImportedOrtSymbolVersion": "1.23.0",
-  "arm64PackagedOrtSymbolVersion": "1.23.0"
+  "arm64ImportedOrtSymbolVersion": "",
+  "arm64PackagedOrtSymbolVersion": "unknown"
 }
