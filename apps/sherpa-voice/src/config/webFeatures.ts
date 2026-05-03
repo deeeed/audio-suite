@@ -188,7 +188,14 @@ export const WEB_ASR_BACKENDS: Record<string, WebAsrBackendEntry> = {
 // keys. Keep this list small — prefer registering the canonical key
 // in WEB_ASR_BACKENDS over piling up aliases here.
 const WEB_ASR_BACKEND_ALIASES: Record<string, string> = {
+  // Canonical modelType strings (`AsrModelConfig.modelType`) → backend keys
   cohere_transcribe: 'cohere',
+  // testASR helper aliases — keep in sync with the alias dispatch in
+  // apps/sherpa-voice/src/agentic-bridge.ts (`'offline'` is documented as
+  // a whisper synonym, `'zipformer'` resolves to the streaming backend).
+  offline: 'whisper',
+  zipformer: 'streaming',
+  transducer: 'streaming',
 };
 
 export function getWebAsrBackend(alias: string): WebAsrBackendEntry | undefined {

@@ -1438,8 +1438,20 @@ if (__DEV__) {
                         }
                         config.modelDir = `/wasm/asr/${alias}`
                         config.modelBaseUrl = backend.modelBaseUrl
-                        if (!wavPath && backend.defaultWavUrl) {
-                            wav = backend.defaultWavUrl
+                        if (!wavPath) {
+                            // The native defaultWav above is `${dir}/test_wavs/<file>`.
+                            // Preserve the language-specific test_wavs filename
+                            // (cohere uses en/de/zh.wav per the language hint;
+                            // qwen3 uses raokouling.wav; streaming uses 1.wav)
+                            // by rebasing the suffix onto the CDN modelBaseUrl
+                            // instead of unconditionally swapping in defaultWavUrl
+                            // — the latter erased the per-language wav choice.
+                            const m = defaultWav.match(/\/test_wavs\/[^/]+$/)
+                            if (m) {
+                                wav = backend.modelBaseUrl + m[0]
+                            } else if (backend.defaultWavUrl) {
+                                wav = backend.defaultWavUrl
+                            }
                         }
                     }
 
