@@ -1275,11 +1275,13 @@ function initSherpaOnnxOfflineQwen3AsrModelConfig(config, Module) {
   Module.setValue(ptr + 3 * 4, buffer + offset, 'i8*');
   offset += tokenizerLen;
 
-  Module.setValue(ptr + 4 * 4, config.maxTotalLen || 512, 'i32');
-  Module.setValue(ptr + 5 * 4, config.maxNewTokens || 128, 'i32');
-  Module.setValue(ptr + 6 * 4, config.temperature || 1e-6, 'float');
-  Module.setValue(ptr + 7 * 4, config.topP || 0.8, 'float');
-  Module.setValue(ptr + 8 * 4, config.seed || 42, 'i32');
+  // Use `??` (not `||`) so legitimate falsy values pass through —
+  // e.g. temperature: 0 for deterministic decoding, seed: 0, etc.
+  Module.setValue(ptr + 4 * 4, config.maxTotalLen ?? 512, 'i32');
+  Module.setValue(ptr + 5 * 4, config.maxNewTokens ?? 128, 'i32');
+  Module.setValue(ptr + 6 * 4, config.temperature ?? 1e-6, 'float');
+  Module.setValue(ptr + 7 * 4, config.topP ?? 0.8, 'float');
+  Module.setValue(ptr + 8 * 4, config.seed ?? 42, 'i32');
   Module.setValue(ptr + 9 * 4, buffer + offset, 'i8*');
   offset += hotwordsLen;
 

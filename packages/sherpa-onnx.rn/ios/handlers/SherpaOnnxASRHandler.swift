@@ -201,8 +201,12 @@ import AVFoundation
         // nested `qwen3` dict for callers that bypass the SherpaOnnxAPI flatten layer.
         let qwen3Nested = config["qwen3"] as? [String: Any] ?? [:]
         func qwen3Int(_ flatKey: String, _ nestedKey: String, _ defaultValue: Int) -> Int {
-            if let v = config[flatKey] as? Int { return v }
-            if let v = qwen3Nested[nestedKey] as? Int { return v }
+            // RN TurboModule numeric fields cross the bridge as NSNumber
+            // (often boxed Double), not native Int. `as? Int` returns nil for
+            // Double(512), so go through NSNumber.intValue like qwen3Float
+            // does for Float.
+            if let v = (config[flatKey] as? NSNumber)?.intValue { return v }
+            if let v = (qwen3Nested[nestedKey] as? NSNumber)?.intValue { return v }
             return defaultValue
         }
         func qwen3Float(_ flatKey: String, _ nestedKey: String, _ defaultValue: Float) -> Float {

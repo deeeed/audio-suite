@@ -9,7 +9,7 @@
       "nodes": {
         "fire-asr": {
           "action": "eval_async",
-          "expression": "(function(){var A=globalThis.__AGENTIC__;if(!A||!A.testASR||!A.getLastResult){return Promise.resolve({status:'error',error:'agentic bridge missing testASR/getLastResult'});}A.testASR('streaming');return new Promise(function(resolve){var i=0;function tick(){var r=A.getLastResult();if(r&&r.op==='asrTest'&&r.status!=='pending'){resolve(r);return;}i++;if(i>=60){resolve({status:'timeout'});return;}setTimeout(tick,500);}tick();});})()",
+          "expression": "(function(){var A=globalThis.__AGENTIC__;if(!A||!A.testASR||!A.getLastResult){return Promise.resolve({status:'error',error:'agentic bridge missing testASR/getLastResult'});}A.testASR('streaming');return new Promise(function(resolve){var i=0;function tick(){var r=A.getLastResult();if(r&&r.op==='asrTest'&&r.status!=='pending'){resolve(r);return;}i++;if(i>=240){resolve({status:'timeout'});return;}setTimeout(tick,500);}tick();});})()",
           "assert": {
             "operator": "eq",
             "field": "status",

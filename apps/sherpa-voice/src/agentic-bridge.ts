@@ -1359,7 +1359,9 @@ if (__DEV__) {
                         }
                     } else if (alias === 'cohere' || alias === 'cohere_transcribe') {
                         const dir = `${MODELS_BASE}/cohere-transcribe-14-lang-int8-2026-04-01/sherpa-onnx-cohere-transcribe-14-lang-int8-2026-04-01`
-                        const lang = (language ?? 'en').toLowerCase()
+                        // `||` (not `??`) so an empty-string language arg
+                        // still falls through to the bundled en.wav default.
+                        const lang = (language || 'en').toLowerCase()
                         defaultWav = dir + `/test_wavs/${lang}.wav`
                         config = {
                             modelDir: dir,

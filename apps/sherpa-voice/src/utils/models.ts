@@ -111,7 +111,7 @@ export const AVAILABLE_MODELS: ModelMetadata[] = [
     description:
       'Offline multilingual ASR by Cohere covering 14 languages, int8 quantized. Bundled test wavs include `en.wav`, `de.wav`, `zh.wav`. Supports a `language` hint plus `usePunct` / `useItn` toggles.',
     type: 'asr',
-    size: 1700 * 1024 * 1024, // ~1.58 GB tar.bz2 (extracts to ~2.7 GB on disk; encoder.int8.onnx.data sidecar)
+    size: 1699791751, // 1.58 GiB tar.bz2 — exact content-length from k2-fsa release. Extracts to ~2.7 GB on disk (encoder.int8.onnx.data sidecar).
     url: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-cohere-transcribe-14-lang-int8-2026-04-01.tar.bz2',
     version: '2026-04-01',
     language: 'multi',

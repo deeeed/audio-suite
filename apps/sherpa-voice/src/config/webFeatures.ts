@@ -183,8 +183,17 @@ export const WEB_ASR_BACKENDS: Record<string, WebAsrBackendEntry> = {
   },
 };
 
+// Map alternate aliases that callers may pass (e.g. the canonical
+// modelType strings used by ASR.initialize) onto the WEB_ASR_BACKENDS
+// keys. Keep this list small — prefer registering the canonical key
+// in WEB_ASR_BACKENDS over piling up aliases here.
+const WEB_ASR_BACKEND_ALIASES: Record<string, string> = {
+  cohere_transcribe: 'cohere',
+};
+
 export function getWebAsrBackend(alias: string): WebAsrBackendEntry | undefined {
-  return WEB_ASR_BACKENDS[alias];
+  const key = WEB_ASR_BACKEND_ALIASES[alias] ?? alias;
+  return WEB_ASR_BACKENDS[key];
 }
 
 /**
