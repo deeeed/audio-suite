@@ -103,10 +103,10 @@ index 5b0b3074..10e4955b 100644
  
 diff --git a/wasm/combined/CMakeLists.txt b/wasm/combined/CMakeLists.txt
 new file mode 100644
-index 00000000..889449cc
+index 00000000..09711b84
 --- /dev/null
 +++ b/wasm/combined/CMakeLists.txt
-@@ -0,0 +1,152 @@
+@@ -0,0 +1,151 @@
 +# Combined WASM target — wrapper-carried (siteed/sherpa-onnx.rn).
 +# Builds ONE wasm bundle exporting C-API symbols across all features
 +# (ASR online+offline, TTS, VAD, KWS, speech enhancement, speaker
@@ -234,7 +234,6 @@ index 00000000..889449cc
 +string(APPEND MY_FLAGS " -sALLOW_TABLE_GROWTH ")
 +string(APPEND MY_FLAGS " -sEXPORTED_FUNCTIONS=[${all_exported_functions}] ")
 +string(APPEND MY_FLAGS " -sEXPORTED_RUNTIME_METHODS=['ccall','stringToUTF8','setValue','getValue','lengthBytesUTF8','UTF8ToString','HEAPU8','HEAP16','HEAP32','HEAPU32','HEAPF32','HEAPF64','addFunction','removeFunction'] ")
-+string(APPEND MY_FLAGS " -sMODULARIZE=1 -sEXPORT_NAME=createSherpaOnnx ")
 +
 +message(STATUS "MY_FLAGS: ${MY_FLAGS}")
 +

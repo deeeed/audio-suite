@@ -88,7 +88,7 @@ function furl(
   return `${fetchBase}/${mf?.[key] || defaultName}`;
 }
 
-interface OfflineAsrFile { url: string; fsPath: string }
+interface OfflineAsrFile { url: string; fsPath: string; optional?: boolean }
 
 /**
  * Pre-compute the file list and recognizer config for offline ASR without
@@ -171,7 +171,26 @@ function buildOfflineAsrPlan(
     case 'nemo_ctc': case 'wenet_ctc': case 'zipformer2_ctc':
       mc.nemoCtc = { model: f('model', 'model.onnx') };
       break;
-    case 'cohere_transcribe':
+    case 'cohere_transcribe': {
+      const encoderName = mf?.encoder ?? 'encoder.int8.onnx';
+      const decoderName = mf?.decoder ?? 'decoder.int8.onnx';
+      // The encoder/decoder ONNX models reference `<name>.data` sidecar
+      // weight files via ONNX external-data references. Fetch them into
+      // MEMFS at the same relative path so the runtime can resolve them.
+      // Native handlers don't need this — extracted tarballs already
+      // include the .data files in the model directory.
+      files.push({
+        url: `${fetchBase}/${encoderName}.data`,
+        fsPath: `${modelDir}/${encoderName}.data`,
+      });
+      // decoder.int8.onnx may or may not have a .data sidecar depending on
+      // the model variant. Probe with HEAD before forcing the fetch.
+      const decoderDataUrl = `${fetchBase}/${decoderName}.data`;
+      files.push({
+        url: decoderDataUrl,
+        fsPath: `${modelDir}/${decoderName}.data`,
+        optional: true,
+      });
       mc.cohereTranscribe = {
         encoder: f('encoder', 'encoder.int8.onnx'),
         decoder: f('decoder', 'decoder.int8.onnx'),
@@ -180,6 +199,7 @@ function buildOfflineAsrPlan(
         useInverseTextNormalization: config.useItn ?? true,
       };
       break;
+    }
     case 'qwen3': {
       // Qwen3-ASR ships a `tokenizer/` directory. The wasm bundle includes
       // Qwen3 code paths (built from sherpa-onnx v1.13.0 source). Caller
@@ -383,7 +403,15 @@ export function AsrMixin<TBase extends Constructor>(Base: TBase) {
         config.onProgress,
         async () => {
           for (const f of plan.files) {
-            await loadFile(f.url, f.fsPath, debug);
+            try {
+              await loadFile(f.url, f.fsPath, debug);
+            } catch (err) {
+              if (f.optional) {
+                if (debug) console.log(`[ASR] optional file missing, continuing: ${f.url}`);
+                continue;
+              }
+              throw err;
+            }
           }
           return plan.recognizerConfig;
         }
