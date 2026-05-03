@@ -43,17 +43,17 @@ import { resolveModelDir } from './utils/fileUtils'
 import { getAsrModelConfigById } from './hooks/useModelConfig'
 import { readMonoPcm16Wav } from './utils/wav'
 
-// App-variant-aware model base directory (matches the actual sandbox path
-// of the running build, e.g. .../net.siteed.sherpavoice.development/files/models).
-// FileSystem.documentDirectory is null only on web/SSR — bridge tests are
-// native-only, so a null here is a real bug. Fail loudly instead of building
-// a relative path that the native bridge would silently misinterpret.
+// App-variant-aware model base directory.
+// Native: matches the running build's sandbox (e.g.
+//   .../net.siteed.sherpavoice.development/files/models).
+// Web: FileSystem.documentDirectory is null; native test methods that
+// reference MODELS_BASE will fail at call time, but route/state introspection
+// and the wasm-driven web ASR pipeline still work. Bridge install must not
+// throw on web so recipes can validate web flows.
 function _resolveModelsBase() {
     const docDir = FileSystem.documentDirectory
     if (!docDir) {
-        throw new Error(
-            '[agentic-bridge] FileSystem.documentDirectory is null; cannot resolve MODELS_BASE. The agentic bridge is native-only.'
-        )
+        return '__web_unavailable__'
     }
     return `${docDir.replace('file://', '')}models`
 }
