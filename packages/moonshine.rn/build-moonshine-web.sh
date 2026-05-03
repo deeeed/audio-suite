@@ -10,6 +10,9 @@ MOONSHINE_JS_VERSION="$(node -p "require('$PACKAGE_DIR/package.json').moonshineJ
 MOONSHINE_JS_GIT_HEAD="$(node -p "require('$PACKAGE_DIR/package.json').moonshineJsGitHead")"
 
 mkdir -p "$OUTPUT_DIR"
+# Wipe stale local models (e.g. medium/ from prior builds) so the layout always
+# matches the current CDN-pulled set.
+rm -rf "$OUTPUT_DIR/model"
 
 # Tiny + base quantized models are pulled directly from the canonical CDN; we
 # do not need any moonshine-js bundle output, only its model directory layout.

@@ -79,6 +79,8 @@ internal object MoonshineDirectJni {
     if (matches.isEmpty()) {
       return null
     }
+    // Upstream contract (core/moonshine-c-api.h: moonshine_get_closest_intents):
+    // returned array is sorted by descending similarity, so index 0 is the top.
     val top = matches[0]
     return MoonshineIntentMatchNative(
       triggerPhrase = top.canonicalPhrase ?: "",
@@ -124,6 +126,7 @@ internal object MoonshineDirectJni {
 
   fun registerIntent(intentRecognizerHandle: Int, triggerPhrase: String): Int {
     ensureLoaded()
+    // (handle, canonicalPhrase, embedding=null → auto-compute, priority=0).
     return JNI.moonshineRegisterIntent(intentRecognizerHandle, triggerPhrase, null, 0)
   }
 

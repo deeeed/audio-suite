@@ -682,6 +682,9 @@ RCT_EXPORT_METHOD(processUtterance:(NSString *)intentRecognizerId
     NSMutableDictionary *result = [self successMap];
     result[@"matched"] = @(count > 0);
     if (count > 0 && matches != nullptr) {
+      // Upstream sorts the array by descending similarity (see
+      // core/moonshine-c-api.h:moonshine_get_closest_intents), so index 0 is
+      // the top match.
       const moonshine_intent_match_t &top = matches[0];
       result[@"match"] = @{
         @"triggerPhrase": StringFromCString(top.canonical_phrase),
@@ -705,6 +708,8 @@ RCT_EXPORT_METHOD(registerIntent:(NSString *)intentRecognizerId
       ThrowNSError(@"Moonshine intent triggerPhrase is required");
     }
     int32_t handle = [self parseIntentRecognizerId:intentRecognizerId];
+    // (handle, canonicalPhrase, embedding=NULL → auto-compute, embeddingSize=0,
+    // priority=0). See core/moonshine-c-api.h:moonshine_register_intent.
     ThrowIfMoonshineError(
         moonshine_register_intent(
             handle,
