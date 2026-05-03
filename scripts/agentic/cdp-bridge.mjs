@@ -31,6 +31,9 @@
  * Environment:
  *   WATCHER_PORT    Metro port (default: 7365)
  *   CDP_TIMEOUT     Connection timeout in ms (default: 5000)
+ *   EVAL_TIMEOUT    eval-async wall-clock timeout in ms (default: 30000)
+ *                   Bump for recipes whose evaluator does long-running
+ *                   work like web ASR over slow CDN downloads.
  *   CDP_URL         External Chrome CDP URL (e.g. http://192.168.1.5:9222)
  *                   Bypasses .agent/web-browser.json — connects directly
  */
@@ -625,7 +628,11 @@ async function cdpEval(client, expression, evalTimeout) {
  * Hermes CDP does not support awaitPromise, so the result is stored on
  * globalThis and polled until it resolves or rejects.
  */
-async function cdpEvalAsync(client, expression, timeoutMs = 30000) {
+async function cdpEvalAsync(
+  client,
+  expression,
+  timeoutMs = Number.parseInt(process.env.EVAL_TIMEOUT || '30000', 10)
+) {
   const key = `__cdp_async_${Date.now()}_${Math.random().toString(36).slice(2)}__`;
   const kickoff = `(function() {
     globalThis['${key}'] = { status: 'pending' };
