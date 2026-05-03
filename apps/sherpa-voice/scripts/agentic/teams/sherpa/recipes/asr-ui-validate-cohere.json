@@ -1,6 +1,6 @@
 {
   "title": "Sherpa voice ASR UI validation: Cohere Transcribe (en)",
-  "description": "Drives the /features/asr screen end-to-end with the Cohere Transcribe model and the bundled `en.wav` test sample, asserting the transcript displayed in the UI is non-empty (i.e. not '(no speech detected)'). Requires the Cohere model to be downloaded on the target device.",
+  "description": "Drives the /features/asr screen end-to-end with the Cohere Transcribe model and the bundled `en.wav` test sample, asserting the transcript displayed in the UI is non-empty (i.e. not '(no speech detected)'). Requires the Cohere model to be downloaded on the target device. KNOWN FLAKY: Cohere lands at the bottom of the model picker FlatList; `findFiberByTestId` + `press` cannot reliably reach off-screen virtualized rows. Use `asr-cohere-roundtrip` (bridge-level) for stable validation until the recipe runner gains a scroll-to-testID-visible primitive.",
   "validate": {
     "workflow": {
       "entry": "ui-validate",
