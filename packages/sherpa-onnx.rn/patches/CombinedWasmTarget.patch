@@ -103,7 +103,7 @@ index 5b0b3074..10e4955b 100644
  
 diff --git a/wasm/combined/CMakeLists.txt b/wasm/combined/CMakeLists.txt
 new file mode 100644
-index 00000000..09711b84
+index 00000000..1f81df5b
 --- /dev/null
 +++ b/wasm/combined/CMakeLists.txt
 @@ -0,0 +1,151 @@
@@ -232,8 +232,8 @@ index 00000000..09711b84
 +set(MY_FLAGS " -s FORCE_FILESYSTEM=1 -s INITIAL_MEMORY=512MB -s ALLOW_MEMORY_GROWTH=1")
 +string(APPEND MY_FLAGS " -sSTACK_SIZE=10485760 ") # 10MB
 +string(APPEND MY_FLAGS " -sALLOW_TABLE_GROWTH ")
-+string(APPEND MY_FLAGS " -sEXPORTED_FUNCTIONS=[${all_exported_functions}] ")
-+string(APPEND MY_FLAGS " -sEXPORTED_RUNTIME_METHODS=['ccall','stringToUTF8','setValue','getValue','lengthBytesUTF8','UTF8ToString','HEAPU8','HEAP16','HEAP32','HEAPU32','HEAPF32','HEAPF64','addFunction','removeFunction'] ")
++string(APPEND MY_FLAGS " -sEXPORTED_FUNCTIONS=[_malloc,_free,${all_exported_functions}] ")
++string(APPEND MY_FLAGS " -sEXPORTED_RUNTIME_METHODS=['ccall','stringToUTF8','setValue','getValue','lengthBytesUTF8','UTF8ToString','HEAPU8','HEAP16','HEAP32','HEAPU32','HEAPF32','HEAPF64','addFunction','removeFunction','FS','MEMFS','FS_createPath','FS_createDataFile','FS_unlink'] ")
 +
 +message(STATUS "MY_FLAGS: ${MY_FLAGS}")
 +

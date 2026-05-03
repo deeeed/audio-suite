@@ -120,7 +120,11 @@ function buildOfflineAsrPlan(
     return fsPath;
   };
 
-  mc.tokens = f('tokens', 'tokens.txt');
+  // Most backends use a single tokens.txt. Qwen3 ships a tokenizer/ dir
+  // instead and registers its own files in the qwen3 case below.
+  if (rawType !== 'qwen3') {
+    mc.tokens = f('tokens', 'tokens.txt');
+  }
 
   switch (rawType) {
     case 'whisper':
@@ -206,12 +210,13 @@ function buildOfflineAsrPlan(
       // must enumerate the tokenizer file list via config.qwen3.tokenizerFiles
       // (relative paths inside the tokenizer/ dir) so each file can be
       // fetched into MEMFS individually.
+      // Qwen3-ASR ships a GPT-style tokenizer (vocab.json + merges.txt) plus
+      // tokenizer_config.json. Caller can override via config.qwen3.tokenizerFiles
+      // to handle other layouts (e.g. tokenizer.json fast-tokenizer).
       const tokenizerFiles = config.qwen3?.tokenizerFiles ?? [
-        'tokenizer.json',
-        'tokenizer_config.json',
-        'special_tokens_map.json',
         'vocab.json',
         'merges.txt',
+        'tokenizer_config.json',
       ];
       const tokenizerDir = `${modelDir}/tokenizer`;
       // Pre-register tokenizer files on the plan so worker path also fetches them
@@ -221,13 +226,12 @@ function buildOfflineAsrPlan(
           fsPath: `${tokenizerDir}/${fname}`,
         });
       }
-      mc.qwen3 = {
+      mc.qwen3Asr = {
         encoder: f('encoder', 'encoder.int8.onnx'),
         decoder: f('decoder', 'decoder.int8.onnx'),
-        convFrontend: f('convFrontend', 'conv-frontend.onnx'),
+        convFrontend: f('convFrontend', 'conv_frontend.onnx'),
         tokenizer: tokenizerDir,
-        maxTotalLen: config.qwen3?.maxTotalLen ?? 0,
-        maxNewTokens: config.qwen3?.maxNewTokens ?? 0,
+        hotwords: '',
       };
       break;
     }
