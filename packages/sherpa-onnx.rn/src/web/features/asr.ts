@@ -121,8 +121,12 @@ function buildOfflineAsrPlan(
   };
 
   // Most backends use a single tokens.txt. Qwen3 ships a tokenizer/ dir
-  // instead and registers its own files in the qwen3 case below.
-  if (rawType !== 'qwen3') {
+  // instead and registers its own files in the qwen3 case below — but the
+  // master OfflineModelConfig struct still has a tokens slot, so set it to
+  // empty string for qwen3 so stringToUTF8 doesn't choke on undefined.
+  if (rawType === 'qwen3') {
+    mc.tokens = '';
+  } else {
     mc.tokens = f('tokens', 'tokens.txt');
   }
 
