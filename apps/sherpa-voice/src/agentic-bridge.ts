@@ -33,7 +33,7 @@ import {
     type AgenticHudCallback,
     type AgenticHudStep,
 } from '@siteed/agentic-dev'
-import { getWasmBasePath } from './config/webFeatures'
+import { getWasmBasePath, getWebAsrBackend } from './config/webFeatures'
 import { getWebModelBaseUrl } from './utils/webModelUtils'
 import {
     DEFAULT_LIVE_SAMPLE_RATE,
@@ -1398,7 +1398,30 @@ if (__DEV__) {
                         }
                     }
 
-                    const wav = wavPath ?? defaultWav
+                    let wav = wavPath ?? defaultWav
+
+                    // Web: native filesystem paths (MODELS_BASE) don't apply.
+                    // Look up the backend's CDN config from WEB_ASR_BACKENDS
+                    // (in src/config/webFeatures.ts) and rewrite modelDir +
+                    // modelBaseUrl + default test wav to point at the CDN.
+                    // If a backend isn't registered there, fail fast with a
+                    // pointer to the config file so the operator knows where
+                    // to add a new entry.
+                    if (Platform.OS === 'web') {
+                        const backend = getWebAsrBackend(alias)
+                        if (!backend) {
+                            throw new Error(
+                                `No web backend registered for ASR alias "${alias}". ` +
+                                `Add an entry to WEB_ASR_BACKENDS in apps/sherpa-voice/src/config/webFeatures.ts ` +
+                                `with the CDN base for this backend's model files.`
+                            )
+                        }
+                        config.modelDir = `/wasm/asr/${alias}`
+                        config.modelBaseUrl = backend.modelBaseUrl
+                        if (!wavPath && backend.defaultWavUrl) {
+                            wav = backend.defaultWavUrl
+                        }
+                    }
 
                     const t0 = Date.now()
                     const initResult = await ASR.initialize(config)
