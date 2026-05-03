@@ -53,6 +53,9 @@ decouple_bundled_ort_in_aar() {
   # call goes through the C API table that function returns. Clearing its
   # version requirement makes the lookup match any ORT default-version export
   # (sherpa's `OrtGetApiBase@@VERS_1.24.3`, our own `@@VERS_1.23.0`, etc).
+  # The host ORT must be >= 1.23 (the API version moonshine was compiled
+  # against); older runtimes hand back an API table missing entries
+  # libmoonshine.so will dereference.
   #
   # The AAR keeps shipping its own libonnxruntime.so so standalone consumers
   # (apps that pull in only moonshine.rn) still load successfully. Apps that
