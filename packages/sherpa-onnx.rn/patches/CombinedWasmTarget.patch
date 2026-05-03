@@ -103,10 +103,10 @@ index 5b0b3074..10e4955b 100644
  
 diff --git a/wasm/combined/CMakeLists.txt b/wasm/combined/CMakeLists.txt
 new file mode 100644
-index 00000000..1f81df5b
+index 00000000..3ca8ae15
 --- /dev/null
 +++ b/wasm/combined/CMakeLists.txt
-@@ -0,0 +1,151 @@
+@@ -0,0 +1,187 @@
 +# Combined WASM target — wrapper-carried (siteed/sherpa-onnx.rn).
 +# Builds ONE wasm bundle exporting C-API symbols across all features
 +# (ASR online+offline, TTS, VAD, KWS, speech enhancement, speaker
@@ -215,6 +215,42 @@ index 00000000..1f81df5b
 +  SherpaOnnxOfflineSpeakerDiarizationResultGetNumSegments
 +  SherpaOnnxOfflineSpeakerDiarizationResultSortByStartTime
 +  SherpaOnnxOfflineSpeakerDiarizationSetConfig
++  # Audio tagging
++  SherpaOnnxCreateAudioTagging
++  SherpaOnnxDestroyAudioTagging
++  SherpaOnnxAudioTaggingCreateOfflineStream
++  SherpaOnnxAudioTaggingCompute
++  SherpaOnnxAudioTaggingFreeResults
++  # Spoken language identification
++  SherpaOnnxCreateSpokenLanguageIdentification
++  SherpaOnnxDestroySpokenLanguageIdentification
++  SherpaOnnxSpokenLanguageIdentificationCreateOfflineStream
++  SherpaOnnxSpokenLanguageIdentificationCompute
++  SherpaOnnxDestroySpokenLanguageIdentificationResult
++  # Speaker embedding extractor + manager (speaker ID)
++  SherpaOnnxCreateSpeakerEmbeddingExtractor
++  SherpaOnnxDestroySpeakerEmbeddingExtractor
++  SherpaOnnxSpeakerEmbeddingExtractorCreateStream
++  SherpaOnnxSpeakerEmbeddingExtractorIsReady
++  SherpaOnnxSpeakerEmbeddingExtractorComputeEmbedding
++  SherpaOnnxSpeakerEmbeddingExtractorDestroyEmbedding
++  SherpaOnnxSpeakerEmbeddingExtractorDim
++  SherpaOnnxCreateSpeakerEmbeddingManager
++  SherpaOnnxDestroySpeakerEmbeddingManager
++  SherpaOnnxSpeakerEmbeddingManagerAdd
++  SherpaOnnxSpeakerEmbeddingManagerRemove
++  SherpaOnnxSpeakerEmbeddingManagerSearch
++  SherpaOnnxSpeakerEmbeddingManagerVerify
++  SherpaOnnxSpeakerEmbeddingManagerContains
++  SherpaOnnxSpeakerEmbeddingManagerNumSpeakers
++  SherpaOnnxSpeakerEmbeddingManagerGetAllSpeakers
++  SherpaOnnxSpeakerEmbeddingManagerFreeAllSpeakers
++  SherpaOnnxSpeakerEmbeddingManagerFreeSearch
++  # Online punctuation
++  SherpaOnnxCreateOnlinePunctuation
++  SherpaOnnxDestroyOnlinePunctuation
++  SherpaOnnxOnlinePunctuationAddPunct
++  SherpaOnnxOnlinePunctuationFreeText
 +  # Wave I/O
 +  SherpaOnnxFreeWave
 +  SherpaOnnxReadWave

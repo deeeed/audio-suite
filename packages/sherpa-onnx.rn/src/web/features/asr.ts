@@ -35,6 +35,8 @@ const OFFLINE_ONLY_TYPES: ReadonlySet<string> = new Set([
   'wenet_ctc',
   'zipformer2_ctc',
   'lstm',
+  'qwen3',
+  'cohere_transcribe',
 ]);
 
 /**
@@ -199,12 +201,16 @@ function buildOfflineAsrPlan(
         fsPath: `${modelDir}/${decoderName}.data`,
         optional: true,
       });
+      // Field names must match what initSherpaOnnxOfflineCohereTranscribeModelConfig
+      // reads in wasm-src/sherpa-onnx-asr.js: encoder, decoder, language,
+      // usePunct, useItn (NOT useInverseTextNormalization). Booleans are
+      // converted to int32 (1/0) by the wasm wrapper.
       mc.cohereTranscribe = {
         encoder: f('encoder', 'encoder.int8.onnx'),
         decoder: f('decoder', 'decoder.int8.onnx'),
         language: config.language ?? '',
-        usePunct: config.usePunct ?? true,
-        useInverseTextNormalization: config.useItn ?? true,
+        usePunct: (config.usePunct ?? true) ? 1 : 0,
+        useItn: (config.useItn ?? true) ? 1 : 0,
       };
       break;
     }
@@ -233,12 +239,22 @@ function buildOfflineAsrPlan(
           optional: filesAreOptional,
         });
       }
+      // Forward all Qwen3 generation knobs (caller-passed values pass
+      // through; missing values are filled with the same defaults that
+      // initSherpaOnnxOfflineQwen3AsrModelConfig applies, so behaviour
+      // matches the native handler).
+      const q3 = config.qwen3 ?? {};
       mc.qwen3Asr = {
         encoder: f('encoder', 'encoder.int8.onnx'),
         decoder: f('decoder', 'decoder.int8.onnx'),
         convFrontend: f('convFrontend', 'conv_frontend.onnx'),
         tokenizer: tokenizerDir,
-        hotwords: '',
+        hotwords: config.hotwords ?? '',
+        maxTotalLen: q3.maxTotalLen ?? 512,
+        maxNewTokens: q3.maxNewTokens ?? 128,
+        temperature: q3.temperature ?? 1e-6,
+        topP: q3.topP ?? 0.8,
+        seed: q3.seed ?? 42,
       };
       break;
     }
