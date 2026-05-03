@@ -1398,7 +1398,23 @@ if (__DEV__) {
                         }
                     }
 
-                    const wav = wavPath ?? defaultWav
+                    let wav = wavPath ?? defaultWav
+
+                    // On web the modelDir computed above is `__web_unavailable__/...`
+                    // (FileSystem.documentDirectory is null in browsers). Web uses
+                    // URL-based fetches via modelBaseUrl, so swap the dir for the
+                    // CDN base configured in WEB_FEATURES['asr']. Default test wav
+                    // also lives next to the model on the CDN.
+                    if (Platform.OS === 'web') {
+                        const baseUrl = getWebModelBaseUrl('asr')
+                        if (baseUrl) {
+                            config.modelDir = `/wasm/asr/${alias}`
+                            config.modelBaseUrl = baseUrl
+                            if (!wavPath) {
+                                wav = `${baseUrl}/test_wavs/0.wav`
+                            }
+                        }
+                    }
 
                     const t0 = Date.now()
                     const initResult = await ASR.initialize(config)
