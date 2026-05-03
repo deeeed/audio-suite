@@ -209,25 +209,28 @@ function buildOfflineAsrPlan(
       break;
     }
     case 'qwen3': {
-      // Qwen3-ASR ships a `tokenizer/` directory. The wasm bundle includes
-      // Qwen3 code paths (built from sherpa-onnx v1.13.0 source). Caller
-      // must enumerate the tokenizer file list via config.qwen3.tokenizerFiles
-      // (relative paths inside the tokenizer/ dir) so each file can be
-      // fetched into MEMFS individually.
-      // Qwen3-ASR ships a GPT-style tokenizer (vocab.json + merges.txt) plus
-      // tokenizer_config.json. Caller can override via config.qwen3.tokenizerFiles
-      // to handle other layouts (e.g. tokenizer.json fast-tokenizer).
-      const tokenizerFiles = config.qwen3?.tokenizerFiles ?? [
+      // Qwen3-ASR ships a GPT-style tokenizer (vocab.json + merges.txt +
+      // tokenizer_config.json) in a `tokenizer/` directory. Each file gets
+      // fetched into MEMFS individually because the wasm pipeline can't mount
+      // a directory. Caller can override the file list via
+      // `config.qwen3.tokenizerFiles` to handle other layouts (e.g.
+      // tokenizer.json fast tokenizer or special_tokens_map.json variants).
+      // Defaults are marked optional so a model that ships only a subset
+      // doesn't 404 the whole init — only an explicitly-passed override list
+      // is treated as required.
+      const callerFiles = config.qwen3?.tokenizerFiles;
+      const tokenizerFiles = callerFiles ?? [
         'vocab.json',
         'merges.txt',
         'tokenizer_config.json',
       ];
+      const filesAreOptional = !callerFiles;
       const tokenizerDir = `${modelDir}/tokenizer`;
-      // Pre-register tokenizer files on the plan so worker path also fetches them
       for (const fname of tokenizerFiles) {
         files.push({
           url: `${fetchBase}/tokenizer/${fname}`,
           fsPath: `${tokenizerDir}/${fname}`,
+          optional: filesAreOptional,
         });
       }
       mc.qwen3Asr = {

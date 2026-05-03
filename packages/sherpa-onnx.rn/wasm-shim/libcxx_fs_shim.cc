@@ -11,6 +11,16 @@
 // missing `__fs::filesystem::*` form and which call into the emsdk libc++
 // equivalents is ABI-safe — `path` has the same memory layout regardless of
 // the inline-namespace alias.
+//
+// To extend after a future ORT or emsdk bump:
+//   1. Run the wasm build (`./build-sherpa-wasm.sh --combined -f`).
+//   2. Scrape new mangled names from any `wasm-ld: error: undefined symbol:
+//      std::__2::__fs::filesystem::*` lines in the build log.
+//   3. Add a forwarder below for each: `extern "C" void <__fs mangled name>
+//      (...) { <emsdk mangled name>(...); }` — match the corresponding
+//      `std::__2::filesystem::*` symbol exported by libc++ (verify via
+//      `llvm-nm <emsdk>/cache/sysroot/lib/wasm32-emscripten/libc++-noexcept.a |
+//      grep filesystem`).
 
 #include <filesystem>
 #include <string>

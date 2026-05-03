@@ -46,18 +46,34 @@ import { readMonoPcm16Wav } from './utils/wav'
 // App-variant-aware model base directory.
 // Native: matches the running build's sandbox (e.g.
 //   .../net.siteed.sherpavoice.development/files/models).
-// Web: FileSystem.documentDirectory is null; native test methods that
-// reference MODELS_BASE will fail at call time, but route/state introspection
-// and the wasm-driven web ASR pipeline still work. Bridge install must not
-// throw on web so recipes can validate web flows.
+// Web: FileSystem.documentDirectory is null; the bridge installs anyway so
+// route/state/getRoute work and the web-aware testASR path can override
+// modelDir/modelBaseUrl. Native-only test methods (testExtractAudioData,
+// testTrimAudio, etc.) that interpolate ${MODELS_BASE}/... must NOT silently
+// build bogus paths on web — they should fail-fast with a clear error.
+// Use the exported WEB_MODELS_BASE_SENTINEL to detect (or call
+// `webOnlyResult(op)` from within an async test method).
+export const WEB_MODELS_BASE_SENTINEL = '__web_unavailable__'
+
 function _resolveModelsBase() {
     const docDir = FileSystem.documentDirectory
     if (!docDir) {
-        return '__web_unavailable__'
+        return WEB_MODELS_BASE_SENTINEL
     }
     return `${docDir.replace('file://', '')}models`
 }
 const MODELS_BASE = _resolveModelsBase()
+
+// Helper for native-FS-only test methods to short-circuit on web with a
+// clear error result instead of silently building '__web_unavailable__/...'
+// paths. testASR has its own web path and should NOT call this.
+function nativeFsOnlyResult(op: string) {
+    return {
+        op,
+        status: 'error' as const,
+        error: `${op} requires the native filesystem (FileSystem.documentDirectory). Web is not supported for this method — use the in-app UI or a web-specific recipe instead.`,
+    }
+}
 
 // State holders updated by AgenticBridgeSync component
 let _routeInfo: { pathname: string; segments: string[] } = {
