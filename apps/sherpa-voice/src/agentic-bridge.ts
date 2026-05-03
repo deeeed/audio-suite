@@ -1438,6 +1438,17 @@ if (__DEV__) {
                         }
                         config.modelDir = `/wasm/asr/${alias}`
                         config.modelBaseUrl = backend.modelBaseUrl
+                        if (backend.modelFiles) {
+                            // The web backend may host a different variant of
+                            // the same architecture than the native testASR
+                            // config (e.g. general Zipformer vs mobile) —
+                            // merge filenames so we fetch what's actually at
+                            // the registered modelBaseUrl.
+                            config.modelFiles = {
+                                ...config.modelFiles,
+                                ...backend.modelFiles,
+                            }
+                        }
                         if (!wavPath) {
                             // The native defaultWav above is `${dir}/test_wavs/<file>`.
                             // Preserve the language-specific test_wavs filename

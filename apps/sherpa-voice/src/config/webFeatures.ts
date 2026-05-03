@@ -147,6 +147,26 @@ export interface WebAsrBackendEntry {
   modelBaseUrl: string;
   /** Optional default test wav URL. If unset, callers must pass wavPath. */
   defaultWavUrl?: string;
+  /**
+   * Optional per-backend modelFiles override applied by `testASR` on web.
+   * The native testASR config hardcodes filenames that match the model
+   * actually downloaded on-device (e.g. the mobile Zipformer); the URL
+   * the web backend points at may host a different variant of the same
+   * architecture (e.g. the general Zipformer) with different filenames.
+   * Populate this to keep them in sync without changing the native config.
+   */
+  modelFiles?: {
+    encoder?: string;
+    decoder?: string;
+    joiner?: string;
+    tokens?: string;
+    model?: string;
+    convFrontend?: string;
+    tokenizer?: string;
+    preprocessor?: string;
+    uncachedDecoder?: string;
+    cachedDecoder?: string;
+  };
 }
 
 const HF_BASE =
@@ -154,8 +174,17 @@ const HF_BASE =
 
 export const WEB_ASR_BACKENDS: Record<string, WebAsrBackendEntry> = {
   // Streaming Zipformer (the model that backs WEB_FEATURES.asr by default).
+  // The HF subpath hosts the GENERAL Zipformer (chunk-16-left-128 file
+  // names), not the mobile variant that testASR hardcodes for native.
+  // Override modelFiles so the web rewrite picks the correct filenames.
   streaming: {
     modelBaseUrl: `${HF_BASE}/asr`,
+    modelFiles: {
+      encoder: 'encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx',
+      decoder: 'decoder-epoch-99-avg-1-chunk-16-left-128.onnx',
+      joiner: 'joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx',
+      tokens: 'tokens.txt',
+    },
   },
 
   // Cohere Transcribe 14-lang int8.
