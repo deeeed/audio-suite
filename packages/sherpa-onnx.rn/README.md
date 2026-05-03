@@ -13,7 +13,7 @@ React Native wrapper for [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) pr
 ## Features
 
 - Text-to-speech (TTS) — VITS, Kokoro, Matcha models
-- Speech-to-text (STT) — offline and streaming recognition
+- Speech-to-text (STT) — streaming + offline recognition (Whisper, Sense Voice, Moonshine, Paraformer, Zipformer, Fire Red ASR, Dolphin, Cohere Transcribe, Qwen3-ASR)
 - Voice activity detection (VAD), keyword spotting (KWS)
 - Speaker identification, language identification, audio tagging
 - Speaker diarization, punctuation restoration, speech denoising
