@@ -11,6 +11,7 @@ export { SAMPLE_AUDIO_FILES } from '../utils/asrSamples'
 
 const logger = baseLogger.extend('ASR')
 import { makeWebProgressHandler, getWebModelBaseUrl } from '../utils/webModelUtils'
+import { getWebAsrBackend } from '../config/webFeatures'
 import { Asset } from 'expo-asset'
 import { createAudioPlayer } from 'expo-audio'
 import * as FileSystem from 'expo-file-system/legacy'
@@ -160,11 +161,19 @@ export function useAsr() {
             const modelDir = await resolveModelDir(localPath)
             setStatusMessage(`Model dir: ${modelDir.split('/').pop()}`)
 
+            // Per-backend CDN path resolution. Each entry in
+            // WEB_ASR_BACKENDS (asr-cohere, asr-qwen3, asr-whisper, ...)
+            // points at a different HF subpath; falling back to the generic
+            // WEB_FEATURES.asr URL only works for the streaming Zipformer
+            // bundled there. Without this, selecting Qwen3/Cohere from the
+            // ASR screen would 404 on the wrong subpath.
+            const modelType = asrConfig.modelType || 'transducer'
+            const perBackendUrl = getWebAsrBackend(modelType)?.modelBaseUrl
             const config: AsrModelConfig = {
                 modelDir,
-                modelBaseUrl: getWebModelBaseUrl('asr'),
+                modelBaseUrl: perBackendUrl ?? getWebModelBaseUrl('asr'),
                 onProgress: makeWebProgressHandler(setStatusMessage),
-                modelType: asrConfig.modelType || 'transducer',
+                modelType,
                 numThreads:
                     mode === 'live'
                         ? (asrConfig.numThreads ?? DEFAULT_NUM_THREADS)

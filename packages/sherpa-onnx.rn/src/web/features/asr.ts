@@ -35,6 +35,8 @@ const OFFLINE_ONLY_TYPES: ReadonlySet<string> = new Set([
   'wenet_ctc',
   'zipformer2_ctc',
   'lstm',
+  'qwen3',
+  'cohere_transcribe',
 ]);
 
 /**
@@ -88,7 +90,7 @@ function furl(
   return `${fetchBase}/${mf?.[key] || defaultName}`;
 }
 
-interface OfflineAsrFile { url: string; fsPath: string }
+interface OfflineAsrFile { url: string; fsPath: string; optional?: boolean }
 
 /**
  * Pre-compute the file list and recognizer config for offline ASR without
@@ -120,7 +122,15 @@ function buildOfflineAsrPlan(
     return fsPath;
   };
 
-  mc.tokens = f('tokens', 'tokens.txt');
+  // Most backends use a single tokens.txt. Qwen3 ships a tokenizer/ dir
+  // instead and registers its own files in the qwen3 case below — but the
+  // master OfflineModelConfig struct still has a tokens slot, so set it to
+  // empty string for qwen3 so stringToUTF8 doesn't choke on undefined.
+  if (rawType === 'qwen3') {
+    mc.tokens = '';
+  } else {
+    mc.tokens = f('tokens', 'tokens.txt');
+  }
 
   switch (rawType) {
     case 'whisper':
@@ -171,6 +181,83 @@ function buildOfflineAsrPlan(
     case 'nemo_ctc': case 'wenet_ctc': case 'zipformer2_ctc':
       mc.nemoCtc = { model: f('model', 'model.onnx') };
       break;
+    case 'cohere_transcribe': {
+      const encoderName = mf?.encoder ?? 'encoder.int8.onnx';
+      const decoderName = mf?.decoder ?? 'decoder.int8.onnx';
+      // The encoder/decoder ONNX models reference `<name>.data` sidecar
+      // weight files via ONNX external-data references. Fetch them into
+      // MEMFS at the same relative path so the runtime can resolve them.
+      // Native handlers don't need this — extracted tarballs already
+      // include the .data files in the model directory.
+      files.push({
+        url: `${fetchBase}/${encoderName}.data`,
+        fsPath: `${modelDir}/${encoderName}.data`,
+      });
+      // decoder.int8.onnx may or may not have a .data sidecar depending on
+      // the model variant. Probe with HEAD before forcing the fetch.
+      const decoderDataUrl = `${fetchBase}/${decoderName}.data`;
+      files.push({
+        url: decoderDataUrl,
+        fsPath: `${modelDir}/${decoderName}.data`,
+        optional: true,
+      });
+      // Field names must match what initSherpaOnnxOfflineCohereTranscribeModelConfig
+      // reads in wasm-src/sherpa-onnx-asr.js: encoder, decoder, language,
+      // usePunct, useItn (NOT useInverseTextNormalization). Booleans are
+      // converted to int32 (1/0) by the wasm wrapper.
+      mc.cohereTranscribe = {
+        encoder: f('encoder', 'encoder.int8.onnx'),
+        decoder: f('decoder', 'decoder.int8.onnx'),
+        language: config.language ?? '',
+        usePunct: (config.usePunct ?? true) ? 1 : 0,
+        useItn: (config.useItn ?? true) ? 1 : 0,
+      };
+      break;
+    }
+    case 'qwen3': {
+      // Qwen3-ASR ships a GPT-style tokenizer (vocab.json + merges.txt +
+      // tokenizer_config.json) in a `tokenizer/` directory. Each file gets
+      // fetched into MEMFS individually because the wasm pipeline can't mount
+      // a directory. Caller can override the file list via
+      // `config.qwen3.tokenizerFiles` to handle other layouts (e.g.
+      // tokenizer.json fast tokenizer or special_tokens_map.json variants).
+      // Defaults are marked optional so a model that ships only a subset
+      // doesn't 404 the whole init — only an explicitly-passed override list
+      // is treated as required.
+      const callerFiles = config.qwen3?.tokenizerFiles;
+      const tokenizerFiles = callerFiles ?? [
+        'vocab.json',
+        'merges.txt',
+        'tokenizer_config.json',
+      ];
+      const filesAreOptional = !callerFiles;
+      const tokenizerDir = `${modelDir}/tokenizer`;
+      for (const fname of tokenizerFiles) {
+        files.push({
+          url: `${fetchBase}/tokenizer/${fname}`,
+          fsPath: `${tokenizerDir}/${fname}`,
+          optional: filesAreOptional,
+        });
+      }
+      // Forward all Qwen3 generation knobs (caller-passed values pass
+      // through; missing values are filled with the same defaults that
+      // initSherpaOnnxOfflineQwen3AsrModelConfig applies, so behaviour
+      // matches the native handler).
+      const q3 = config.qwen3 ?? {};
+      mc.qwen3Asr = {
+        encoder: f('encoder', 'encoder.int8.onnx'),
+        decoder: f('decoder', 'decoder.int8.onnx'),
+        convFrontend: f('convFrontend', 'conv_frontend.onnx'),
+        tokenizer: tokenizerDir,
+        hotwords: config.hotwords ?? '',
+        maxTotalLen: q3.maxTotalLen ?? 512,
+        maxNewTokens: q3.maxNewTokens ?? 128,
+        temperature: q3.temperature ?? 1e-6,
+        topP: q3.topP ?? 0.8,
+        seed: q3.seed ?? 42,
+      };
+      break;
+    }
     default:
       throw new Error(`Unsupported offline model type on web: ${rawType}`);
   }
@@ -343,7 +430,15 @@ export function AsrMixin<TBase extends Constructor>(Base: TBase) {
         config.onProgress,
         async () => {
           for (const f of plan.files) {
-            await loadFile(f.url, f.fsPath, debug);
+            try {
+              await loadFile(f.url, f.fsPath, debug);
+            } catch (err) {
+              if (f.optional) {
+                if (debug) console.log(`[ASR] optional file missing, continuing: ${f.url}`);
+                continue;
+              }
+              throw err;
+            }
           }
           return plan.recognizerConfig;
         }

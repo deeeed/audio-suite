@@ -192,7 +192,7 @@ All model IDs are defined in `src/hooks/useModelConfig.ts` (`MODEL_CONFIGS`). He
 | Feature | Default | Alternatives |
 |---------|---------|-------------|
 | VAD | `silero-vad-v5` | — |
-| ASR | `streaming-zipformer-en-general` | `streaming-zipformer-en-20m-mobile`, `streaming-zipformer-bilingual-zh-en`, `streaming-zipformer-multilingual`, `whisper-tiny-en` |
+| ASR | `streaming-zipformer-en-general` | `streaming-zipformer-en-20m-mobile`, `streaming-zipformer-bilingual-zh-en`, `streaming-zipformer-multilingual`, `whisper-tiny-en`, `cohere-transcribe-14-lang-int8-2026-04-01`, `qwen3-asr-0.6B-int8-2026-03-25` |
 | TTS | `vits-icefall-en-low` | `vits-piper-en-medium`, `vits-piper-en-libritts_r-medium`, `kokoro-en`, `kokoro-multi-lang-v1_1`, `matcha-icefall-en` |
 | KWS | `kws-zipformer-gigaspeech` | `kws-zipformer-wenetspeech` |
 | Diarization | `pyannote-segmentation-3-0` | — |
@@ -282,6 +282,72 @@ await SherpaOnnx.ASR.initialize({
   // ...
 });
 ```
+
+### Offline ASR Backends (Cohere Transcribe, Qwen3-ASR, Whisper, ...)
+
+The combined wasm bundle exports every offline ASR backend the C-API supports — `whisper`, `sense_voice`, `moonshine`, `paraformer`, `transducer`, `nemo_ctc`, `wenet_ctc`, `zipformer2_ctc`, `dolphin`, `tdnn`, `fire_red_asr`, `cohere_transcribe`, `qwen3`. Picking a non-streaming backend on web is one of:
+
+**Direct API call** (always works, fully open):
+
+```typescript
+import { ASR } from '@siteed/sherpa-onnx.rn';
+
+await ASR.initialize({
+  modelDir: '/my/asr/cohere-int8',         // for FS path identity
+  modelBaseUrl: 'https://my-cdn/cohere',   // where the wasm pipeline fetches from
+  modelType: 'cohere_transcribe',          // any wasm-supported backend
+  streaming: false,                        // implied for offline-only types
+  language: 'en',
+  usePunct: true,
+  useItn: true,
+  modelFiles: {
+    encoder: 'encoder.int8.onnx',
+    decoder: 'decoder.int8.onnx',
+    tokens: 'tokens.txt',
+  },
+});
+```
+
+The web pipeline (in `src/web/features/asr.ts`) routes `modelType` through a switch — every C-API offline model type has a case there, so `ASR.initialize` accepts them without any registry lookup.
+
+For Cohere specifically, the encoder is paired with an external `<encoder>.int8.onnx.data` weight sidecar — the wasm pipeline fetches it automatically at the same `modelBaseUrl`. The decoder may or may not have a `.data` sidecar depending on the model variant; the loader probes for it as optional and skips on 404.
+
+For Qwen3, the model uses a `tokenizer/` directory rather than a single `tokens.txt` — pass the file list via `qwen3.tokenizerFiles` if your variant differs from the default `vocab.json`/`merges.txt`/`tokenizer_config.json`:
+
+```typescript
+await ASR.initialize({
+  modelType: 'qwen3',
+  modelBaseUrl: 'https://my-cdn/qwen3',
+  modelFiles: {
+    encoder: 'encoder.int8.onnx',
+    decoder: 'decoder.int8.onnx',
+    convFrontend: 'conv_frontend.onnx',
+  },
+  qwen3: {
+    tokenizerFiles: ['tokenizer.json'],   // override defaults
+    maxTotalLen: 1024,
+    temperature: 0,
+  },
+});
+```
+
+**App-level UI integration** (sherpa-voice pattern):
+
+The in-app ASR screen (`apps/sherpa-voice/src/hooks/useAsr.ts`) needs to know the per-backend CDN base URL ahead of time. Register each backend in `apps/sherpa-voice/src/config/webFeatures.ts → WEB_ASR_BACKENDS` (alongside the existing `streaming`, `cohere`, `qwen3`, `whisper` entries):
+
+```typescript
+export const WEB_ASR_BACKENDS: Record<string, WebAsrBackendEntry> = {
+  // existing entries...
+  myBackend: {
+    modelBaseUrl: 'https://my-cdn/my-asr',
+    defaultWavUrl: 'https://my-cdn/my-asr/test_wavs/sample.wav', // optional
+  },
+};
+```
+
+If the canonical `modelType` string differs from the backend key (e.g. `cohere_transcribe → cohere`), add an entry to `WEB_ASR_BACKEND_ALIASES` in the same file. `useAsr` then prefers `getWebAsrBackend(modelType)?.modelBaseUrl` and falls back to the generic `WEB_FEATURES.asr.modelBaseUrl` only when the backend isn't registered.
+
+`__AGENTIC__.testASR(alias)` (the validation helper) uses the same map — without an entry it throws `No web backend registered for ASR alias "<alias>"` so missed configuration surfaces immediately.
 
 ---
 

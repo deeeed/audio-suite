@@ -212,11 +212,23 @@ var handlers = {
 
       ensureDir(modelDir);
 
-      // Load all model files into the worker's Emscripten FS
+      // Load all model files into the worker's Emscripten FS.
+      // Files marked `optional: true` are best-effort — a 404 means the
+      // backend variant doesn't ship that sidecar (e.g. some Cohere
+      // decoders have no .data sidecar) and init should continue. Match
+      // the main-thread loader's behaviour in src/web/features/asr.ts.
       var files = config.files || [];
       for (var i = 0; i < files.length; i++) {
         var f = files[i];
-        await loadFileToFS(f.url, f.fsPath, debug);
+        try {
+          await loadFileToFS(f.url, f.fsPath, debug);
+        } catch (err) {
+          if (f.optional) {
+            if (debug) console.log('[sherpa-worker] optional file missing, continuing: ' + f.url);
+            continue;
+          }
+          throw err;
+        }
       }
 
       // Create recognizer with the pre-computed config from the main thread

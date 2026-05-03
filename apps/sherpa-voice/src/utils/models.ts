@@ -95,6 +95,28 @@ export const AVAILABLE_MODELS: ModelMetadata[] = [
     language: 'en',
   },
   {
+    id: 'qwen3-asr-0.6B-int8-2026-03-25',
+    name: 'Qwen3-ASR 0.6B (int8)',
+    description:
+      'Multilingual offline ASR built on the Qwen3 0.6B language model (int8). Supports a `language` hint and inline hotwords. Bundled test wav is Mandarin (raokouling).',
+    type: 'asr',
+    size: 614 * 1024 * 1024, // ~614 MB
+    url: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.tar.bz2',
+    version: '2026-03-25',
+    language: 'multi',
+  },
+  {
+    id: 'cohere-transcribe-14-lang-int8-2026-04-01',
+    name: 'Cohere Transcribe (14 languages, int8)',
+    description:
+      'Offline multilingual ASR by Cohere covering 14 languages, int8 quantized. Bundled test wavs include `en.wav`, `de.wav`, `zh.wav`. Supports a `language` hint plus `usePunct` / `useItn` toggles.',
+    type: 'asr',
+    size: 1699791751, // 1.58 GiB tar.bz2 — exact content-length from k2-fsa release. Extracts to ~2.7 GB on disk (encoder.int8.onnx.data sidecar).
+    url: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-cohere-transcribe-14-lang-int8-2026-04-01.tar.bz2',
+    version: '2026-04-01',
+    language: 'multi',
+  },
+  {
     id: 'streaming-zipformer-bilingual-zh-en-2023-02-20',
     name: 'Bilingual Zipformer (Chinese + English)',
     description:

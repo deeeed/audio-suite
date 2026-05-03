@@ -131,6 +131,108 @@ export const WEB_FEATURES = {
 export type WebFeatureKey = keyof typeof WEB_FEATURES;
 
 /**
+ * Per-ASR-backend web model configuration.
+ *
+ * The asr WASM module is shared across all model types, but each backend
+ * (whisper, sense_voice, qwen3, cohere_transcribe, ...) has its own files
+ * hosted at its own CDN path. Add an entry here when uploading a new
+ * backend's model files to the CDN. testASR(alias) on web reads this map
+ * to resolve the right modelBaseUrl + default test wav.
+ *
+ * Leave the map empty for backends whose model files have not been
+ * uploaded yet — testASR will throw a clear error in that case.
+ */
+export interface WebAsrBackendEntry {
+  /** CDN base where the backend's model files live. */
+  modelBaseUrl: string;
+  /** Optional default test wav URL. If unset, callers must pass wavPath. */
+  defaultWavUrl?: string;
+  /**
+   * Optional per-backend modelFiles override applied by `testASR` on web.
+   * The native testASR config hardcodes filenames that match the model
+   * actually downloaded on-device (e.g. the mobile Zipformer); the URL
+   * the web backend points at may host a different variant of the same
+   * architecture (e.g. the general Zipformer) with different filenames.
+   * Populate this to keep them in sync without changing the native config.
+   */
+  modelFiles?: {
+    encoder?: string;
+    decoder?: string;
+    joiner?: string;
+    tokens?: string;
+    model?: string;
+    convFrontend?: string;
+    tokenizer?: string;
+    preprocessor?: string;
+    uncachedDecoder?: string;
+    cachedDecoder?: string;
+  };
+}
+
+const HF_BASE =
+  'https://huggingface.co/deeeed/sherpa-voice-models/resolve/main';
+
+export const WEB_ASR_BACKENDS: Record<string, WebAsrBackendEntry> = {
+  // Streaming Zipformer (the model that backs WEB_FEATURES.asr by default).
+  // The HF subpath hosts the GENERAL Zipformer (chunk-16-left-128 file
+  // names), not the mobile variant that testASR hardcodes for native.
+  // Override modelFiles so the web rewrite picks the correct filenames.
+  streaming: {
+    modelBaseUrl: `${HF_BASE}/asr`,
+    modelFiles: {
+      encoder: 'encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx',
+      decoder: 'decoder-epoch-99-avg-1-chunk-16-left-128.onnx',
+      joiner: 'joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx',
+      tokens: 'tokens.txt',
+    },
+  },
+
+  // Cohere Transcribe 14-lang int8.
+  // Upload model files (encoder.int8.onnx, decoder.int8.onnx, tokens.txt,
+  // optional test_wavs/en.wav) to https://huggingface.co/deeeed/sherpa-voice-models
+  // under `asr-cohere/`, then this entry resolves automatically.
+  cohere: {
+    modelBaseUrl: `${HF_BASE}/asr-cohere`,
+    defaultWavUrl: `${HF_BASE}/asr-cohere/test_wavs/en.wav`,
+  },
+
+  // Qwen3-ASR 0.6B int8.
+  // Upload model files (encoder.int8.onnx, decoder.int8.onnx,
+  // conv_frontend.onnx, tokenizer/*) to `asr-qwen3/` in the same HF repo.
+  qwen3: {
+    modelBaseUrl: `${HF_BASE}/asr-qwen3`,
+    defaultWavUrl: `${HF_BASE}/asr-qwen3/test_wavs/raokouling.wav`,
+  },
+
+  // Whisper small multilingual.
+  // Upload to `asr-whisper-small/`.
+  whisper: {
+    modelBaseUrl: `${HF_BASE}/asr-whisper-small`,
+    defaultWavUrl: `${HF_BASE}/asr-whisper-small/test_wavs/0.wav`,
+  },
+};
+
+// Map alternate aliases that callers may pass (e.g. the canonical
+// modelType strings used by ASR.initialize) onto the WEB_ASR_BACKENDS
+// keys. Keep this list small — prefer registering the canonical key
+// in WEB_ASR_BACKENDS over piling up aliases here.
+const WEB_ASR_BACKEND_ALIASES: Record<string, string> = {
+  // Canonical modelType strings (`AsrModelConfig.modelType`) → backend keys
+  cohere_transcribe: 'cohere',
+  // testASR helper aliases — keep in sync with the alias dispatch in
+  // apps/sherpa-voice/src/agentic-bridge.ts (`'offline'` is documented as
+  // a whisper synonym, `'zipformer'` resolves to the streaming backend).
+  offline: 'whisper',
+  zipformer: 'streaming',
+  transducer: 'streaming',
+};
+
+export function getWebAsrBackend(alias: string): WebAsrBackendEntry | undefined {
+  const key = WEB_ASR_BACKEND_ALIASES[alias] ?? alias;
+  return WEB_ASR_BACKENDS[key];
+}
+
+/**
  * Detect the WASM base path at runtime.
  * In production with a base URL (e.g. /audiolab/sherpa-voice/),
  * Expo prefixes asset paths. We derive the wasm path from the main bundle

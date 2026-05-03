@@ -33,7 +33,7 @@ import {
     type AgenticHudCallback,
     type AgenticHudStep,
 } from '@siteed/agentic-dev'
-import { getWasmBasePath } from './config/webFeatures'
+import { getWasmBasePath, getWebAsrBackend } from './config/webFeatures'
 import { getWebModelBaseUrl } from './utils/webModelUtils'
 import {
     DEFAULT_LIVE_SAMPLE_RATE,
@@ -43,21 +43,37 @@ import { resolveModelDir } from './utils/fileUtils'
 import { getAsrModelConfigById } from './hooks/useModelConfig'
 import { readMonoPcm16Wav } from './utils/wav'
 
-// App-variant-aware model base directory (matches the actual sandbox path
-// of the running build, e.g. .../net.siteed.sherpavoice.development/files/models).
-// FileSystem.documentDirectory is null only on web/SSR — bridge tests are
-// native-only, so a null here is a real bug. Fail loudly instead of building
-// a relative path that the native bridge would silently misinterpret.
+// App-variant-aware model base directory.
+// Native: matches the running build's sandbox (e.g.
+//   .../net.siteed.sherpavoice.development/files/models).
+// Web: FileSystem.documentDirectory is null; the bridge installs anyway so
+// route/state/getRoute work and the web-aware testASR path can override
+// modelDir/modelBaseUrl. Native-only test methods (testExtractAudioData,
+// testTrimAudio, etc.) that interpolate ${MODELS_BASE}/... must NOT silently
+// build bogus paths on web — they should fail-fast with a clear error.
+// Use the exported WEB_MODELS_BASE_SENTINEL to detect (or call
+// `webOnlyResult(op)` from within an async test method).
+export const WEB_MODELS_BASE_SENTINEL = '__web_unavailable__'
+
 function _resolveModelsBase() {
     const docDir = FileSystem.documentDirectory
     if (!docDir) {
-        throw new Error(
-            '[agentic-bridge] FileSystem.documentDirectory is null; cannot resolve MODELS_BASE. The agentic bridge is native-only.'
-        )
+        return WEB_MODELS_BASE_SENTINEL
     }
     return `${docDir.replace('file://', '')}models`
 }
 const MODELS_BASE = _resolveModelsBase()
+
+// Helper for native-FS-only test methods to short-circuit on web with a
+// clear error result instead of silently building '__web_unavailable__/...'
+// paths. testASR has its own web path and should NOT call this.
+function nativeFsOnlyResult(op: string) {
+    return {
+        op,
+        status: 'error' as const,
+        error: `${op} requires the native filesystem (FileSystem.documentDirectory). Web is not supported for this method — use the in-app UI or a web-specific recipe instead.`,
+    }
+}
 
 // State holders updated by AgenticBridgeSync component
 let _routeInfo: { pathname: string; segments: string[] } = {
@@ -946,13 +962,15 @@ if (__DEV__) {
                     if (!baseConfig) {
                         throw new Error(`Missing ASR config for ${modelId}`)
                     }
+                    const modelType = baseConfig.modelType ?? 'transducer'
                     const initConfig = {
                         modelDir,
                         modelBaseUrl:
                             Platform.OS === 'web'
-                                ? getWebModelBaseUrl('asr')
+                                ? (getWebAsrBackend(modelType)?.modelBaseUrl
+                                    ?? getWebModelBaseUrl('asr'))
                                 : undefined,
-                        modelType: baseConfig.modelType ?? 'transducer',
+                        modelType,
                         numThreads: baseConfig.numThreads,
                         decodingMethod:
                             baseConfig.decodingMethod ?? 'greedy_search',
@@ -1304,8 +1322,11 @@ if (__DEV__) {
         // One-shot ASR test: init + recognize + release
         // testASR('whisper', wavPath?) — use whisper-small-multilingual
         // testASR('streaming', wavPath?) — use streaming-zipformer-en-20m-mobile
+        // testASR('qwen3', wavPath?) — use Qwen3-ASR 0.6B int8 (Mandarin test wav)
+        // testASR('cohere', wavPath?, language?) — use Cohere Transcribe 14-lang
+        //   (`language` defaults to 'en'; bundled test wavs: en.wav, de.wav, zh.wav)
         // testASR('offline', wavPath?) — alias for whisper
-        testASR: (modelAlias?: string, wavPath?: string) => {
+        testASR: (modelAlias?: string, wavPath?: string, language?: string) => {
             const op = 'asrTest'
             _lastAsyncResult = { op, status: 'pending' }
             void (async () => {
@@ -1336,6 +1357,47 @@ if (__DEV__) {
                                 tokens: 'tokens.txt',
                             },
                         }
+                    } else if (alias === 'qwen3') {
+                        const dir = `${MODELS_BASE}/qwen3-asr-0.6B-int8-2026-03-25/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25`
+                        defaultWav = dir + '/test_wavs/raokouling.wav'
+                        config = {
+                            modelDir: dir,
+                            modelType: 'qwen3',
+                            numThreads: 2,
+                            decodingMethod: 'greedy_search',
+                            streaming: false,
+                            debug: false,
+                            provider: 'cpu',
+                            modelFiles: {
+                                encoder: 'encoder.int8.onnx',
+                                decoder: 'decoder.int8.onnx',
+                                convFrontend: 'conv_frontend.onnx',
+                                tokenizer: 'tokenizer',
+                            },
+                        }
+                    } else if (alias === 'cohere' || alias === 'cohere_transcribe') {
+                        const dir = `${MODELS_BASE}/cohere-transcribe-14-lang-int8-2026-04-01/sherpa-onnx-cohere-transcribe-14-lang-int8-2026-04-01`
+                        // `||` (not `??`) so an empty-string language arg
+                        // still falls through to the bundled en.wav default.
+                        const lang = (language || 'en').toLowerCase()
+                        defaultWav = dir + `/test_wavs/${lang}.wav`
+                        config = {
+                            modelDir: dir,
+                            modelType: 'cohere_transcribe',
+                            numThreads: 2,
+                            decodingMethod: 'greedy_search',
+                            streaming: false,
+                            debug: false,
+                            provider: 'cpu',
+                            language: lang,
+                            usePunct: true,
+                            useItn: true,
+                            modelFiles: {
+                                encoder: 'encoder.int8.onnx',
+                                decoder: 'decoder.int8.onnx',
+                                tokens: 'tokens.txt',
+                            },
+                        }
                     } else {
                         // whisper / offline
                         const dir = `${MODELS_BASE}/whisper-small-multilingual/sherpa-onnx-whisper-small`
@@ -1356,7 +1418,53 @@ if (__DEV__) {
                         }
                     }
 
-                    const wav = wavPath ?? defaultWav
+                    let wav = wavPath ?? defaultWav
+
+                    // Web: native filesystem paths (MODELS_BASE) don't apply.
+                    // Look up the backend's CDN config from WEB_ASR_BACKENDS
+                    // (in src/config/webFeatures.ts) and rewrite modelDir +
+                    // modelBaseUrl + default test wav to point at the CDN.
+                    // If a backend isn't registered there, fail fast with a
+                    // pointer to the config file so the operator knows where
+                    // to add a new entry.
+                    if (Platform.OS === 'web') {
+                        const backend = getWebAsrBackend(alias)
+                        if (!backend) {
+                            throw new Error(
+                                `No web backend registered for ASR alias "${alias}". ` +
+                                `Add an entry to WEB_ASR_BACKENDS in apps/sherpa-voice/src/config/webFeatures.ts ` +
+                                `with the CDN base for this backend's model files.`
+                            )
+                        }
+                        config.modelDir = `/wasm/asr/${alias}`
+                        config.modelBaseUrl = backend.modelBaseUrl
+                        if (backend.modelFiles) {
+                            // The web backend may host a different variant of
+                            // the same architecture than the native testASR
+                            // config (e.g. general Zipformer vs mobile) —
+                            // merge filenames so we fetch what's actually at
+                            // the registered modelBaseUrl.
+                            config.modelFiles = {
+                                ...config.modelFiles,
+                                ...backend.modelFiles,
+                            }
+                        }
+                        if (!wavPath) {
+                            // The native defaultWav above is `${dir}/test_wavs/<file>`.
+                            // Preserve the language-specific test_wavs filename
+                            // (cohere uses en/de/zh.wav per the language hint;
+                            // qwen3 uses raokouling.wav; streaming uses 1.wav)
+                            // by rebasing the suffix onto the CDN modelBaseUrl
+                            // instead of unconditionally swapping in defaultWavUrl
+                            // — the latter erased the per-language wav choice.
+                            const m = defaultWav.match(/\/test_wavs\/[^/]+$/)
+                            if (m) {
+                                wav = backend.modelBaseUrl + m[0]
+                            } else if (backend.defaultWavUrl) {
+                                wav = backend.defaultWavUrl
+                            }
+                        }
+                    }
 
                     const t0 = Date.now()
                     const initResult = await ASR.initialize(config)

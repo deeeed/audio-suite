@@ -30,6 +30,8 @@ import com.k2fsa.sherpa.onnx.OfflineMoonshineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineSenseVoiceModelConfig
 import com.k2fsa.sherpa.onnx.OfflineFireRedAsrModelConfig
 import com.k2fsa.sherpa.onnx.OfflineCanaryModelConfig
+import com.k2fsa.sherpa.onnx.OfflineQwen3AsrModelConfig
+import com.k2fsa.sherpa.onnx.OfflineCohereTranscribeModelConfig
 
 // Import Sherpa ONNX classes for online recognition
 import com.k2fsa.sherpa.onnx.OnlineRecognizer
@@ -139,7 +141,9 @@ class ASRHandler(private val reactContext: ReactApplicationContext) {
                     "modelFileModel" to "model",
                     "modelFilePreprocessor" to "preprocessor",
                     "modelFileUncachedDecoder" to "uncachedDecoder",
-                    "modelFileCachedDecoder" to "cachedDecoder"
+                    "modelFileCachedDecoder" to "cachedDecoder",
+                    "modelFileConvFrontend" to "convFrontend",
+                    "modelFileTokenizer" to "tokenizer"
                 )
                 for ((flatKey, mapKey) in flattenedKeys) {
                     if (modelConfig.hasKey(flatKey) && !mutableModelFiles.containsKey(mapKey)) {
@@ -371,7 +375,30 @@ class ASRHandler(private val reactContext: ReactApplicationContext) {
         } else {
             true
         }
-        
+        val usePunct = if (asrModelConfig?.hasKey("usePunct") == true) {
+            asrModelConfig?.getBoolean("usePunct") ?: true
+        } else {
+            true
+        }
+        val hotwords = asrModelConfig?.getString("hotwords") ?: ""
+        // Qwen3 generation params: prefer flattened TurboModule keys, fall back to a
+        // nested `qwen3` map for callers that bypass the SherpaOnnxAPI flatten layer.
+        val qwen3NestedCfg: ReadableMap? = if (asrModelConfig?.hasKey("qwen3") == true) {
+            asrModelConfig?.getMap("qwen3")
+        } else {
+            null
+        }
+        fun qwen3Int(flatKey: String, nestedKey: String, default: Int): Int {
+            if (asrModelConfig?.hasKey(flatKey) == true) return asrModelConfig?.getInt(flatKey) ?: default
+            if (qwen3NestedCfg?.hasKey(nestedKey) == true) return qwen3NestedCfg.getInt(nestedKey)
+            return default
+        }
+        fun qwen3Float(flatKey: String, nestedKey: String, default: Float): Float {
+            if (asrModelConfig?.hasKey(flatKey) == true) return asrModelConfig?.getDouble(flatKey)?.toFloat() ?: default
+            if (qwen3NestedCfg?.hasKey(nestedKey) == true) return qwen3NestedCfg.getDouble(nestedKey).toFloat()
+            return default
+        }
+
         // Get tokens file path
         val tokensFile = modelFiles["tokens"] ?: "tokens.txt"
         val tokensPath = File(modelDir, tokensFile).absolutePath
@@ -522,10 +549,66 @@ class ASRHandler(private val reactContext: ReactApplicationContext) {
                 Log.i(TAG, "Setting up TeleSpeech CTC model")
                 val modelFile = modelFiles["model"] ?: "model.onnx"
                 val modelPath = File(modelDir, modelFile).absolutePath
-                
+
                 Log.i(TAG, "Using model: $modelPath")
-                
+
                 modelConfig.teleSpeech = modelPath
+            }
+            "qwen3" -> {
+                Log.i(TAG, "Setting up Qwen3-ASR model")
+                val convFrontendFile = modelFiles["convFrontend"] ?: "conv_frontend.onnx"
+                val encoderFile = modelFiles["encoder"] ?: "encoder.int8.onnx"
+                val decoderFile = modelFiles["decoder"] ?: "decoder.int8.onnx"
+                val tokenizerName = modelFiles["tokenizer"] ?: "tokenizer"
+
+                val convFrontendPath = File(modelDir, convFrontendFile).absolutePath
+                val encoderPath = File(modelDir, encoderFile).absolutePath
+                val decoderPath = File(modelDir, decoderFile).absolutePath
+                val tokenizerPath = File(modelDir, tokenizerName).absolutePath
+
+                Log.i(TAG, "Using convFrontend: $convFrontendPath")
+                Log.i(TAG, "Using encoder: $encoderPath")
+                Log.i(TAG, "Using decoder: $decoderPath")
+                Log.i(TAG, "Using tokenizer: $tokenizerPath")
+
+                val qwen3Config = OfflineQwen3AsrModelConfig()
+                qwen3Config.convFrontend = convFrontendPath
+                qwen3Config.encoder = encoderPath
+                qwen3Config.decoder = decoderPath
+                qwen3Config.tokenizer = tokenizerPath
+                qwen3Config.maxTotalLen = qwen3Int("qwen3MaxTotalLen", "maxTotalLen", 512)
+                qwen3Config.maxNewTokens = qwen3Int("qwen3MaxNewTokens", "maxNewTokens", 128)
+                qwen3Config.temperature = qwen3Float("qwen3Temperature", "temperature", 1e-6f)
+                qwen3Config.topP = qwen3Float("qwen3TopP", "topP", 0.8f)
+                qwen3Config.seed = qwen3Int("qwen3Seed", "seed", 42)
+                qwen3Config.hotwords = hotwords
+
+                modelConfig.qwen3Asr = qwen3Config
+                // Qwen3 ships its own tokenizer directory and does not consume the
+                // root-level tokens.txt; clear it so the file-existence check below
+                // does not fail on a missing file.
+                modelConfig.tokens = ""
+            }
+            "cohere_transcribe" -> {
+                Log.i(TAG, "Setting up Cohere Transcribe model")
+                val encoderFile = modelFiles["encoder"] ?: "encoder.int8.onnx"
+                val decoderFile = modelFiles["decoder"] ?: "decoder.int8.onnx"
+
+                val encoderPath = File(modelDir, encoderFile).absolutePath
+                val decoderPath = File(modelDir, decoderFile).absolutePath
+
+                Log.i(TAG, "Using encoder: $encoderPath")
+                Log.i(TAG, "Using decoder: $decoderPath")
+                Log.i(TAG, "Using language hint: '$language', usePunct=$usePunct, useItn=$useItn")
+
+                val cohereConfig = OfflineCohereTranscribeModelConfig()
+                cohereConfig.encoder = encoderPath
+                cohereConfig.decoder = decoderPath
+                cohereConfig.language = language
+                cohereConfig.usePunct = usePunct
+                cohereConfig.useItn = useItn
+
+                modelConfig.cohereTranscribe = cohereConfig
             }
             else -> {
                 throw Exception("Unsupported model type: $modelType")
@@ -570,10 +653,23 @@ class ASRHandler(private val reactContext: ReactApplicationContext) {
             "telespeech_ctc" -> {
                 files.add(modelConfig.teleSpeech)
             }
+            "qwen3" -> {
+                files.add(modelConfig.qwen3Asr.convFrontend)
+                files.add(modelConfig.qwen3Asr.encoder)
+                files.add(modelConfig.qwen3Asr.decoder)
+                files.add(modelConfig.qwen3Asr.tokenizer)
+            }
+            "cohere_transcribe" -> {
+                files.add(modelConfig.cohereTranscribe.encoder)
+                files.add(modelConfig.cohereTranscribe.decoder)
+            }
         }
-        
-        // Add tokens file
-        files.add(modelConfig.tokens)
+
+        // Add tokens file (skipped for backends that don't use a root tokens.txt,
+        // e.g. Qwen3 which ships a tokenizer directory instead).
+        if (modelConfig.tokens.isNotEmpty()) {
+            files.add(modelConfig.tokens)
+        }
         
         // Check if files exist
         for (filePath in files) {
