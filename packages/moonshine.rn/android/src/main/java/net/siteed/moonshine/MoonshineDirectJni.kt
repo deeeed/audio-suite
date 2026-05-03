@@ -1,23 +1,16 @@
 package net.siteed.moonshine
 
-import android.util.Log
+import ai.moonshine.voice.IntentMatch
 import ai.moonshine.voice.JNI
 import ai.moonshine.voice.Transcript
 import ai.moonshine.voice.TranscriberOption
-import java.lang.reflect.InvocationTargetException
-import java.util.concurrent.ConcurrentHashMap
 
 internal data class MoonshineIntentMatchNative(
   val triggerPhrase: String,
-  val utterance: String,
   val similarity: Float
 )
 
 internal object MoonshineDirectJni {
-  private const val TAG = "MoonshineDirectJni"
-  private val jniClass: Class<*> = JNI::class.java
-  private val missingOptionalApiWarnings = ConcurrentHashMap.newKeySet<String>()
-
   fun addAudioToStream(
     transcriberHandle: Int,
     streamHandle: Int,
@@ -34,33 +27,17 @@ internal object MoonshineDirectJni {
   }
 
   fun clearIntents(intentRecognizerHandle: Int): Int {
-    // Requires the source-built artifact extension; missing JNI entry points
-    // raise UnsupportedOperationException after a one-time warning.
-    return invokeOptionalInt(
-      "moonshineClearIntents",
-      arrayOf(Int::class.javaPrimitiveType!!),
-      arrayOf(intentRecognizerHandle)
-    )
+    ensureLoaded()
+    return JNI.moonshineClearIntents(intentRecognizerHandle)
   }
 
   fun createIntentRecognizer(
     modelPath: String,
     modelArch: Int,
-    modelVariant: String?,
-    threshold: Float
+    modelVariant: String?
   ): Int {
-    // Requires the source-built artifact extension; missing JNI entry points
-    // raise UnsupportedOperationException after a one-time warning.
-    return invokeOptionalInt(
-      "moonshineCreateIntentRecognizer",
-      arrayOf(
-        String::class.java,
-        Int::class.javaPrimitiveType!!,
-        String::class.java,
-        Float::class.javaPrimitiveType!!
-      ),
-      arrayOf(modelPath, modelArch, modelVariant, threshold)
-    )
+    ensureLoaded()
+    return JNI.moonshineCreateIntentRecognizer(modelPath, modelArch, modelVariant)
   }
 
   fun createStream(transcriberHandle: Int): Int {
@@ -74,13 +51,8 @@ internal object MoonshineDirectJni {
   }
 
   fun freeIntentRecognizer(intentRecognizerHandle: Int) {
-    // Requires the source-built artifact extension; missing JNI entry points
-    // raise UnsupportedOperationException after a one-time warning.
-    invokeOptionalVoid(
-      "moonshineFreeIntentRecognizer",
-      arrayOf(Int::class.javaPrimitiveType!!),
-      arrayOf(intentRecognizerHandle)
-    )
+    ensureLoaded()
+    JNI.moonshineFreeIntentRecognizer(intentRecognizerHandle)
   }
 
   fun freeStream(transcriberHandle: Int, streamHandle: Int) {
@@ -93,24 +65,27 @@ internal object MoonshineDirectJni {
     JNI.moonshineFreeTranscriber(transcriberHandle)
   }
 
-  fun getIntentCount(intentRecognizerHandle: Int): Int {
-    // Requires the source-built artifact extension; missing JNI entry points
-    // raise UnsupportedOperationException after a one-time warning.
-    return invokeOptionalInt(
-      "moonshineGetIntentCount",
-      arrayOf(Int::class.javaPrimitiveType!!),
-      arrayOf(intentRecognizerHandle)
+  fun getClosestIntent(
+    intentRecognizerHandle: Int,
+    utterance: String,
+    threshold: Float
+  ): MoonshineIntentMatchNative? {
+    ensureLoaded()
+    val matches: Array<IntentMatch>? =
+      JNI.moonshineGetClosestIntents(intentRecognizerHandle, utterance, threshold)
+    if (matches == null || matches.isEmpty()) {
+      return null
+    }
+    val top = matches[0]
+    return MoonshineIntentMatchNative(
+      triggerPhrase = top.canonicalPhrase ?: "",
+      similarity = top.similarity
     )
   }
 
-  fun getIntentThreshold(intentRecognizerHandle: Int): Float {
-    // Requires the source-built artifact extension; missing JNI entry points
-    // raise UnsupportedOperationException after a one-time warning.
-    return invokeOptionalFloat(
-      "moonshineGetIntentThreshold",
-      arrayOf(Int::class.javaPrimitiveType!!),
-      arrayOf(intentRecognizerHandle)
-    )
+  fun getIntentCount(intentRecognizerHandle: Int): Int {
+    ensureLoaded()
+    return JNI.moonshineGetIntentCount(intentRecognizerHandle)
   }
 
   fun getVersion(): Int {
@@ -144,42 +119,9 @@ internal object MoonshineDirectJni {
     )
   }
 
-  fun processUtterance(intentRecognizerHandle: Int, utterance: String): MoonshineIntentMatchNative? {
-    // Requires the source-built artifact extension; missing JNI entry points
-    // raise UnsupportedOperationException after a one-time warning.
-    val result = invokeOptional(
-      "moonshineProcessUtteranceDetailed",
-      arrayOf(Int::class.javaPrimitiveType!!, String::class.java),
-      arrayOf(intentRecognizerHandle, utterance)
-    ) as? Array<*>
-    if (result == null || result.size < 3) {
-      return null
-    }
-    return MoonshineIntentMatchNative(
-      triggerPhrase = result[0]?.toString().orEmpty(),
-      utterance = result[1]?.toString().orEmpty(),
-      similarity = result[2]?.toString()?.toFloatOrNull() ?: 0f
-    )
-  }
-
   fun registerIntent(intentRecognizerHandle: Int, triggerPhrase: String): Int {
-    // Requires the source-built artifact extension; missing JNI entry points
-    // raise UnsupportedOperationException after a one-time warning.
-    return invokeOptionalInt(
-      "moonshineRegisterIntent",
-      arrayOf(Int::class.javaPrimitiveType!!, String::class.java),
-      arrayOf(intentRecognizerHandle, triggerPhrase)
-    )
-  }
-
-  fun setIntentThreshold(intentRecognizerHandle: Int, threshold: Float): Int {
-    // Requires the source-built artifact extension; missing JNI entry points
-    // raise UnsupportedOperationException after a one-time warning.
-    return invokeOptionalInt(
-      "moonshineSetIntentThreshold",
-      arrayOf(Int::class.javaPrimitiveType!!, Float::class.javaPrimitiveType!!),
-      arrayOf(intentRecognizerHandle, threshold)
-    )
+    ensureLoaded()
+    return JNI.moonshineRegisterIntent(intentRecognizerHandle, triggerPhrase, null, 0)
   }
 
   fun startStream(transcriberHandle: Int, streamHandle: Int): Int {
@@ -213,80 +155,11 @@ internal object MoonshineDirectJni {
   }
 
   fun unregisterIntent(intentRecognizerHandle: Int, triggerPhrase: String): Int {
-    // Requires the source-built artifact extension; missing JNI entry points
-    // raise UnsupportedOperationException after a one-time warning.
-    return invokeOptionalInt(
-      "moonshineUnregisterIntent",
-      arrayOf(Int::class.javaPrimitiveType!!, String::class.java),
-      arrayOf(intentRecognizerHandle, triggerPhrase)
-    )
+    ensureLoaded()
+    return JNI.moonshineUnregisterIntent(intentRecognizerHandle, triggerPhrase)
   }
 
   private fun ensureLoaded() {
     JNI.ensureLibraryLoaded()
-  }
-
-  private fun invokeOptional(
-    methodName: String,
-    parameterTypes: Array<Class<*>>,
-    args: Array<Any?>
-  ): Any? {
-    ensureLoaded()
-    val method = try {
-      jniClass.getMethod(methodName, *parameterTypes)
-    } catch (_: NoSuchMethodException) {
-      if (missingOptionalApiWarnings.add(methodName)) {
-        Log.w(
-          TAG,
-          "$methodName is unavailable in the loaded Moonshine Android artifact; " +
-            "use the source-built artifact from packages/moonshine.rn/build-moonshine-android.sh."
-        )
-      }
-      throw UnsupportedOperationException(
-        "$methodName is unavailable in the loaded Moonshine Android artifact. " +
-          "Use the source-built artifact from packages/moonshine.rn/build-moonshine-android.sh."
-      )
-    }
-
-    return try {
-      method.invoke(null, *args)
-    } catch (error: InvocationTargetException) {
-      throw (error.targetException ?: error)
-    }
-  }
-
-  private fun invokeOptionalFloat(
-    methodName: String,
-    parameterTypes: Array<Class<*>>,
-    args: Array<Any?>
-  ): Float {
-    val value = invokeOptional(methodName, parameterTypes, args)
-    return when (value) {
-      is Float -> value
-      is Double -> value.toFloat()
-      is Number -> value.toFloat()
-      else -> throw IllegalStateException("$methodName returned an unexpected value")
-    }
-  }
-
-  private fun invokeOptionalInt(
-    methodName: String,
-    parameterTypes: Array<Class<*>>,
-    args: Array<Any?>
-  ): Int {
-    val value = invokeOptional(methodName, parameterTypes, args)
-    return when (value) {
-      is Int -> value
-      is Number -> value.toInt()
-      else -> throw IllegalStateException("$methodName returned an unexpected value")
-    }
-  }
-
-  private fun invokeOptionalVoid(
-    methodName: String,
-    parameterTypes: Array<Class<*>>,
-    args: Array<Any?>
-  ) {
-    invokeOptional(methodName, parameterTypes, args)
   }
 }

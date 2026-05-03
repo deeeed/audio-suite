@@ -1,5 +1,5 @@
 {
-  "moonshineVersion": "v0.0.51",
+  "moonshineVersion": "v0.0.59",
   "iosFrameworkPath": "prebuilt/ios/Moonshine.xcframework",
   "speakerEmbeddingDataOverride": ""
 }

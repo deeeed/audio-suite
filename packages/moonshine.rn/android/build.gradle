@@ -34,7 +34,7 @@ apply plugin: "kotlin-android"
 def moonshineAndroidUseSource = getEnvOrProp(
   'SITEED_MOONSHINE_ANDROID_USE_SOURCE',
   'siteedMoonshineAndroidUseSource',
-  '0'
+  '1'
 ) == '1'
 def moonshineAndroidAar = getEnvOrProp('SITEED_MOONSHINE_ANDROID_AAR', 'siteedMoonshineAndroidAar', null)
 def moonshineAndroidSourceAar = getEnvOrProp(
@@ -45,7 +45,7 @@ def moonshineAndroidSourceAar = getEnvOrProp(
 def moonshineAndroidMavenCoord = getEnvOrProp(
   'SITEED_MOONSHINE_ANDROID_MAVEN_COORD',
   'siteedMoonshineAndroidMavenCoord',
-  'ai.moonshine:moonshine-voice:0.0.51'
+  'ai.moonshine:moonshine-voice:0.0.59'
 )
 def moonshineAndroidMavenRepo = getEnvOrProp(
   'SITEED_MOONSHINE_ANDROID_MAVEN_REPO',

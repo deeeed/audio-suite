@@ -3,10 +3,7 @@
 #import <React/RCTLog.h>
 
 #import <deque>
-#import <mutex>
-#import <optional>
 #import <string>
-#import <unordered_map>
 #import <vector>
 
 #include "moonshine-c-api.h"
@@ -17,51 +14,11 @@ static const NSInteger MoonshineErrorCodeGeneric = -1;
 
 namespace {
 
-struct IntentMatch {
-  std::string triggerPhrase;
-  std::string utterance;
-  float similarity;
-};
-
 struct TranscriberOptionBuffer {
   std::deque<std::string> names;
   std::deque<std::string> values;
-  std::vector<transcriber_option_t> options;
+  std::vector<moonshine_option_t> options;
 };
-
-std::mutex gIntentMatchMutex;
-std::unordered_map<int32_t, IntentMatch> gLastIntentMatches;
-
-void ClearIntentMatch(int32_t handle) {
-  std::lock_guard<std::mutex> lock(gIntentMatchMutex);
-  gLastIntentMatches.erase(handle);
-}
-
-std::optional<IntentMatch> TakeIntentMatch(int32_t handle) {
-  std::lock_guard<std::mutex> lock(gIntentMatchMutex);
-  auto iterator = gLastIntentMatches.find(handle);
-  if (iterator == gLastIntentMatches.end()) {
-    return std::nullopt;
-  }
-  auto match = iterator->second;
-  gLastIntentMatches.erase(iterator);
-  return match;
-}
-
-void MoonshineIntentCallback(
-    void *userData,
-    const char *triggerPhrase,
-    const char *utterance,
-    float similarity
-) {
-  const auto handle = static_cast<int32_t>(reinterpret_cast<intptr_t>(userData));
-  std::lock_guard<std::mutex> lock(gIntentMatchMutex);
-  IntentMatch match;
-  match.triggerPhrase = triggerPhrase != nullptr ? triggerPhrase : "";
-  match.utterance = utterance != nullptr ? utterance : "";
-  match.similarity = similarity;
-  gLastIntentMatches[handle] = match;
-}
 
 NSString *StringFromCString(const char *value) {
   if (value == nullptr) {
@@ -360,6 +317,7 @@ void ThrowIfNegativeHandle(int32_t handle, NSString *operation) {
 @property(nonatomic, strong)
     NSMutableDictionary<NSString *, MoonshineTranscriberState *> *transcriberStates;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *intentRecognizerHandles;
+@property(nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *intentThresholds;
 @end
 
 @implementation Moonshine
@@ -377,6 +335,7 @@ RCT_EXPORT_MODULE(Moonshine)
     _transcriberCounter = 1;
     _transcriberStates = [NSMutableDictionary dictionary];
     _intentRecognizerHandles = [NSMutableDictionary dictionary];
+    _intentThresholds = [NSMutableDictionary dictionary];
   }
   return self;
 }
@@ -472,7 +431,6 @@ RCT_EXPORT_METHOD(clearIntents:(NSString *)intentRecognizerId
   @try {
     int32_t handle = [self parseIntentRecognizerId:intentRecognizerId];
     ThrowIfMoonshineError(moonshine_clear_intents(handle), @"clear intents");
-    ClearIntentMatch(handle);
     resolve([self successMap]);
   } @catch (id exception) {
     RejectPromiseWithError(reject, MoonshineNSErrorFromException(exception));
@@ -497,12 +455,12 @@ RCT_EXPORT_METHOD(createIntentRecognizer:(NSDictionary *)config
     int32_t handle = moonshine_create_intent_recognizer(
         modelPath.UTF8String,
         static_cast<uint32_t>(modelArch),
-        modelVariant.length > 0 ? modelVariant.UTF8String : nullptr,
-        threshold);
+        modelVariant.length > 0 ? modelVariant.UTF8String : nullptr);
     ThrowIfNegativeHandle(handle, @"create intent recognizer");
 
     NSString *intentRecognizerId = [self intentRecognizerIdForHandle:handle];
     self.intentRecognizerHandles[intentRecognizerId] = @(handle);
+    self.intentThresholds[intentRecognizerId] = @(threshold);
 
     NSMutableDictionary *result = [self successMap];
     result[@"intentRecognizerId"] = intentRecognizerId;
@@ -536,7 +494,7 @@ RCT_EXPORT_METHOD(createStreamForTranscriber:(NSString *)transcriberId
 RCT_EXPORT_METHOD(createTranscriberFromAssets:(NSDictionary *)config
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject) {
-  [self createTranscriber:config resolver:resolve assignAsDefault:NO loader:^int32_t(std::vector<transcriber_option_t> &options) {
+  [self createTranscriber:config resolver:resolve assignAsDefault:NO loader:^int32_t(std::vector<moonshine_option_t> &options) {
     NSString *assetPath = StringFromValue(config[@"assetPath"]);
     NSString *resolvedAssetPath = [self resolveAssetModelPath:assetPath];
     return moonshine_load_transcriber_from_files(
@@ -551,7 +509,7 @@ RCT_EXPORT_METHOD(createTranscriberFromAssets:(NSDictionary *)config
 RCT_EXPORT_METHOD(createTranscriberFromFiles:(NSDictionary *)config
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject) {
-  [self createTranscriber:config resolver:resolve assignAsDefault:NO loader:^int32_t(std::vector<transcriber_option_t> &options) {
+  [self createTranscriber:config resolver:resolve assignAsDefault:NO loader:^int32_t(std::vector<moonshine_option_t> &options) {
     NSString *modelPath = ResolvedLocalPathString(StringFromValue(config[@"modelPath"]));
     if (modelPath.length == 0) {
       ThrowNSError(@"Moonshine modelPath is required");
@@ -571,7 +529,7 @@ RCT_EXPORT_METHOD(createTranscriberFromFiles:(NSDictionary *)config
 RCT_EXPORT_METHOD(createTranscriberFromMemory:(NSDictionary *)config
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject) {
-  [self createTranscriber:config resolver:resolve assignAsDefault:NO loader:^int32_t(std::vector<transcriber_option_t> &options) {
+  [self createTranscriber:config resolver:resolve assignAsDefault:NO loader:^int32_t(std::vector<moonshine_option_t> &options) {
     NSArray *modelData = config[@"modelData"];
     if (![modelData isKindOfClass:NSArray.class] || modelData.count != 3) {
       ThrowNSError(@"Moonshine modelData must contain exactly 3 binary parts");
@@ -619,12 +577,9 @@ RCT_EXPORT_METHOD(getIntentThreshold:(NSString *)intentRecognizerId
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject) {
   @try {
-    int32_t handle = [self parseIntentRecognizerId:intentRecognizerId];
-    float threshold = moonshine_get_intent_threshold(handle);
-    if (threshold < 0) {
-      ThrowNSError([NSString stringWithFormat:@"Failed to get Moonshine intent threshold: %@", StringFromCString(moonshine_error_to_string((int32_t)threshold))], (NSInteger)threshold);
-    }
-    resolve(@(threshold));
+    [self parseIntentRecognizerId:intentRecognizerId];
+    NSNumber *threshold = self.intentThresholds[intentRecognizerId] ?: @(0.7);
+    resolve(threshold);
   } @catch (id exception) {
     RejectPromiseWithError(reject, MoonshineNSErrorFromException(exception));
   }
@@ -644,7 +599,7 @@ RCT_EXPORT_METHOD(initialize:(NSDictionary *)config
 RCT_EXPORT_METHOD(loadFromAssets:(NSDictionary *)config
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject) {
-  [self createTranscriber:config resolver:resolve assignAsDefault:YES loader:^int32_t(std::vector<transcriber_option_t> &options) {
+  [self createTranscriber:config resolver:resolve assignAsDefault:YES loader:^int32_t(std::vector<moonshine_option_t> &options) {
     NSString *assetPath = StringFromValue(config[@"assetPath"]);
     NSString *resolvedAssetPath = [self resolveAssetModelPath:assetPath];
     return moonshine_load_transcriber_from_files(
@@ -659,7 +614,7 @@ RCT_EXPORT_METHOD(loadFromAssets:(NSDictionary *)config
 RCT_EXPORT_METHOD(loadFromFiles:(NSDictionary *)config
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject) {
-  [self createTranscriber:config resolver:resolve assignAsDefault:YES loader:^int32_t(std::vector<transcriber_option_t> &options) {
+  [self createTranscriber:config resolver:resolve assignAsDefault:YES loader:^int32_t(std::vector<moonshine_option_t> &options) {
     NSString *modelPath = ResolvedLocalPathString(StringFromValue(config[@"modelPath"]));
     if (modelPath.length == 0) {
       ThrowNSError(@"Moonshine modelPath is required");
@@ -679,7 +634,7 @@ RCT_EXPORT_METHOD(loadFromFiles:(NSDictionary *)config
 RCT_EXPORT_METHOD(loadFromMemory:(NSDictionary *)config
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject) {
-  [self createTranscriber:config resolver:resolve assignAsDefault:YES loader:^int32_t(std::vector<transcriber_option_t> &options) {
+  [self createTranscriber:config resolver:resolve assignAsDefault:YES loader:^int32_t(std::vector<moonshine_option_t> &options) {
     NSArray *modelData = config[@"modelData"];
     if (![modelData isKindOfClass:NSArray.class] || modelData.count != 3) {
       ThrowNSError(@"Moonshine modelData must contain exactly 3 binary parts");
@@ -711,24 +666,29 @@ RCT_EXPORT_METHOD(processUtterance:(NSString *)intentRecognizerId
       ThrowNSError(@"Moonshine utterance is required");
     }
     int32_t handle = [self parseIntentRecognizerId:intentRecognizerId];
-    ClearIntentMatch(handle);
-    int32_t resultCode = moonshine_process_utterance(handle, utterance.UTF8String);
-    if (resultCode < 0) {
-      ThrowNSError([NSString stringWithFormat:@"Failed to process Moonshine utterance: %@", StringFromCString(moonshine_error_to_string(resultCode))], resultCode);
+    NSNumber *thresholdNumber = self.intentThresholds[intentRecognizerId] ?: @(0.7);
+    float threshold = thresholdNumber.floatValue;
+
+    moonshine_intent_match_t *matches = nullptr;
+    uint64_t count = 0;
+    int32_t err = moonshine_get_closest_intents(
+        handle, utterance.UTF8String, threshold, &matches, &count);
+    if (err != MOONSHINE_ERROR_NONE) {
+      moonshine_free_intent_matches(matches, count);
+      ThrowNSError([NSString stringWithFormat:@"Failed to process Moonshine utterance: %@", StringFromCString(moonshine_error_to_string(err))], err);
     }
 
     NSMutableDictionary *result = [self successMap];
-    result[@"matched"] = @(resultCode > 0);
-    if (resultCode > 0) {
-      auto match = TakeIntentMatch(handle);
-      if (match.has_value()) {
-        result[@"match"] = @{
-          @"triggerPhrase": [NSString stringWithUTF8String:match->triggerPhrase.c_str()],
-          @"utterance": [NSString stringWithUTF8String:match->utterance.c_str()],
-          @"similarity": @(match->similarity),
-        };
-      }
+    result[@"matched"] = @(count > 0);
+    if (count > 0 && matches != nullptr) {
+      const moonshine_intent_match_t &top = matches[0];
+      result[@"match"] = @{
+        @"triggerPhrase": StringFromCString(top.canonical_phrase),
+        @"utterance": utterance,
+        @"similarity": @(top.similarity),
+      };
     }
+    moonshine_free_intent_matches(matches, count);
     resolve(result);
   } @catch (id exception) {
     RejectPromiseWithError(reject, MoonshineNSErrorFromException(exception));
@@ -748,8 +708,9 @@ RCT_EXPORT_METHOD(registerIntent:(NSString *)intentRecognizerId
         moonshine_register_intent(
             handle,
             triggerPhrase.UTF8String,
-            MoonshineIntentCallback,
-            reinterpret_cast<void *>(static_cast<intptr_t>(handle))),
+            nullptr,
+            0,
+            0),
         @"register intent");
     resolve([self successMap]);
   } @catch (id exception) {
@@ -771,8 +732,8 @@ RCT_EXPORT_METHOD(releaseIntentRecognizer:(NSString *)intentRecognizerId
   @try {
     int32_t handle = [self parseIntentRecognizerId:intentRecognizerId];
     moonshine_free_intent_recognizer(handle);
-    ClearIntentMatch(handle);
     [self.intentRecognizerHandles removeObjectForKey:intentRecognizerId];
+    [self.intentThresholds removeObjectForKey:intentRecognizerId];
     resolve([self successMap]);
   } @catch (id exception) {
     RejectPromiseWithError(reject, MoonshineNSErrorFromException(exception));
@@ -825,10 +786,8 @@ RCT_EXPORT_METHOD(setIntentThreshold:(NSString *)intentRecognizerId
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject) {
   @try {
-    int32_t handle = [self parseIntentRecognizerId:intentRecognizerId];
-    ThrowIfMoonshineError(
-        moonshine_set_intent_threshold(handle, threshold.floatValue),
-        @"set intent threshold");
+    [self parseIntentRecognizerId:intentRecognizerId];
+    self.intentThresholds[intentRecognizerId] = threshold;
     resolve([self successMap]);
   } @catch (id exception) {
     RejectPromiseWithError(reject, MoonshineNSErrorFromException(exception));
@@ -1041,7 +1000,7 @@ RCT_EXPORT_METHOD(unregisterIntent:(NSString *)intentRecognizerId
 - (void)createTranscriber:(NSDictionary *)config
                  resolver:(RCTPromiseResolveBlock)resolve
           assignAsDefault:(BOOL)assignAsDefault
-                   loader:(int32_t (^)(std::vector<transcriber_option_t> &options))loader {
+                   loader:(int32_t (^)(std::vector<moonshine_option_t> &options))loader {
   @try {
     if (assignAsDefault && self.defaultTranscriberId != nil) {
       [self releaseTranscriberInternal:self.defaultTranscriberId];
@@ -1303,7 +1262,7 @@ RCT_EXPORT_METHOD(unregisterIntent:(NSString *)intentRecognizerId
     }
     buffer.names.emplace_back(name.UTF8String);
     buffer.values.emplace_back(value.UTF8String);
-    buffer.options.push_back(transcriber_option_t{
+    buffer.options.push_back(moonshine_option_t{
       buffer.names.back().c_str(),
       buffer.values.back().c_str(),
     });
@@ -1410,11 +1369,11 @@ RCT_EXPORT_METHOD(unregisterIntent:(NSString *)intentRecognizerId
   for (NSNumber *handle in intentHandles) {
     @try {
       moonshine_free_intent_recognizer(handle.intValue);
-      ClearIntentMatch(handle.intValue);
     } @catch (...) {
     }
   }
   [self.intentRecognizerHandles removeAllObjects];
+  [self.intentThresholds removeAllObjects];
 }
 
 - (BOOL)releaseTranscriberInternal:(NSString *)transcriberId {
