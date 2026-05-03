@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide covers integration testing for sherpa-onnx.rn across all platforms, with focus on validating React Native architecture compatibility and real device functionality.
+This guide covers integration testing for sherpa-onnx.rn across all platforms, with focus on validating React Native architecture compatibility, native build health, and real model roundtrips. Keep build validation and runtime ASR validation separate: a successful `assembleDebug` or `xcodebuild` proves the native project links, but it does not prove that a model initializes and decodes audio on a device.
 
 ## Test Categories
 
@@ -66,11 +66,16 @@ open sherpaonnxdemo.xcworkspace
 ### Web Testing
 
 ```bash
-# System info validation (browser-based)
+# Browser-based validation
 cd apps/sherpa-voice
 yarn web
-# Navigate to system info tab
 ```
+
+Useful browser-side checks:
+
+- smoke-load the WASM runtime and selected feature modules
+- run `__AGENTIC__.testASR('streaming')` for the default streaming backend
+- run `__AGENTIC__.testASR('qwen3')` for Qwen3-ASR with the hosted Mandarin sample
 
 ## Test Results Summary
 
@@ -107,17 +112,29 @@ System Information: ✅ PASS
 - Performance: <10ms response time
 ```
 
-### Web (Chrome/Safari) ⚠️ Partial
+### Web (Chrome/Safari)
 ```
 System Information: ✅ PASS
 - Browser detection working
 - WebGL support detected
 - Performance API available
 
-Model Integration: ⏳ PENDING
-- WASM implementation planned
-- Web worker integration needed
+Model Integration:
+- WASM runtime and feature module loading should be validated on every release
+- Qwen3-ASR can be validated end-to-end with `__AGENTIC__.testASR('qwen3')`
+- Large specialized backends use the same web ASR path but may be impractical in routine browser validation
 ```
+
+### Native Runtime ASR
+
+For native platforms, do not treat build-only checks as ASR validation. Runtime validation means launching the app on a simulator/device with the target model present and running the bridge roundtrip:
+
+```javascript
+__AGENTIC__.testASR('streaming')
+__AGENTIC__.testASR('qwen3')
+```
+
+If models are not already on the device, use the download-and-test recipes under `apps/sherpa-voice/scripts/agentic/teams/sherpa/recipes/`. Keep routine validation focused on representative mobile-sized models; reserve very large specialized models for targeted backend checks.
 
 ## Test Infrastructure Features
 
@@ -190,14 +207,14 @@ Model Integration: ⏳ PENDING
 ## Known Limitations
 
 ### iOS Model Testing
-- Real ONNX model testing not yet implemented on iOS
-- Currently validates system info and architecture only
-- Requires implementation of model download and testing infrastructure
+- Real ONNX model tests require the target models to be present in the simulator or device sandbox before the bridge roundtrip runs
+- The app download path and sideloaded-model path exercise the same ASR bridge after files are in place
+- Heavy models can make reinstall/retry loops slow; reset app storage when download state becomes stale during manual validation
 
 ### Web Platform
-- WASM integration pending
-- Limited to system info validation currently
-- Performance testing needs web worker implementation
+- WASM runtime and ASR backends are implemented, but each release still needs browser smoke coverage for asset paths and hosted model URLs
+- Very large specialized ASR models can be impractical on slow networks or constrained devices
+- UI-level ASR model picker recipes can be flaky for models far down virtualized lists; bridge-level recipes are the stable coverage path
 
 ### CI/CD
 - Requires physical device access for comprehensive testing

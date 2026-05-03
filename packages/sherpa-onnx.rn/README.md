@@ -13,7 +13,7 @@ React Native wrapper for [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) pr
 ## Features
 
 - Text-to-speech (TTS) — VITS, Kokoro, Matcha models
-- Speech-to-text (STT) — streaming + offline recognition (Whisper, Sense Voice, Moonshine, Paraformer, Zipformer, Fire Red ASR, Dolphin, Cohere Transcribe, Qwen3-ASR)
+- Speech-to-text (STT) — streaming + offline recognition (Whisper, Sense Voice, Moonshine, Paraformer, Zipformer, Fire Red ASR, Dolphin, Qwen3-ASR, and other sherpa-onnx backends)
 - Voice activity detection (VAD), keyword spotting (KWS)
 - Speaker identification, language identification, audio tagging
 - Speaker diarization, punctuation restoration, speech denoising
@@ -50,6 +50,10 @@ cd ios && pod install
 ### Android
 
 Android integration is handled automatically by the package.
+
+### Native Prebuilt Libraries
+
+The package `postinstall` downloads prebuilt Android and iOS sherpa-onnx binaries for the `sherpaOnnxVersion` declared in `package.json`. If that download fails, install does not fail the whole app install; build native binaries manually with `./setup.sh && ./build-sherpa-ios.sh && ./build-sherpa-android.sh`, or set `SITEED_SHERPA_ONNX_REBUILD_ANDROID=1` when Android prebuilts must be rebuilt locally.
 
 ### Web
 
@@ -136,6 +140,30 @@ console.log('Recognized text:', result.text);
 await SherpaOnnx.ASR.release();
 ```
 
+### Qwen3-ASR and Advanced Offline Backends
+
+The offline ASR API also supports newer upstream backends such as Qwen3-ASR:
+
+```typescript
+await SherpaOnnx.ASR.initialize({
+  modelDir: `${FileSystem.documentDirectory}models/qwen3-asr/`,
+  modelType: 'qwen3',
+  streaming: false,
+  modelFiles: {
+    encoder: 'encoder.int8.onnx',
+    decoder: 'decoder.int8.onnx',
+    convFrontend: 'conv_frontend.onnx',
+    tokenizer: 'tokenizer',
+  },
+  qwen3: {
+    maxTotalLen: 512,
+    maxNewTokens: 128,
+  },
+});
+```
+
+Qwen3 model directories must include the tokenizer directory referenced by `modelFiles.tokenizer`. Other specialized upstream backends can be selected with their `modelType` when their model files are present, but large sidecar-based models are usually a poor default for mobile apps.
+
 ### Streaming Recognition
 
 ```typescript
@@ -183,6 +211,7 @@ The most common model types are:
 - Transducer models (encoder, decoder, joiner)
 - CTC models (single model file)
 - Paraformer models (encoder, decoder)
+- Qwen3-ASR (`conv_frontend.onnx`, `encoder.int8.onnx`, `decoder.int8.onnx`, tokenizer directory)
 
 ## Building from Source
 

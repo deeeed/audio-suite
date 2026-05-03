@@ -1,6 +1,6 @@
 # Web / WASM Integration Guide
 
-This guide explains how to use `@siteed/sherpa-onnx.rn` on the web platform. The same TypeScript API works across iOS, Android, and web — the web implementation uses a combined WebAssembly binary under the hood.
+This guide explains how to self-host `@siteed/sherpa-onnx.rn` web assets. The same TypeScript API works across iOS, Android, and web — the web implementation uses a combined WebAssembly binary under the hood. For the npm/CDN path that does not copy WASM files into your app, start with [GETTING_STARTED_WEB.md](./GETTING_STARTED_WEB.md).
 
 ## Quick Start
 
@@ -12,7 +12,7 @@ yarn add @siteed/sherpa-onnx.rn
 
 ### 2. Set Up Static Assets
 
-The web build requires two categories of static files served from your web server:
+Self-hosting requires two categories of static files served from your web server:
 
 **WASM runtime** (the engine):
 ```
@@ -59,7 +59,7 @@ public/wasm/
 
 ### 3. Initialize WASM at App Startup
 
-Load the WASM module **before** rendering your app. Only the features whose JS modules you list in `modulePaths` will be available.
+Call `loadWasmModule()` once at app startup. Do not block `registerRootComponent()` or the first render unless your app intentionally shows a splash/loading shell; services such as `ASR.initialize()` wait for the WASM runtime internally. Only the features whose JS modules you list in `modulePaths` will be available.
 
 **Recommended** — use the config-driven approach (demo app pattern):
 
@@ -68,21 +68,19 @@ import { loadWasmModule } from '@siteed/sherpa-onnx.rn';
 import { Platform } from 'react-native';
 import { getEnabledModulePaths } from './config/webFeatures';
 
-async function initializeApp() {
+function initializeSherpa() {
   if (Platform.OS === 'web') {
     const modulePaths = [
       '/wasm/sherpa-onnx-core.js', // always required
       ...getEnabledModulePaths(),  // reads from WEB_FEATURES config
     ];
 
-    await loadWasmModule({
+    void loadWasmModule({
       debug: false,
       mainScriptUrl: '/wasm/sherpa-onnx-combined.js',
       modulePaths,
     });
   }
-
-  // Continue with app registration...
 }
 ```
 
@@ -91,7 +89,7 @@ Toggle features on/off in `src/config/webFeatures.ts` — disabled features won'
 **Manual** — if you're not using the config system:
 
 ```typescript
-await loadWasmModule({
+void loadWasmModule({
   debug: false,
   mainScriptUrl: '/wasm/sherpa-onnx-combined.js',
   modulePaths: [
@@ -103,6 +101,8 @@ await loadWasmModule({
   ],
 });
 ```
+
+Use `await loadWasmModule()` in scripts, tests, or intentionally blocking boot flows. In normal Expo/React Native Web app entry points, prefer the non-blocking form above and use `waitForReady()` only for UI state.
 
 ### 4. Use the Same API as Native
 
@@ -136,7 +136,7 @@ Your App
                     └── Call C API via WASM exports
 ```
 
-**Key difference from native**: On native, models are downloaded to device storage and managed by the ModelManagement context. On web, models are served as static files from your web server and loaded into the Emscripten virtual filesystem at init time. There is no download/install step — models are "preloaded" as part of your deployment.
+**Key difference from native**: On native, models are downloaded to device storage and managed by the app. On web, models are fetched from `modelBaseUrl` and loaded into the Emscripten virtual filesystem at init time. With self-hosting, those model files are usually part of your deployment; with CDN hosting, they are remote files fetched on first use.
 
 ---
 
@@ -192,7 +192,7 @@ All model IDs are defined in `src/hooks/useModelConfig.ts` (`MODEL_CONFIGS`). He
 | Feature | Default | Alternatives |
 |---------|---------|-------------|
 | VAD | `silero-vad-v5` | — |
-| ASR | `streaming-zipformer-en-general` | `streaming-zipformer-en-20m-mobile`, `streaming-zipformer-bilingual-zh-en`, `streaming-zipformer-multilingual`, `whisper-tiny-en`, `cohere-transcribe-14-lang-int8-2026-04-01`, `qwen3-asr-0.6B-int8-2026-03-25` |
+| ASR | `streaming-zipformer-en-general` | `streaming-zipformer-en-20m-mobile`, `streaming-zipformer-bilingual-zh-en`, `streaming-zipformer-multilingual`, `whisper-tiny-en`, `qwen3-asr-0.6B-int8-2026-03-25`, specialized upstream backends |
 | TTS | `vits-icefall-en-low` | `vits-piper-en-medium`, `vits-piper-en-libritts_r-medium`, `kokoro-en`, `kokoro-multi-lang-v1_1`, `matcha-icefall-en` |
 | KWS | `kws-zipformer-gigaspeech` | `kws-zipformer-wenetspeech` |
 | Diarization | `pyannote-segmentation-3-0` | — |
@@ -283,9 +283,9 @@ await SherpaOnnx.ASR.initialize({
 });
 ```
 
-### Offline ASR Backends (Cohere Transcribe, Qwen3-ASR, Whisper, ...)
+### Offline ASR Backends (Whisper, Qwen3-ASR, Paraformer, ...)
 
-The combined wasm bundle exports every offline ASR backend the C-API supports — `whisper`, `sense_voice`, `moonshine`, `paraformer`, `transducer`, `nemo_ctc`, `wenet_ctc`, `zipformer2_ctc`, `dolphin`, `tdnn`, `fire_red_asr`, `cohere_transcribe`, `qwen3`. Picking a non-streaming backend on web is one of:
+The combined wasm bundle exports every offline ASR backend the C-API supports, including `whisper`, `sense_voice`, `moonshine`, `paraformer`, `transducer`, `nemo_ctc`, `wenet_ctc`, `zipformer2_ctc`, `dolphin`, `tdnn`, `fire_red_asr`, `qwen3`, and other specialized upstream backends. Picking a non-streaming backend on web is one of:
 
 **Direct API call** (always works, fully open):
 
@@ -293,24 +293,20 @@ The combined wasm bundle exports every offline ASR backend the C-API supports �
 import { ASR } from '@siteed/sherpa-onnx.rn';
 
 await ASR.initialize({
-  modelDir: '/my/asr/cohere-int8',         // for FS path identity
-  modelBaseUrl: 'https://my-cdn/cohere',   // where the wasm pipeline fetches from
-  modelType: 'cohere_transcribe',          // any wasm-supported backend
+  modelDir: '/my/asr/whisper-tiny',        // for FS path identity
+  modelBaseUrl: 'https://my-cdn/whisper',  // where the wasm pipeline fetches from
+  modelType: 'whisper',                    // any wasm-supported backend
   streaming: false,                        // implied for offline-only types
   language: 'en',
-  usePunct: true,
-  useItn: true,
   modelFiles: {
-    encoder: 'encoder.int8.onnx',
-    decoder: 'decoder.int8.onnx',
+    encoder: 'encoder.onnx',
+    decoder: 'decoder.onnx',
     tokens: 'tokens.txt',
   },
 });
 ```
 
-The web pipeline (in `src/web/features/asr.ts`) routes `modelType` through a switch — every C-API offline model type has a case there, so `ASR.initialize` accepts them without any registry lookup.
-
-For Cohere specifically, the encoder is paired with an external `<encoder>.int8.onnx.data` weight sidecar — the wasm pipeline fetches it automatically at the same `modelBaseUrl`. The decoder may or may not have a `.data` sidecar depending on the model variant; the loader probes for it as optional and skips on 404.
+The web pipeline (in `src/web/features/asr.ts`) routes `modelType` through a switch — every C-API offline model type has a case there, so `ASR.initialize` accepts them without any registry lookup. Specialized large-model backends may require external sidecar files beside their ONNX files; verify the upstream model layout before hosting them for web.
 
 For Qwen3, the model uses a `tokenizer/` directory rather than a single `tokens.txt` — pass the file list via `qwen3.tokenizerFiles` if your variant differs from the default `vocab.json`/`merges.txt`/`tokenizer_config.json`:
 
@@ -331,9 +327,17 @@ await ASR.initialize({
 });
 ```
 
+Known hosted demo paths:
+
+| Backend | `modelBaseUrl` | Test WAV |
+|---------|----------------|----------|
+| Qwen3-ASR | `https://huggingface.co/deeeed/sherpa-voice-models/resolve/main/asr-qwen3` | `https://huggingface.co/deeeed/sherpa-voice-models/resolve/main/asr-qwen3/test_wavs/raokouling.wav` |
+
+Large offline ASR variants can be slow on first run; budget first-run download time and show `onProgress` in the UI.
+
 **App-level UI integration** (sherpa-voice pattern):
 
-The in-app ASR screen (`apps/sherpa-voice/src/hooks/useAsr.ts`) needs to know the per-backend CDN base URL ahead of time. Register each backend in `apps/sherpa-voice/src/config/webFeatures.ts → WEB_ASR_BACKENDS` (alongside the existing `streaming`, `cohere`, `qwen3`, `whisper` entries):
+The in-app ASR screen (`apps/sherpa-voice/src/hooks/useAsr.ts`) needs to know the per-backend CDN base URL ahead of time. Register each backend in `apps/sherpa-voice/src/config/webFeatures.ts → WEB_ASR_BACKENDS` (alongside the existing `streaming`, `qwen3`, and `whisper` entries):
 
 ```typescript
 export const WEB_ASR_BACKENDS: Record<string, WebAsrBackendEntry> = {
@@ -345,7 +349,7 @@ export const WEB_ASR_BACKENDS: Record<string, WebAsrBackendEntry> = {
 };
 ```
 
-If the canonical `modelType` string differs from the backend key (e.g. `cohere_transcribe → cohere`), add an entry to `WEB_ASR_BACKEND_ALIASES` in the same file. `useAsr` then prefers `getWebAsrBackend(modelType)?.modelBaseUrl` and falls back to the generic `WEB_FEATURES.asr.modelBaseUrl` only when the backend isn't registered.
+If the canonical `modelType` string differs from the backend key, add an entry to `WEB_ASR_BACKEND_ALIASES` in the same file. `useAsr` then prefers `getWebAsrBackend(modelType)?.modelBaseUrl` and falls back to the generic `WEB_FEATURES.asr.modelBaseUrl` only when the backend isn't registered.
 
 `__AGENTIC__.testASR(alias)` (the validation helper) uses the same map — without an entry it throws `No web backend registered for ASR alias "<alias>"` so missed configuration surfaces immediately.
 
@@ -415,6 +419,6 @@ See [WASM_BUILD.md](./WASM_BUILD.md) for full build details, exported C API func
 2. [ ] Feature JS modules for each feature you use
 3. [ ] Model files for each feature you use
 4. [ ] `webFeatures.ts` has correct `enabled` flags and `modelId` per feature
-5. [ ] `loadWasmModule()` called before any sherpa-onnx API calls
+5. [ ] `loadWasmModule()` prewarm started at app startup, or the first sherpa-onnx API call intentionally waits for it
 6. [ ] Web server configured to serve `.wasm` files with `application/wasm` MIME type
 7. [ ] Consider CDN/caching headers for large model files (they don't change between deploys)
