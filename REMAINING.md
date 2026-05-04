@@ -117,13 +117,27 @@ running on top of `@siteed/audio-studio` + `@siteed/audio-ui`.
 
 ### Stretch / quality-of-life
 
-8. **Native VAD in `audio-studio`** — populate `DataPoint.speech.isActive`
-   with a real voice probability instead of mirroring the amplitude
-   threshold. Options:
-   - Lightweight: WebRTC VAD (energy + spectral, ~2 KB binary, no model).
+8. **Native VAD in `audio-studio` (the C/C++ play)** — this is where a
+   shared C/C++ processor actually pays off. Populate
+   `DataPoint.speech.isActive` with a real voice probability instead of
+   mirroring the amplitude threshold. Options:
+   - Lightweight: WebRTC-style VAD (energy + spectral, ~2 KB binary,
+     no model). Add `AudioVadProcessor` in `cpp/` next to
+     `AudioFeatures` and `MelSpectrogram`, share the JNI / iOS-wrapper /
+     WASM bridge plumbing that already exists. Wire iOS Swift +
+     Android Kotlin to call it post-decode, web to consume the same
+     WASM build.
    - ML: integrate Silero ONNX via the existing `cpp/` layer.
-   This would let `audio-studio` callers get correct voice/silence
-   without crossing into `sherpa-onnx.rn`.
+   This is *also* the right home for a shared `AudioBarExtractor` (peak
+   per bin) and any future processor — amortizes the bridge cost across
+   multiple consumers.
+
+   **Not worth doing in C/C++:** waveform bar binning *alone*. Decode
+   (AVAudioFile / MediaCodec / Web Audio API) dominates total time and
+   stays per-platform anyway, so a C++ binning loop only buys
+   byte-identical values that no user will perceive at 3 px per bar.
+   Move to C/C++ when the use case is VAD or multiple processors, not
+   for bars by themselves.
 
 9. **Storybook stories** — `audio-ui` already has Storybook; add stories
    for `AudioPlayerWidget`, `WaveformPreview`, `SilenceTrack` so the
