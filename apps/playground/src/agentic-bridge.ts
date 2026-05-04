@@ -75,6 +75,11 @@ export interface AgenticAudioPlayerProbeState {
     fileUri: string | null
     showSilenceTrack: boolean
     lastError: { code: string; message: string; nativeMessage?: string } | null
+    vadPhase: string
+    vadSegmentCount: number
+    vadVoiceMs: number
+    voiceMaskLength: number
+    voicedBarCount: number
 }
 
 export interface AgenticAudioPlayerProbe {

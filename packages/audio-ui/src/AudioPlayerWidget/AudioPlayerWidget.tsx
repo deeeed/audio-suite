@@ -14,6 +14,7 @@ import type { DataPoint } from '@siteed/audio-studio'
 import type { WaveformAmplitudeScale } from '../hooks/useWaveformLayout'
 import {
     decimateDataPoints,
+    decimateVoiceMask,
     pickBarCountForWidth,
 } from '../utils/decimateDataPoints'
 import { SilenceTrack } from '../WaveformPreview/SilenceTrack'
@@ -43,6 +44,12 @@ export interface AudioPlayerWidgetProps {
      * widths without sub-pixel overlap.
      */
     pixelsPerBar?: number
+    /**
+     * Optional per-`dataPoint` voice mask. When supplied (length matching
+     * `dataPoints`), bars are colored by voice activity instead of the
+     * amplitude-threshold `silent` flag. Real-VAD callers should drive this.
+     */
+    voiceMask?: boolean[]
     testID?: string
 }
 
@@ -79,12 +86,19 @@ export function AudioPlayerWidget({
     accentColor = '#7C3AED',
     amplitudeScale = 'sqrt',
     pixelsPerBar = 3,
+    voiceMask,
     testID = 'audio-player',
 }: AudioPlayerWidgetProps) {
     const renderPoints = useMemo(() => {
         const target = pickBarCountForWidth(width, pixelsPerBar)
         return decimateDataPoints(dataPoints, target)
     }, [dataPoints, width, pixelsPerBar])
+
+    const renderVoiceMask = useMemo(() => {
+        if (!voiceMask || voiceMask.length === 0) return undefined
+        if (voiceMask.length !== dataPoints.length) return undefined
+        return decimateVoiceMask(voiceMask, dataPoints.length, renderPoints.length)
+    }, [voiceMask, dataPoints.length, renderPoints.length])
 
     const playheadX = useMemo(() => {
         if (durationMs <= 0) return 0
@@ -121,6 +135,7 @@ export function AudioPlayerWidget({
                         barColor={barColor}
                         silentBarColor={silentBarColor}
                         amplitudeScale={amplitudeScale}
+                        voiceMask={renderVoiceMask}
                         testID="waveform-preview"
                     />
                     <View

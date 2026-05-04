@@ -6,7 +6,6 @@ import { Button, Text } from 'react-native-paper'
 
 import {
     AudioExtractionError,
-    extractPreview,
     type AudioAnalysis,
     type DataPoint,
 } from '@siteed/audio-studio'
@@ -18,9 +17,13 @@ import {
 } from '@siteed/audio-ui'
 import { Notice, useToast } from '@siteed/design-system'
 
-import { VADViewer } from '../component/VADViewer'
 import { baseLogger } from '../config'
 import { useAudioPlayback } from '../hooks/useAudioPlayback'
+import {
+    extractPreviewWithVAD,
+    type VadStatus,
+    type VoiceSegment,
+} from '../utils/extractPreviewWithVAD'
 import { useSampleAudio } from '../hooks/useSampleAudio'
 import { useScreenHeader } from '../hooks/useScreenHeader'
 import {
@@ -61,6 +64,9 @@ export default function AudioPlayerScreen() {
     const [threshold, setThreshold] = useState(0.01)
     const [amplitudeScale, setAmplitudeScale] =
         useState<WaveformAmplitudeScale>('sqrt')
+    const [voiceMask, setVoiceMask] = useState<boolean[]>([])
+    const [voiceSegments, setVoiceSegments] = useState<VoiceSegment[]>([])
+    const [vadStatus, setVadStatus] = useState<VadStatus>({ phase: 'idle' })
     const [extraction, setExtraction] = useState<ExtractionState>({
         pointsReceived: 0,
         totalPoints: 0,
@@ -103,6 +109,9 @@ export default function AudioPlayerScreen() {
 
             setDataPoints([])
             setFullAnalysis(null)
+            setVoiceMask([])
+            setVoiceSegments([])
+            setVadStatus({ phase: 'idle' })
             setExtraction({
                 pointsReceived: 0,
                 totalPoints: 0,
@@ -115,7 +124,7 @@ export default function AudioPlayerScreen() {
 
             const incoming: DataPoint[] = []
             try {
-                const analysis = await extractPreview({
+                const result = await extractPreviewWithVAD({
                     fileUri,
                     numberOfPoints,
                     startTimeMs: 0,
@@ -134,9 +143,15 @@ export default function AudioPlayerScreen() {
                             isStreaming: snapshot.length < total,
                         }))
                     },
+                    onVadStatus: (status) => {
+                        if (requestId !== extractCounterRef.current) return
+                        setVadStatus(status)
+                    },
                 })
                 if (requestId !== extractCounterRef.current) return
-                setFullAnalysis(analysis)
+                setFullAnalysis(result.analysis)
+                setVoiceMask(result.voiceMask)
+                setVoiceSegments(result.voiceSegments)
                 setExtraction((prev) => ({
                     ...prev,
                     isStreaming: false,
@@ -152,6 +167,9 @@ export default function AudioPlayerScreen() {
                 logger.error('extractPreview failed', { code, message })
                 setDataPoints([])
                 setFullAnalysis(null)
+                setVoiceMask([])
+                setVoiceSegments([])
+                setVadStatus({ phase: 'error', error: message })
                 setExtraction((prev) => ({
                     ...prev,
                     isStreaming: false,
@@ -265,6 +283,9 @@ export default function AudioPlayerScreen() {
         activeUri,
         showSilenceTrack,
         dataPoints,
+        voiceMask,
+        voiceSegments,
+        vadStatus,
     })
     stateRef.current = {
         extraction,
@@ -272,6 +293,9 @@ export default function AudioPlayerScreen() {
         activeUri,
         showSilenceTrack,
         dataPoints,
+        voiceMask,
+        voiceSegments,
+        vadStatus,
     }
 
     const actionsRef = useRef({
@@ -291,6 +315,14 @@ export default function AudioPlayerScreen() {
         const probe: AgenticAudioPlayerProbe = {
             getState: () => {
                 const snap = stateRef.current
+                const voiced = snap.voiceMask.filter((v) => v).length
+                const vadPhase = snap.vadStatus.phase
+                const vadSegmentCount =
+                    snap.vadStatus.phase === 'done'
+                        ? snap.vadStatus.segmentCount
+                        : snap.voiceSegments.length
+                const vadVoiceMs =
+                    snap.vadStatus.phase === 'done' ? snap.vadStatus.voiceMs : 0
                 return {
                     pointsReceived: snap.extraction.pointsReceived,
                     totalPoints: snap.extraction.totalPoints,
@@ -305,6 +337,11 @@ export default function AudioPlayerScreen() {
                     fileUri: snap.activeUri,
                     showSilenceTrack: snap.showSilenceTrack,
                     lastError: snap.extraction.lastError,
+                    vadPhase,
+                    vadSegmentCount,
+                    vadVoiceMs,
+                    voiceMaskLength: snap.voiceMask.length,
+                    voicedBarCount: voiced,
                 }
             },
             getDataPointsSample: (count?: number) => {
@@ -496,6 +533,7 @@ export default function AudioPlayerScreen() {
                     onPlayPause={controller.toggle}
                     onSeek={controller.seek}
                     amplitudeScale={amplitudeScale}
+                    voiceMask={voiceMask.length === dataPoints.length ? voiceMask : undefined}
                 />
             </View>
 
@@ -529,17 +567,22 @@ export default function AudioPlayerScreen() {
                 </View>
             ) : null}
 
-            {Platform.OS !== 'web' && controller.durationMs > 0 ? (
-                <View style={styles.widgetWrap}>
-                    <Text variant="titleSmall">
-                        Voice Activity (Silero VAD — for comparison)
+            {voiceSegments.length > 0 || vadStatus.phase !== 'idle' ? (
+                <View style={styles.statusBlock} testID="audio-player-vad-block">
+                    <Text variant="titleSmall">Silero VAD</Text>
+                    <Text testID="audio-player-vad-status">
+                        {vadStatus.phase === 'done'
+                            ? `${vadStatus.segmentCount} voice segment(s) · ${(vadStatus.voiceMs / 1000).toFixed(1)}s of speech · ${vadStatus.elapsedMs}ms`
+                            : vadStatus.phase === 'error'
+                                ? `Error: ${vadStatus.error}`
+                                : `Phase: ${vadStatus.phase}`}
                     </Text>
-                    <VADViewer
-                        fileUri={activeUri}
-                        durationMs={controller.durationMs}
-                        width={widgetWidth}
-                        height={18}
-                    />
+                    <Text>
+                        Bars colored by Silero voice mask
+                        {voiceMask.filter((v) => v).length > 0
+                            ? ` · ${voiceMask.filter((v) => v).length} of ${voiceMask.length} bars marked voice`
+                            : ''}
+                    </Text>
                 </View>
             ) : null}
 

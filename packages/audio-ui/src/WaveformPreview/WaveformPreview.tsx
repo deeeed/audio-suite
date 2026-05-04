@@ -23,6 +23,13 @@ export interface WaveformPreviewProps {
     isPlaying?: boolean
     onPlayPress?: () => void
     amplitudeScale?: WaveformAmplitudeScale
+    /**
+     * Optional voice mask, one boolean per dataPoint. When supplied it
+     * overrides the per-point `silent` flag for coloring: true → barColor
+     * (voice), false → silentBarColor (non-voice). Lengths that don't match
+     * `dataPoints.length` are ignored.
+     */
+    voiceMask?: boolean[]
     testID?: string
 }
 
@@ -41,6 +48,7 @@ export function WaveformPreview({
     isPlaying = false,
     onPlayPress,
     amplitudeScale = 'sqrt',
+    voiceMask,
     testID = 'waveform-preview',
 }: WaveformPreviewProps) {
     const { bars } = useWaveformLayout({
@@ -51,6 +59,8 @@ export function WaveformPreview({
         amplitudeScale,
     })
     const centerY = height / 2
+    const useVoiceMask =
+        Array.isArray(voiceMask) && voiceMask.length === bars.length
 
     return (
         <View
@@ -61,16 +71,21 @@ export function WaveformPreview({
                 style={{ width, height }}
                 testID={`${testID}-canvas`}
             >
-                {bars.map((bar) => (
-                    <Rect
-                        key={bar.index}
-                        x={bar.x}
-                        y={centerY - bar.height / 2}
-                        width={bar.width}
-                        height={bar.height}
-                        color={bar.silent ? silentBarColor : barColor}
-                    />
-                ))}
+                {bars.map((bar) => {
+                    const inactive = useVoiceMask
+                        ? !voiceMask![bar.index]
+                        : bar.silent
+                    return (
+                        <Rect
+                            key={bar.index}
+                            x={bar.x}
+                            y={centerY - bar.height / 2}
+                            width={bar.width}
+                            height={bar.height}
+                            color={inactive ? silentBarColor : barColor}
+                        />
+                    )
+                })}
             </Canvas>
             {showPlayButton ? (
                 <Pressable

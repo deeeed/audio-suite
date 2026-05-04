@@ -69,3 +69,34 @@ export function pickBarCountForWidth(
     if (width <= 0) return 0
     return Math.max(1, Math.floor(width / Math.max(1, pixelsPerBar)))
 }
+
+/**
+ * Decimate a boolean voice mask in lockstep with `decimateDataPoints` so
+ * `voiceMask[i]` lines up with `dataPoints[i]` after binning.
+ * Reduction is OR — a bin is "voice" if any sub-point is voice.
+ */
+export function decimateVoiceMask(
+    mask: boolean[],
+    sourceLength: number,
+    target: number,
+): boolean[] {
+    if (target <= 0 || sourceLength === 0) return []
+    if (target >= sourceLength) return mask.slice(0, sourceLength)
+
+    const stride = sourceLength / target
+    const out = new Array<boolean>(target).fill(false)
+    for (let i = 0; i < target; i++) {
+        const start = Math.floor(i * stride)
+        const end = Math.max(
+            start + 1,
+            Math.min(sourceLength, Math.floor((i + 1) * stride)),
+        )
+        for (let k = start; k < end; k++) {
+            if (mask[k]) {
+                out[i] = true
+                break
+            }
+        }
+    }
+    return out
+}
