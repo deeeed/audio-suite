@@ -7,11 +7,17 @@ import { Button, Text } from 'react-native-paper'
 import {
     AudioExtractionError,
     extractPreview,
+    type AudioAnalysis,
     type DataPoint,
 } from '@siteed/audio-studio'
-import { AudioPlayerWidget } from '@siteed/audio-ui'
+import {
+    AudioPlayerWidget,
+    AudioVisualizer,
+    type WaveformAmplitudeScale,
+} from '@siteed/audio-ui'
 import { Notice, useToast } from '@siteed/design-system'
 
+import { VADViewer } from '../component/VADViewer'
 import { baseLogger } from '../config'
 import { useAudioPlayback } from '../hooks/useAudioPlayback'
 import { useSampleAudio } from '../hooks/useSampleAudio'
@@ -49,8 +55,11 @@ export default function AudioPlayerScreen() {
     )
 
     const [dataPoints, setDataPoints] = useState<DataPoint[]>([])
+    const [fullAnalysis, setFullAnalysis] = useState<AudioAnalysis | null>(null)
     const [showSilenceTrack, setShowSilenceTrack] = useState(true)
     const [threshold, setThreshold] = useState(0.01)
+    const [amplitudeScale, setAmplitudeScale] =
+        useState<WaveformAmplitudeScale>('sqrt')
     const [extraction, setExtraction] = useState<ExtractionState>({
         pointsReceived: 0,
         totalPoints: 0,
@@ -92,6 +101,7 @@ export default function AudioPlayerScreen() {
             const startedAt = Date.now()
 
             setDataPoints([])
+            setFullAnalysis(null)
             setExtraction({
                 pointsReceived: 0,
                 totalPoints: 0,
@@ -104,7 +114,7 @@ export default function AudioPlayerScreen() {
 
             const incoming: DataPoint[] = []
             try {
-                await extractPreview({
+                const analysis = await extractPreview({
                     fileUri,
                     numberOfPoints,
                     startTimeMs: 0,
@@ -125,6 +135,7 @@ export default function AudioPlayerScreen() {
                     },
                 })
                 if (requestId !== extractCounterRef.current) return
+                setFullAnalysis(analysis)
                 setExtraction((prev) => ({
                     ...prev,
                     isStreaming: false,
@@ -139,6 +150,7 @@ export default function AudioPlayerScreen() {
                 const nativeMessage = isAudio ? err.nativeMessage : undefined
                 logger.error('extractPreview failed', { code, message })
                 setDataPoints([])
+                setFullAnalysis(null)
                 setExtraction((prev) => ({
                     ...prev,
                     isStreaming: false,
@@ -251,8 +263,15 @@ export default function AudioPlayerScreen() {
         controller,
         activeUri,
         showSilenceTrack,
+        dataPoints,
     })
-    stateRef.current = { extraction, controller, activeUri, showSilenceTrack }
+    stateRef.current = {
+        extraction,
+        controller,
+        activeUri,
+        showSilenceTrack,
+        dataPoints,
+    }
 
     const actionsRef = useRef({
         loadSample,
@@ -285,6 +304,53 @@ export default function AudioPlayerScreen() {
                     fileUri: snap.activeUri,
                     showSilenceTrack: snap.showSilenceTrack,
                     lastError: snap.extraction.lastError,
+                }
+            },
+            getDataPointsSample: (count?: number) => {
+                const points = stateRef.current.dataPoints
+                const total = points.length
+                if (total === 0) {
+                    return {
+                        ok: true,
+                        total: 0,
+                        amplitudeMin: 0,
+                        amplitudeMax: 0,
+                        rmsMin: 0,
+                        rmsMax: 0,
+                        sample: [],
+                    }
+                }
+                let aMin = Infinity
+                let aMax = -Infinity
+                let rMin = Infinity
+                let rMax = -Infinity
+                for (const p of points) {
+                    if (p.amplitude < aMin) aMin = p.amplitude
+                    if (p.amplitude > aMax) aMax = p.amplitude
+                    if (p.rms < rMin) rMin = p.rms
+                    if (p.rms > rMax) rMax = p.rms
+                }
+                const sampleSize = Math.max(1, Math.min(total, count ?? 16))
+                const stride = total / sampleSize
+                const sample = Array.from({ length: sampleSize }, (_, k) => {
+                    const i = Math.min(total - 1, Math.floor(k * stride))
+                    const p = points[i]!
+                    return {
+                        i,
+                        amplitude: p.amplitude,
+                        rms: p.rms,
+                        dB: p.dB,
+                        silent: p.silent,
+                    }
+                })
+                return {
+                    ok: true,
+                    total,
+                    amplitudeMin: aMin,
+                    amplitudeMax: aMax,
+                    rmsMin: rMin,
+                    rmsMax: rMax,
+                    sample,
                 }
             },
             loadSample: () => {
@@ -402,7 +468,21 @@ export default function AudioPlayerScreen() {
                 </Button>
             </View>
 
+            <View style={styles.controlsRow}>
+                {(['linear', 'sqrt', 'log'] as const).map((mode) => (
+                    <Button
+                        key={mode}
+                        mode={amplitudeScale === mode ? 'contained' : 'outlined'}
+                        onPress={() => setAmplitudeScale(mode)}
+                        testID={`audio-player-scale-${mode}`}
+                    >
+                        {`Scale: ${mode}`}
+                    </Button>
+                ))}
+            </View>
+
             <View style={styles.widgetWrap}>
+                <Text variant="titleSmall">AudioPlayerWidget (new bar viz)</Text>
                 <AudioPlayerWidget
                     dataPoints={dataPoints}
                     width={widgetWidth}
@@ -414,8 +494,47 @@ export default function AudioPlayerScreen() {
                     isPlaying={controller.isPlaying}
                     onPlayPause={controller.toggle}
                     onSeek={controller.seek}
+                    amplitudeScale={amplitudeScale}
                 />
             </View>
+
+            {fullAnalysis ? (
+                <View style={styles.widgetWrap}>
+                    <Text variant="titleSmall" testID="audio-player-comparison-label">
+                        AudioVisualizer (existing reference)
+                    </Text>
+                    <View
+                        style={[
+                            styles.referenceWrap,
+                            { width: widgetWidth },
+                        ]}
+                        testID="audio-player-comparison"
+                    >
+                        <AudioVisualizer
+                            audioData={fullAnalysis}
+                            canvasHeight={120}
+                            showRuler={false}
+                            enableInertia
+                            NavigationControls={() => null}
+                            currentTime={controller.currentTimeMs / 1000}
+                        />
+                    </View>
+                </View>
+            ) : null}
+
+            {Platform.OS !== 'web' && controller.durationMs > 0 ? (
+                <View style={styles.widgetWrap}>
+                    <Text variant="titleSmall">
+                        Voice Activity (Silero VAD — for comparison)
+                    </Text>
+                    <VADViewer
+                        fileUri={activeUri}
+                        durationMs={controller.durationMs}
+                        width={widgetWidth}
+                        height={18}
+                    />
+                </View>
+            ) : null}
 
             <View style={styles.statusBlock}>
                 <Text variant="titleSmall">Status</Text>
@@ -451,6 +570,12 @@ const styles = StyleSheet.create({
     },
     widgetWrap: {
         alignItems: 'center',
+        gap: 6,
+    },
+    referenceWrap: {
+        borderRadius: 8,
+        overflow: 'hidden',
+        backgroundColor: 'rgba(124,58,237,0.05)',
     },
     statusBlock: {
         gap: 4,

@@ -85,12 +85,6 @@ export function useAudioPlayback(): AudioPlaybackController {
         }
         if (status.didJustFinish) {
             setIsPlaying(false)
-            setCurrentTimeMs(0)
-            try {
-                playerRef.current?.seekTo(0)
-            } catch {
-                // ignore
-            }
         }
     }, [])
 
@@ -115,7 +109,17 @@ export function useAudioPlayback(): AudioPlaybackController {
 
     const play = useCallback(() => {
         try {
-            playerRef.current?.play()
+            const player = playerRef.current
+            if (!player) return
+            // expo-audio leaves currentTime at the end after `didJustFinish`.
+            // A second play() then no-ops; reset before starting again.
+            const dur = typeof player.duration === 'number' ? player.duration : 0
+            const cur = typeof player.currentTime === 'number' ? player.currentTime : 0
+            if (dur > 0 && cur >= dur - 0.05) {
+                player.seekTo(0)
+                setCurrentTimeMs(0)
+            }
+            player.play()
             setIsPlaying(true)
         } catch (e) {
             setError(e instanceof Error ? e.message : String(e))

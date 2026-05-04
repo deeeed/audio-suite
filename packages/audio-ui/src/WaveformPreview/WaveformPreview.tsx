@@ -6,7 +6,10 @@ import { Pressable, StyleSheet, View } from 'react-native'
 
 import type { DataPoint } from '@siteed/audio-studio'
 
-import { useWaveformLayout } from '../hooks/useWaveformLayout'
+import {
+    useWaveformLayout,
+    type WaveformAmplitudeScale,
+} from '../hooks/useWaveformLayout'
 
 export interface WaveformPreviewProps {
     dataPoints: DataPoint[]
@@ -19,6 +22,7 @@ export interface WaveformPreviewProps {
     showPlayButton?: boolean
     isPlaying?: boolean
     onPlayPress?: () => void
+    amplitudeScale?: WaveformAmplitudeScale
     testID?: string
 }
 
@@ -36,9 +40,16 @@ export function WaveformPreview({
     showPlayButton = false,
     isPlaying = false,
     onPlayPress,
+    amplitudeScale = 'sqrt',
     testID = 'waveform-preview',
 }: WaveformPreviewProps) {
-    const { bars } = useWaveformLayout({ width, height, dataPoints, gap })
+    const { bars } = useWaveformLayout({
+        width,
+        height,
+        dataPoints,
+        gap,
+        amplitudeScale,
+    })
     const centerY = height / 2
 
     return (

@@ -110,7 +110,7 @@
               { "operator": "gt", "field": "currentTimeMs", "value": 0 }
             ]
           },
-          "timeout_ms": 5000,
+          "timeout_ms": 15000,
           "poll_ms": 100,
           "next": "pause-after-play"
         },

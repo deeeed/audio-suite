@@ -11,6 +11,11 @@ import {
 
 import type { DataPoint } from '@siteed/audio-studio'
 
+import type { WaveformAmplitudeScale } from '../hooks/useWaveformLayout'
+import {
+    decimateDataPoints,
+    pickBarCountForWidth,
+} from '../utils/decimateDataPoints'
 import { SilenceTrack } from '../WaveformPreview/SilenceTrack'
 import { WaveformPreview } from '../WaveformPreview/WaveformPreview'
 
@@ -31,6 +36,13 @@ export interface AudioPlayerWidgetProps {
     playheadColor?: string
     backgroundColor?: string
     accentColor?: string
+    amplitudeScale?: WaveformAmplitudeScale
+    /**
+     * Approximate pixels-per-bar density. Used to decimate the data points
+     * down to a screen-friendly count. Default 3 — renders cleanly on phone
+     * widths without sub-pixel overlap.
+     */
+    pixelsPerBar?: number
     testID?: string
 }
 
@@ -59,8 +71,15 @@ export function AudioPlayerWidget({
     playheadColor = '#1F2937',
     backgroundColor = '#F8FAFC',
     accentColor = '#7C3AED',
+    amplitudeScale = 'sqrt',
+    pixelsPerBar = 3,
     testID = 'audio-player',
 }: AudioPlayerWidgetProps) {
+    const renderPoints = useMemo(() => {
+        const target = pickBarCountForWidth(width, pixelsPerBar)
+        return decimateDataPoints(dataPoints, target)
+    }, [dataPoints, width, pixelsPerBar])
+
     const playheadX = useMemo(() => {
         if (durationMs <= 0) return 0
         const ratio = currentTimeMs / durationMs
@@ -90,11 +109,12 @@ export function AudioPlayerWidget({
             >
                 <View style={{ width, height: waveformHeight }}>
                     <WaveformPreview
-                        dataPoints={dataPoints}
+                        dataPoints={renderPoints}
                         width={width}
                         height={waveformHeight}
                         barColor={barColor}
                         silentBarColor={silentBarColor}
+                        amplitudeScale={amplitudeScale}
                         testID="waveform-preview"
                     />
                     <View
@@ -112,7 +132,7 @@ export function AudioPlayerWidget({
             </Pressable>
             {showSilenceTrack ? (
                 <SilenceTrack
-                    dataPoints={dataPoints}
+                    dataPoints={renderPoints}
                     width={width}
                     height={silenceTrackHeight}
                     color={silenceBandColor}

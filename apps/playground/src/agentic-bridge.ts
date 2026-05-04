@@ -79,6 +79,15 @@ export interface AgenticAudioPlayerProbeState {
 
 export interface AgenticAudioPlayerProbe {
     getState: () => AgenticAudioPlayerProbeState
+    getDataPointsSample: (count?: number) => {
+        ok: boolean
+        total: number
+        amplitudeMin: number
+        amplitudeMax: number
+        rmsMin: number
+        rmsMax: number
+        sample: { i: number; amplitude: number; rms: number; dB: number; silent: boolean }[]
+    }
     loadSample: () => { ok: boolean }
     loadFromUri: (uri: string) => { ok: boolean; uri: string }
     setThreshold: (value: number) => { ok: boolean; value: number }
@@ -275,6 +284,10 @@ const audioPlayerProxy = {
         if (!_audioPlayerProbe) return { mounted: false as const }
         return { mounted: true as const, ..._audioPlayerProbe.getState() }
     },
+    getDataPointsSample: (count?: number) =>
+        _audioPlayerProbe
+            ? _audioPlayerProbe.getDataPointsSample(count)
+            : audioPlayerNotReady(),
     loadSample: () =>
         _audioPlayerProbe ? _audioPlayerProbe.loadSample() : audioPlayerNotReady(),
     loadFromUri: (uri: string) =>
