@@ -10,9 +10,10 @@ import {
     type AudioAnalysis,
     type DataPoint,
 } from '@siteed/audio-studio'
+import { Canvas } from '@shopify/react-native-skia'
 import {
     AudioPlayerWidget,
-    AudioVisualizer,
+    Waveform,
     type WaveformAmplitudeScale,
 } from '@siteed/audio-ui'
 import { Notice, useToast } from '@siteed/design-system'
@@ -56,7 +57,7 @@ export default function AudioPlayerScreen() {
 
     const [dataPoints, setDataPoints] = useState<DataPoint[]>([])
     const [fullAnalysis, setFullAnalysis] = useState<AudioAnalysis | null>(null)
-    const [showSilenceTrack, setShowSilenceTrack] = useState(true)
+    const [showSilenceTrack, setShowSilenceTrack] = useState(false)
     const [threshold, setThreshold] = useState(0.01)
     const [amplitudeScale, setAmplitudeScale] =
         useState<WaveformAmplitudeScale>('sqrt')
@@ -498,26 +499,32 @@ export default function AudioPlayerScreen() {
                 />
             </View>
 
-            {fullAnalysis ? (
+            {fullAnalysis && fullAnalysis.dataPoints.length > 0 ? (
                 <View style={styles.widgetWrap}>
                     <Text variant="titleSmall" testID="audio-player-comparison-label">
-                        AudioVisualizer (existing reference)
+                        Smooth path (`Waveform` primitive)
                     </Text>
                     <View
                         style={[
                             styles.referenceWrap,
-                            { width: widgetWidth },
+                            { width: widgetWidth, height: 80 },
                         ]}
                         testID="audio-player-comparison"
                     >
-                        <AudioVisualizer
-                            audioData={fullAnalysis}
-                            canvasHeight={120}
-                            showRuler={false}
-                            enableInertia
-                            NavigationControls={() => null}
-                            currentTime={controller.currentTimeMs / 1000}
-                        />
+                        <Canvas style={{ width: widgetWidth, height: 80 }}>
+                            <Waveform
+                                activePoints={fullAnalysis.dataPoints.map((p) => ({
+                                    ...p,
+                                    visible: true,
+                                }))}
+                                canvasWidth={widgetWidth}
+                                canvasHeight={80}
+                                minAmplitude={fullAnalysis.amplitudeRange?.min ?? 0}
+                                maxAmplitude={fullAnalysis.amplitudeRange?.max ?? 1}
+                                theme={{ color: '#7C3AED', strokeWidth: 1.5 }}
+                                smoothing
+                            />
+                        </Canvas>
                     </View>
                 </View>
             ) : null}

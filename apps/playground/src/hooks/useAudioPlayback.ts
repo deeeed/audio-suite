@@ -85,6 +85,14 @@ export function useAudioPlayback(): AudioPlaybackController {
         }
         if (status.didJustFinish) {
             setIsPlaying(false)
+            // Pre-arm for the next play(): rewind silently so the user can
+            // simply tap play again. The status update that follows will
+            // sync currentTimeMs back to 0.
+            try {
+                playerRef.current?.seekTo(0)
+            } catch {
+                // ignore
+            }
         }
     }, [])
 
@@ -107,16 +115,22 @@ export function useAudioPlayback(): AudioPlaybackController {
         [handleStatus, teardown],
     )
 
-    const play = useCallback(() => {
+    const play = useCallback(async () => {
         try {
             const player = playerRef.current
             if (!player) return
-            // expo-audio leaves currentTime at the end after `didJustFinish`.
-            // A second play() then no-ops; reset before starting again.
             const dur = typeof player.duration === 'number' ? player.duration : 0
             const cur = typeof player.currentTime === 'number' ? player.currentTime : 0
+            // expo-audio leaves currentTime at the end after `didJustFinish`,
+            // and a bare play() then no-ops. Await seekTo so the player has
+            // actually rewound before we kick playback again.
             if (dur > 0 && cur >= dur - 0.05) {
-                player.seekTo(0)
+                try {
+                    player.pause()
+                } catch {
+                    // already paused after finish — ignore
+                }
+                await player.seekTo(0)
                 setCurrentTimeMs(0)
             }
             player.play()

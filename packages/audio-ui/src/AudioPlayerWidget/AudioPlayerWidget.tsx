@@ -59,7 +59,13 @@ export function AudioPlayerWidget({
     width,
     waveformHeight = 64,
     silenceTrackHeight = 6,
-    showSilenceTrack = true,
+    /**
+     * Whether to render the amplitude-threshold silence ribbon below the bars.
+     * Off by default — RMS-threshold silence is fragile for speech (it confuses
+     * background noise with voice). For real voice/silence detection, layer
+     * a VAD-driven track above this widget instead.
+     */
+    showSilenceTrack = false,
     currentTimeMs,
     durationMs,
     isPlaying,
