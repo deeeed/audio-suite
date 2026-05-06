@@ -52,8 +52,9 @@
     "build:web:source": "bash ./build-moonshine-web.sh",
     "prepare": "bob build",
     "pack:check": "npm pack --json --dry-run",
-    "release:beta:preflight": "yarn typecheck && yarn test && npm pack --json --dry-run",
-    "validate:offline:contract": "node ./scripts/validate-offline-contract.mjs"
+    "release:beta:preflight": "yarn typecheck && yarn test && yarn validate:native-release",
+    "validate:offline:contract": "node ./scripts/validate-offline-contract.mjs",
+    "validate:native-release": "node ./scripts/validate-native-release.mjs"
   },
   "keywords": [
     "react-native",
