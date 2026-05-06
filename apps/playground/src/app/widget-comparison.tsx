@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useMemo, useRef, useState } from 'react'
 
-import { Stack } from 'expo-router'
 import { Asset } from 'expo-asset'
+import { Stack } from 'expo-router'
 import {
     Platform,
     ScrollView,
@@ -12,13 +12,10 @@ import {
 import { Button, Text } from 'react-native-paper'
 
 import {
-    AudioPlayerWidget,
-    type WaveformPoint,
+    AudioFilePlayerWidget,
+    type AudioFilePlayerExtractor,
 } from '@siteed/audio-ui'
-import {
-    extractPreviewBars,
-    type PreviewBar,
-} from '@siteed/audio-studio'
+import { extractPreviewBars } from '@siteed/audio-studio'
 import { Notice, useTheme } from '@siteed/design-system'
 
 import { baseLogger } from '../config'
@@ -30,13 +27,7 @@ const logger = baseLogger.extend('WidgetComparison')
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const SAMPLE_ASSET = require('@assets/jfk.mp3')
 
-interface BenchmarkSample {
-    label: string
-    durationMs: number
-}
-
 interface RenderTiming {
-    waveformMs: number | null
     extractMs: number | null
     barCount: number | null
 }
@@ -53,14 +44,12 @@ export default function WidgetComparisonScreen() {
     })
 
     const [fileUri, setFileUri] = useState<string | null>(null)
-    const [previewBars, setPreviewBars] = useState<PreviewBar[]>([])
     const [timing, setTiming] = useState<RenderTiming>({
-        waveformMs: null,
         extractMs: null,
         barCount: null,
     })
-    const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [isLoading, setIsLoading] = useState(false)
 
     const ourPlayback = useAudioPlayback()
 
@@ -77,32 +66,35 @@ export default function WidgetComparisonScreen() {
         }
     }, [])
 
+    // Wrap audio-studio's extractPreviewBars in the shape the widget expects
+    // and time it so we can surface cold-extract numbers in the metrics block.
+    const extractor: AudioFilePlayerExtractor = useCallback(
+        async ({ fileUri: uri, numberOfBars, startTimeMs, endTimeMs }) => {
+            const start = performance.now()
+            const result = await extractPreviewBars({
+                fileUri: uri,
+                numberOfBars,
+                startTimeMs,
+                endTimeMs,
+            })
+            const extractMs = performance.now() - start
+            setTiming({ extractMs, barCount: result.bars.length })
+            return { bars: result.bars, durationMs: result.durationMs }
+        },
+        [],
+    )
+
     const loadSample = useCallback(async () => {
         try {
             setIsLoading(true)
             setError(null)
+            setTiming({ extractMs: null, barCount: null })
             const asset = Asset.fromModule(SAMPLE_ASSET)
             await asset.downloadAsync()
             const uri = asset.localUri ?? asset.uri
             if (!uri) throw new Error('Sample asset has no localUri')
-
             setFileUri(uri)
             ourPlayback.load(uri)
-
-            const extractStart = performance.now()
-            const result = await extractPreviewBars({
-                fileUri: uri,
-                numberOfBars: Math.min(400, Math.max(120, Math.floor(widgetWidth))),
-                startTimeMs: 0,
-            })
-            const extractMs = performance.now() - extractStart
-            const points = result.bars ?? []
-            setPreviewBars(points)
-            setTiming({
-                extractMs,
-                waveformMs: null,
-                barCount: points.length,
-            })
         } catch (e) {
             const message = e instanceof Error ? e.message : String(e)
             logger.error('loadSample failed', e)
@@ -110,29 +102,7 @@ export default function WidgetComparisonScreen() {
         } finally {
             setIsLoading(false)
         }
-    }, [ourPlayback, widgetWidth])
-
-    // Measure render-time of our AudioPlayerWidget by timing the layout pass
-    // around the bar-data update. This isn't a steady-state FPS reading —
-    // it's a "first paint after data lands" cost. Useful for cold start, not
-    // animation throughput.
-    const ourRenderStartRef = useRef<number | null>(null)
-    useEffect(() => {
-        if (previewBars.length === 0) return
-        ourRenderStartRef.current = performance.now()
-    }, [previewBars])
-
-    const handleOurLayoutSettled = useCallback(() => {
-        if (ourRenderStartRef.current == null) return
-        const ms = performance.now() - ourRenderStartRef.current
-        ourRenderStartRef.current = null
-        setTiming((prev) => ({ ...prev, waveformMs: ms }))
-    }, [])
-
-    const widgetVoicePoints = useMemo<WaveformPoint[]>(
-        () => previewBars,
-        [previewBars],
-    )
+    }, [ourPlayback])
 
     return (
         <ScrollView
@@ -144,7 +114,7 @@ export default function WidgetComparisonScreen() {
             <Notice
                 type="info"
                 title="WaveformPreview vs Simform"
-                message="Loads the same audio sample into both the audio-ui AudioPlayerWidget (Skia bars driven from extracted PreviewBar[]) and Simform's native AudioWaveform (Kotlin/Swift bars driven from the file path). Cold render and extraction times are reported below."
+                message="Loads the same audio sample into both the audio-ui AudioFilePlayerWidget (Skia bars driven from extracted PreviewBar[]) and Simform's native AudioWaveform (Kotlin/Swift bars driven from the file path). Cold extraction time is reported below."
             />
 
             {Platform.OS === 'web' ? (
@@ -191,53 +161,59 @@ export default function WidgetComparisonScreen() {
                     · bars: {timing.barCount ?? 'n/a'}
                 </Text>
                 <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
-                    Our cold paint:{' '}
-                    {timing.waveformMs == null
-                        ? 'n/a'
-                        : `${timing.waveformMs.toFixed(1)}ms`}
-                </Text>
-                <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
                     Simform paint: native-side, not measurable from JS — watch the
                     rendered bars to compare visual quality.
                 </Text>
             </View>
 
-            <View
-                style={[styles.section, { backgroundColor: colors.surface }]}
-                onLayout={handleOurLayoutSettled}
-            >
-                <Text variant="titleMedium">audio-ui · AudioPlayerWidget</Text>
+            <View style={[styles.section, { backgroundColor: colors.surface }]}>
+                <Text variant="titleMedium">audio-ui · AudioFilePlayerWidget</Text>
                 <Text
                     variant="bodySmall"
                     style={{ color: colors.onSurfaceVariant, marginBottom: 4 }}
                 >
-                    Skia bars driven from `WaveformPoint[]` extracted by
-                    `extractPreviewBars`. Pure JS / RN, no native binary required.
+                    File-aware wrapper. Pass a `fileUri` + an `extract` impl
+                    (here: audio-studio's `extractPreviewBars`); the widget
+                    extracts once, caches per uri, and feeds the bars into the
+                    underlying AudioPlayerWidget.
                 </Text>
-                <AudioPlayerWidget
-                    dataPoints={widgetVoicePoints}
-                    width={widgetWidth}
-                    waveformHeight={72}
-                    density="comfortable"
-                    showSilenceTrack={false}
-                    currentTimeMs={ourPlayback.currentTimeMs}
-                    durationMs={ourPlayback.durationMs}
-                    isPlaying={ourPlayback.isPlaying}
-                    onPlayPause={ourPlayback.toggle}
-                    onSeek={ourPlayback.seek}
-                    barColor={colors.primary}
-                    silentBarColor={colors.outlineVariant}
-                    silenceBandColor={colors.outline}
-                    playheadColor={colors.onSurface}
-                    backgroundColor={colors.surfaceVariant}
-                    accentColor={colors.primary}
-                    textColor={colors.onSurface}
-                    statusColor={colors.onSurfaceVariant}
-                    errorColor={colors.error}
-                    disabledColor={colors.outlineVariant}
-                    iconColor={colors.onPrimary}
-                    testID="comparison-our-widget"
-                />
+                {fileUri ? (
+                    <AudioFilePlayerWidget
+                        fileUri={fileUri}
+                        extract={extractor}
+                        numberOfBars={Math.min(
+                            400,
+                            Math.max(120, Math.floor(widgetWidth)),
+                        )}
+                        width={widgetWidth}
+                        waveformHeight={72}
+                        density="comfortable"
+                        showSilenceTrack={false}
+                        currentTimeMs={ourPlayback.currentTimeMs}
+                        isPlaying={ourPlayback.isPlaying}
+                        onPlayPause={ourPlayback.toggle}
+                        onSeek={ourPlayback.seek}
+                        barColor={colors.primary}
+                        silentBarColor={colors.outlineVariant}
+                        silenceBandColor={colors.outline}
+                        playheadColor={colors.onSurface}
+                        backgroundColor={colors.surfaceVariant}
+                        accentColor={colors.primary}
+                        textColor={colors.onSurface}
+                        statusColor={colors.onSurfaceVariant}
+                        errorColor={colors.error}
+                        disabledColor={colors.outlineVariant}
+                        iconColor={colors.onPrimary}
+                        testID="comparison-our-widget"
+                    />
+                ) : (
+                    <Text
+                        variant="bodySmall"
+                        style={{ color: colors.onSurfaceVariant }}
+                    >
+                        Tap "Load JFK Sample" to feed a file into both widgets.
+                    </Text>
+                )}
             </View>
 
             {Platform.OS !== 'web' && simformWaveform && fileUri ? (

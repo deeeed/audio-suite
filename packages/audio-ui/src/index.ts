@@ -1,6 +1,7 @@
 // packages/audio-ui/src/index.ts
 
 export * from './AudioPlayerWidget/AudioPlayerWidget'
+export * from './AudioPlayerWidget/AudioFilePlayerWidget'
 export * from './AudioPlayerWidget/useAudioPlayerWidgetState'
 export * from './ChatRecordWidget/ChatRecordWidget'
 export * from './ChatRecordWidget/useChatRecordWidgetState'
