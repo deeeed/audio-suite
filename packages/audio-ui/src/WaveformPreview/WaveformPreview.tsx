@@ -22,6 +22,8 @@ export interface WaveformPreviewProps {
     showPlayButton?: boolean
     isPlaying?: boolean
     onPlayPress?: () => void
+    playButtonBackgroundColor?: string
+    playButtonIconColor?: string
     amplitudeScale?: WaveformAmplitudeScale
     /**
      * Optional voice mask, one boolean per dataPoint. When supplied it
@@ -47,6 +49,8 @@ export function WaveformPreview({
     showPlayButton = false,
     isPlaying = false,
     onPlayPress,
+    playButtonBackgroundColor = 'rgba(255,255,255,0.92)',
+    playButtonIconColor = DEFAULT_BAR_COLOR,
     amplitudeScale = 'sqrt',
     voiceMask,
     testID = 'waveform-preview',
@@ -87,7 +91,10 @@ export function WaveformPreview({
             {showPlayButton ? (
                 <Pressable
                     onPress={onPlayPress}
-                    style={styles.playButton}
+                    style={[
+                        styles.playButton,
+                        { backgroundColor: playButtonBackgroundColor },
+                    ]}
                     testID={`${testID}-play-btn`}
                     accessibilityRole="button"
                     accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
@@ -95,7 +102,7 @@ export function WaveformPreview({
                     <MaterialIcons
                         name={isPlaying ? 'pause' : 'play-arrow'}
                         size={22}
-                        color={DEFAULT_BAR_COLOR}
+                        color={playButtonIconColor}
                     />
                 </Pressable>
             ) : null}
@@ -117,7 +124,6 @@ const styles = StyleSheet.create({
         marginLeft: -18,
         marginTop: -18,
         borderRadius: 18,
-        backgroundColor: 'rgba(255,255,255,0.92)',
         alignItems: 'center',
         justifyContent: 'center',
     },

@@ -7,7 +7,7 @@ import { Button, Text } from 'react-native-paper'
 import { AudioExtractionError, type AudioAnalysis, type DataPoint } from '@siteed/audio-studio'
 import { Canvas } from '@shopify/react-native-skia'
 import { AudioPlayerWidget, Waveform, type WaveformAmplitudeScale } from '@siteed/audio-ui'
-import { Notice, useToast } from '@siteed/design-system'
+import { Notice, useTheme, useToast } from '@siteed/design-system'
 
 import { baseLogger } from '../config'
 import { useAudioPlayback } from '../hooks/useAudioPlayback'
@@ -102,6 +102,8 @@ export default function AudioPlayerScreen() {
 
     const controller = useAudioPlayback()
     const { show } = useToast()
+    const theme = useTheme()
+    const colors = theme.colors
     const { isLoading: isSampleLoading, loadSampleAudio } = useSampleAudio({
         onError: (e) => {
             logger.error('sample load error', e)
@@ -468,7 +470,11 @@ export default function AudioPlayerScreen() {
     }, [extraction])
 
     return (
-        <ScrollView contentContainerStyle={styles.container} testID="audio-player-screen">
+        <ScrollView
+            style={{ backgroundColor: colors.background }}
+            contentContainerStyle={styles.container}
+            testID="audio-player-screen"
+        >
             <Notice
                 type="info"
                 title="Audio Player Widget"
@@ -560,6 +566,16 @@ export default function AudioPlayerScreen() {
                     onSeek={controller.seek}
                     amplitudeScale={amplitudeScale}
                     voiceMask={voiceMask.length === dataPoints.length ? voiceMask : undefined}
+                    barColor={colors.primary}
+                    silentBarColor={colors.outlineVariant}
+                    silenceBandColor={colors.outline}
+                    playheadColor={colors.onSurface}
+                    backgroundColor={colors.surfaceVariant}
+                    accentColor={colors.primary}
+                    textColor={colors.onSurface}
+                    statusColor={colors.onSurfaceVariant}
+                    errorColor={colors.error}
+                    disabledColor={colors.outlineVariant}
                 />
             </View>
 
@@ -569,7 +585,14 @@ export default function AudioPlayerScreen() {
                         Smooth path (`Waveform` primitive)
                     </Text>
                     <View
-                        style={[styles.referenceWrap, { width: widgetWidth, height: 80 }]}
+                        style={[
+                            styles.referenceWrap,
+                            {
+                                width: widgetWidth,
+                                height: 80,
+                                backgroundColor: colors.surfaceVariant,
+                            },
+                        ]}
                         testID="audio-player-comparison"
                     >
                         <Canvas style={{ width: widgetWidth, height: 80 }}>
@@ -582,7 +605,7 @@ export default function AudioPlayerScreen() {
                                 canvasHeight={80}
                                 minAmplitude={fullAnalysis.amplitudeRange?.min ?? 0}
                                 maxAmplitude={fullAnalysis.amplitudeRange?.max ?? 1}
-                                theme={{ color: '#7C3AED', strokeWidth: 1.5 }}
+                                theme={{ color: colors.primary, strokeWidth: 1.5 }}
                                 smoothing
                             />
                         </Canvas>
@@ -591,7 +614,10 @@ export default function AudioPlayerScreen() {
             ) : null}
 
             {voiceSegments.length > 0 || vadStatus.phase !== 'idle' ? (
-                <View style={styles.statusBlock} testID="audio-player-vad-block">
+                <View
+                    style={[styles.statusBlock, { backgroundColor: colors.surfaceVariant }]}
+                    testID="audio-player-vad-block"
+                >
                     <Text variant="titleSmall">Silero VAD</Text>
                     <Text testID="audio-player-vad-status">
                         {vadStatus.phase === 'done'
@@ -609,7 +635,7 @@ export default function AudioPlayerScreen() {
                 </View>
             ) : null}
 
-            <View style={styles.statusBlock}>
+            <View style={[styles.statusBlock, { backgroundColor: colors.surfaceVariant }]}>
                 <Text variant="titleSmall">Status</Text>
                 <Text testID="audio-player-status">{status}</Text>
                 <Text testID="audio-player-threshold-display">

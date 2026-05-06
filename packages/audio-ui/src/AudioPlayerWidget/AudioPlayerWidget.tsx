@@ -51,6 +51,11 @@ export interface AudioPlayerWidgetProps {
     playheadColor?: string
     backgroundColor?: string
     accentColor?: string
+    textColor?: string
+    statusColor?: string
+    errorColor?: string
+    disabledColor?: string
+    iconColor?: string
     amplitudeScale?: WaveformAmplitudeScale
     /**
      * Approximate pixels-per-bar density. Used to decimate the data points
@@ -154,6 +159,11 @@ export function AudioPlayerWidget({
     playheadColor = '#1F2937',
     backgroundColor = '#F8FAFC',
     accentColor = '#7C3AED',
+    textColor = '#1F2937',
+    statusColor = '#64748B',
+    errorColor = '#DC2626',
+    disabledColor = '#CBD5E1',
+    iconColor = '#FFFFFF',
     amplitudeScale = 'sqrt',
     pixelsPerBar = 3,
     voiceMask,
@@ -215,7 +225,7 @@ export function AudioPlayerWidget({
                             height: densityDefaults.playButtonSize,
                             borderRadius: densityDefaults.playButtonSize / 2,
                             backgroundColor: isDisabled
-                                ? '#CBD5E1'
+                                ? disabledColor
                                 : accentColor,
                         },
                     ]}
@@ -226,7 +236,7 @@ export function AudioPlayerWidget({
                     <MaterialIcons
                         name={isPlaying ? 'pause' : 'play-arrow'}
                         size={densityDefaults.iconSize}
-                        color="#FFFFFF"
+                        color={iconColor}
                     />
                 </Pressable>
                 {showTimeLabel ? (
@@ -234,7 +244,10 @@ export function AudioPlayerWidget({
                         testID={`${testID}-time`}
                         style={[
                             styles.time,
-                            { fontSize: densityDefaults.timeFontSize },
+                            {
+                                fontSize: densityDefaults.timeFontSize,
+                                color: textColor,
+                            },
                         ]}
                         numberOfLines={1}
                     >
@@ -312,7 +325,8 @@ export function AudioPlayerWidget({
                         testID={`${testID}-status`}
                         style={[
                             styles.status,
-                            errorMessage ? styles.error : undefined,
+                            { color: statusColor },
+                            errorMessage ? { color: errorColor } : undefined,
                         ]}
                         numberOfLines={1}
                     >
@@ -356,13 +370,8 @@ const styles = StyleSheet.create({
     },
     time: {
         fontVariant: ['tabular-nums'],
-        color: '#1F2937',
     },
     status: {
-        color: '#64748B',
         fontSize: 12,
-    },
-    error: {
-        color: '#DC2626',
     },
 })

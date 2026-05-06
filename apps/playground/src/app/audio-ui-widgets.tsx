@@ -14,7 +14,7 @@ import {
     type WaveformAmplitudeScale,
     type WaveformPoint,
 } from '@siteed/audio-ui'
-import { Notice } from '@siteed/design-system'
+import { Notice, useTheme } from '@siteed/design-system'
 
 import { useScreenHeader } from '../hooks/useScreenHeader'
 
@@ -67,6 +67,31 @@ export default function AudioUiWidgetsScreen() {
     const voiceMask = useMemo(() => dataPoints.map((point) => !point.silent), [dataPoints])
     const [isPlaying, setIsPlaying] = useState(false)
     const [currentTimeMs, setCurrentTimeMs] = useState(7_200)
+    const theme = useTheme()
+    const colors = theme.colors
+    const widgetColors = {
+        barColor: colors.primary,
+        silentBarColor: colors.outlineVariant,
+        silenceBandColor: colors.outline,
+        playheadColor: colors.onSurface,
+        backgroundColor: colors.surfaceVariant,
+        accentColor: colors.primary,
+        textColor: colors.onSurface,
+        statusColor: colors.onSurfaceVariant,
+        errorColor: colors.error,
+        disabledColor: colors.outlineVariant,
+    }
+    const chatWidgetColors = {
+        barColor: colors.primary,
+        silentBarColor: colors.outlineVariant,
+        backgroundColor: colors.surfaceVariant,
+        accentColor: colors.primary,
+        disabledColor: colors.outlineVariant,
+        textColor: colors.onSurface,
+        secondaryTextColor: colors.onSurfaceVariant,
+        errorColor: colors.error,
+        secondaryButtonBackgroundColor: colors.surface,
+    }
 
     useScreenHeader({
         title: 'Audio UI Widgets',
@@ -74,18 +99,27 @@ export default function AudioUiWidgetsScreen() {
     })
 
     return (
-        <ScrollView contentContainerStyle={styles.container} testID="audio-ui-widgets-screen">
+        <ScrollView
+            style={{ backgroundColor: colors.background }}
+            contentContainerStyle={styles.container}
+            testID="audio-ui-widgets-screen"
+        >
             <Notice
                 type="info"
                 title="Audio UI widget gallery"
                 message="Static and interactive variants for the new waveform widgets. Use this page to visually smoke-test density, transport, silence, VAD coloring, and chat-recorder states without loading audio."
             />
 
-            <Section title="WaveformPreview variants">
+            <Section title="WaveformPreview variants" surfaceColor={colors.surface}>
                 <WaveformPreview
                     dataPoints={dataPoints}
                     width={width}
                     height={72}
+                    barColor={colors.primary}
+                    silentBarColor={colors.outlineVariant}
+                    backgroundColor={colors.surfaceVariant}
+                    playButtonBackgroundColor={colors.surface}
+                    playButtonIconColor={colors.primary}
                     showPlayButton
                     isPlaying={isPlaying}
                     onPlayPress={() => setIsPlaying((value) => !value)}
@@ -100,23 +134,23 @@ export default function AudioUiWidgetsScreen() {
                             height={56}
                             amplitudeScale={scale}
                             voiceMask={voiceMask}
-                            barColor="#10B981"
-                            silentBarColor="#CBD5E1"
-                            backgroundColor="#F8FAFC"
+                            barColor={colors.tertiary}
+                            silentBarColor={colors.outlineVariant}
+                            backgroundColor={colors.surfaceVariant}
                             testID={`audio-ui-waveform-preview-${scale}`}
                         />
                     </View>
                 ))}
             </Section>
 
-            <Section title="SilenceTrack variants">
+            <Section title="SilenceTrack variants" surfaceColor={colors.surface}>
                 <Text variant="bodySmall">Merged contiguous silence bands</Text>
                 <SilenceTrack
                     dataPoints={dataPoints}
                     width={width}
                     height={10}
-                    color="#F97316"
-                    backgroundColor="#FFF7ED"
+                    color={colors.tertiary}
+                    backgroundColor={colors.tertiaryContainer}
                     testID="audio-ui-silence-track-merged"
                 />
                 <Text variant="bodySmall">Unmerged per-bar silence bands</Text>
@@ -124,14 +158,14 @@ export default function AudioUiWidgetsScreen() {
                     dataPoints={dataPoints}
                     width={width}
                     height={10}
-                    color="#7C3AED"
-                    backgroundColor="#F5F3FF"
+                    color={colors.primary}
+                    backgroundColor={colors.primaryContainer}
                     mergeContiguous={false}
                     testID="audio-ui-silence-track-unmerged"
                 />
             </Section>
 
-            <Section title="AudioPlayerWidget densities">
+            <Section title="AudioPlayerWidget densities" surfaceColor={colors.surface}>
                 {DENSITIES.map((density) => (
                     <View key={density} style={styles.variantBlock}>
                         <Text variant="labelLarge">Density: {density}</Text>
@@ -147,12 +181,13 @@ export default function AudioUiWidgetsScreen() {
                             onPlayPause={() => setIsPlaying((value) => !value)}
                             onSeek={setCurrentTimeMs}
                             testID={`audio-ui-player-density-${density}`}
+                            {...widgetColors}
                         />
                     </View>
                 ))}
             </Section>
 
-            <Section title="AudioPlayerWidget transport placements">
+            <Section title="AudioPlayerWidget transport placements" surfaceColor={colors.surface}>
                 {PLACEMENTS.map((placement) => (
                     <View key={placement} style={styles.variantBlock}>
                         <Text variant="labelLarge">Transport: {placement}</Text>
@@ -167,12 +202,16 @@ export default function AudioUiWidgetsScreen() {
                             onPlayPause={() => setIsPlaying((value) => !value)}
                             onSeek={setCurrentTimeMs}
                             testID={`audio-ui-player-transport-${placement}`}
+                            {...widgetColors}
                         />
                     </View>
                 ))}
             </Section>
 
-            <Section title="AudioPlayerWidget loading and error states">
+            <Section
+                title="AudioPlayerWidget loading and error states"
+                surfaceColor={colors.surface}
+            >
                 <AudioPlayerWidget
                     dataPoints={[]}
                     width={width}
@@ -183,6 +222,7 @@ export default function AudioUiWidgetsScreen() {
                     onPlayPause={() => undefined}
                     onSeek={() => undefined}
                     testID="audio-ui-player-loading"
+                    {...widgetColors}
                 />
                 <AudioPlayerWidget
                     dataPoints={dataPoints}
@@ -194,10 +234,11 @@ export default function AudioUiWidgetsScreen() {
                     onPlayPause={() => undefined}
                     onSeek={() => undefined}
                     testID="audio-ui-player-error"
+                    {...widgetColors}
                 />
             </Section>
 
-            <Section title="ChatRecordWidget states">
+            <Section title="ChatRecordWidget states" surfaceColor={colors.surface}>
                 {CHAT_STATES.map((state) => (
                     <ChatRecordWidget
                         key={state}
@@ -216,6 +257,7 @@ export default function AudioUiWidgetsScreen() {
                         cancelSlot={<Button compact>Cancel</Button>}
                         sendSlot={state === 'ready' ? <Button compact>Send</Button> : undefined}
                         testID={`audio-ui-chat-record-${state}`}
+                        {...chatWidgetColors}
                     />
                 ))}
             </Section>
@@ -223,9 +265,17 @@ export default function AudioUiWidgetsScreen() {
     )
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+    title,
+    children,
+    surfaceColor,
+}: {
+    title: string
+    children: React.ReactNode
+    surfaceColor: string
+}) {
     return (
-        <View style={styles.section}>
+        <View style={[styles.section, { backgroundColor: surfaceColor }]}>
             <Text variant="titleMedium">{title}</Text>
             {children}
         </View>
@@ -241,7 +291,6 @@ const styles = StyleSheet.create({
         gap: 12,
         padding: 12,
         borderRadius: 12,
-        backgroundColor: '#FFFFFF',
     },
     variantBlock: {
         gap: 6,

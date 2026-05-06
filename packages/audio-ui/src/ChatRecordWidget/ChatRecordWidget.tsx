@@ -34,6 +34,12 @@ export interface ChatRecordWidgetProps {
     silentBarColor?: string
     backgroundColor?: string
     accentColor?: string
+    disabledColor?: string
+    iconColor?: string
+    textColor?: string
+    secondaryTextColor?: string
+    errorColor?: string
+    secondaryButtonBackgroundColor?: string
     disabled?: boolean
     testID?: string
 }
@@ -87,6 +93,12 @@ export function ChatRecordWidget({
     silentBarColor = '#DDD6FE',
     backgroundColor = '#F8FAFC',
     accentColor = '#7C3AED',
+    disabledColor = '#CBD5E1',
+    iconColor = '#FFFFFF',
+    textColor = '#334155',
+    secondaryTextColor = '#64748B',
+    errorColor = '#DC2626',
+    secondaryButtonBackgroundColor = '#FFFFFF',
     disabled = false,
     testID = 'chat-record-widget',
 }: ChatRecordWidgetProps) {
@@ -117,13 +129,17 @@ export function ChatRecordWidget({
                 testID={`${testID}-primary`}
                 style={[
                     styles.primaryButton,
-                    { backgroundColor: isDisabled ? '#CBD5E1' : accentColor },
+                    {
+                        backgroundColor: isDisabled
+                            ? disabledColor
+                            : accentColor,
+                    },
                 ]}
             >
                 <MaterialIcons
                     name={getPrimaryIcon(state)}
                     size={22}
-                    color="#FFFFFF"
+                    color={iconColor}
                 />
             </Pressable>
 
@@ -142,7 +158,8 @@ export function ChatRecordWidget({
                         numberOfLines={1}
                         style={[
                             styles.placeholder,
-                            state === 'error' && styles.errorText,
+                            { color: secondaryTextColor },
+                            state === 'error' && { color: errorColor },
                         ]}
                         testID={`${testID}-placeholder`}
                     >
@@ -151,7 +168,10 @@ export function ChatRecordWidget({
                             : placeholderText}
                     </Text>
                 )}
-                <Text style={styles.elapsed} testID={`${testID}-elapsed`}>
+                <Text
+                    style={[styles.elapsed, { color: textColor }]}
+                    testID={`${testID}-elapsed`}
+                >
                     {formatElapsed(elapsedMs)}
                 </Text>
             </View>
@@ -162,7 +182,10 @@ export function ChatRecordWidget({
                     accessibilityLabel="Pause recording"
                     onPress={onPausePress}
                     testID={`${testID}-pause`}
-                    style={styles.secondaryButton}
+                    style={[
+                        styles.secondaryButton,
+                        { backgroundColor: secondaryButtonBackgroundColor },
+                    ]}
                 >
                     <MaterialIcons name="pause" size={20} color={accentColor} />
                 </Pressable>
@@ -198,7 +221,6 @@ const styles = StyleSheet.create({
         borderRadius: 18,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#FFFFFF',
     },
     body: {
         flex: 1,
@@ -206,14 +228,9 @@ const styles = StyleSheet.create({
         gap: 2,
     },
     placeholder: {
-        color: '#64748B',
         fontSize: 14,
     },
-    errorText: {
-        color: '#DC2626',
-    },
     elapsed: {
-        color: '#334155',
         fontSize: 12,
         fontVariant: ['tabular-nums'],
     },
