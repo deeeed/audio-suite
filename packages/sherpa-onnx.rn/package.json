@@ -1,6 +1,6 @@
 {
   "name": "@siteed/sherpa-onnx.rn",
-  "version": "1.2.0-beta.2",
+  "version": "1.2.0-beta.4",
   "sherpaOnnxVersion": "1.13.0",
   "description": "React Native wrapper for sherpa-onnx TTS and STT capabilities",
   "source": "./src/index.tsx",
@@ -36,6 +36,8 @@
     "app.plugin.js",
     "react-native.config.js",
     "install.js",
+    "scripts/validate-prebuilt-release.js",
+    "scripts/sherpa-prebuilt-contract.js",
     "setup.sh",
     "build-sherpa-ios.sh",
     "build-sherpa-android.sh",
@@ -70,7 +72,9 @@
     "codegen": "yarn dlx @react-native-community/cli codegen",
     "regenerate-codegen": "yarn react-native codegen && mkdir -p ios/generated/SherpaOnnxSpec && cp -R build/generated/ios/SherpaOnnxSpec/* ios/generated/SherpaOnnxSpec/",
     "test:android": "cd ../../apps/sherpa-voice/android && ./gradlew :siteed_sherpa-onnx.rn:connectedAndroidTest",
-    "test:ios:info": "./ios-testing-info.sh"
+    "test:ios:info": "./ios-testing-info.sh",
+    "release:preflight": "node ./scripts/validate-prebuilt-release.js",
+    "prepublishOnly": "yarn release:preflight && yarn typecheck && yarn test && npm pack --json --dry-run"
   },
   "keywords": [
     "react-native",
@@ -106,9 +110,11 @@
   "devDependencies": {
     "@babel/core": "^7.26.10",
     "@babel/preset-env": "^7.26.9",
+    "@babel/preset-typescript": "^7.27.0",
     "@commitlint/config-conventional": "^17.0.2",
     "@evilmartians/lefthook": "^1.5.0",
     "@react-native-community/cli": "^18.0.0",
+    "@react-native/babel-preset": "0.83.6",
     "@react-native/eslint-config": "^0.73.1",
     "@siteed/publisher": "^0.6.0",
     "@types/adm-zip": "^0",
@@ -143,6 +149,9 @@
     "modulePathIgnorePatterns": [
       "<rootDir>/example/node_modules",
       "<rootDir>/lib/"
+    ],
+    "setupFiles": [
+      "<rootDir>/jest.setup.js"
     ]
   },
   "commitlint": {

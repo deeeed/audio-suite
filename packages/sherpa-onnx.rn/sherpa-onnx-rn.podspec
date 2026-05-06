@@ -79,36 +79,50 @@ Pod::Spec.new do |s|
 
   # Set up initial symlinks to device libraries - this runs during pod installation
   s.prepare_command = <<-CMD
+    set -e
+    echo "Validating Sherpa ONNX iOS prebuilts"
+
+    for header in prebuilt/include/module.modulemap prebuilt/include/sherpa-onnx/c-api/c-api.h prebuilt/include/onnxruntime/onnxruntime_c_api.h; do
+      if [ ! -f "$header" ]; then
+        echo "ERROR: Required Sherpa ONNX header/modulemap missing: $header" >&2
+        echo "Expected package postinstall to download: https://github.com/deeeed/audiolab/releases/download/sherpa-onnx-prebuilt-v#{package["sherpaOnnxVersion"]}/sherpa-onnx-binaries-#{package["sherpaOnnxVersion"]}.zip" >&2
+        exit 1
+      fi
+    done
+
     echo "Creating prebuilt/ios/current directory"
     mkdir -p prebuilt/ios/current
-    
+
     # Only setup the symlinks if they don't exist
     if [ ! -f prebuilt/ios/current/libonnxruntime.a ]; then
       echo "Setting up initial symlinks to device libraries"
-      
-      # First check if device libs exist
+
       if [ -d prebuilt/ios/device ]; then
+        missing_libraries=0
         for lib in #{sherpa_libraries.join(" ")}; do
           if [ -f "prebuilt/ios/device/$lib" ]; then
             echo "Linking $lib from device folder"
             ln -sf "../device/$lib" "prebuilt/ios/current/$lib"
           else
-            echo "Warning: Device library $lib not found"
+            echo "ERROR: Device library $lib not found at prebuilt/ios/device/$lib" >&2
+            missing_libraries=1
           fi
         done
+        if [ "$missing_libraries" != "0" ]; then
+          echo "ERROR: Sherpa ONNX iOS device prebuilts are incomplete." >&2
+          echo "Expected package postinstall to download: https://github.com/deeeed/audiolab/releases/download/sherpa-onnx-prebuilt-v#{package["sherpaOnnxVersion"]}/sherpa-onnx-binaries-#{package["sherpaOnnxVersion"]}.zip" >&2
+          exit 1
+        fi
       else
-        echo ""
-        echo "ERROR: iOS libraries not found!"
-        echo ""
-        echo "The sherpa-onnx iOS libraries need to be built before using this package."
-        echo ""
-        echo "To fix this error, run the following commands:"
-        echo "  cd $(pwd)"
-        echo "  ./build-sherpa-ios.sh"
-        echo ""
-        echo "This will download and build the required iOS libraries."
-        echo "The build process may take 5-10 minutes."
-        echo ""
+        echo "" >&2
+        echo "ERROR: iOS libraries not found!" >&2
+        echo "" >&2
+        echo "Expected package postinstall to download: https://github.com/deeeed/audiolab/releases/download/sherpa-onnx-prebuilt-v#{package["sherpaOnnxVersion"]}/sherpa-onnx-binaries-#{package["sherpaOnnxVersion"]}.zip" >&2
+        echo "" >&2
+        echo "For local development, build manually:" >&2
+        echo "  cd $(pwd)" >&2
+        echo "  ./build-sherpa-ios.sh" >&2
+        echo "" >&2
         exit 1
       fi
     else
@@ -124,66 +138,47 @@ Pod::Spec.new do |s|
       CURRENT_DIR="${PODS_TARGET_SRCROOT}/prebuilt/ios/current"
       DEVICE_DIR="${PODS_TARGET_SRCROOT}/prebuilt/ios/device"
       SIMULATOR_DIR="${PODS_TARGET_SRCROOT}/prebuilt/ios/simulator"
-      
-      # Make sure the current directory exists
+
+      link_required_libraries() {
+        local source_dir="$1"
+        local relative_prefix="$2"
+        local label="$3"
+        local missing_libraries=0
+
+        if [ ! -d "$source_dir" ]; then
+          echo "" >&2
+          echo "ERROR: iOS $label libraries not found!" >&2
+          echo "Missing directory: $source_dir" >&2
+          echo "Run package postinstall again or build locally with ./build-sherpa-ios.sh" >&2
+          echo "" >&2
+          exit 1
+        fi
+
+        for lib in ' + sherpa_libraries.join(" ") + '; do
+          if [ -f "$source_dir/$lib" ]; then
+            echo "Linking $lib from $label"
+            ln -sf "$relative_prefix/$lib" "$CURRENT_DIR/$lib"
+          else
+            echo "ERROR: $label library $lib not found at $source_dir/$lib" >&2
+            missing_libraries=1
+          fi
+        done
+
+        if [ "$missing_libraries" != "0" ]; then
+          echo "ERROR: Sherpa ONNX iOS $label prebuilts are incomplete." >&2
+          exit 1
+        fi
+      }
+
       mkdir -p "$CURRENT_DIR"
-      
-      # Remove existing symlinks
       rm -f "$CURRENT_DIR"/*.a
-      
-      # Check if building for simulator
+
       if [[ "$PLATFORM_NAME" == *simulator* ]]; then
         echo "Building for simulator, linking simulator libraries"
-        if [ -d "$SIMULATOR_DIR" ]; then
-          for lib in ' + sherpa_libraries.join(" ") + '; do
-            if [ -f "$SIMULATOR_DIR/$lib" ]; then
-              echo "Linking $lib from simulator"
-              ln -sf "../simulator/$lib" "$CURRENT_DIR/$lib"
-            else
-              echo "Warning: Simulator library $lib not found"
-            fi
-          done
-        else
-          echo ""
-          echo "ERROR: iOS Simulator libraries not found!"
-          echo ""
-          echo "Building for iOS Simulator but libraries are missing at:"
-          echo "  $SIMULATOR_DIR"
-          echo ""
-          echo "To fix this error:"
-          echo "  1. cd ${PODS_TARGET_SRCROOT}"
-          echo "  2. ./build-sherpa-ios.sh"
-          echo ""
-          echo "This will build both device and simulator libraries."
-          echo ""
-          exit 1
-        fi
+        link_required_libraries "$SIMULATOR_DIR" "../simulator" "Simulator"
       else
         echo "Building for device, linking device libraries"
-        if [ -d "$DEVICE_DIR" ]; then
-          for lib in ' + sherpa_libraries.join(" ") + '; do
-            if [ -f "$DEVICE_DIR/$lib" ]; then
-              echo "Linking $lib from device"
-              ln -sf "../device/$lib" "$CURRENT_DIR/$lib"
-            else
-              echo "Warning: Device library $lib not found"
-            fi
-          done
-        else
-          echo ""
-          echo "ERROR: iOS Device libraries not found!"
-          echo ""
-          echo "Building for iOS Device but libraries are missing at:"
-          echo "  $DEVICE_DIR"
-          echo ""
-          echo "To fix this error:"
-          echo "  1. cd ${PODS_TARGET_SRCROOT}"
-          echo "  2. ./build-sherpa-ios.sh"
-          echo ""
-          echo "This will build both device and simulator libraries."
-          echo ""
-          exit 1
-        fi
+        link_required_libraries "$DEVICE_DIR" "../device" "Device"
       fi
     ',
     :execution_position => :before_compile,

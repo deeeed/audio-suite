@@ -53,7 +53,7 @@ Android integration is handled automatically by the package.
 
 ### Native Prebuilt Libraries
 
-The package `postinstall` downloads prebuilt Android and iOS sherpa-onnx binaries for the `sherpaOnnxVersion` declared in `package.json`. If that download fails, install does not fail the whole app install; build native binaries manually with `./setup.sh && ./build-sherpa-ios.sh && ./build-sherpa-android.sh`, or set `SITEED_SHERPA_ONNX_REBUILD_ANDROID=1` when Android prebuilts must be rebuilt locally.
+The package `postinstall` downloads prebuilt Android and iOS sherpa-onnx binaries for the `sherpaOnnxVersion` declared in `package.json` and validates that iOS device/simulator libraries, Android `.so` files, and headers are complete. In CI/EAS builds, a missing or incomplete GitHub release asset fails immediately with the expected asset URL and missing file list, before CocoaPods can fail later with an opaque native-library error. For local manual builds, run `./setup.sh && ./build-sherpa-ios.sh && ./build-sherpa-android.sh`; use `SITEED_SHERPA_ONNX_ALLOW_MISSING_PREBUILTS=1` only as a developer escape hatch, or set `SITEED_SHERPA_ONNX_REBUILD_ANDROID=1` when Android prebuilts must be rebuilt locally.
 
 ### Web
 

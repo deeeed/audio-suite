@@ -39,18 +39,13 @@ native/web artifacts at once:
 The first publishable beta was achieved by trimming repo-only / duplicate
 payloads, but package size should still be watched closely in every release.
 
-At minimum, inspect every beta tarball with:
+At minimum, run the native release validation on every beta tarball:
 
 ```bash
-npm pack --json --dry-run
+yarn validate:native-release
 ```
 
-and record:
-
-- packed size
-- unpacked size
-- largest files
-- whether each large artifact is intentionally included
+This checks that the packaged iOS xcframework contains device and simulator slices, confirms Android published consumers use the Maven fallback instead of a missing local AAR, and verifies `npm pack --json --dry-run` includes/excludes the expected native artifacts. Record packed size, unpacked size, largest files, and whether each large artifact is intentionally included.
 
 ## Beta publish flow
 
