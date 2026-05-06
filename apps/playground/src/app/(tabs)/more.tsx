@@ -480,6 +480,14 @@ export const MoreScreen = () => {
             />
             <ListItem
                 contentContainerStyle={styles.listItemContainer}
+                label="Widget Comparison"
+                subLabel="audio-ui vs Simform's react-native-audio-waveform on the same sample"
+                onPress={() => {
+                    router.navigate('/widget-comparison')
+                }}
+            />
+            <ListItem
+                contentContainerStyle={styles.listItemContainer}
                 label="Audio Analysis"
                 subLabel="Extract spectral, MFCC, and chromagram features"
                 onPress={() => {

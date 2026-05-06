@@ -128,6 +128,7 @@
         "@react-navigation/native-stack": "^7.14.12",
         "@reduxjs/toolkit": "^2.5.0",
         "@shopify/react-native-skia": "2.4.18",
+        "@simform_solutions/react-native-audio-waveform": "^2.1.6",
         "@siteed/agentic-dev": "workspace:^",
         "@siteed/audio-studio": "workspace:^",
         "@siteed/audio-ui": "workspace:^",
