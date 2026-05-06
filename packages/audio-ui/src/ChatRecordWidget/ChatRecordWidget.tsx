@@ -11,30 +11,42 @@ import {
 import { WaveformPreview } from '../WaveformPreview/WaveformPreview'
 import type { WaveformPoint } from '../types/waveform'
 
-export type ChatRecordWidgetState =
-    | 'idle'
-    | 'recording'
-    | 'processing'
-    | 'ready'
-    | 'error'
-    | 'disabled'
+import {
+    useChatRecordWidgetState,
+    type ChatRecordWidgetIconMap,
+    type ChatRecordWidgetIconName,
+    type ChatRecordWidgetInteraction,
+    type ChatRecordWidgetState,
+} from './useChatRecordWidgetState'
 
-/**
- * - 'tap' (default): tap to start, tap again to stop. Voice-memo / iMessage.
- * - 'hold': press & hold while speaking, release to stop. WhatsApp / Telegram.
- *   Caller wires `onRecordPress` (start) to press-in and `onStopPress` (stop)
- *   to press-out.
- */
-export type ChatRecordWidgetInteraction = 'tap' | 'hold'
+export type {
+    ChatRecordWidgetIconMap,
+    ChatRecordWidgetIconName,
+    ChatRecordWidgetInteraction,
+    ChatRecordWidgetState,
+} from './useChatRecordWidgetState'
 
 /**
  * - 'full' (default): primary button + waveform/placeholder + slots row.
- *   The kitchen-sink layout for full chat-input docks.
- * - 'button': primary button only. Use this when you want a bare mic
- *   trigger and intend to render the waveform / status / slots elsewhere.
- *   Caption, when provided, still renders below the button.
+ * - 'button': primary button only. Caption (when provided) still shows below.
  */
 export type ChatRecordWidgetVariant = 'full' | 'button'
+
+/**
+ * Context handed to `renderPrimary`. Provides everything needed to render a
+ * fully bespoke primary button while keeping the widget's interaction logic.
+ */
+export interface ChatRecordWidgetPrimaryContext {
+    state: ChatRecordWidgetState
+    isDisabled: boolean
+    primaryIcon: ChatRecordWidgetIconName
+    onPress: (() => void) | undefined
+    onPressIn: (() => void) | undefined
+    onPressOut: (() => void) | undefined
+    accentColor: string
+    disabledColor: string
+    iconColor: string
+}
 
 export interface ChatRecordWidgetProps {
     state: ChatRecordWidgetState
@@ -47,6 +59,8 @@ export interface ChatRecordWidgetProps {
     onRecordPress?: () => void
     onStopPress?: () => void
     onRetryPress?: () => void
+    /** Render slot before the primary button (e.g. avatar, attach icon). */
+    leadingSlot?: React.ReactNode
     sendSlot?: React.ReactNode
     cancelSlot?: React.ReactNode
     errorMessage?: string
@@ -57,6 +71,16 @@ export interface ChatRecordWidgetProps {
     showElapsed?: boolean
     /** Show the placeholder text when no dataPoints are present. Default true. */
     showPlaceholder?: boolean
+    /** Per-state icon overrides. Falls back to the built-in defaults. */
+    primaryIcons?: ChatRecordWidgetIconMap
+    /**
+     * Replace the entire primary button. Use this when you need a custom
+     * shape, gradient, long-press affordance, etc. — the widget keeps wiring
+     * the right press handler based on `interaction`.
+     */
+    renderPrimary?: (ctx: ChatRecordWidgetPrimaryContext) => React.ReactNode
+    /** Override the default `MM:SS` formatter for the elapsed-time line. */
+    formatElapsed?: (ms: number) => string
     barColor?: string
     silentBarColor?: string
     backgroundColor?: string
@@ -68,41 +92,21 @@ export interface ChatRecordWidgetProps {
     errorColor?: string
     disabled?: boolean
     /**
-     * Optional caption rendered under the waveform / placeholder. Used by
-     * callers to surface live transcription text or status hints without
-     * adding a parallel layout above the widget.
+     * Optional caption rendered under the row. Used by callers to surface
+     * live transcription text or status hints without adding a parallel
+     * layout above the widget.
      */
     caption?: string
     captionColor?: string
     testID?: string
 }
 
-function formatElapsed(ms = 0): string {
+function defaultFormatElapsed(ms = 0): string {
     if (!Number.isFinite(ms) || ms < 0) return '00:00'
     const totalSeconds = Math.floor(ms / 1000)
     const minutes = Math.floor(totalSeconds / 60)
     const seconds = totalSeconds % 60
     return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
-}
-
-function getPrimaryIcon(
-    state: ChatRecordWidgetState
-): keyof typeof MaterialIcons.glyphMap {
-    switch (state) {
-        case 'recording':
-            return 'stop'
-        case 'processing':
-            return 'hourglass-empty'
-        case 'ready':
-            return 'check'
-        case 'error':
-            return 'refresh'
-        case 'disabled':
-            return 'mic-off'
-        case 'idle':
-        default:
-            return 'mic'
-    }
 }
 
 export function ChatRecordWidget({
@@ -116,6 +120,7 @@ export function ChatRecordWidget({
     onRecordPress,
     onStopPress,
     onRetryPress,
+    leadingSlot,
     sendSlot,
     cancelSlot,
     errorMessage,
@@ -123,6 +128,9 @@ export function ChatRecordWidget({
     showWaveform = true,
     showElapsed = true,
     showPlaceholder = true,
+    primaryIcons,
+    renderPrimary,
+    formatElapsed,
     barColor = '#7C3AED',
     silentBarColor = '#DDD6FE',
     backgroundColor = '#F8FAFC',
@@ -137,30 +145,19 @@ export function ChatRecordWidget({
     captionColor,
     testID = 'chat-record-widget',
 }: ChatRecordWidgetProps) {
-    const isDisabled =
-        disabled || state === 'disabled' || state === 'processing'
     const hasWaveform = showWaveform && dataPoints.length > 0
     const isButtonOnly = variant === 'button'
+    const resolvedFormatElapsed = formatElapsed ?? defaultFormatElapsed
 
-    // Tap mode: one button press toggles record/stop/retry.
-    // Hold mode: pressIn starts, pressOut stops; tap is ignored while
-    //   recording so a quick release still triggers stop.
-    const tapAction =
-        state === 'recording'
-            ? onStopPress
-            : state === 'error'
-              ? onRetryPress
-              : onRecordPress
-
-    const onPress = interaction === 'tap' ? tapAction : undefined
-    const onPressIn =
-        interaction === 'hold' && state !== 'recording'
-            ? onRecordPress
-            : undefined
-    const onPressOut =
-        interaction === 'hold' && state === 'recording'
-            ? onStopPress
-            : undefined
+    const headless = useChatRecordWidgetState({
+        state,
+        interaction,
+        onRecordPress,
+        onStopPress,
+        onRetryPress,
+        disabled,
+        primaryIcons,
+    })
 
     const [bodyWidth, setBodyWidth] = useState(0)
     const handleBodyLayout = useCallback((e: LayoutChangeEvent) => {
@@ -170,37 +167,55 @@ export function ChatRecordWidget({
         }
     }, [])
 
+    const primaryButton = renderPrimary ? (
+        renderPrimary({
+            state,
+            isDisabled: headless.isDisabled,
+            primaryIcon: headless.primaryIcon,
+            onPress: headless.onPress,
+            onPressIn: headless.onPressIn,
+            onPressOut: headless.onPressOut,
+            accentColor,
+            disabledColor,
+            iconColor,
+        })
+    ) : (
+        <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={state === 'recording' ? 'Stop recording' : 'Record'}
+            disabled={headless.isDisabled || headless.isInert}
+            onPress={headless.onPress}
+            onPressIn={headless.onPressIn}
+            onPressOut={headless.onPressOut}
+            testID={`${testID}-primary`}
+            style={[
+                styles.primaryButton,
+                {
+                    backgroundColor: headless.isDisabled
+                        ? disabledColor
+                        : accentColor,
+                },
+            ]}
+        >
+            <MaterialIcons
+                name={headless.primaryIcon}
+                size={22}
+                color={iconColor}
+            />
+        </Pressable>
+    )
+
     return (
         <View
             testID={testID}
             style={[styles.container, { width, backgroundColor }]}
         >
             <View style={styles.row}>
-                <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                        state === 'recording' ? 'Stop recording' : 'Record'
-                    }
-                    disabled={isDisabled || (!onPress && !onPressIn && !onPressOut)}
-                    onPress={onPress}
-                    onPressIn={onPressIn}
-                    onPressOut={onPressOut}
-                    testID={`${testID}-primary`}
-                    style={[
-                        styles.primaryButton,
-                        {
-                            backgroundColor: isDisabled
-                                ? disabledColor
-                                : accentColor,
-                        },
-                    ]}
-                >
-                    <MaterialIcons
-                        name={getPrimaryIcon(state)}
-                        size={22}
-                        color={iconColor}
-                    />
-                </Pressable>
+                {leadingSlot ? (
+                    <View style={styles.leading}>{leadingSlot}</View>
+                ) : null}
+
+                {primaryButton}
 
                 {isButtonOnly ? null : (
                     <View style={styles.body} onLayout={handleBodyLayout}>
@@ -233,7 +248,7 @@ export function ChatRecordWidget({
                                 style={[styles.elapsed, { color: textColor }]}
                                 testID={`${testID}-elapsed`}
                             >
-                                {formatElapsed(elapsedMs)}
+                                {resolvedFormatElapsed(elapsedMs)}
                             </Text>
                         ) : null}
                     </View>
@@ -274,6 +289,12 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
+    },
+    leading: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        flexShrink: 0,
     },
     primaryButton: {
         width: 40,

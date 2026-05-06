@@ -1,8 +1,6 @@
 import { MaterialIcons } from '@expo/vector-icons'
-import React, { useCallback, useMemo, useState } from 'react'
+import React from 'react'
 import {
-    GestureResponderEvent,
-    LayoutChangeEvent,
     Pressable,
     StyleSheet,
     Text,
@@ -14,11 +12,8 @@ import { SilenceTrack } from '../WaveformPreview/SilenceTrack'
 import { WaveformPreview } from '../WaveformPreview/WaveformPreview'
 import type { WaveformAmplitudeScale } from '../hooks/useWaveformLayout'
 import type { WaveformPoint } from '../types/waveform'
-import {
-    decimateDataPoints,
-    decimateVoiceMask,
-    pickBarCountForWidth,
-} from '../utils/decimateDataPoints'
+
+import { useAudioPlayerWidgetState } from './useAudioPlayerWidgetState'
 
 export type AudioPlayerWidgetDensity = 'compact' | 'comfortable' | 'chat'
 export type AudioPlayerWidgetTransportPlacement =
@@ -26,6 +21,38 @@ export type AudioPlayerWidgetTransportPlacement =
     | 'left'
     | 'right'
     | 'none'
+
+export type AudioPlayerWidgetIconName = keyof typeof MaterialIcons.glyphMap
+
+/**
+ * Context handed to `renderTransport`. Lets a custom transport render anything
+ * (compound buttons, volume sliders, scrubbers) while staying in sync with the
+ * widget's playback state.
+ */
+export interface AudioPlayerWidgetTransportContext {
+    isPlaying: boolean
+    isDisabled: boolean
+    currentTimeMs: number
+    durationMs: number
+    formatTime: (ms: number) => string
+    onPlayPause: () => void
+    /**
+     * Default density-derived sizing — caller can ignore or honor.
+     * Tweak via the `playButtonSize` / `iconSize` / `timeFontSize` overrides.
+     */
+    sizing: {
+        playButtonSize: number
+        iconSize: number
+        timeFontSize: number
+    }
+    /** Resolved colors so custom transports stay theme-aware. */
+    colors: {
+        accentColor: string
+        disabledColor: string
+        iconColor: string
+        textColor: string
+    }
+}
 
 export interface AudioPlayerWidgetProps {
     dataPoints: WaveformPoint[]
@@ -57,22 +84,55 @@ export interface AudioPlayerWidgetProps {
     iconColor?: string
     amplitudeScale?: WaveformAmplitudeScale
     /**
-     * Approximate pixels-per-bar density. Used to decimate the data points
-     * down to a screen-friendly count. Default 3 — renders cleanly on phone
+     * Approximate pixels-per-bar density. Default 3 — renders cleanly on phone
      * widths without sub-pixel overlap.
      */
     pixelsPerBar?: number
     /**
-     * Optional per-`dataPoint` voice mask. When supplied (length matching
-     * `dataPoints`), bars are colored by voice activity instead of the
-     * amplitude-threshold `silent` flag. Real-VAD callers should drive this.
+     * Optional per-`dataPoint` voice mask. Same length as `dataPoints` —
+     * bars are colored by voice activity instead of the amplitude-threshold
+     * `silent` flag. Real-VAD callers should drive this.
      */
     voiceMask?: boolean[]
+    /**
+     * Replace the default play button + time label with a fully custom node.
+     * Receives playback state, computed sizing, and resolved colors so a
+     * custom transport stays theme- and density-aware.
+     */
+    renderTransport?: (ctx: AudioPlayerWidgetTransportContext) => React.ReactNode
+    /** Override the default `MM:SS` time formatter. */
+    formatTime?: (ms: number) => string
+    /** MaterialIcons name to use when paused (default `play-arrow`). */
+    playIcon?: AudioPlayerWidgetIconName
+    /** MaterialIcons name to use when playing (default `pause`). */
+    pauseIcon?: AudioPlayerWidgetIconName
+    /** Render arbitrary content above the waveform area. */
+    topSlot?: React.ReactNode
+    /** Render arbitrary content below the waveform / silence track. */
+    bottomSlot?: React.ReactNode
+    /** Override density's play button diameter. */
+    playButtonSize?: number
+    /** Override density's icon size. */
+    iconSize?: number
+    /** Override density's container padding. */
+    padding?: number
+    /** Override density's container border radius. */
+    borderRadius?: number
+    /** Override density's time-label font size. */
+    timeFontSize?: number
     style?: ViewStyle
     testID?: string
 }
 
-function getDensityDefaults(density: AudioPlayerWidgetDensity) {
+interface DensityDefaults {
+    padding: number
+    borderRadius: number
+    playButtonSize: number
+    iconSize: number
+    timeFontSize: number
+}
+
+function getDensityDefaults(density: AudioPlayerWidgetDensity): DensityDefaults {
     switch (density) {
         case 'chat':
             return {
@@ -100,14 +160,6 @@ function getDensityDefaults(density: AudioPlayerWidgetDensity) {
                 timeFontSize: 14,
             }
     }
-}
-
-function formatTime(ms: number): string {
-    if (!Number.isFinite(ms) || ms < 0) return '00:00'
-    const totalSec = Math.floor(ms / 1000)
-    const m = Math.floor(totalSec / 60)
-    const s = totalSec % 60
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
 function hasSideTransport(placement: AudioPlayerWidgetTransportPlacement) {
@@ -156,63 +208,72 @@ export function AudioPlayerWidget({
     amplitudeScale = 'sqrt',
     pixelsPerBar = 3,
     voiceMask,
+    renderTransport,
+    formatTime,
+    playIcon = 'play-arrow',
+    pauseIcon = 'pause',
+    topSlot,
+    bottomSlot,
+    playButtonSize: playButtonSizeOverride,
+    iconSize: iconSizeOverride,
+    padding: paddingOverride,
+    borderRadius: borderRadiusOverride,
+    timeFontSize: timeFontSizeOverride,
     style,
     testID = 'audio-player',
 }: AudioPlayerWidgetProps) {
     const densityDefaults = getDensityDefaults(density)
+    const sizing: DensityDefaults = {
+        padding: paddingOverride ?? densityDefaults.padding,
+        borderRadius: borderRadiusOverride ?? densityDefaults.borderRadius,
+        playButtonSize: playButtonSizeOverride ?? densityDefaults.playButtonSize,
+        iconSize: iconSizeOverride ?? densityDefaults.iconSize,
+        timeFontSize: timeFontSizeOverride ?? densityDefaults.timeFontSize,
+    }
     const resolvedWaveformHeight =
         waveformHeight ?? (density === 'chat' ? 40 : 64)
     const isDisabled = disabled || loading || Boolean(errorMessage)
     const inline = hasSideTransport(transportPlacement)
     const statusMessage = getStatusMessage(loading, errorMessage)
 
-    // Measured width of the waveform area. Drives bar layout, playhead
-    // position, and silence-track width — replaces the old hardcoded
-    // `width - playButtonSize - 20` formula that ignored the time label and
-    // produced visible truncation under side-transport placements.
-    const [waveformWidth, setWaveformWidth] = useState(0)
-    const handleWaveformLayout = useCallback((e: LayoutChangeEvent) => {
-        const next = Math.floor(e.nativeEvent.layout.width)
-        if (next > 0) {
-            setWaveformWidth((prev) => (prev === next ? prev : next))
+    const {
+        onLayout: handleWaveformLayout,
+        measuredWidth: waveformWidth,
+        renderPoints,
+        renderVoiceMask,
+        playheadX,
+        handleCanvasPress,
+        formatTime: resolvedFormatTime,
+    } = useAudioPlayerWidgetState({
+        dataPoints,
+        voiceMask,
+        currentTimeMs,
+        durationMs,
+        onSeek,
+        pixelsPerBar,
+        disabled: isDisabled,
+        formatTime,
+    })
+
+    const transport: React.ReactNode = (() => {
+        if (transportPlacement === 'none') return null
+        if (renderTransport) {
+            return renderTransport({
+                isPlaying,
+                isDisabled,
+                currentTimeMs,
+                durationMs,
+                formatTime: resolvedFormatTime,
+                onPlayPause,
+                sizing: {
+                    playButtonSize: sizing.playButtonSize,
+                    iconSize: sizing.iconSize,
+                    timeFontSize: sizing.timeFontSize,
+                },
+                colors: { accentColor, disabledColor, iconColor, textColor },
+            })
         }
-    }, [])
-
-    const renderPoints = useMemo(() => {
-        if (waveformWidth <= 0) return []
-        const target = pickBarCountForWidth(waveformWidth, pixelsPerBar)
-        return decimateDataPoints(dataPoints, target)
-    }, [dataPoints, waveformWidth, pixelsPerBar])
-
-    const renderVoiceMask = useMemo(() => {
-        if (!voiceMask || voiceMask.length === 0) return undefined
-        if (voiceMask.length !== dataPoints.length) return undefined
-        if (renderPoints.length === 0) return undefined
-        return decimateVoiceMask(
-            voiceMask,
-            dataPoints.length,
-            renderPoints.length
-        )
-    }, [voiceMask, dataPoints.length, renderPoints.length])
-
-    const playheadX = useMemo(() => {
-        if (durationMs <= 0 || waveformWidth <= 0) return 0
-        const ratio = currentTimeMs / durationMs
-        return Math.max(0, Math.min(waveformWidth, ratio * waveformWidth))
-    }, [currentTimeMs, durationMs, waveformWidth])
-
-    const handleCanvasPress = useCallback(
-        (e: GestureResponderEvent) => {
-            if (durationMs <= 0 || isDisabled || waveformWidth <= 0) return
-            const x = e.nativeEvent.locationX
-            const ratio = Math.max(0, Math.min(1, x / waveformWidth))
-            onSeek(ratio * durationMs)
-        },
-        [durationMs, waveformWidth, onSeek, isDisabled]
-    )
-
-    const transport =
-        transportPlacement === 'none' ? null : (
+        return (
             <View style={styles.transport}>
                 <Pressable
                     onPress={onPlayPause}
@@ -220,9 +281,9 @@ export function AudioPlayerWidget({
                     style={[
                         styles.playButton,
                         {
-                            width: densityDefaults.playButtonSize,
-                            height: densityDefaults.playButtonSize,
-                            borderRadius: densityDefaults.playButtonSize / 2,
+                            width: sizing.playButtonSize,
+                            height: sizing.playButtonSize,
+                            borderRadius: sizing.playButtonSize / 2,
                             backgroundColor: isDisabled
                                 ? disabledColor
                                 : accentColor,
@@ -233,8 +294,8 @@ export function AudioPlayerWidget({
                     accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
                 >
                     <MaterialIcons
-                        name={isPlaying ? 'pause' : 'play-arrow'}
-                        size={densityDefaults.iconSize}
+                        name={isPlaying ? pauseIcon : playIcon}
+                        size={sizing.iconSize}
                         color={iconColor}
                     />
                 </Pressable>
@@ -243,18 +304,17 @@ export function AudioPlayerWidget({
                         testID={`${testID}-time`}
                         style={[
                             styles.time,
-                            {
-                                fontSize: densityDefaults.timeFontSize,
-                                color: textColor,
-                            },
+                            { fontSize: sizing.timeFontSize, color: textColor },
                         ]}
                         numberOfLines={1}
                     >
-                        {formatTime(currentTimeMs)} / {formatTime(durationMs)}
+                        {resolvedFormatTime(currentTimeMs)} /{' '}
+                        {resolvedFormatTime(durationMs)}
                     </Text>
                 ) : null}
             </View>
         )
+    })()
 
     return (
         <View
@@ -264,8 +324,8 @@ export function AudioPlayerWidget({
                 {
                     width,
                     backgroundColor,
-                    padding: densityDefaults.padding,
-                    borderRadius: densityDefaults.borderRadius,
+                    padding: sizing.padding,
+                    borderRadius: sizing.borderRadius,
                 },
                 inline && styles.inlineContainer,
                 style,
@@ -273,6 +333,7 @@ export function AudioPlayerWidget({
         >
             {transportPlacement === 'left' ? transport : null}
             <View style={styles.waveformColumn}>
+                {topSlot}
                 <Pressable
                     onPress={handleCanvasPress}
                     disabled={isDisabled}
@@ -338,6 +399,7 @@ export function AudioPlayerWidget({
                         {statusMessage}
                     </Text>
                 ) : null}
+                {bottomSlot}
             </View>
             {transportPlacement === 'right' ? transport : null}
             {transportPlacement === 'bottom' ? transport : null}

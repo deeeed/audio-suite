@@ -8,6 +8,8 @@ import {
 } from 'react-native'
 import { Button, Text } from 'react-native-paper'
 
+import { MaterialCommunityIcons } from '@expo/vector-icons'
+
 import {
     AudioPlayerWidget,
     ChatRecordWidget,
@@ -306,6 +308,138 @@ export default function AudioUiWidgetsScreen() {
                             onStopPress={() => undefined}
                             cancelSlot={<Button compact>Cancel</Button>}
                             testID="audio-ui-chat-record-hold"
+                            {...chatWidgetColors}
+                        />
+                    </>
+                )}
+            </Section>
+
+            <Section title="Customization slots & overrides" surfaceColor={colors.surface}>
+                {(width) => (
+                    <>
+                        <Text variant="labelLarge">
+                            AudioPlayerWidget · custom transport + remaining-time format
+                        </Text>
+                        <AudioPlayerWidget
+                            dataPoints={dataPoints}
+                            width={width}
+                            transportPlacement="left"
+                            currentTimeMs={currentTimeMs}
+                            durationMs={DURATION_MS}
+                            isPlaying={isPlaying}
+                            onPlayPause={() => setIsPlaying((value) => !value)}
+                            onSeek={setCurrentTimeMs}
+                            formatTime={(ms) => {
+                                // Render as remaining-time, e.g. "-00:17"
+                                const remaining = Math.max(0, DURATION_MS - ms)
+                                const totalSec = Math.floor(remaining / 1000)
+                                const m = Math.floor(totalSec / 60)
+                                const s = totalSec % 60
+                                return `-${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+                            }}
+                            renderTransport={(ctx) => (
+                                <Button
+                                    mode="contained"
+                                    icon={ctx.isPlaying ? 'pause-circle' : 'play-circle'}
+                                    onPress={ctx.onPlayPause}
+                                    disabled={ctx.isDisabled}
+                                    compact
+                                    style={{ borderRadius: 999 }}
+                                >
+                                    {ctx.formatTime(ctx.currentTimeMs)}
+                                </Button>
+                            )}
+                            testID="audio-ui-player-render-transport"
+                            {...widgetColors}
+                        />
+
+                        <Text variant="labelLarge">
+                            AudioPlayerWidget · top + bottom slots, density override
+                        </Text>
+                        <AudioPlayerWidget
+                            dataPoints={dataPoints}
+                            width={width}
+                            density="chat"
+                            playButtonSize={48}
+                            iconSize={28}
+                            currentTimeMs={currentTimeMs}
+                            durationMs={DURATION_MS}
+                            isPlaying={isPlaying}
+                            playIcon="graphic-eq"
+                            pauseIcon="equalizer"
+                            onPlayPause={() => setIsPlaying((value) => !value)}
+                            onSeek={setCurrentTimeMs}
+                            topSlot={
+                                <Text
+                                    variant="labelSmall"
+                                    style={{ color: colors.onSurfaceVariant }}
+                                >
+                                    JFK · Inaugural address
+                                </Text>
+                            }
+                            bottomSlot={
+                                <Text
+                                    variant="labelSmall"
+                                    style={{ color: colors.onSurfaceVariant }}
+                                >
+                                    Tap the bars to scrub
+                                </Text>
+                            }
+                            testID="audio-ui-player-slots"
+                            {...widgetColors}
+                        />
+
+                        <Text variant="labelLarge">
+                            ChatRecordWidget · custom primary, leading slot, icon overrides
+                        </Text>
+                        <ChatRecordWidget
+                            state="idle"
+                            width={width}
+                            interaction="tap"
+                            primaryIcons={{
+                                idle: 'graphic-eq',
+                                recording: 'fiber-manual-record',
+                                ready: 'send',
+                            }}
+                            leadingSlot={
+                                <MaterialCommunityIcons
+                                    name="account-circle"
+                                    size={32}
+                                    color={colors.primary}
+                                />
+                            }
+                            onRecordPress={() => undefined}
+                            cancelSlot={<Button compact>Attach</Button>}
+                            testID="audio-ui-chat-record-icons"
+                            {...chatWidgetColors}
+                        />
+
+                        <Text variant="labelLarge">
+                            ChatRecordWidget · renderPrimary slot
+                        </Text>
+                        <ChatRecordWidget
+                            state="idle"
+                            width={width}
+                            interaction="hold"
+                            renderPrimary={(ctx) => (
+                                <Button
+                                    mode="contained-tonal"
+                                    icon="microphone"
+                                    onPress={ctx.onPress}
+                                    onPressIn={ctx.onPressIn}
+                                    onPressOut={ctx.onPressOut}
+                                    disabled={ctx.isDisabled}
+                                    compact
+                                >
+                                    Hold to talk
+                                </Button>
+                            )}
+                            onRecordPress={() => undefined}
+                            onStopPress={() => undefined}
+                            showWaveform={false}
+                            showElapsed={false}
+                            showPlaceholder={false}
+                            testID="audio-ui-chat-record-render-primary"
                             {...chatWidgetColors}
                         />
                     </>
