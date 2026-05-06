@@ -193,8 +193,11 @@ export default function WidgetComparisonScreen() {
                         isPlaying={ourPlayback.isPlaying}
                         onPlayPause={ourPlayback.toggle}
                         onSeek={ourPlayback.seek}
-                        barColor={colors.primary}
+                        barColor={colors.outlineVariant}
                         silentBarColor={colors.outlineVariant}
+                        playedBarColor={colors.primary}
+                        playedSilentBarColor={colors.primary}
+                        showPlayhead={false}
                         silenceBandColor={colors.outline}
                         playheadColor={colors.onSurface}
                         backgroundColor={colors.surfaceVariant}

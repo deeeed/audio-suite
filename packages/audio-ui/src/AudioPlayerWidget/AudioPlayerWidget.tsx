@@ -73,6 +73,12 @@ export interface AudioPlayerWidgetProps {
     onSeek: (timeMs: number) => void
     barColor?: string
     silentBarColor?: string
+    /** Color for bars behind the playhead. Off by default. */
+    playedBarColor?: string
+    /** Color for silent / non-voice bars behind the playhead. Defaults to playedBarColor. */
+    playedSilentBarColor?: string
+    /** Render the moving playhead line. Default true. Pair with `playedBarColor` for a fill-only look. */
+    showPlayhead?: boolean
     silenceBandColor?: string
     playheadColor?: string
     backgroundColor?: string
@@ -196,6 +202,9 @@ export function AudioPlayerWidget({
     onSeek,
     barColor,
     silentBarColor,
+    playedBarColor,
+    playedSilentBarColor,
+    showPlayhead = true,
     silenceBandColor,
     playheadColor = '#1F2937',
     backgroundColor = '#F8FAFC',
@@ -334,33 +343,42 @@ export function AudioPlayerWidget({
             {transportPlacement === 'left' ? transport : null}
             <View style={styles.waveformColumn}>
                 {topSlot}
-                <Pressable
-                    onPress={handleCanvasPress}
-                    disabled={isDisabled}
+                <View
+                    onLayout={handleWaveformLayout}
+                    onStartShouldSetResponder={() => !isDisabled}
+                    onMoveShouldSetResponder={() => !isDisabled}
+                    onResponderGrant={handleCanvasPress}
+                    onResponderMove={handleCanvasPress}
+                    onResponderRelease={handleCanvasPress}
+                    onResponderTerminationRequest={() => false}
                     testID={`${testID}-canvas`}
                     accessibilityRole="adjustable"
                     accessibilityLabel="Seek bar"
-                    style={styles.canvasPress}
+                    style={[
+                        styles.waveformArea,
+                        { height: resolvedWaveformHeight },
+                    ]}
                 >
-                    <View
-                        onLayout={handleWaveformLayout}
-                        style={[
-                            styles.waveformArea,
-                            { height: resolvedWaveformHeight },
-                        ]}
-                    >
-                        {waveformWidth > 0 ? (
-                            <>
-                                <WaveformPreview
-                                    dataPoints={renderPoints}
-                                    width={waveformWidth}
-                                    height={resolvedWaveformHeight}
-                                    barColor={barColor}
-                                    silentBarColor={silentBarColor}
-                                    amplitudeScale={amplitudeScale}
-                                    voiceMask={renderVoiceMask}
-                                    testID="waveform-preview"
-                                />
+                    {waveformWidth > 0 ? (
+                        <>
+                            <WaveformPreview
+                                dataPoints={renderPoints}
+                                width={waveformWidth}
+                                height={resolvedWaveformHeight}
+                                barColor={barColor}
+                                silentBarColor={silentBarColor}
+                                amplitudeScale={amplitudeScale}
+                                voiceMask={renderVoiceMask}
+                                playedRatio={
+                                    durationMs > 0
+                                        ? currentTimeMs / durationMs
+                                        : undefined
+                                }
+                                playedBarColor={playedBarColor}
+                                playedSilentBarColor={playedSilentBarColor}
+                                testID="waveform-preview"
+                            />
+                            {showPlayhead ? (
                                 <View
                                     pointerEvents="none"
                                     style={[
@@ -373,10 +391,10 @@ export function AudioPlayerWidget({
                                         },
                                     ]}
                                 />
-                            </>
-                        ) : null}
-                    </View>
-                </Pressable>
+                            ) : null}
+                        </>
+                    ) : null}
+                </View>
                 {showSilenceTrack && waveformWidth > 0 ? (
                     <SilenceTrack
                         dataPoints={renderPoints}

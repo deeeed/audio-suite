@@ -32,6 +32,18 @@ export interface WaveformPreviewProps {
      * `dataPoints.length` are ignored.
      */
     voiceMask?: boolean[]
+    /**
+     * Fraction of the waveform that is "behind" the playhead (0-1). Bars
+     * whose center falls within `playedRatio * width` are painted with
+     * `playedBarColor` / `playedSilentBarColor` instead of the regular
+     * pair, giving a Spotify-style progress fill without needing a moving
+     * playhead line.
+     */
+    playedRatio?: number
+    /** Color for played voice bars. No effect when `playedRatio` is unset. */
+    playedBarColor?: string
+    /** Color for played silent / non-voice bars. Defaults to playedBarColor. */
+    playedSilentBarColor?: string
     testID?: string
 }
 
@@ -53,6 +65,9 @@ export function WaveformPreview({
     playButtonIconColor = DEFAULT_BAR_COLOR,
     amplitudeScale = 'sqrt',
     voiceMask,
+    playedRatio,
+    playedBarColor,
+    playedSilentBarColor,
     testID = 'waveform-preview',
 }: WaveformPreviewProps) {
     const { bars } = useWaveformLayout({
@@ -65,6 +80,11 @@ export function WaveformPreview({
     const centerY = height / 2
     const useVoiceMask =
         Array.isArray(voiceMask) && voiceMask.length === bars.length
+    const playedX =
+        typeof playedRatio === 'number' && playedBarColor
+            ? Math.max(0, Math.min(1, playedRatio)) * width
+            : -1
+    const resolvedPlayedSilent = playedSilentBarColor ?? playedBarColor
 
     return (
         <View
@@ -76,6 +96,16 @@ export function WaveformPreview({
                     const inactive = useVoiceMask
                         ? !voiceMask[bar.index]
                         : bar.silent
+                    const barCenter = bar.x + bar.width / 2
+                    const isPlayed = playedX >= 0 && barCenter <= playedX
+                    let color: string
+                    if (isPlayed) {
+                        color = inactive
+                            ? (resolvedPlayedSilent ?? silentBarColor)
+                            : (playedBarColor ?? barColor)
+                    } else {
+                        color = inactive ? silentBarColor : barColor
+                    }
                     return (
                         <Rect
                             key={bar.index}
@@ -83,7 +113,7 @@ export function WaveformPreview({
                             y={centerY - bar.height / 2}
                             width={bar.width}
                             height={bar.height}
-                            color={inactive ? silentBarColor : barColor}
+                            color={color}
                         />
                     )
                 })}
