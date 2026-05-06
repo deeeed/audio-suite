@@ -1,19 +1,40 @@
-import React from 'react'
-
 import { MaterialIcons } from '@expo/vector-icons'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import React, { useCallback, useState } from 'react'
+import {
+    LayoutChangeEvent,
+    Pressable,
+    StyleSheet,
+    Text,
+    View,
+} from 'react-native'
 
-import type { WaveformPoint } from '../types/waveform'
 import { WaveformPreview } from '../WaveformPreview/WaveformPreview'
+import type { WaveformPoint } from '../types/waveform'
 
 export type ChatRecordWidgetState =
     | 'idle'
     | 'recording'
-    | 'paused'
     | 'processing'
     | 'ready'
     | 'error'
     | 'disabled'
+
+/**
+ * - 'tap' (default): tap to start, tap again to stop. Voice-memo / iMessage.
+ * - 'hold': press & hold while speaking, release to stop. WhatsApp / Telegram.
+ *   Caller wires `onRecordPress` (start) to press-in and `onStopPress` (stop)
+ *   to press-out.
+ */
+export type ChatRecordWidgetInteraction = 'tap' | 'hold'
+
+/**
+ * - 'full' (default): primary button + waveform/placeholder + slots row.
+ *   The kitchen-sink layout for full chat-input docks.
+ * - 'button': primary button only. Use this when you want a bare mic
+ *   trigger and intend to render the waveform / status / slots elsewhere.
+ *   Caption, when provided, still renders below the button.
+ */
+export type ChatRecordWidgetVariant = 'full' | 'button'
 
 export interface ChatRecordWidgetProps {
     state: ChatRecordWidgetState
@@ -21,15 +42,21 @@ export interface ChatRecordWidgetProps {
     width: number
     waveformHeight?: number
     elapsedMs?: number
+    interaction?: ChatRecordWidgetInteraction
+    variant?: ChatRecordWidgetVariant
     onRecordPress?: () => void
     onStopPress?: () => void
-    onPausePress?: () => void
-    onResumePress?: () => void
     onRetryPress?: () => void
     sendSlot?: React.ReactNode
     cancelSlot?: React.ReactNode
     errorMessage?: string
     placeholderText?: string
+    /** Show the rolling waveform inside the body. Default true. */
+    showWaveform?: boolean
+    /** Show the elapsed-time line under the waveform / placeholder. Default true. */
+    showElapsed?: boolean
+    /** Show the placeholder text when no dataPoints are present. Default true. */
+    showPlaceholder?: boolean
     barColor?: string
     silentBarColor?: string
     backgroundColor?: string
@@ -39,8 +66,14 @@ export interface ChatRecordWidgetProps {
     textColor?: string
     secondaryTextColor?: string
     errorColor?: string
-    secondaryButtonBackgroundColor?: string
     disabled?: boolean
+    /**
+     * Optional caption rendered under the waveform / placeholder. Used by
+     * callers to surface live transcription text or status hints without
+     * adding a parallel layout above the widget.
+     */
+    caption?: string
+    captionColor?: string
     testID?: string
 }
 
@@ -58,8 +91,6 @@ function getPrimaryIcon(
     switch (state) {
         case 'recording':
             return 'stop'
-        case 'paused':
-            return 'play-arrow'
         case 'processing':
             return 'hourglass-empty'
         case 'ready':
@@ -80,15 +111,18 @@ export function ChatRecordWidget({
     width,
     waveformHeight = 36,
     elapsedMs = 0,
+    interaction = 'tap',
+    variant = 'full',
     onRecordPress,
     onStopPress,
-    onPausePress,
-    onResumePress,
     onRetryPress,
     sendSlot,
     cancelSlot,
     errorMessage,
     placeholderText = 'Hold or tap to record',
+    showWaveform = true,
+    showElapsed = true,
+    showPlaceholder = true,
     barColor = '#7C3AED',
     silentBarColor = '#DDD6FE',
     backgroundColor = '#F8FAFC',
@@ -98,103 +132,133 @@ export function ChatRecordWidget({
     textColor = '#334155',
     secondaryTextColor = '#64748B',
     errorColor = '#DC2626',
-    secondaryButtonBackgroundColor = '#FFFFFF',
     disabled = false,
+    caption,
+    captionColor,
     testID = 'chat-record-widget',
 }: ChatRecordWidgetProps) {
     const isDisabled =
         disabled || state === 'disabled' || state === 'processing'
-    const hasWaveform = dataPoints.length > 0
-    const primaryAction =
+    const hasWaveform = showWaveform && dataPoints.length > 0
+    const isButtonOnly = variant === 'button'
+
+    // Tap mode: one button press toggles record/stop/retry.
+    // Hold mode: pressIn starts, pressOut stops; tap is ignored while
+    //   recording so a quick release still triggers stop.
+    const tapAction =
         state === 'recording'
             ? onStopPress
-            : state === 'paused'
-              ? onResumePress
-              : state === 'error'
-                ? onRetryPress
-                : onRecordPress
+            : state === 'error'
+              ? onRetryPress
+              : onRecordPress
+
+    const onPress = interaction === 'tap' ? tapAction : undefined
+    const onPressIn =
+        interaction === 'hold' && state !== 'recording'
+            ? onRecordPress
+            : undefined
+    const onPressOut =
+        interaction === 'hold' && state === 'recording'
+            ? onStopPress
+            : undefined
+
+    const [bodyWidth, setBodyWidth] = useState(0)
+    const handleBodyLayout = useCallback((e: LayoutChangeEvent) => {
+        const next = Math.floor(e.nativeEvent.layout.width)
+        if (next > 0) {
+            setBodyWidth((prev) => (prev === next ? prev : next))
+        }
+    }, [])
 
     return (
         <View
             testID={testID}
             style={[styles.container, { width, backgroundColor }]}
         >
-            <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={
-                    state === 'recording' ? 'Stop recording' : 'Record'
-                }
-                disabled={isDisabled || !primaryAction}
-                onPress={primaryAction}
-                testID={`${testID}-primary`}
-                style={[
-                    styles.primaryButton,
-                    {
-                        backgroundColor: isDisabled
-                            ? disabledColor
-                            : accentColor,
-                    },
-                ]}
-            >
-                <MaterialIcons
-                    name={getPrimaryIcon(state)}
-                    size={22}
-                    color={iconColor}
-                />
-            </Pressable>
-
-            <View style={styles.body}>
-                {hasWaveform ? (
-                    <WaveformPreview
-                        dataPoints={dataPoints}
-                        width={Math.max(1, width - 128)}
-                        height={waveformHeight}
-                        barColor={barColor}
-                        silentBarColor={silentBarColor}
-                        testID={`${testID}-waveform`}
-                    />
-                ) : (
-                    <Text
-                        numberOfLines={1}
-                        style={[
-                            styles.placeholder,
-                            { color: secondaryTextColor },
-                            state === 'error' && { color: errorColor },
-                        ]}
-                        testID={`${testID}-placeholder`}
-                    >
-                        {state === 'error'
-                            ? errorMessage || 'Recording failed'
-                            : placeholderText}
-                    </Text>
-                )}
-                <Text
-                    style={[styles.elapsed, { color: textColor }]}
-                    testID={`${testID}-elapsed`}
-                >
-                    {formatElapsed(elapsedMs)}
-                </Text>
-            </View>
-
-            {state === 'recording' && onPausePress ? (
+            <View style={styles.row}>
                 <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel="Pause recording"
-                    onPress={onPausePress}
-                    testID={`${testID}-pause`}
+                    accessibilityLabel={
+                        state === 'recording' ? 'Stop recording' : 'Record'
+                    }
+                    disabled={isDisabled || (!onPress && !onPressIn && !onPressOut)}
+                    onPress={onPress}
+                    onPressIn={onPressIn}
+                    onPressOut={onPressOut}
+                    testID={`${testID}-primary`}
                     style={[
-                        styles.secondaryButton,
-                        { backgroundColor: secondaryButtonBackgroundColor },
+                        styles.primaryButton,
+                        {
+                            backgroundColor: isDisabled
+                                ? disabledColor
+                                : accentColor,
+                        },
                     ]}
                 >
-                    <MaterialIcons name="pause" size={20} color={accentColor} />
+                    <MaterialIcons
+                        name={getPrimaryIcon(state)}
+                        size={22}
+                        color={iconColor}
+                    />
                 </Pressable>
-            ) : null}
 
-            <View style={styles.slots}>
-                {cancelSlot}
-                {sendSlot}
+                {isButtonOnly ? null : (
+                    <View style={styles.body} onLayout={handleBodyLayout}>
+                        {hasWaveform && bodyWidth > 0 ? (
+                            <WaveformPreview
+                                dataPoints={dataPoints}
+                                width={bodyWidth}
+                                height={waveformHeight}
+                                barColor={barColor}
+                                silentBarColor={silentBarColor}
+                                testID={`${testID}-waveform`}
+                            />
+                        ) : showPlaceholder ? (
+                            <Text
+                                numberOfLines={1}
+                                style={[
+                                    styles.placeholder,
+                                    { color: secondaryTextColor },
+                                    state === 'error' && { color: errorColor },
+                                ]}
+                                testID={`${testID}-placeholder`}
+                            >
+                                {state === 'error'
+                                    ? errorMessage || 'Recording failed'
+                                    : placeholderText}
+                            </Text>
+                        ) : null}
+                        {showElapsed ? (
+                            <Text
+                                style={[styles.elapsed, { color: textColor }]}
+                                testID={`${testID}-elapsed`}
+                            >
+                                {formatElapsed(elapsedMs)}
+                            </Text>
+                        ) : null}
+                    </View>
+                )}
+
+                {isButtonOnly || (!cancelSlot && !sendSlot) ? null : (
+                    <View style={styles.slots}>
+                        {cancelSlot}
+                        {sendSlot}
+                    </View>
+                )}
             </View>
+
+            {caption ? (
+                <Text
+                    style={[
+                        styles.caption,
+                        { color: captionColor ?? secondaryTextColor },
+                    ]}
+                    numberOfLines={2}
+                    testID={`${testID}-caption`}
+                >
+                    {caption}
+                </Text>
+            ) : null}
         </View>
     )
 }
@@ -204,6 +268,9 @@ const styles = StyleSheet.create({
         minHeight: 56,
         borderRadius: 18,
         padding: 8,
+        gap: 6,
+    },
+    row: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
@@ -212,13 +279,6 @@ const styles = StyleSheet.create({
         width: 40,
         height: 40,
         borderRadius: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    secondaryButton: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -238,5 +298,10 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
+        flexShrink: 0,
+    },
+    caption: {
+        fontSize: 12,
+        paddingHorizontal: 4,
     },
 })

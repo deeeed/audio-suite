@@ -1,8 +1,8 @@
-import React, { useCallback, useMemo } from 'react'
-
 import { MaterialIcons } from '@expo/vector-icons'
+import React, { useCallback, useMemo, useState } from 'react'
 import {
     GestureResponderEvent,
+    LayoutChangeEvent,
     Pressable,
     StyleSheet,
     Text,
@@ -10,16 +10,15 @@ import {
     ViewStyle,
 } from 'react-native'
 
-import type { WaveformPoint } from '../types/waveform'
-
+import { SilenceTrack } from '../WaveformPreview/SilenceTrack'
+import { WaveformPreview } from '../WaveformPreview/WaveformPreview'
 import type { WaveformAmplitudeScale } from '../hooks/useWaveformLayout'
+import type { WaveformPoint } from '../types/waveform'
 import {
     decimateDataPoints,
     decimateVoiceMask,
     pickBarCountForWidth,
 } from '../utils/decimateDataPoints'
-import { SilenceTrack } from '../WaveformPreview/SilenceTrack'
-import { WaveformPreview } from '../WaveformPreview/WaveformPreview'
 
 export type AudioPlayerWidgetDensity = 'compact' | 'comfortable' | 'chat'
 export type AudioPlayerWidgetTransportPlacement =
@@ -115,16 +114,6 @@ function hasSideTransport(placement: AudioPlayerWidgetTransportPlacement) {
     return placement === 'left' || placement === 'right'
 }
 
-function getWaveformWidth(
-    placement: AudioPlayerWidgetTransportPlacement,
-    width: number,
-    playButtonSize: number
-) {
-    return hasSideTransport(placement)
-        ? Math.max(1, width - playButtonSize - 20)
-        : width
-}
-
 function getStatusMessage(loading: boolean, errorMessage?: string) {
     if (errorMessage) return errorMessage
     return loading ? 'Loading audio…' : undefined
@@ -174,14 +163,23 @@ export function AudioPlayerWidget({
     const resolvedWaveformHeight =
         waveformHeight ?? (density === 'chat' ? 40 : 64)
     const isDisabled = disabled || loading || Boolean(errorMessage)
-    const waveformWidth = getWaveformWidth(
-        transportPlacement,
-        width,
-        densityDefaults.playButtonSize
-    )
+    const inline = hasSideTransport(transportPlacement)
     const statusMessage = getStatusMessage(loading, errorMessage)
 
+    // Measured width of the waveform area. Drives bar layout, playhead
+    // position, and silence-track width — replaces the old hardcoded
+    // `width - playButtonSize - 20` formula that ignored the time label and
+    // produced visible truncation under side-transport placements.
+    const [waveformWidth, setWaveformWidth] = useState(0)
+    const handleWaveformLayout = useCallback((e: LayoutChangeEvent) => {
+        const next = Math.floor(e.nativeEvent.layout.width)
+        if (next > 0) {
+            setWaveformWidth((prev) => (prev === next ? prev : next))
+        }
+    }, [])
+
     const renderPoints = useMemo(() => {
+        if (waveformWidth <= 0) return []
         const target = pickBarCountForWidth(waveformWidth, pixelsPerBar)
         return decimateDataPoints(dataPoints, target)
     }, [dataPoints, waveformWidth, pixelsPerBar])
@@ -189,6 +187,7 @@ export function AudioPlayerWidget({
     const renderVoiceMask = useMemo(() => {
         if (!voiceMask || voiceMask.length === 0) return undefined
         if (voiceMask.length !== dataPoints.length) return undefined
+        if (renderPoints.length === 0) return undefined
         return decimateVoiceMask(
             voiceMask,
             dataPoints.length,
@@ -197,14 +196,14 @@ export function AudioPlayerWidget({
     }, [voiceMask, dataPoints.length, renderPoints.length])
 
     const playheadX = useMemo(() => {
-        if (durationMs <= 0) return 0
+        if (durationMs <= 0 || waveformWidth <= 0) return 0
         const ratio = currentTimeMs / durationMs
         return Math.max(0, Math.min(waveformWidth, ratio * waveformWidth))
     }, [currentTimeMs, durationMs, waveformWidth])
 
     const handleCanvasPress = useCallback(
         (e: GestureResponderEvent) => {
-            if (durationMs <= 0 || isDisabled) return
+            if (durationMs <= 0 || isDisabled || waveformWidth <= 0) return
             const x = e.nativeEvent.locationX
             const ratio = Math.max(0, Math.min(1, x / waveformWidth))
             onSeek(ratio * durationMs)
@@ -268,7 +267,7 @@ export function AudioPlayerWidget({
                     padding: densityDefaults.padding,
                     borderRadius: densityDefaults.borderRadius,
                 },
-                hasSideTransport(transportPlacement) && styles.inlineContainer,
+                inline && styles.inlineContainer,
                 style,
             ]}
         >
@@ -280,38 +279,44 @@ export function AudioPlayerWidget({
                     testID={`${testID}-canvas`}
                     accessibilityRole="adjustable"
                     accessibilityLabel="Seek bar"
+                    style={styles.canvasPress}
                 >
                     <View
-                        style={{
-                            width: waveformWidth,
-                            height: resolvedWaveformHeight,
-                        }}
+                        onLayout={handleWaveformLayout}
+                        style={[
+                            styles.waveformArea,
+                            { height: resolvedWaveformHeight },
+                        ]}
                     >
-                        <WaveformPreview
-                            dataPoints={renderPoints}
-                            width={waveformWidth}
-                            height={resolvedWaveformHeight}
-                            barColor={barColor}
-                            silentBarColor={silentBarColor}
-                            amplitudeScale={amplitudeScale}
-                            voiceMask={renderVoiceMask}
-                            testID="waveform-preview"
-                        />
-                        <View
-                            pointerEvents="none"
-                            style={[
-                                styles.playhead,
-                                {
-                                    left: playheadX,
-                                    height: resolvedWaveformHeight,
-                                    backgroundColor: playheadColor,
-                                    opacity: isDisabled ? 0.4 : 1,
-                                },
-                            ]}
-                        />
+                        {waveformWidth > 0 ? (
+                            <>
+                                <WaveformPreview
+                                    dataPoints={renderPoints}
+                                    width={waveformWidth}
+                                    height={resolvedWaveformHeight}
+                                    barColor={barColor}
+                                    silentBarColor={silentBarColor}
+                                    amplitudeScale={amplitudeScale}
+                                    voiceMask={renderVoiceMask}
+                                    testID="waveform-preview"
+                                />
+                                <View
+                                    pointerEvents="none"
+                                    style={[
+                                        styles.playhead,
+                                        {
+                                            left: playheadX,
+                                            height: resolvedWaveformHeight,
+                                            backgroundColor: playheadColor,
+                                            opacity: isDisabled ? 0.4 : 1,
+                                        },
+                                    ]}
+                                />
+                            </>
+                        ) : null}
                     </View>
                 </Pressable>
-                {showSilenceTrack ? (
+                {showSilenceTrack && waveformWidth > 0 ? (
                     <SilenceTrack
                         dataPoints={renderPoints}
                         width={waveformWidth}
@@ -357,6 +362,14 @@ const styles = StyleSheet.create({
         flex: 1,
         minWidth: 0,
         gap: 4,
+    },
+    canvasPress: {
+        width: '100%',
+    },
+    waveformArea: {
+        width: '100%',
+        position: 'relative',
+        overflow: 'hidden',
     },
     transport: {
         flexDirection: 'row',
