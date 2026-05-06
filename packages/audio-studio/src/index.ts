@@ -10,7 +10,6 @@ import {
     MAX_DURATION_MS,
 } from './AudioAnalysis/extractMelSpectrogram'
 import { extractPreview } from './AudioAnalysis/extractPreview'
-import { extractPreviewBars } from './AudioAnalysis/extractPreviewBars'
 import {
     initMelStreamingWasm,
     computeMelFrameWasm,
@@ -45,6 +44,7 @@ export { AudioDeviceManager, audioDeviceManager } from './AudioDeviceManager'
 export { useAudioDevices } from './hooks/useAudioDevices'
 
 export { setMelSpectrogramWasmUrl } from './AudioAnalysis/wasmConfig'
+export { extractPreviewBars } from './AudioAnalysis/extractPreviewBars'
 
 export {
     AudioRecorderProvider,
@@ -52,7 +52,6 @@ export {
     extractRawWavAnalysis,
     extractAudioAnalysis,
     extractPreview,
-    extractPreviewBars,
     trimAudio,
     extractAudioData,
     extractMelSpectrogram,

@@ -4,17 +4,9 @@ import * as DocumentPicker from 'expo-document-picker'
 import { Platform, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native'
 import { Button, Text } from 'react-native-paper'
 
-import {
-    AudioExtractionError,
-    type AudioAnalysis,
-    type DataPoint,
-} from '@siteed/audio-studio'
+import { AudioExtractionError, type AudioAnalysis, type DataPoint } from '@siteed/audio-studio'
 import { Canvas } from '@shopify/react-native-skia'
-import {
-    AudioPlayerWidget,
-    Waveform,
-    type WaveformAmplitudeScale,
-} from '@siteed/audio-ui'
+import { AudioPlayerWidget, Waveform, type WaveformAmplitudeScale } from '@siteed/audio-ui'
 import { Notice, useToast } from '@siteed/design-system'
 
 import { baseLogger } from '../config'
@@ -26,10 +18,7 @@ import {
 } from '../utils/extractPreviewWithVAD'
 import { useSampleAudio } from '../hooks/useSampleAudio'
 import { useScreenHeader } from '../hooks/useScreenHeader'
-import {
-    setAgenticAudioPlayerProbe,
-    type AgenticAudioPlayerProbe,
-} from '../agentic-bridge'
+import { setAgenticAudioPlayerProbe, type AgenticAudioPlayerProbe } from '../agentic-bridge'
 
 const logger = baseLogger.extend('AudioPlayerScreen')
 
@@ -38,6 +27,14 @@ const SAMPLE_ASSET = require('@assets/jfk.mp3')
 
 const MIN_POINTS = 100
 const MAX_POINTS = 500
+
+function countTrue(values: boolean[]): number {
+    return values.reduce((total, value) => total + (value ? 1 : 0), 0)
+}
+
+function runAndLog(task: Promise<unknown>, label: string): void {
+    task.catch((error) => logger.error(label, error))
+}
 
 interface ExtractionState {
     pointsReceived: number
@@ -49,21 +46,46 @@ interface ExtractionState {
     lastError: { code: string; message: string; nativeMessage?: string } | null
 }
 
+type ExtractionStateSetter = React.Dispatch<React.SetStateAction<ExtractionState>>
+
+function updateExtractionProgress(
+    snapshot: DataPoint[],
+    total: number,
+    setExtraction: ExtractionStateSetter,
+) {
+    setExtraction((prev) => ({
+        ...prev,
+        pointsReceived: snapshot.length,
+        totalPoints: total,
+        silentSegmentCount: snapshot.reduce((count, point) => count + (point.silent ? 1 : 0), 0),
+        isStreaming: snapshot.length < total,
+    }))
+}
+
+function appendPreviewPoint(
+    incoming: DataPoint[],
+    point: DataPoint,
+    total: number,
+    setDataPoints: React.Dispatch<React.SetStateAction<DataPoint[]>>,
+    setExtraction: ExtractionStateSetter,
+) {
+    incoming.push(point)
+    const snapshot = incoming.slice()
+    setDataPoints(snapshot)
+    updateExtractionProgress(snapshot, total, setExtraction)
+}
+
 export default function AudioPlayerScreen() {
     const { width: windowWidth } = useWindowDimensions()
     const widgetWidth = Math.min(560, Math.max(280, Math.floor(windowWidth - 32)))
 
-    const numberOfPoints = Math.min(
-        MAX_POINTS,
-        Math.max(MIN_POINTS, Math.floor(widgetWidth)),
-    )
+    const numberOfPoints = Math.min(MAX_POINTS, Math.max(MIN_POINTS, Math.floor(widgetWidth)))
 
     const [dataPoints, setDataPoints] = useState<DataPoint[]>([])
     const [fullAnalysis, setFullAnalysis] = useState<AudioAnalysis | null>(null)
     const [showSilenceTrack, setShowSilenceTrack] = useState(false)
     const [threshold, setThreshold] = useState(0.01)
-    const [amplitudeScale, setAmplitudeScale] =
-        useState<WaveformAmplitudeScale>('sqrt')
+    const [amplitudeScale, setAmplitudeScale] = useState<WaveformAmplitudeScale>('sqrt')
     const [voiceMask, setVoiceMask] = useState<boolean[]>([])
     const [voiceSegments, setVoiceSegments] = useState<VoiceSegment[]>([])
     const [vadStatus, setVadStatus] = useState<VadStatus>({ phase: 'idle' })
@@ -100,10 +122,7 @@ export default function AudioPlayerScreen() {
     }>({ uri: null, durationMs: 0, threshold: -1 })
 
     const runExtraction = useCallback(
-        async (
-            fileUri: string,
-            opts: { silenceThreshold: number; endTimeMs: number },
-        ) => {
+        async (fileUri: string, opts: { silenceThreshold: number; endTimeMs: number }) => {
             const requestId = ++extractCounterRef.current
             const startedAt = Date.now()
 
@@ -132,16 +151,7 @@ export default function AudioPlayerScreen() {
                     decodingOptions: { silenceRmsThreshold: opts.silenceThreshold },
                     onPointReady: (point, _index, total) => {
                         if (requestId !== extractCounterRef.current) return
-                        incoming.push(point)
-                        const snapshot = incoming.slice()
-                        setDataPoints(snapshot)
-                        setExtraction((prev) => ({
-                            ...prev,
-                            pointsReceived: snapshot.length,
-                            totalPoints: total,
-                            silentSegmentCount: snapshot.filter((p) => p.silent).length,
-                            isStreaming: snapshot.length < total,
-                        }))
+                        appendPreviewPoint(incoming, point, total, setDataPoints, setExtraction)
                     },
                     onVadStatus: (status) => {
                         if (requestId !== extractCounterRef.current) return
@@ -202,10 +212,13 @@ export default function AudioPlayerScreen() {
         // Leave a small margin: iOS native reads effectiveLength in bytes and
         // rejects when the requested range lands exactly at file end.
         const safeEnd = Math.max(500, controller.durationMs - 250)
-        void runExtraction(activeUri, {
-            silenceThreshold: threshold,
-            endTimeMs: safeEnd,
-        })
+        runAndLog(
+            runExtraction(activeUri, {
+                silenceThreshold: threshold,
+                endTimeMs: safeEnd,
+            }),
+            'audio-player extraction failed',
+        )
     }, [activeUri, controller.durationMs, threshold, runExtraction])
 
     // For an obviously-bad URI (e.g. the negative-test bogus path) expo-audio
@@ -224,10 +237,13 @@ export default function AudioPlayerScreen() {
                 durationMs: -1,
                 threshold,
             }
-            void runExtraction(activeUri, {
-                silenceThreshold: threshold,
-                endTimeMs: 10_000,
-            })
+            runAndLog(
+                runExtraction(activeUri, {
+                    silenceThreshold: threshold,
+                    endTimeMs: 10_000,
+                }),
+                'audio-player fallback extraction failed',
+            )
         }, 1500)
         return () => {
             cancelled = true
@@ -315,14 +331,13 @@ export default function AudioPlayerScreen() {
         const probe: AgenticAudioPlayerProbe = {
             getState: () => {
                 const snap = stateRef.current
-                const voiced = snap.voiceMask.filter((v) => v).length
+                const voiced = countTrue(snap.voiceMask)
                 const vadPhase = snap.vadStatus.phase
                 const vadSegmentCount =
                     snap.vadStatus.phase === 'done'
                         ? snap.vadStatus.segmentCount
                         : snap.voiceSegments.length
-                const vadVoiceMs =
-                    snap.vadStatus.phase === 'done' ? snap.vadStatus.voiceMs : 0
+                const vadVoiceMs = snap.vadStatus.phase === 'done' ? snap.vadStatus.voiceMs : 0
                 return {
                     pointsReceived: snap.extraction.pointsReceived,
                     totalPoints: snap.extraction.totalPoints,
@@ -392,7 +407,7 @@ export default function AudioPlayerScreen() {
                 }
             },
             loadSample: () => {
-                void actionsRef.current.loadSample()
+                runAndLog(actionsRef.current.loadSample(), 'agentic sample load failed')
                 return { ok: true }
             },
             loadFromUri: (uri: string) => {
@@ -543,10 +558,7 @@ export default function AudioPlayerScreen() {
                         Smooth path (`Waveform` primitive)
                     </Text>
                     <View
-                        style={[
-                            styles.referenceWrap,
-                            { width: widgetWidth, height: 80 },
-                        ]}
+                        style={[styles.referenceWrap, { width: widgetWidth, height: 80 }]}
                         testID="audio-player-comparison"
                     >
                         <Canvas style={{ width: widgetWidth, height: 80 }}>
@@ -574,13 +586,13 @@ export default function AudioPlayerScreen() {
                         {vadStatus.phase === 'done'
                             ? `${vadStatus.segmentCount} voice segment(s) · ${(vadStatus.voiceMs / 1000).toFixed(1)}s of speech · ${vadStatus.elapsedMs}ms`
                             : vadStatus.phase === 'error'
-                                ? `Error: ${vadStatus.error}`
-                                : `Phase: ${vadStatus.phase}`}
+                              ? `Error: ${vadStatus.error}`
+                              : `Phase: ${vadStatus.phase}`}
                     </Text>
                     <Text>
                         Bars colored by Silero voice mask
-                        {voiceMask.filter((v) => v).length > 0
-                            ? ` · ${voiceMask.filter((v) => v).length} of ${voiceMask.length} bars marked voice`
+                        {countTrue(voiceMask) > 0
+                            ? ` · ${countTrue(voiceMask)} of ${voiceMask.length} bars marked voice`
                             : ''}
                     </Text>
                 </View>

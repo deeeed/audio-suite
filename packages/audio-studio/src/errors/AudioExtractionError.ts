@@ -40,18 +40,28 @@ export class AudioExtractionError extends Error {
     }
 }
 
+function getNativeMessage(err: unknown): string {
+    if (err instanceof Error) return err.message
+    if (typeof err === 'string') return err
+
+    try {
+        return JSON.stringify(err) ?? String(err)
+    } catch {
+        return String(err)
+    }
+}
+
 /**
  * Map a thrown native/JS value into an AudioExtractionError with a stable code.
  * Heuristics inspect message text and known native error codes.
  */
 export function mapExtractionError(
     err: unknown,
-    fileUri?: string,
+    fileUri?: string
 ): AudioExtractionError {
     if (err instanceof AudioExtractionError) return err
 
-    const nativeMessage =
-        err instanceof Error ? err.message : typeof err === 'string' ? err : String(err)
+    const nativeMessage = getNativeMessage(err)
     const lower = nativeMessage.toLowerCase()
 
     let code: AudioExtractionErrorCode = 'unknown'

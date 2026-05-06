@@ -520,7 +520,7 @@ class AudioStudioModule : Module(), EventSender {
                     """.trimIndent())
 
                     // Handle decoding options
-                    val decodingOptions = options["decodingOptions"] as? Map<String, Any>
+                    val decodingOptions = options["decodingOptions"] as? Map<*, *>
                     LogUtils.d(CLASS_NAME, "Decoding options: $decodingOptions")
                 
                     val config = decodingOptions?.let {
@@ -690,7 +690,7 @@ class AudioStudioModule : Module(), EventSender {
                         targetBitDepth = 16,
                         normalizeAudio = false
                     )
-                    val decodingOptionsMap = options["decodingOptions"] as? Map<String, Any>
+                    val decodingOptionsMap = options["decodingOptions"] as? Map<*, *>
                     val config = decodingOptionsMap?.let {
                         DecodingConfig(
                             targetSampleRate = (it["targetSampleRate"] as? Number)?.toInt(),
@@ -749,12 +749,13 @@ class AudioStudioModule : Module(), EventSender {
                         normalizeAudio = false
                     )
                 
-                    val config = (options["decodingOptions"] as? Map<String, Any>)?.let { decodingOptionsMap ->
+                    val decodingOptionsMap = options["decodingOptions"] as? Map<*, *>
+                    val config = decodingOptionsMap?.let {
                         DecodingConfig(
-                            targetSampleRate = decodingOptionsMap["targetSampleRate"] as? Int,
-                            targetChannels = decodingOptionsMap["targetChannels"] as? Int,
-                            targetBitDepth = (decodingOptionsMap["targetBitDepth"] as? Int) ?: 16,
-                            normalizeAudio = (decodingOptionsMap["normalizeAudio"] as? Boolean) ?: false
+                            targetSampleRate = (it["targetSampleRate"] as? Number)?.toInt(),
+                            targetChannels = (it["targetChannels"] as? Number)?.toInt(),
+                            targetBitDepth = (it["targetBitDepth"] as? Number)?.toInt() ?: 16,
+                            normalizeAudio = (it["normalizeAudio"] as? Boolean) ?: false
                         )
                     } ?: defaultConfig
 
@@ -844,7 +845,7 @@ class AudioStudioModule : Module(), EventSender {
                     }
                 
                     // Get decoding options
-                    val decodingOptionsMap = options["decodingOptions"] as? Map<String, Any>
+                    val decodingOptionsMap = options["decodingOptions"] as? Map<*, *>
                     val decodingConfig = if (decodingOptionsMap != null) {
                         DecodingConfig(
                             targetSampleRate = decodingOptionsMap["targetSampleRate"] as? Int,

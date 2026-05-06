@@ -1,10 +1,15 @@
-import { useRef, useMemo } from 'react'
-import type { WaveformAnalysis } from '../types/waveform'
+import { useMemo, useRef } from 'react'
+
+import type { WaveformAnalysis, WaveformBar } from '../types/waveform'
 
 export interface LiveMelSpectrogramData {
     spectrogram: number[][]
     nMels: number
     timeSteps: number
+}
+
+function getPointId(point: WaveformBar | undefined): number {
+    return point?.id ?? -1
 }
 
 export function useLiveMelSpectrogram(
@@ -22,7 +27,7 @@ export function useLiveMelSpectrogram(
         }
 
         const dataPoints = analysisData.dataPoints
-        const lastDpId = (dataPoints[dataPoints.length - 1] as any)?.id ?? -1
+        const lastDpId = getPointId(dataPoints.at(-1))
 
         // Detect reset (new recording): ids jumped backwards
         if (lastDpId < lastProcessedIdRef.current) {
@@ -42,7 +47,7 @@ export function useLiveMelSpectrogram(
 
         // Extract mel frames from datapoints newer than our last checkpoint
         for (const dp of dataPoints) {
-            const dpId = (dp as any)?.id ?? -1
+            const dpId = getPointId(dp)
             if (dpId <= lastProcessedIdRef.current) continue
             const mel = dp?.features?.melSpectrogram
             if (mel && mel.length > 0) {

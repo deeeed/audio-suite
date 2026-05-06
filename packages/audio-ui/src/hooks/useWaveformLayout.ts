@@ -81,10 +81,10 @@ export function useWaveformLayout({
         let min = amplitudeRange?.min ?? Number.POSITIVE_INFINITY
         let max = amplitudeRange?.max ?? Number.NEGATIVE_INFINITY
         if (!amplitudeRange) {
-            for (let i = 0; i < n; i++) {
-                const a = dataPoints[i]!.amplitude
-                if (a < min) min = a
-                if (a > max) max = a
+            for (const point of dataPoints) {
+                const { amplitude } = point
+                if (amplitude < min) min = amplitude
+                if (amplitude > max) max = amplitude
             }
             if (!Number.isFinite(min)) min = 0
             if (!Number.isFinite(max)) max = 1
@@ -101,20 +101,18 @@ export function useWaveformLayout({
         )
         const stride = barWidth + effectiveGap
 
-        const bars: WaveformLayoutBar[] = new Array(n)
-        for (let i = 0; i < n; i++) {
-            const p = dataPoints[i]!
-            const norm = scaleAmplitude(p.amplitude, peak, amplitudeScale)
-            const h = Math.max(minBarHeight, norm * height)
-            bars[i] = {
-                index: i,
-                x: i * stride,
+        const bars = dataPoints.map((point, index) => {
+            const norm = scaleAmplitude(point.amplitude, peak, amplitudeScale)
+            const barHeight = Math.max(minBarHeight, norm * height)
+            return {
+                index,
+                x: index * stride,
                 width: barWidth,
-                height: h,
-                silent: p.silent ?? false,
-                amplitude: p.amplitude,
+                height: barHeight,
+                silent: point.silent ?? false,
+                amplitude: point.amplitude,
             }
-        }
+        })
 
         return { bars, barWidth, amplitudeMin: min, amplitudeMax: max }
     }, [

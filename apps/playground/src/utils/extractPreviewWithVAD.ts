@@ -20,8 +20,7 @@ export interface VoiceSegment {
     endMs: number
 }
 
-export interface ExtractPreviewWithVADOptions
-    extends Omit<PreviewOptions, 'onPointReady'> {
+export interface ExtractPreviewWithVADOptions extends Omit<PreviewOptions, 'onPointReady'> {
     /**
      * Optional override for the underlying preview's `onPointReady`. Same
      * signature as `extractPreview` — fired as bars stream in (before VAD).
@@ -138,7 +137,7 @@ function pcmToFloat32(bytes: Uint8Array, bitDepth: number): Float32Array {
     if (bitDepth === 8) {
         const out = new Float32Array(bytes.byteLength)
         for (let i = 0; i < bytes.byteLength; i++) {
-            out[i] = (bytes[i]! - 128) / 128
+            out[i] = (bytes[i] - 128) / 128
         }
         return out
     }
@@ -154,15 +153,12 @@ function pcmToFloat32(bytes: Uint8Array, bitDepth: number): Float32Array {
     throw new Error(`Unsupported bit depth: ${bitDepth}`)
 }
 
-function buildVoiceMask(
-    dataPoints: DataPoint[],
-    segments: VoiceSegment[],
-): boolean[] {
+function buildVoiceMask(dataPoints: DataPoint[], segments: VoiceSegment[]): boolean[] {
     const n = dataPoints.length
     if (n === 0 || segments.length === 0) return new Array(n).fill(false)
     const mask = new Array<boolean>(n).fill(false)
     for (let i = 0; i < n; i++) {
-        const dp = dataPoints[i]!
+        const dp = dataPoints[i]
         const start = (dp.startTime ?? 0) * 1000
         const end = (dp.endTime ?? start) * 1000
         for (const s of segments) {

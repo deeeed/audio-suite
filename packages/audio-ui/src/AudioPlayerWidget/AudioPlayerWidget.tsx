@@ -106,6 +106,25 @@ function formatTime(ms: number): string {
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
+function hasSideTransport(placement: AudioPlayerWidgetTransportPlacement) {
+    return placement === 'left' || placement === 'right'
+}
+
+function getWaveformWidth(
+    placement: AudioPlayerWidgetTransportPlacement,
+    width: number,
+    playButtonSize: number
+) {
+    return hasSideTransport(placement)
+        ? Math.max(1, width - playButtonSize - 20)
+        : width
+}
+
+function getStatusMessage(loading: boolean, errorMessage?: string) {
+    if (errorMessage) return errorMessage
+    return loading ? 'Loading audio…' : undefined
+}
+
 export function AudioPlayerWidget({
     dataPoints,
     width,
@@ -145,10 +164,12 @@ export function AudioPlayerWidget({
     const resolvedWaveformHeight =
         waveformHeight ?? (density === 'chat' ? 40 : 64)
     const isDisabled = disabled || loading || Boolean(errorMessage)
-    const waveformWidth =
-        transportPlacement === 'left' || transportPlacement === 'right'
-            ? Math.max(1, width - densityDefaults.playButtonSize - 20)
-            : width
+    const waveformWidth = getWaveformWidth(
+        transportPlacement,
+        width,
+        densityDefaults.playButtonSize
+    )
+    const statusMessage = getStatusMessage(loading, errorMessage)
 
     const renderPoints = useMemo(() => {
         const target = pickBarCountForWidth(waveformWidth, pixelsPerBar)
@@ -234,9 +255,7 @@ export function AudioPlayerWidget({
                     padding: densityDefaults.padding,
                     borderRadius: densityDefaults.borderRadius,
                 },
-                (transportPlacement === 'left' ||
-                    transportPlacement === 'right') &&
-                    styles.inlineContainer,
+                hasSideTransport(transportPlacement) && styles.inlineContainer,
                 style,
             ]}
         >
@@ -288,7 +307,7 @@ export function AudioPlayerWidget({
                         testID="silence-track"
                     />
                 ) : null}
-                {loading || errorMessage ? (
+                {statusMessage ? (
                     <Text
                         testID={`${testID}-status`}
                         style={[
@@ -297,7 +316,7 @@ export function AudioPlayerWidget({
                         ]}
                         numberOfLines={1}
                     >
-                        {errorMessage || 'Loading audio…'}
+                        {statusMessage}
                     </Text>
                 ) : null}
             </View>

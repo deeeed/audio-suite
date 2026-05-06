@@ -1,6 +1,74 @@
 import { normalizeWaveformPoint } from '../types/waveform'
 import type { WaveformBar, WaveformPoint } from '../types/waveform'
 
+interface BarAccumulator {
+    maxAmp: number
+    maxRms: number
+    minDb: number
+    allSilent: boolean
+    firstId: number
+    firstStart?: number
+    lastEnd?: number
+}
+
+function updateAccumulator(
+    accumulator: BarAccumulator,
+    point: WaveformPoint,
+    fallbackId: number
+): void {
+    const rms = point.rms ?? point.amplitude
+    const dB = point.dB ?? (rms > 0 ? 20 * Math.log10(rms) : -100)
+
+    accumulator.maxAmp = Math.max(accumulator.maxAmp, point.amplitude)
+    accumulator.maxRms = Math.max(accumulator.maxRms, rms)
+    accumulator.minDb = Math.min(accumulator.minDb, dB)
+    accumulator.allSilent &&= point.silent ?? false
+
+    if (accumulator.firstId === -1) {
+        accumulator.firstId =
+            typeof point.id === 'number' ? point.id : fallbackId
+        accumulator.firstStart = point.startTime
+    }
+    accumulator.lastEnd = point.endTime
+}
+
+function createBar(
+    points: WaveformPoint[],
+    start: number,
+    end: number
+): WaveformBar {
+    const accumulator: BarAccumulator = {
+        maxAmp: -Infinity,
+        maxRms: -Infinity,
+        minDb: Infinity,
+        allSilent: true,
+        firstId: -1,
+    }
+
+    points.slice(start, end).forEach((point, offset) => {
+        updateAccumulator(accumulator, point, start + offset)
+    })
+
+    return {
+        id: accumulator.firstId,
+        amplitude: Number.isFinite(accumulator.maxAmp) ? accumulator.maxAmp : 0,
+        rms: Number.isFinite(accumulator.maxRms) ? accumulator.maxRms : 0,
+        dB: Number.isFinite(accumulator.minDb) ? accumulator.minDb : -100,
+        silent: accumulator.allSilent,
+        startTime: accumulator.firstStart,
+        endTime: accumulator.lastEnd,
+    }
+}
+
+function getBinRange(index: number, stride: number, sourceLength: number) {
+    const start = Math.floor(index * stride)
+    const end = Math.max(
+        start + 1,
+        Math.min(sourceLength, Math.floor((index + 1) * stride))
+    )
+    return { start, end }
+}
+
 /**
  * Reduce a `WaveformPoint[]` down to `target` bins using peak-preserving binning.
  * - amplitude / rms: take the maximum in the bin (waveform readability)
@@ -14,53 +82,19 @@ export function decimateDataPoints(
     points: WaveformPoint[],
     target: number
 ): WaveformBar[] {
-    const n = points.length
-    if (target <= 0 || n === 0) return []
-    if (target >= n) return points.map(normalizeWaveformPoint)
-
-    const stride = n / target
-    const out: WaveformBar[] = new Array(target)
-    for (let i = 0; i < target; i++) {
-        const start = Math.floor(i * stride)
-        const end = Math.max(
-            start + 1,
-            Math.min(n, Math.floor((i + 1) * stride))
+    const sourceLength = points.length
+    if (target <= 0 || sourceLength === 0) return []
+    if (target >= sourceLength) {
+        return points.map((point, index) =>
+            normalizeWaveformPoint(point, index)
         )
-
-        let maxAmp = -Infinity
-        let maxRms = -Infinity
-        let minDb = Infinity
-        let allSilent = true
-        let firstId = -1
-        let firstStart: number | undefined
-        let lastEnd: number | undefined
-
-        for (let k = start; k < end; k++) {
-            const p = points[k]!
-            if (p.amplitude > maxAmp) maxAmp = p.amplitude
-            const rms = p.rms ?? p.amplitude
-            if (rms > maxRms) maxRms = rms
-            const dB = p.dB ?? (rms > 0 ? 20 * Math.log10(rms) : -100)
-            if (dB < minDb) minDb = dB
-            if (!(p.silent ?? false)) allSilent = false
-            if (firstId === -1) {
-                firstId = typeof p.id === 'number' ? p.id : start
-                firstStart = p.startTime
-            }
-            lastEnd = p.endTime
-        }
-
-        out[i] = {
-            id: firstId,
-            amplitude: Number.isFinite(maxAmp) ? maxAmp : 0,
-            rms: Number.isFinite(maxRms) ? maxRms : 0,
-            dB: Number.isFinite(minDb) ? minDb : -100,
-            silent: allSilent,
-            startTime: firstStart,
-            endTime: lastEnd,
-        }
     }
-    return out
+
+    const stride = sourceLength / target
+    return Array.from({ length: target }, (_, index) => {
+        const { start, end } = getBinRange(index, stride, sourceLength)
+        return createBar(points, start, end)
+    })
 }
 
 /**
@@ -87,19 +121,8 @@ export function decimateVoiceMask(
     if (target >= sourceLength) return mask.slice(0, sourceLength)
 
     const stride = sourceLength / target
-    const out = new Array<boolean>(target).fill(false)
-    for (let i = 0; i < target; i++) {
-        const start = Math.floor(i * stride)
-        const end = Math.max(
-            start + 1,
-            Math.min(sourceLength, Math.floor((i + 1) * stride))
-        )
-        for (let k = start; k < end; k++) {
-            if (mask[k]) {
-                out[i] = true
-                break
-            }
-        }
-    }
-    return out
+    return Array.from({ length: target }, (_, index) => {
+        const { start, end } = getBinRange(index, stride, sourceLength)
+        return mask.slice(start, end).some(Boolean)
+    })
 }

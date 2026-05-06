@@ -10,7 +10,7 @@ const DEFAULT_SILENCE_THRESHOLD = 0.01
  */
 function applySilenceThreshold(
     dataPoints: DataPoint[],
-    threshold: number,
+    threshold: number
 ): DataPoint[] {
     return dataPoints.map((p) => ({
         ...p,
@@ -30,7 +30,7 @@ const PROGRESSIVE_BATCH_COUNT = 8
  */
 function emitPointsProgressively(
     dataPoints: DataPoint[],
-    onPointReady: NonNullable<PreviewOptions['onPointReady']>,
+    onPointReady: NonNullable<PreviewOptions['onPointReady']>
 ): void {
     const total = dataPoints.length
     if (total === 0) return
@@ -44,22 +44,25 @@ function emitPointsProgressively(
     }
 
     if (total <= SMALL_TOTAL_INSTANT_THRESHOLD) {
-        for (let i = 0; i < total; i++) safeEmit(dataPoints[i]!, i)
+        for (let i = 0; i < total; i++) safeEmit(dataPoints[i], i)
         return
     }
 
     // First quarter flushes immediately so the UI shows something within a frame.
     const firstFlushCount = Math.max(1, Math.floor(total / 4))
-    for (let i = 0; i < firstFlushCount; i++) safeEmit(dataPoints[i]!, i)
+    for (let i = 0; i < firstFlushCount; i++) safeEmit(dataPoints[i], i)
 
     if (firstFlushCount >= total) return
 
     const remaining = total - firstFlushCount
-    const batchSize = Math.max(1, Math.ceil(remaining / PROGRESSIVE_BATCH_COUNT))
+    const batchSize = Math.max(
+        1,
+        Math.ceil(remaining / PROGRESSIVE_BATCH_COUNT)
+    )
     let cursor = firstFlushCount
     const pump = () => {
         const end = Math.min(total, cursor + batchSize)
-        for (let i = cursor; i < end; i++) safeEmit(dataPoints[i]!, i)
+        for (let i = cursor; i < end; i++) safeEmit(dataPoints[i], i)
         cursor = end
         if (cursor < total) {
             setTimeout(pump, PROGRESSIVE_BATCH_DELAY_MS)
@@ -86,7 +89,10 @@ export async function extractPreview({
     onPointReady,
 }: PreviewOptions): Promise<AudioAnalysis> {
     const durationMs = Math.max(1, endTimeMs - startTimeMs)
-    const segmentDurationMs = Math.max(1, Math.floor(durationMs / numberOfPoints))
+    const segmentDurationMs = Math.max(
+        1,
+        Math.floor(durationMs / numberOfPoints)
+    )
 
     let analysis: AudioAnalysis
     try {
@@ -102,7 +108,8 @@ export async function extractPreview({
         throw mapExtractionError(err, fileUri)
     }
 
-    const threshold = decodingOptions?.silenceRmsThreshold ?? DEFAULT_SILENCE_THRESHOLD
+    const threshold =
+        decodingOptions?.silenceRmsThreshold ?? DEFAULT_SILENCE_THRESHOLD
     const adjusted: AudioAnalysis = {
         ...analysis,
         dataPoints: applySilenceThreshold(analysis.dataPoints, threshold),

@@ -70,7 +70,7 @@ export function WaveformPreview({
             <Canvas style={{ width, height }} testID={`${testID}-canvas`}>
                 {bars.map((bar) => {
                     const inactive = useVoiceMask
-                        ? !voiceMask![bar.index]
+                        ? !voiceMask[bar.index]
                         : bar.silent
                     return (
                         <Rect

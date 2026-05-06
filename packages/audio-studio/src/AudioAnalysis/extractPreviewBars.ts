@@ -112,7 +112,7 @@ function emitBarsProgressively(
 ): void {
     const total = bars.length
     for (let index = 0; index < total; index++) {
-        onBarReady(bars[index]!, index, total)
+        onBarReady(bars[index], index, total)
     }
 }
 

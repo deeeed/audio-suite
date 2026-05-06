@@ -74,9 +74,9 @@ export function SilenceTrack({
     return (
         <View testID={testID} style={{ width, height, backgroundColor }}>
             <Canvas style={{ width, height }} testID={`${testID}-canvas`}>
-                {bands.map((b, i) => (
+                {bands.map((b) => (
                     <Rect
-                        key={i}
+                        key={`${b.x}:${b.width}`}
                         x={b.x}
                         y={0}
                         width={b.width}
