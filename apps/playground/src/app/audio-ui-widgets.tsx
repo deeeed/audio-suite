@@ -18,7 +18,6 @@ import {
     type AudioPlayerWidgetDensity,
     type AudioPlayerWidgetTransportPlacement,
     type ChatRecordWidgetState,
-    type WaveformAmplitudeScale,
     type WaveformPoint,
 } from '@siteed/audio-ui'
 import { Notice, useTheme } from '@siteed/design-system'
@@ -55,7 +54,6 @@ function createDemoPoints(): WaveformPoint[] {
 
 const DENSITIES: AudioPlayerWidgetDensity[] = ['compact', 'comfortable', 'chat']
 const PLACEMENTS: AudioPlayerWidgetTransportPlacement[] = ['left', 'bottom', 'right', 'none']
-const SCALES: WaveformAmplitudeScale[] = ['linear', 'sqrt', 'log']
 const CHAT_STATES: ChatRecordWidgetState[] = [
     'idle',
     'recording',
@@ -129,22 +127,29 @@ export default function AudioUiWidgetsScreen() {
                             onPlayPress={() => setIsPlaying((value) => !value)}
                             testID="audio-ui-waveform-preview-play"
                         />
-                        {SCALES.map((scale) => (
-                            <View key={scale} style={styles.variantBlock}>
-                                <Text variant="labelLarge">Scale: {scale}</Text>
-                                <WaveformPreview
-                                    dataPoints={dataPoints}
-                                    width={width}
-                                    height={56}
-                                    amplitudeScale={scale}
-                                    voiceMask={voiceMask}
-                                    barColor={colors.tertiary}
-                                    silentBarColor={colors.outlineVariant}
-                                    backgroundColor={colors.surfaceVariant}
-                                    testID={`audio-ui-waveform-preview-${scale}`}
-                                />
-                            </View>
-                        ))}
+                        <Text
+                            variant="bodySmall"
+                            style={{ color: colors.onSurfaceVariant }}
+                        >
+                            `amplitudeScale` (linear / sqrt / log) trades physics-accurate peaks
+                            for perceptual readability. Differences are subtle on this synthetic
+                            dataset — keep the default `sqrt` for speech and music; switch to
+                            `linear` only when you need a literal peak-meter look.
+                        </Text>
+                        <View style={styles.variantBlock}>
+                            <Text variant="labelLarge">Scale: linear (peak-meter)</Text>
+                            <WaveformPreview
+                                dataPoints={dataPoints}
+                                width={width}
+                                height={56}
+                                amplitudeScale="linear"
+                                voiceMask={voiceMask}
+                                barColor={colors.tertiary}
+                                silentBarColor={colors.outlineVariant}
+                                backgroundColor={colors.surfaceVariant}
+                                testID="audio-ui-waveform-preview-linear"
+                            />
+                        </View>
                     </>
                 )}
             </Section>
