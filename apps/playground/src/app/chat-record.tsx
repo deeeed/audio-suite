@@ -31,11 +31,15 @@ const LIVE_BARS_WINDOW = 56
 // Pin the visualizer's amplitude range for live recording. Without this the
 // running peak rescales every time a louder sample arrives, so previously
 // drawn bars shrink mid-recording and the visual loudness of identical dB
-// drifts as the clip continues. 0.5 is tuned for spoken audio: normal
-// speech (~0.3 amp) fills ~75% of the canvas under the default sqrt scale
-// while shouts / loud bursts cleanly clip to 100% instead of dwarfing the
-// rest. Bump toward 1.0 for music or recordings that genuinely peak high.
-const LIVE_AMPLITUDE_RANGE = { min: 0, max: 0.5 }
+// drifts as the clip continues.
+//
+// 0.2 is tuned for spoken audio: in 100ms PCM segments, normal speech rarely
+// peaks above ~0.2 absolute amplitude, so this range lets typical speech
+// fill ~100% of the canvas height under the default sqrt scale while quieter
+// moments still differ visibly (whisper ~0.05 → 50%, silence ~0.005 → 16%).
+// Loud bursts cleanly clip to 100% instead of dwarfing the rest of the clip.
+// Bump toward 0.5–1.0 for music or recordings that genuinely peak high.
+const LIVE_AMPLITUDE_RANGE = { min: 0, max: 0.2 }
 
 interface ChatMessage {
     id: string
