@@ -2,6 +2,7 @@
 
 export * from './AudioPlayerWidget/AudioPlayerWidget'
 export * from './AudioPlayerWidget/AudioFilePlayerWidget'
+export * from './AudioPlayerWidget/amplitudePresets'
 export * from './AudioPlayerWidget/useAudioPlayerWidgetState'
 export * from './ChatRecordWidget/ChatRecordWidget'
 export * from './ChatRecordWidget/useChatRecordWidgetState'

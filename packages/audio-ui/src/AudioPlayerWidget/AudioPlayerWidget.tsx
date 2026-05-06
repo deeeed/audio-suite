@@ -366,8 +366,35 @@ export function AudioPlayerWidget({
                     onResponderRelease={handleCanvasPress}
                     onResponderTerminationRequest={() => false}
                     testID={`${testID}-canvas`}
+                    accessible
                     accessibilityRole="adjustable"
                     accessibilityLabel="Seek bar"
+                    accessibilityState={{ disabled: isDisabled }}
+                    accessibilityValue={
+                        durationMs > 0
+                            ? {
+                                  min: 0,
+                                  max: Math.max(1, Math.round(durationMs)),
+                                  now: Math.max(0, Math.round(currentTimeMs)),
+                                  text: `${resolvedFormatTime(currentTimeMs)} of ${resolvedFormatTime(durationMs)}`,
+                              }
+                            : undefined
+                    }
+                    onAccessibilityAction={(event) => {
+                        if (durationMs <= 0 || isDisabled || !onSeek) return
+                        // VoiceOver / TalkBack call increment/decrement on
+                        // role="adjustable". Step by 1/20th of the clip so
+                        // both ends are reachable in 20 swipes.
+                        const step = durationMs / 20
+                        if (event.nativeEvent.actionName === 'increment') {
+                            onSeek(Math.min(durationMs, currentTimeMs + step))
+                        } else if (
+                            event.nativeEvent.actionName === 'decrement'
+                        ) {
+                            onSeek(Math.max(0, currentTimeMs - step))
+                        }
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
                     style={[
                         styles.waveformArea,
                         { height: resolvedWaveformHeight },

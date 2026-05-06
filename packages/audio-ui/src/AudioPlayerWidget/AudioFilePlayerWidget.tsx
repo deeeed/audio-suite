@@ -28,12 +28,14 @@ export type AudioFilePlayerExtractor = (
     input: AudioFilePlayerExtractInput,
 ) => Promise<AudioFilePlayerExtractResult>
 
+const DEFAULT_MAX_CACHED_FILES = 16
+
 export interface AudioFilePlayerWidgetProps
     extends Omit<AudioPlayerWidgetProps, 'dataPoints' | 'durationMs' | 'errorMessage' | 'loading'> {
     /**
      * Local file URI to the already-recorded audio. The widget extracts
-     * preview bars once per fileUri (cached by ref) and feeds them into the
-     * underlying AudioPlayerWidget.
+     * preview bars once per (fileUri, resolved bar count) pair, caches the
+     * result, and feeds it into the underlying AudioPlayerWidget.
      */
     fileUri: string
     /**
@@ -57,6 +59,11 @@ export interface AudioFilePlayerWidgetProps
      * `(opts) => extractPreviewBars(opts).then((r) => ({ bars: r.bars, durationMs: r.durationMs }))`.
      * Kept as a prop so audio-ui doesn't take a hard dependency on
      * @siteed/audio-studio.
+     *
+     * IMPORTANT: this function's identity is part of the effect's
+     * dependency array. Wrap it in `useCallback` (or hoist outside the
+     * component) — passing an inline arrow `() => ...` will re-run
+     * extraction on every render and bypass the cache.
      */
     extract: AudioFilePlayerExtractor
     /**
@@ -66,6 +73,14 @@ export interface AudioFilePlayerWidgetProps
     durationMs?: number
     /** Surfaces the extractor's error to the caller without breaking render. */
     onExtractError?: (error: Error) => void
+    /**
+     * Cap on the per-instance LRU cache. Default 16. The cache is keyed by
+     * `${fileUri}:${resolvedNumberOfBars}`, so the same file at two
+     * densities counts as two entries. Bump this for surfaces that browse
+     * many files (file pickers, long chat threads); leave the default for
+     * single-file players.
+     */
+    maxCachedFiles?: number
 }
 
 interface ExtractedEntry {
@@ -75,10 +90,42 @@ interface ExtractedEntry {
 }
 
 /**
+ * Insertion-order Map<string, ExtractedEntry> used as a poor-man's LRU.
+ * On each get-hit we re-insert the entry to push it to the back. On set
+ * we evict the front entry when size exceeds the cap.
+ */
+function lruGet(
+    cache: Map<string, ExtractedEntry>,
+    key: string,
+): ExtractedEntry | undefined {
+    const entry = cache.get(key)
+    if (entry) {
+        cache.delete(key)
+        cache.set(key, entry)
+    }
+    return entry
+}
+
+function lruSet(
+    cache: Map<string, ExtractedEntry>,
+    key: string,
+    value: ExtractedEntry,
+    cap: number,
+) {
+    if (cache.has(key)) cache.delete(key)
+    cache.set(key, value)
+    while (cache.size > cap) {
+        const oldest = cache.keys().next().value
+        if (typeof oldest !== 'string') break
+        cache.delete(oldest)
+    }
+}
+
+/**
  * File-based wrapper around AudioPlayerWidget. Skips re-extraction when the
- * fileUri stays the same across renders, and aborts in-flight work when the
- * uri changes mid-extract. All other AudioPlayerWidget props pass through
- * unchanged.
+ * (fileUri, numberOfBars) pair is already cached, and aborts in-flight work
+ * when either changes mid-extract. All other AudioPlayerWidget props pass
+ * through unchanged.
  */
 export function AudioFilePlayerWidget({
     fileUri,
@@ -87,13 +134,24 @@ export function AudioFilePlayerWidget({
     extract,
     durationMs: durationMsOverride,
     onExtractError,
+    maxCachedFiles = DEFAULT_MAX_CACHED_FILES,
     ...rest
 }: AudioFilePlayerWidgetProps) {
     const [entry, setEntry] = useState<ExtractedEntry | null>(null)
     const [loading, setLoading] = useState(true)
-    // Cache by `fileUri:resolvedNumberOfBars` so the same file extracted at
-    // two different densities doesn't clobber each other in the cache.
     const cacheRef = useRef<Map<string, ExtractedEntry>>(new Map())
+
+    if (
+        __DEV__ &&
+        typeof barDurationMs === 'number' &&
+        barDurationMs > 0 &&
+        (typeof durationMsOverride !== 'number' || durationMsOverride <= 0)
+    ) {
+        // eslint-disable-next-line no-console
+        console.warn(
+            'AudioFilePlayerWidget: `barDurationMs` was set without a positive `durationMs` hint. Falling back to `numberOfBars` since the file length is unknown until extraction completes.',
+        )
+    }
 
     const resolvedNumberOfBars = useMemo(() => {
         if (
@@ -109,7 +167,7 @@ export function AudioFilePlayerWidget({
 
     useEffect(() => {
         const cacheKey = `${fileUri}:${resolvedNumberOfBars}`
-        const cached = cacheRef.current.get(cacheKey)
+        const cached = lruGet(cacheRef.current, cacheKey)
         if (cached) {
             setEntry(cached)
             setLoading(false)
@@ -133,7 +191,7 @@ export function AudioFilePlayerWidget({
                     durationMs: result.durationMs ?? 0,
                     error: null,
                 }
-                cacheRef.current.set(cacheKey, next)
+                lruSet(cacheRef.current, cacheKey, next, maxCachedFiles)
                 setEntry(next)
             } catch (err) {
                 if (cancelled) return
@@ -149,7 +207,7 @@ export function AudioFilePlayerWidget({
             cancelled = true
             controller.abort()
         }
-    }, [fileUri, resolvedNumberOfBars, extract, onExtractError])
+    }, [fileUri, resolvedNumberOfBars, extract, onExtractError, maxCachedFiles])
 
     const dataPoints = entry?.bars ?? []
     const resolvedDuration = useMemo(() => {
