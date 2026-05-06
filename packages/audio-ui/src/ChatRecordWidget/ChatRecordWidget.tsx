@@ -19,13 +19,6 @@ import {
     type ChatRecordWidgetState,
 } from './useChatRecordWidgetState'
 
-export type {
-    ChatRecordWidgetIconMap,
-    ChatRecordWidgetIconName,
-    ChatRecordWidgetInteraction,
-    ChatRecordWidgetState,
-} from './useChatRecordWidgetState'
-
 /**
  * - 'full' (default): primary button + waveform/placeholder + slots row.
  * - 'button': primary button only. Caption (when provided) still shows below.

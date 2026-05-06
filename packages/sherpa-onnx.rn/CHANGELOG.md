@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-05-06
+
 ### Added
 - **Release validation**: `install.js` now validates the full native prebuilt contract and fails fast in CI/EAS when the matching GitHub release asset is missing or incomplete. Added `yarn release:preflight` to verify the release asset URL, extract it, check iOS device/simulator static libraries, Android shared libraries, headers/modulemap, and simulate the podspec `prepare_command` symlinks before publishing. The legacy `SKIP_SHERPA_DOWNLOAD=1` path now warns or fails when prebuilts are incomplete; use `SITEED_SHERPA_ONNX_ALLOW_MISSING_PREBUILTS=1` for the explicit local escape hatch.
 - **ASR backends**: Qwen3-ASR + Cohere Transcribe (both new in upstream `v1.13.0`)
@@ -143,7 +145,8 @@ First stable release — production-proven via the [Sherpa Voice](https://deeeed
 ## [0.1.0] - 2025-03-04
 - Initial development release
 
-[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/sherpa-onnx.rn@1.1.2...HEAD
+[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/sherpa-onnx.rn@1.2.0...HEAD
+[1.2.0]: https://github.com/deeeed/audiolab/compare/@siteed/sherpa-onnx.rn@1.1.2...@siteed/sherpa-onnx.rn@1.2.0
 [1.1.2]: https://github.com/deeeed/audiolab/compare/@siteed/sherpa-onnx.rn@1.1.1...@siteed/sherpa-onnx.rn@1.1.2
 [1.1.1]: https://github.com/deeeed/audiolab/compare/@siteed/sherpa-onnx.rn@1.1.0...@siteed/sherpa-onnx.rn@1.1.1
 [1.1.0]: https://github.com/deeeed/audiolab/compare/@siteed/sherpa-onnx.rn@1.0.0...@siteed/sherpa-onnx.rn@1.1.0
