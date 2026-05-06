@@ -28,6 +28,10 @@ import { useScreenHeader } from '../hooks/useScreenHeader'
 
 const logger = baseLogger.extend('ChatRecordScreen')
 
+// Width of the rolling window that shows the most recent audio while
+// recording. 56 bars at the default ChatRecordWidget waveformHeight (36)
+// fits an iPhone-width body with ~5px stride — looks like a WhatsApp /
+// iMessage voice memo. Bump for wider canvases or denser visualization.
 const LIVE_BARS_WINDOW = 56
 // Pin the visualizer's amplitude range for live recording so previously
 // drawn bars don't rescale when a louder sample arrives. Use the

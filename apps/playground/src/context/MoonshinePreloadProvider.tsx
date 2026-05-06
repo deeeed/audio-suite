@@ -53,7 +53,10 @@ interface ProviderProps {
     modelId?: string | null
     /**
      * If true (default) the preload kicks off automatically on mount.
-     * Set false to defer until a consumer explicitly calls `retry()`.
+     * Set false on metered-network flows or feature-gated builds where
+     * paying ~261MB of model bytes shouldn't happen at boot. Consumers
+     * call `retry()` (returned from `useMoonshinePreload`) to start it
+     * lazily — e.g. on first navigation to /chat-record.
      */
     autoStart?: boolean
 }

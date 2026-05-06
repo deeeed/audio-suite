@@ -12,6 +12,12 @@ import { useMoonshinePreload } from '../context/MoonshinePreloadProvider'
  * the model is ready so it doesn't take up space during normal usage.
  * Mount it near the top of any screen that benefits from confirming the
  * model is loaded (e.g. chat-record).
+ *
+ * Depends on react-native-paper's `IconButton` for the retry affordance,
+ * which in turn assumes a paper-icon-pack is configured at the host-app
+ * level (the playground already does this). If you copy this banner into
+ * a project without paper, swap `IconButton` for a plain Pressable + Text
+ * and drop the paper import.
  */
 export function MoonshinePreloadBanner() {
     const { status, message, error, retry } = useMoonshinePreload()

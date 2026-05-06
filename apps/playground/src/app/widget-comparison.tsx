@@ -59,11 +59,16 @@ export default function WidgetComparisonScreen() {
 
     // Lazy-load simform — only on native, since it's a native module that
     // also forces an Expo prebuild + pod install. Avoid pulling it on web.
-    const simformWaveform = useMemo(() => {
+    // We require + cast through unknown so this file typechecks in setups
+    // that don't have the dep installed (the runtime gate handles it).
+    const simformWaveform = useMemo<{ Waveform: SimformWaveformComponent } | null>(() => {
         if (Platform.OS === 'web') return null
         try {
             // eslint-disable-next-line @typescript-eslint/no-require-imports
-            return require('@simform_solutions/react-native-audio-waveform') as typeof import('@simform_solutions/react-native-audio-waveform')
+            const mod = require('@simform_solutions/react-native-audio-waveform') as unknown as {
+                Waveform: SimformWaveformComponent
+            }
+            return mod
         } catch (e) {
             logger.warn('@simform_solutions/react-native-audio-waveform unavailable', e)
             return null
@@ -332,8 +337,36 @@ export default function WidgetComparisonScreen() {
     )
 }
 
+// Local minimal types so this file typechecks even when
+// @simform_solutions/react-native-audio-waveform isn't installed (the route
+// is gated by a runtime require). Anyone enabling the comparison still
+// needs the dep + a native rebuild — these types just stop a dev environment
+// without it from failing the playground typecheck.
+interface SimformWaveformRef {
+    startPlayer: (args?: unknown) => Promise<boolean>
+    pausePlayer: () => Promise<boolean>
+}
+
+type SimformPlayerState =
+    | 'playing'
+    | 'paused'
+    | 'stopped'
+    | (string & { __simformBrand?: never })
+
+type SimformWaveformComponent = React.ComponentType<{
+    mode: 'static'
+    ref?: React.Ref<SimformWaveformRef | null>
+    path: string
+    candleSpace?: number
+    candleWidth?: number
+    waveColor?: string
+    scrubColor?: string
+    containerStyle?: { height?: number; width?: number }
+    onPlayerStateChange?: (state: SimformPlayerState) => void
+}>
+
 interface SimformBlockProps {
-    Waveform: typeof import('@simform_solutions/react-native-audio-waveform').Waveform
+    Waveform: SimformWaveformComponent
     path: string
     width: number
     waveColor: string
@@ -347,7 +380,7 @@ function SimformBlock({
     waveColor,
     scrubColor,
 }: SimformBlockProps) {
-    const ref = useRef<import('@simform_solutions/react-native-audio-waveform').IWaveformRef | null>(null)
+    const ref = useRef<SimformWaveformRef | null>(null)
     const [isPlaying, setIsPlaying] = useState(false)
 
     const togglePlayback = useCallback(async () => {

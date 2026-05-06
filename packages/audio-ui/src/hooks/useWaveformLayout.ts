@@ -93,6 +93,11 @@ export function useWaveformLayout({
 
         // When the requested gap eats more pixels than we have bars, drop the
         // gap to 0 and let bars touch — anything else clips the canvas.
+        // Bar widths can drop below 1px on narrow screens with high
+        // `pixelsPerBar`-derived counts; we floor to 0.5 so Skia's
+        // sub-pixel rasterizer still paints a visible stroke instead of
+        // collapsing to nothing. Callers that need pin-sharp bars on
+        // ultra-narrow screens should bump `pixelsPerBar` upstream.
         const idealBarWidth = (width - gap * Math.max(0, n - 1)) / n
         const effectiveGap = idealBarWidth < 1 ? 0 : gap
         const barWidth = Math.max(
