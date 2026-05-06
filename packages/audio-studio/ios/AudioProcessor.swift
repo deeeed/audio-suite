@@ -1104,7 +1104,7 @@ public class AudioProcessor {
             return nil
         }
 
-        let bitDepth = audioFile.fileFormat.settings[AVLinearPCMBitDepthKey] as? Int ?? 32
+        let bitDepth = audioFile.fileFormat.settings[AVLinearPCMBitDepthKey] as? Int ?? 16
         let extractionTimeMs = Float((CACurrentMediaTime() - startTime) * 1000)
         return [
             "bars": bars,

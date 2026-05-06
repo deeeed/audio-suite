@@ -260,6 +260,12 @@ export interface PreviewOptions extends AudioRangeOptions {
      * Native progressive streaming is a future enhancement.
      */
     onPointReady?: (point: DataPoint, index: number, total: number) => void
+    /**
+     * Optional cancellation signal for JS-side progressive point emission.
+     * Aborting does not cancel native extraction after it has started, but it
+     * stops any queued `onPointReady` callbacks from an older request.
+     */
+    signal?: AbortSignal
 }
 
 /**

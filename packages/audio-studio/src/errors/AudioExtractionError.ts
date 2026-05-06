@@ -51,6 +51,59 @@ function getNativeMessage(err: unknown): string {
     }
 }
 
+function getNativeCode(err: unknown): string | undefined {
+    if (err && typeof err === 'object' && 'code' in err) {
+        const code = (err as { code?: unknown }).code
+        if (typeof code === 'string') return code
+    }
+    return undefined
+}
+
+function mapNativeCode(
+    code: string | undefined
+): AudioExtractionErrorCode | null {
+    if (!code) return null
+
+    const normalized = code.toUpperCase()
+    if (
+        normalized.includes('FILE_NOT_FOUND') ||
+        normalized === 'ENOENT' ||
+        normalized.includes('NO_SUCH_FILE')
+    ) {
+        return 'file_not_found'
+    }
+    if (
+        normalized.includes('PERMISSION') ||
+        normalized === 'EACCES' ||
+        normalized.includes('NOT_AUTHORIZED')
+    ) {
+        return 'permission_denied'
+    }
+    if (
+        normalized.includes('UNSUPPORTED') ||
+        normalized.includes('NO_SUITABLE_CODEC')
+    ) {
+        return 'unsupported_codec'
+    }
+    if (
+        normalized.includes('INVALID_RANGE') ||
+        normalized.includes('INVALID_HEADER') ||
+        normalized.includes('MALFORMED') ||
+        normalized.includes('CORRUPT')
+    ) {
+        return 'malformed_file'
+    }
+    if (
+        normalized.includes('PROCESSING_ERROR') ||
+        normalized.includes('AUDIO_READ_ERROR') ||
+        normalized.includes('DECODE')
+    ) {
+        return 'decode_failed'
+    }
+
+    return null
+}
+
 /**
  * Map a thrown native/JS value into an AudioExtractionError with a stable code.
  * Heuristics inspect message text and known native error codes.
@@ -64,38 +117,43 @@ export function mapExtractionError(
     const nativeMessage = getNativeMessage(err)
     const lower = nativeMessage.toLowerCase()
 
-    let code: AudioExtractionErrorCode = 'unknown'
+    let code = mapNativeCode(getNativeCode(err)) ?? 'unknown'
     if (
-        lower.includes('unsupported') ||
-        lower.includes('not supported') ||
-        lower.includes('no suitable codec') ||
-        lower.includes('no track')
+        code === 'unknown' &&
+        (lower.includes('unsupported') ||
+            lower.includes('not supported') ||
+            lower.includes('no suitable codec') ||
+            lower.includes('no track'))
     ) {
         code = 'unsupported_codec'
     } else if (
-        lower.includes('not found') ||
-        lower.includes('no such file') ||
-        lower.includes('does not exist')
+        code === 'unknown' &&
+        (lower.includes('not found') ||
+            lower.includes('no such file') ||
+            lower.includes('does not exist'))
     ) {
         code = 'file_not_found'
     } else if (
-        lower.includes('permission') ||
-        lower.includes('denied') ||
-        lower.includes('not authorized')
+        code === 'unknown' &&
+        (lower.includes('permission') ||
+            lower.includes('denied') ||
+            lower.includes('not authorized'))
     ) {
         code = 'permission_denied'
     } else if (
-        lower.includes('malformed') ||
-        lower.includes('corrupt') ||
-        lower.includes('invalid header') ||
-        lower.includes('invalid wav')
+        code === 'unknown' &&
+        (lower.includes('malformed') ||
+            lower.includes('corrupt') ||
+            lower.includes('invalid header') ||
+            lower.includes('invalid wav'))
     ) {
         code = 'malformed_file'
     } else if (
-        lower.includes('decode') ||
-        lower.includes('codec') ||
-        lower.includes('mediaextractor') ||
-        lower.includes('avaudio')
+        code === 'unknown' &&
+        (lower.includes('decode') ||
+            lower.includes('codec') ||
+            lower.includes('mediaextractor') ||
+            lower.includes('avaudio'))
     ) {
         code = 'decode_failed'
     }

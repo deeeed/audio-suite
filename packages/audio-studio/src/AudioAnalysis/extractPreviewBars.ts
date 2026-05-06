@@ -36,17 +36,22 @@ function clamp01(value: number): number {
     return Math.max(0, Math.min(1, value))
 }
 
+function getPointTimeMs(value: number | undefined, fallbackMs: number): number {
+    return typeof value === 'number' && Number.isFinite(value)
+        ? Math.round(value)
+        : fallbackMs
+}
+
 function pointToPreviewBar(
     point: DataPoint,
     index: number,
     fallbackBarDurationMs: number,
     silenceRmsThreshold: number
 ): PreviewBar {
-    // Existing DataPoint start/end units vary across older native paths. Compact
-    // bars define millisecond ranges explicitly, so the compatibility adapter
-    // derives them from bar index and duration instead of leaking legacy units.
-    const startTimeMs = Math.round(index * fallbackBarDurationMs)
-    const endTimeMs = Math.round((index + 1) * fallbackBarDurationMs)
+    const fallbackStartTimeMs = Math.round(index * fallbackBarDurationMs)
+    const fallbackEndTimeMs = Math.round((index + 1) * fallbackBarDurationMs)
+    const startTimeMs = getPointTimeMs(point.startTime, fallbackStartTimeMs)
+    const endTimeMs = getPointTimeMs(point.endTime, fallbackEndTimeMs)
     const rms = clamp01(point.rms)
 
     return {

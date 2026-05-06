@@ -7,7 +7,14 @@ module.exports = {
         browser: true,
         es2021: true,
     },
-    extends: ['universe/native', 'universe/web', 'plugin:promise/recommended', 'plugin:react/recommended', 'prettier', 'plugin:storybook/recommended'],
+    extends: [
+        'universe/native',
+        'universe/web',
+        'plugin:promise/recommended',
+        'plugin:react/recommended',
+        'prettier',
+        'plugin:storybook/recommended',
+    ],
     ignorePatterns: ['build', 'node_modules', 'dist', 'coverage'],
     parser: '@typescript-eslint/parser',
     parserOptions: {
@@ -18,6 +25,26 @@ module.exports = {
         project: './tsconfig.eslint.json',
     },
     plugins: ['@typescript-eslint', 'prettier', 'promise'],
+    overrides: [
+        {
+            files: ['src/**/*.{ts,tsx}'],
+            excludedFiles: ['src/**/*.stories.ts', 'src/**/*.stories.tsx'],
+            rules: {
+                'no-restricted-imports': [
+                    'error',
+                    {
+                        paths: [
+                            {
+                                name: '@siteed/audio-studio',
+                                message:
+                                    '@siteed/audio-ui source must use local waveform contracts; keep @siteed/audio-studio imports in stories only.',
+                            },
+                        ],
+                    },
+                ],
+            },
+        },
+    ],
     rules: {
         // suppress errors for missing 'import React' in files
         'react/react-in-jsx-scope': 'off',

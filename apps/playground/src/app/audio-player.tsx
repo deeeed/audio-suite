@@ -115,6 +115,7 @@ export default function AudioPlayerScreen() {
     })
 
     const extractCounterRef = useRef(0)
+    const extractionAbortRef = useRef<AbortController | null>(null)
     const lastExtractedRef = useRef<{
         uri: string | null
         durationMs: number
@@ -123,6 +124,9 @@ export default function AudioPlayerScreen() {
 
     const runExtraction = useCallback(
         async (fileUri: string, opts: { silenceThreshold: number; endTimeMs: number }) => {
+            extractionAbortRef.current?.abort()
+            const abortController = new AbortController()
+            extractionAbortRef.current = abortController
             const requestId = ++extractCounterRef.current
             const startedAt = Date.now()
 
@@ -148,6 +152,7 @@ export default function AudioPlayerScreen() {
                     numberOfPoints,
                     startTimeMs: 0,
                     endTimeMs: opts.endTimeMs,
+                    signal: abortController.signal,
                     decodingOptions: { silenceRmsThreshold: opts.silenceThreshold },
                     onPointReady: (point, _index, total) => {
                         if (requestId !== extractCounterRef.current) return
@@ -186,6 +191,10 @@ export default function AudioPlayerScreen() {
                     elapsedMs: Date.now() - startedAt,
                     lastError: { code, message, nativeMessage },
                 }))
+            } finally {
+                if (extractionAbortRef.current === abortController) {
+                    extractionAbortRef.current = null
+                }
             }
         },
         [numberOfPoints],
@@ -255,6 +264,7 @@ export default function AudioPlayerScreen() {
         try {
             const sampleFile = await loadSampleAudio(SAMPLE_ASSET)
             if (!sampleFile?.uri) return
+            lastExtractedRef.current = { uri: null, durationMs: 0, threshold: -1 }
             controller.load(sampleFile.uri)
             setActiveUri(sampleFile.uri)
         } catch (e) {
@@ -264,6 +274,7 @@ export default function AudioPlayerScreen() {
 
     const loadFromUri = useCallback(
         (uri: string) => {
+            lastExtractedRef.current = { uri: null, durationMs: 0, threshold: -1 }
             controller.load(uri)
             setActiveUri(uri)
         },

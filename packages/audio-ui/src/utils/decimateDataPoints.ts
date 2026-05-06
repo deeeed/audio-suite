@@ -9,6 +9,14 @@ interface BarAccumulator {
     firstId: number
     firstStart?: number
     lastEnd?: number
+    firstStartMs?: number
+    lastEndMs?: number
+    firstStartPosition?: number
+    lastEndPosition?: number
+    samples: number
+    hasSpeech: boolean
+    speakerId?: number
+    representative?: WaveformPoint
 }
 
 function updateAccumulator(
@@ -23,13 +31,29 @@ function updateAccumulator(
     accumulator.maxRms = Math.max(accumulator.maxRms, rms)
     accumulator.minDb = Math.min(accumulator.minDb, dB)
     accumulator.allSilent &&= point.silent ?? false
+    accumulator.samples += point.samples ?? 0
+
+    if (point.speech?.isActive) {
+        accumulator.hasSpeech = true
+        accumulator.speakerId ??= point.speech.speakerId
+    }
 
     if (accumulator.firstId === -1) {
         accumulator.firstId =
             typeof point.id === 'number' ? point.id : fallbackId
         accumulator.firstStart = point.startTime
+        accumulator.firstStartMs = point.startTimeMs
+        accumulator.firstStartPosition = point.startPosition
     }
     accumulator.lastEnd = point.endTime
+    accumulator.lastEndMs = point.endTimeMs
+    accumulator.lastEndPosition = point.endPosition
+    if (
+        !accumulator.representative ||
+        point.amplitude > accumulator.representative.amplitude
+    ) {
+        accumulator.representative = point
+    }
 }
 
 function createBar(
@@ -43,13 +67,17 @@ function createBar(
         minDb: Infinity,
         allSilent: true,
         firstId: -1,
+        samples: 0,
+        hasSpeech: false,
     }
 
     points.slice(start, end).forEach((point, offset) => {
         updateAccumulator(accumulator, point, start + offset)
     })
+    const representative = accumulator.representative
 
     return {
+        ...representative,
         id: accumulator.firstId,
         amplitude: Number.isFinite(accumulator.maxAmp) ? accumulator.maxAmp : 0,
         rms: Number.isFinite(accumulator.maxRms) ? accumulator.maxRms : 0,
@@ -57,6 +85,24 @@ function createBar(
         silent: accumulator.allSilent,
         startTime: accumulator.firstStart,
         endTime: accumulator.lastEnd,
+        startTimeMs: accumulator.firstStartMs,
+        endTimeMs: accumulator.lastEndMs,
+        startPosition: accumulator.firstStartPosition,
+        endPosition: accumulator.lastEndPosition,
+        samples:
+            accumulator.samples > 0
+                ? accumulator.samples
+                : representative?.samples,
+        speech:
+            accumulator.hasSpeech || representative?.speech
+                ? {
+                      ...representative?.speech,
+                      isActive: accumulator.hasSpeech,
+                      speakerId:
+                          accumulator.speakerId ??
+                          representative?.speech?.speakerId,
+                  }
+                : undefined,
     }
 }
 

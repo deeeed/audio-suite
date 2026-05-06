@@ -30,19 +30,24 @@ const PROGRESSIVE_BATCH_COUNT = 8
  */
 function emitPointsProgressively(
     dataPoints: DataPoint[],
-    onPointReady: NonNullable<PreviewOptions['onPointReady']>
+    onPointReady: NonNullable<PreviewOptions['onPointReady']>,
+    signal?: PreviewOptions['signal'],
+    logger?: PreviewOptions['logger']
 ): void {
     const total = dataPoints.length
     if (total === 0) return
 
     const safeEmit = (point: DataPoint, index: number) => {
+        if (signal?.aborted) return
         try {
             onPointReady(point, index, total)
-        } catch {
+        } catch (err) {
             // Swallow callback errors so a buggy consumer cannot break extraction.
+            logger?.warn?.('extractPreview onPointReady callback failed', err)
         }
     }
 
+    if (signal?.aborted) return
     if (total <= SMALL_TOTAL_INSTANT_THRESHOLD) {
         for (let i = 0; i < total; i++) safeEmit(dataPoints[i], i)
         return
@@ -61,6 +66,7 @@ function emitPointsProgressively(
     )
     let cursor = firstFlushCount
     const pump = () => {
+        if (signal?.aborted) return
         const end = Math.min(total, cursor + batchSize)
         for (let i = cursor; i < end; i++) safeEmit(dataPoints[i], i)
         cursor = end
@@ -87,6 +93,7 @@ export async function extractPreview({
     decodingOptions,
     logger,
     onPointReady,
+    signal,
 }: PreviewOptions): Promise<AudioAnalysis> {
     const durationMs = Math.max(1, endTimeMs - startTimeMs)
     const segmentDurationMs = Math.max(
@@ -116,7 +123,12 @@ export async function extractPreview({
     }
 
     if (onPointReady) {
-        emitPointsProgressively(adjusted.dataPoints, onPointReady)
+        emitPointsProgressively(
+            adjusted.dataPoints,
+            onPointReady,
+            signal,
+            logger
+        )
     }
 
     return adjusted

@@ -22,6 +22,11 @@ export interface VoiceSegment {
 
 export interface ExtractPreviewWithVADOptions extends Omit<PreviewOptions, 'onPointReady'> {
     /**
+     * Optional cancellation signal passed through to `extractPreview` so stale
+     * progressive point callbacks stop when a newer extraction supersedes this one.
+     */
+    signal?: AbortSignal
+    /**
      * Optional override for the underlying preview's `onPointReady`. Same
      * signature as `extractPreview` — fired as bars stream in (before VAD).
      */
@@ -62,66 +67,71 @@ export interface ExtractPreviewWithVADResult {
     voiceMs: number
 }
 
-let modelInitOnce: Promise<void> | null = null
-let lastInitThreshold: number | null = null
+let vadInitQueue: Promise<void> = Promise.resolve()
+let initializedVadThreshold: number | null = null
 
-async function ensureVadInitialized(threshold: number) {
-    if (modelInitOnce && lastInitThreshold === threshold) return modelInitOnce
-    if (modelInitOnce && lastInitThreshold !== threshold) {
-        // Threshold changed — release and re-init.
-        try {
-            await VAD.release()
-        } catch {
-            // ignore
-        }
-        modelInitOnce = null
-    }
-    modelInitOnce = (async () => {
-        if (Platform.OS === 'web') {
-            const result = await VAD.init({
-                modelDir: '/wasm/vad',
-                modelFile: 'silero_vad.onnx',
-                threshold,
-            })
-            if (!result.success) {
-                modelInitOnce = null
-                throw new Error(result.error || 'VAD init failed')
-            }
-            lastInitThreshold = threshold
-            logger.info('Silero VAD ready', {
-                modelDir: '/wasm/vad',
-                modelFile: 'silero_vad.onnx',
-                threshold,
-            })
-            return
-        }
-
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const [asset] = await Asset.loadAsync(require('@assets/silero_vad_v5.onnx'))
-        await asset.downloadAsync()
-        const resolvedUri = asset.localUri ?? asset.uri
-        if (!resolvedUri) throw new Error('Silero VAD asset did not resolve')
-
-        let fileUri = resolvedUri
-        if (!fileUri.startsWith('file://')) {
-            const targetUri = `${FileSystem.cacheDirectory}silero_vad_v5.onnx`
-            await FileSystem.downloadAsync(fileUri, targetUri)
-            fileUri = targetUri
-        }
-        const path = fileUri.startsWith('file://') ? fileUri.substring(7) : fileUri
-        const lastSlash = path.lastIndexOf('/')
-        if (lastSlash < 0) throw new Error(`Silero asset path invalid: ${path}`)
-        const modelDir = path.substring(0, lastSlash)
-        const modelFile = path.substring(lastSlash + 1)
-        const result = await VAD.init({ modelDir, modelFile, threshold })
+async function initializeVadModel(threshold: number): Promise<void> {
+    if (Platform.OS === 'web') {
+        const result = await VAD.init({
+            modelDir: '/wasm/vad',
+            modelFile: 'silero_vad.onnx',
+            threshold,
+        })
         if (!result.success) {
-            modelInitOnce = null
             throw new Error(result.error || 'VAD init failed')
         }
-        lastInitThreshold = threshold
-        logger.info('Silero VAD ready', { modelDir, threshold })
-    })()
-    return modelInitOnce
+        logger.info('Silero VAD ready', {
+            modelDir: '/wasm/vad',
+            modelFile: 'silero_vad.onnx',
+            threshold,
+        })
+        return
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const [asset] = await Asset.loadAsync(require('@assets/silero_vad_v5.onnx'))
+    await asset.downloadAsync()
+    const resolvedUri = asset.localUri ?? asset.uri
+    if (!resolvedUri) throw new Error('Silero VAD asset did not resolve')
+
+    let fileUri = resolvedUri
+    if (!fileUri.startsWith('file://')) {
+        const targetUri = `${FileSystem.cacheDirectory}silero_vad_v5.onnx`
+        await FileSystem.downloadAsync(fileUri, targetUri)
+        fileUri = targetUri
+    }
+    const path = fileUri.startsWith('file://') ? fileUri.substring(7) : fileUri
+    const lastSlash = path.lastIndexOf('/')
+    if (lastSlash < 0) throw new Error(`Silero asset path invalid: ${path}`)
+    const modelDir = path.substring(0, lastSlash)
+    const modelFile = path.substring(lastSlash + 1)
+    const result = await VAD.init({ modelDir, modelFile, threshold })
+    if (!result.success) {
+        throw new Error(result.error || 'VAD init failed')
+    }
+    logger.info('Silero VAD ready', { modelDir, threshold })
+}
+
+function ensureVadInitialized(threshold: number): Promise<void> {
+    const task = vadInitQueue.then(async () => {
+        if (initializedVadThreshold === threshold) return
+
+        if (initializedVadThreshold !== null) {
+            try {
+                await VAD.release()
+            } catch {
+                // Best-effort cleanup before switching Silero thresholds.
+            } finally {
+                initializedVadThreshold = null
+            }
+        }
+
+        await initializeVadModel(threshold)
+        initializedVadThreshold = threshold
+    })
+
+    vadInitQueue = task.catch(() => undefined)
+    return task
 }
 
 function pcmToFloat32(bytes: Uint8Array, bitDepth: number): Float32Array {
