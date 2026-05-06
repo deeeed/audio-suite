@@ -26,6 +26,14 @@ export interface WaveformPreviewProps {
     playButtonIconColor?: string
     amplitudeScale?: WaveformAmplitudeScale
     /**
+     * Optional fixed amplitude range. When supplied, bars are normalized
+     * against this range instead of the running peak of `dataPoints`. Use
+     * `{ min: 0, max: 1 }` for live recording so a sudden loud sample
+     * doesn't rescale every previously-rendered bar (the auto-peak default
+     * makes "same dB look different at different times").
+     */
+    amplitudeRange?: { min: number; max: number }
+    /**
      * Optional voice mask, one boolean per dataPoint. When supplied it
      * overrides the per-point `silent` flag for coloring: true → barColor
      * (voice), false → silentBarColor (non-voice). Lengths that don't match
@@ -64,6 +72,7 @@ export function WaveformPreview({
     playButtonBackgroundColor = 'rgba(255,255,255,0.92)',
     playButtonIconColor = DEFAULT_BAR_COLOR,
     amplitudeScale = 'sqrt',
+    amplitudeRange,
     voiceMask,
     playedRatio,
     playedBarColor,
@@ -76,6 +85,7 @@ export function WaveformPreview({
         dataPoints,
         gap,
         amplitudeScale,
+        amplitudeRange,
     })
     const centerY = height / 2
     const useVoiceMask =

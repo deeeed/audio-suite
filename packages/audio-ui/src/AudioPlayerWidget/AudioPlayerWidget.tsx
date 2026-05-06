@@ -90,6 +90,13 @@ export interface AudioPlayerWidgetProps {
     iconColor?: string
     amplitudeScale?: WaveformAmplitudeScale
     /**
+     * Optional fixed amplitude range. When set, bars are normalized against
+     * this range instead of the running peak — pin to `{ min: 0, max: 1 }`
+     * for live recording so previously-rendered bars don't rescale when a
+     * loud sample arrives.
+     */
+    amplitudeRange?: { min: number; max: number }
+    /**
      * Approximate pixels-per-bar density. Default 3 — renders cleanly on phone
      * widths without sub-pixel overlap.
      */
@@ -220,6 +227,7 @@ export function AudioPlayerWidget({
     disabledColor = '#CBD5E1',
     iconColor = '#FFFFFF',
     amplitudeScale = 'sqrt',
+    amplitudeRange,
     pixelsPerBar = 3,
     barGap = 1,
     voiceMask,
@@ -375,6 +383,7 @@ export function AudioPlayerWidget({
                                 barColor={barColor}
                                 silentBarColor={silentBarColor}
                                 amplitudeScale={amplitudeScale}
+                                amplitudeRange={amplitudeRange}
                                 voiceMask={renderVoiceMask}
                                 playedRatio={
                                     durationMs > 0

@@ -71,6 +71,12 @@ export interface ChatRecordWidgetProps {
     showElapsed?: boolean
     /** Show the placeholder text when no dataPoints are present. Default true. */
     showPlaceholder?: boolean
+    /**
+     * Fixed amplitude range for the inner WaveformPreview. Pin to
+     * `{ min: 0, max: 1 }` for live recording so the rolling-bar height
+     * doesn't rescale every time a louder sample arrives.
+     */
+    amplitudeRange?: { min: number; max: number }
     /** Per-state icon overrides. Falls back to the built-in defaults. */
     primaryIcons?: ChatRecordWidgetIconMap
     /**
@@ -128,6 +134,7 @@ export function ChatRecordWidget({
     showWaveform = true,
     showElapsed = true,
     showPlaceholder = true,
+    amplitudeRange,
     primaryIcons,
     renderPrimary,
     formatElapsed,
@@ -226,6 +233,7 @@ export function ChatRecordWidget({
                                 height={waveformHeight}
                                 barColor={barColor}
                                 silentBarColor={silentBarColor}
+                                amplitudeRange={amplitudeRange}
                                 testID={`${testID}-waveform`}
                             />
                         ) : showPlaceholder ? (

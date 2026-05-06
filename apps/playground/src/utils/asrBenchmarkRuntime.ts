@@ -183,7 +183,32 @@ async function getValidatedMoonshineFileInfo(
     }
 }
 
+/**
+ * Module-level in-flight map. Two concurrent callers asking for the same
+ * model id share a single download/validation pass instead of fighting
+ * each other (which would otherwise produce "Refreshing stale ..." +
+ * duplicate downloads when the global preload provider and a feature
+ * surface both call into prepareBenchmarkModel before the cache is warm).
+ */
+const inFlightPrepares = new Map<string, Promise<BenchmarkDownloadState>>()
+
 export async function prepareBenchmarkModel(
+    modelId: string,
+    onStatus?: (message: string) => void,
+): Promise<BenchmarkDownloadState> {
+    const existing = inFlightPrepares.get(modelId)
+    if (existing) return existing
+
+    const job = runPrepareBenchmarkModel(modelId, onStatus)
+    inFlightPrepares.set(modelId, job)
+    try {
+        return await job
+    } finally {
+        inFlightPrepares.delete(modelId)
+    }
+}
+
+async function runPrepareBenchmarkModel(
     modelId: string,
     onStatus?: (message: string) => void,
 ): Promise<BenchmarkDownloadState> {
