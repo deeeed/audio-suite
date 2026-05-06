@@ -14,6 +14,12 @@ export interface DecodingConfig {
     targetBitDepth?: BitDepth
     /** Whether to normalize audio levels (Android and Web) */
     normalizeAudio?: boolean
+    /**
+     * RMS threshold below which a segment is flagged silent.
+     * Range 0..1. Default 0.01.
+     * Currently applied as a JS post-process so the same behavior holds across iOS/Android/Web.
+     */
+    silenceRmsThreshold?: number
 }
 
 /**
@@ -163,6 +169,69 @@ export interface AudioRangeOptions {
  * Options for generating a quick preview of audio waveform.
  * This is optimized for UI rendering with a specified number of points.
  */
+export interface PreviewBar {
+    /** Stable zero-based bar identifier. */
+    id: number
+    /** Peak amplitude for this bar, normalized to 0..1. */
+    amplitude: number
+    /** Root mean square amplitude for this bar, normalized to 0..1. */
+    rms: number
+    /** Whether this bar is below the configured silence RMS threshold. */
+    silent: boolean
+    /** Bar start time in milliseconds from the extracted range start. */
+    startTimeMs: number
+    /** Bar end time in milliseconds from the extracted range start. */
+    endTimeMs: number
+}
+
+/**
+ * Compact preview-bars result for UI waveform rendering.
+ * Unlike `AudioAnalysis`, this intentionally omits full `DataPoint` feature data.
+ */
+export interface PreviewBarsResult {
+    bars: PreviewBar[]
+    durationMs: number
+    sampleRate: number
+    numberOfChannels: number
+    bitDepth: number
+    samples: number
+    /** Requested bar count before native/platform clamping. */
+    requestedNumberOfBars: number
+    /** Approximate duration represented by each bar. */
+    barDurationMs: number
+    amplitudeRange: {
+        min: number
+        max: number
+    }
+    rmsRange: {
+        min: number
+        max: number
+    }
+    extractionTimeMs: number
+}
+
+/**
+ * Options for extracting compact waveform preview bars for UI rendering.
+ */
+export interface PreviewBarsOptions extends AudioRangeOptions {
+    /** URI of the audio file to analyze */
+    fileUri: string
+    /**
+     * Total number of bars to generate for the preview.
+     * @default 100
+     */
+    numberOfBars?: number
+    /** Optional logger for debugging. */
+    logger?: ConsoleLike
+    /** Optional configuration for decoding the audio file. */
+    decodingOptions?: DecodingConfig
+    /**
+     * Optional callback fired once per compact bar after extraction resolves.
+     * Native progressive streaming is not implied by this callback.
+     */
+    onBarReady?: (bar: PreviewBar, index: number, total: number) => void
+}
+
 export interface PreviewOptions extends AudioRangeOptions {
     /** URI of the audio file to analyze */
     fileUri: string
@@ -184,6 +253,19 @@ export interface PreviewOptions extends AudioRangeOptions {
      * - normalizeAudio: false
      */
     decodingOptions?: DecodingConfig
+    /**
+     * Optional callback fired once per data point as the preview becomes available.
+     * Today the native module returns the full analysis in one shot; the points are then
+     * micro-batched on the JS side so consumers can render bars incrementally.
+     * Native progressive streaming is a future enhancement.
+     */
+    onPointReady?: (point: DataPoint, index: number, total: number) => void
+    /**
+     * Optional cancellation signal for JS-side progressive point emission.
+     * Aborting does not cancel native extraction after it has started, but it
+     * stops any queued `onPointReady` callbacks from an older request.
+     */
+    signal?: AbortSignal
 }
 
 /**

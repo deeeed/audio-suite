@@ -1,7 +1,7 @@
 import { Path } from '@shopify/react-native-skia'
 import React, { useMemo } from 'react'
 
-import { CandleData } from '../AudioVisualizer/AudioVisualiser.types'
+import type { WaveformBar } from '../types/waveform'
 
 export interface WaveformTheme {
     color?: string
@@ -10,7 +10,7 @@ export interface WaveformTheme {
 }
 
 export interface WaveformProps {
-    activePoints: CandleData[]
+    activePoints: WaveformBar[]
     canvasHeight: number
     canvasWidth: number
     minAmplitude: number

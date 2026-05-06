@@ -1,6 +1,6 @@
 // packages/audio-ui/src/AudioVisualizer/CanvasContainer.tsx
 import { Canvas, Group, Path, SkFont } from '@shopify/react-native-skia'
-import { DataPoint } from '@siteed/audio-studio'
+import type { WaveformBar } from '../types/waveform'
 import React, { useEffect, useMemo, useRef } from 'react'
 import { View } from 'react-native'
 import { SharedValue, useDerivedValue } from 'react-native-reanimated'
@@ -35,11 +35,11 @@ export interface CanvasContainerProps {
     totalCandleWidth: number
     startIndex: number
     canvasWidth: number
-    selectedCandle: DataPoint | null
+    selectedCandle: WaveformBar | null
     durationMs?: number
     minAmplitude: number
     maxAmplitude: number
-    onSelection: (dataPoint: DataPoint) => void
+    onSelection: (dataPoint: WaveformBar) => void
     theme: AudioVisualizerTheme
     font?: SkFont
     scaleToHumanVoice: boolean

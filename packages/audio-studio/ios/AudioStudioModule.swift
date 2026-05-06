@@ -163,6 +163,10 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                 }
             })
         }
+        AsyncFunction("extractPreviewBars") { (options: [String: Any], promise: Promise) in
+            extractPreviewBars(options: options, promise: promise)
+        }
+
         
         
         /// Asynchronously starts audio recording with the given settings.
@@ -1052,6 +1056,65 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
     }
     
     /// Clears all audio files stored in the document directory.
+    private func extractPreviewBars(options: [String: Any], promise: Promise) {
+        Logger.debug("AudioStudioModule", "extractPreviewBars called with options: \(options)")
+        guard let fileUri = options["fileUri"] as? String else {
+            promise.reject("INVALID_ARGUMENTS", "Invalid file URI provided")
+            return
+        }
+
+        let url = URL(string: fileUri) ?? URL(fileURLWithPath: fileUri.replacingOccurrences(of: "file://", with: ""))
+        let numberOfBars = (options["numberOfBars"] as? NSNumber)?.intValue ?? 100
+        let startTimeMs = (options["startTimeMs"] as? NSNumber)?.doubleValue
+        let endTimeMs = (options["endTimeMs"] as? NSNumber)?.doubleValue
+        let decodingOptions = options["decodingOptions"] as? [String: Any]
+        let silenceRmsThreshold = (decodingOptions?["silenceRmsThreshold"] as? NSNumber)?.floatValue ?? 0.01
+
+        DispatchQueue.global().async {
+            self.resolvePreviewBars(
+                url: url,
+                numberOfBars: numberOfBars,
+                startTimeMs: startTimeMs,
+                endTimeMs: endTimeMs,
+                silenceRmsThreshold: silenceRmsThreshold,
+                promise: promise
+            )
+        }
+    }
+
+    private func resolvePreviewBars(
+        url: URL,
+        numberOfBars: Int,
+        startTimeMs: Double?,
+        endTimeMs: Double?,
+        silenceRmsThreshold: Float,
+        promise: Promise
+    ) {
+        do {
+            let audioProcessor = try previewBarsProcessor(for: url)
+            guard let result = audioProcessor.extractPreviewBars(
+                numberOfBars: numberOfBars,
+                startTimeMs: startTimeMs,
+                endTimeMs: endTimeMs,
+                silenceRmsThreshold: silenceRmsThreshold
+            ) else {
+                promise.reject("PROCESSING_ERROR", "Failed to extract preview bars")
+                return
+            }
+            promise.resolve(result)
+        } catch {
+            promise.reject("PROCESSING_ERROR", "Failed to initialize audio processor: \(error.localizedDescription)")
+        }
+    }
+
+    private func previewBarsProcessor(for url: URL) throws -> AudioProcessor {
+        return try AudioProcessor(url: url, resolve: { _ in
+            Logger.warn("AudioStudioModule", "extractPreviewBars: AudioProcessor resolve called unexpectedly.")
+        }, reject: { code, message in
+            Logger.warn("AudioStudioModule", "extractPreviewBars: AudioProcessor reject called unexpectedly: \(code) - \(message)")
+        })
+    }
+
     private func clearAudioFiles() {
         let fileURLs = listAudioFiles()  // This now returns full URLs as strings
         fileURLs.forEach { fileURLString in

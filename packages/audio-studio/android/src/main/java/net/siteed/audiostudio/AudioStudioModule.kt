@@ -520,7 +520,7 @@ class AudioStudioModule : Module(), EventSender {
                     """.trimIndent())
 
                     // Handle decoding options
-                    val decodingOptions = options["decodingOptions"] as? Map<String, Any>
+                    val decodingOptions = options["decodingOptions"] as? Map<*, *>
                     LogUtils.d(CLASS_NAME, "Decoding options: $decodingOptions")
                 
                     val config = decodingOptions?.let {
@@ -676,6 +676,48 @@ class AudioStudioModule : Module(), EventSender {
         }
 
 
+        AsyncFunction("extractPreviewBars") { options: Map<String, Any>, promise: Promise ->
+            coroutineScope.launch(Dispatchers.IO) {
+                try {
+                    val fileUri = requireNotNull(options["fileUri"] as? String) { "fileUri is required" }
+                    val numberOfBars = (options["numberOfBars"] as? Number)?.toInt() ?: 100
+                    val startTimeMs = options["startTimeMs"] as? Number
+                    val endTimeMs = options["endTimeMs"] as? Number
+
+                    val defaultConfig = DecodingConfig(
+                        targetSampleRate = null,
+                        targetChannels = 1,
+                        targetBitDepth = 16,
+                        normalizeAudio = false
+                    )
+                    val decodingOptionsMap = options["decodingOptions"] as? Map<*, *>
+                    val config = decodingOptionsMap?.let {
+                        DecodingConfig(
+                            targetSampleRate = (it["targetSampleRate"] as? Number)?.toInt(),
+                            targetChannels = (it["targetChannels"] as? Number)?.toInt(),
+                            targetBitDepth = (it["targetBitDepth"] as? Number)?.toInt() ?: 16,
+                            normalizeAudio = (it["normalizeAudio"] as? Boolean) ?: false
+                        )
+                    } ?: defaultConfig
+                    val silenceRmsThreshold = ((decodingOptionsMap?.get("silenceRmsThreshold") as? Number)?.toFloat()) ?: 0.01f
+
+                    val audioData = audioProcessor.loadAudioFromAnyFormat(fileUri, config)
+                        ?: throw IllegalStateException("Failed to load audio data")
+                    val result = audioProcessor.generatePreviewBars(
+                        audioData = audioData,
+                        numberOfBars = numberOfBars,
+                        startTimeMs = startTimeMs?.toLong(),
+                        endTimeMs = endTimeMs?.toLong(),
+                        silenceRmsThreshold = silenceRmsThreshold
+                    )
+                    promise.resolve(result)
+                } catch (e: Exception) {
+                    LogUtils.e(CLASS_NAME, "Failed to extract preview bars: ${e.message}", e)
+                    promise.reject("PROCESSING_ERROR", e.message ?: "Unknown error", e)
+                }
+            }
+        }
+
         AsyncFunction("extractAudioAnalysis") { options: Map<String, Any>, promise: Promise ->
             // Off the shared executor so other JS calls don't block during
             // multi-second analysis on large files.
@@ -707,12 +749,13 @@ class AudioStudioModule : Module(), EventSender {
                         normalizeAudio = false
                     )
                 
-                    val config = (options["decodingOptions"] as? Map<String, Any>)?.let { decodingOptionsMap ->
+                    val decodingOptionsMap = options["decodingOptions"] as? Map<*, *>
+                    val config = decodingOptionsMap?.let {
                         DecodingConfig(
-                            targetSampleRate = decodingOptionsMap["targetSampleRate"] as? Int,
-                            targetChannels = decodingOptionsMap["targetChannels"] as? Int,
-                            targetBitDepth = (decodingOptionsMap["targetBitDepth"] as? Int) ?: 16,
-                            normalizeAudio = (decodingOptionsMap["normalizeAudio"] as? Boolean) ?: false
+                            targetSampleRate = (it["targetSampleRate"] as? Number)?.toInt(),
+                            targetChannels = (it["targetChannels"] as? Number)?.toInt(),
+                            targetBitDepth = (it["targetBitDepth"] as? Number)?.toInt() ?: 16,
+                            normalizeAudio = (it["normalizeAudio"] as? Boolean) ?: false
                         )
                     } ?: defaultConfig
 
@@ -802,7 +845,7 @@ class AudioStudioModule : Module(), EventSender {
                     }
                 
                     // Get decoding options
-                    val decodingOptionsMap = options["decodingOptions"] as? Map<String, Any>
+                    val decodingOptionsMap = options["decodingOptions"] as? Map<*, *>
                     val decodingConfig = if (decodingOptionsMap != null) {
                         DecodingConfig(
                             targetSampleRate = decodingOptionsMap["targetSampleRate"] as? Int,

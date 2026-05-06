@@ -61,6 +61,56 @@ const stepHudStore = createAgenticHudStore()
 // Recorder instance wired by AgenticBridgeSync
 let _recorder: UseAudioRecorderState | null = null
 
+export interface AgenticAudioPlayerProbeState {
+    pointsReceived: number
+    totalPoints: number
+    isStreaming: boolean
+    durationMs: number
+    currentTimeMs: number
+    isPlaying: boolean
+    isLoaded: boolean
+    silentSegmentCount: number
+    threshold: number
+    elapsedMs: number | null
+    fileUri: string | null
+    showSilenceTrack: boolean
+    lastError: { code: string; message: string; nativeMessage?: string } | null
+    vadPhase: string
+    vadSegmentCount: number
+    vadVoiceMs: number
+    voiceMaskLength: number
+    voicedBarCount: number
+}
+
+export interface AgenticAudioPlayerProbe {
+    getState: () => AgenticAudioPlayerProbeState
+    getDataPointsSample: (count?: number) => {
+        ok: boolean
+        total: number
+        amplitudeMin: number
+        amplitudeMax: number
+        rmsMin: number
+        rmsMax: number
+        sample: { i: number; amplitude: number; rms: number; dB: number; silent: boolean }[]
+    }
+    loadSample: () => { ok: boolean }
+    loadFromUri: (uri: string) => { ok: boolean; uri: string }
+    setThreshold: (value: number) => { ok: boolean; value: number }
+    setShowSilenceTrack: (value: boolean) => { ok: boolean; value: boolean }
+    play: () => { ok: boolean }
+    pause: () => { ok: boolean }
+    toggle: () => { ok: boolean }
+    seekTo: (timeMs: number) => { ok: boolean; timeMs: number }
+}
+
+let _audioPlayerProbe: AgenticAudioPlayerProbe | null = null
+
+export function setAgenticAudioPlayerProbe(
+    probe: AgenticAudioPlayerProbe | null,
+) {
+    _audioPlayerProbe = probe
+}
+
 export function setAgenticAudioState(state: Record<string, unknown>) {
     _audioState = state
 }
@@ -230,10 +280,43 @@ async function runMoonshineProbe(
     }
 }
 
+function audioPlayerNotReady() {
+    return { ok: false, error: 'audio-player screen not mounted' as const }
+}
+
+const audioPlayerProxy = {
+    getState: () => {
+        if (!_audioPlayerProbe) return { mounted: false as const }
+        return { mounted: true as const, ..._audioPlayerProbe.getState() }
+    },
+    getDataPointsSample: (count?: number) =>
+        _audioPlayerProbe
+            ? _audioPlayerProbe.getDataPointsSample(count)
+            : audioPlayerNotReady(),
+    loadSample: () =>
+        _audioPlayerProbe ? _audioPlayerProbe.loadSample() : audioPlayerNotReady(),
+    loadFromUri: (uri: string) =>
+        _audioPlayerProbe ? _audioPlayerProbe.loadFromUri(uri) : audioPlayerNotReady(),
+    setThreshold: (value: number) =>
+        _audioPlayerProbe ? _audioPlayerProbe.setThreshold(value) : audioPlayerNotReady(),
+    setShowSilenceTrack: (value: boolean) =>
+        _audioPlayerProbe
+            ? _audioPlayerProbe.setShowSilenceTrack(value)
+            : audioPlayerNotReady(),
+    play: () => (_audioPlayerProbe ? _audioPlayerProbe.play() : audioPlayerNotReady()),
+    pause: () =>
+        _audioPlayerProbe ? _audioPlayerProbe.pause() : audioPlayerNotReady(),
+    toggle: () =>
+        _audioPlayerProbe ? _audioPlayerProbe.toggle() : audioPlayerNotReady(),
+    seekTo: (timeMs: number) =>
+        _audioPlayerProbe ? _audioPlayerProbe.seekTo(timeMs) : audioPlayerNotReady(),
+}
+
 if (__DEV__) {
     const agenticGlobal = globalThis as Record<string, unknown>
     agenticGlobal.__AGENTIC__ = {
         platform: Platform.OS,
+        audioPlayer: audioPlayerProxy,
 
         navigate: (path: string) => {
             try {

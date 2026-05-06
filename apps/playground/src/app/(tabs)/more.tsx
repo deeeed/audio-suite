@@ -456,6 +456,38 @@ export const MoreScreen = () => {
             />
             <ListItem
                 contentContainerStyle={styles.listItemContainer}
+                label="Audio Player"
+                subLabel="Test AudioPlayerWidget waveform, VAD mask, and transport variants"
+                onPress={() => {
+                    router.navigate('/audio-player')
+                }}
+            />
+            <ListItem
+                contentContainerStyle={styles.listItemContainer}
+                label="Audio UI Widgets"
+                subLabel="Gallery for waveform, player, silence, and chat recorder variants"
+                onPress={() => {
+                    router.navigate('/audio-ui-widgets')
+                }}
+            />
+            <ListItem
+                contentContainerStyle={styles.listItemContainer}
+                label="Chat Record"
+                subLabel="Record voice notes, send them as bubbles, and play them back"
+                onPress={() => {
+                    router.navigate('/chat-record')
+                }}
+            />
+            <ListItem
+                contentContainerStyle={styles.listItemContainer}
+                label="Widget Comparison"
+                subLabel="audio-ui vs Simform's react-native-audio-waveform on the same sample"
+                onPress={() => {
+                    router.navigate('/widget-comparison')
+                }}
+            />
+            <ListItem
+                contentContainerStyle={styles.listItemContainer}
                 label="Audio Analysis"
                 subLabel="Extract spectral, MFCC, and chromagram features"
                 onPress={() => {

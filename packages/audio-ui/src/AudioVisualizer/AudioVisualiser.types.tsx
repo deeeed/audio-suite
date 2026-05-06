@@ -1,5 +1,5 @@
 // playground/src/component/audio-visualizer/autio-visualizer.types.ts
-import { ConsoleLike, DataPoint } from '@siteed/audio-studio'
+import type { ConsoleLike, WaveformBar } from '../types/waveform'
 import { TextStyle, ViewStyle } from 'react-native'
 import { SharedValue } from 'react-native-reanimated'
 
@@ -81,7 +81,7 @@ export interface DrawDottedLineParams {
     canvasHeight: number
 }
 
-export interface CandleData extends DataPoint {
+export interface CandleData extends WaveformBar {
     visible: boolean
 }
 
@@ -99,7 +99,7 @@ export interface UpdateActivePointsParams {
     x: number
     logger?: ConsoleLike
     context: {
-        dataPoints: DataPoint[]
+        dataPoints: WaveformBar[]
         activePoints: CandleData[]
         maxDisplayedItems: number
         referenceLineX: number

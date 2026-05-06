@@ -42,35 +42,26 @@ export interface MoonshineBenchmarkDownloadFile {
 
 function createMoonshineFiles(slug: string): MoonshineBenchmarkDownloadFile[] {
     const baseUrl = `https://download.moonshine.ai/model/${slug}/quantized`
-    // Keep this metadata in sync with the published Moonshine benchmark
-    // bundles. Sizes were confirmed against the upstream CDN on 2026-04-08,
-    // and small-streaming MD5 values are pinned so stale cached files can be
-    // refreshed deterministically on Android.
+    // Sizes are pinned so partial / interrupted downloads invalidate the
+    // cache. MD5 pins were dropped — they go stale every time Moonshine
+    // republishes a file (which happens silently and forces every cached
+    // install to re-download). Size validation alone catches the common
+    // "download interrupted mid-stream" case; if reproducibility ever
+    // matters for compliance, swap this for a TOFU sidecar (compute md5
+    // after first successful download, persist next to the file).
     const expectedFilesBySlug: Record<
         string,
         Record<string, { expectedBytes: number; md5?: string }>
     > = {
         'small-streaming-en': {
-            'adapter.ort': { expectedBytes: 2867424, md5: '3bd0a8dda28d779ba92faed6ca33da81' },
-            'cross_kv.ort': { expectedBytes: 5298736, md5: '6afd15b369fc66fd5a05b88286cdfd92' },
-            'decoder_kv.ort': {
-                expectedBytes: 81435904,
-                md5: 'd5adfcfaa6e582144791f1568bd0f683',
-            },
-            'decoder_kv_with_attention.ort': {
-                expectedBytes: 81380336,
-                md5: 'a8028f0c430470fb6d3e081dbedd05aa',
-            },
-            'encoder.ort': { expectedBytes: 43853224, md5: '87b50cdeaadbc080ec984d0dcb21aaee' },
-            'frontend.ort': {
-                expectedBytes: 30984200,
-                md5: '98a71c79496460f485a59b6a2e57d369',
-            },
-            'streaming_config.json': {
-                expectedBytes: 512,
-                md5: 'c987419d7fbd825ace3a36e76c413c4c',
-            },
-            'tokenizer.bin': { expectedBytes: 249974, md5: '1373d5894cf6669c03c31e8ed141f969' },
+            'adapter.ort': { expectedBytes: 2867424 },
+            'cross_kv.ort': { expectedBytes: 5298736 },
+            'decoder_kv.ort': { expectedBytes: 81435904 },
+            'decoder_kv_with_attention.ort': { expectedBytes: 81380336 },
+            'encoder.ort': { expectedBytes: 43853224 },
+            'frontend.ort': { expectedBytes: 30984200 },
+            'streaming_config.json': { expectedBytes: 512 },
+            'tokenizer.bin': { expectedBytes: 249974 },
         },
         'medium-streaming-en': {
             'adapter.ort': { expectedBytes: 3647712 },

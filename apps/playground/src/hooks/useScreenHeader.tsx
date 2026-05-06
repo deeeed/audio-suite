@@ -2,7 +2,7 @@ import { useCallback, useEffect } from 'react'
 
 import { Ionicons } from '@expo/vector-icons'
 import { router, useNavigation } from 'expo-router'
-import { BackHandler } from 'react-native'
+import { BackHandler, Platform } from 'react-native'
 
 import { useTheme } from '@siteed/design-system'
 
@@ -51,6 +51,8 @@ export function useScreenHeader({
 
   // Handle Android hardware back button
   useEffect(() => {
+    if (Platform.OS === 'web') return
+
     const backHandler = BackHandler.addEventListener(
       'hardwareBackPress',
       handleBackNavigation,

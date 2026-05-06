@@ -44,6 +44,7 @@ export { AudioDeviceManager, audioDeviceManager } from './AudioDeviceManager'
 export { useAudioDevices } from './hooks/useAudioDevices'
 
 export { setMelSpectrogramWasmUrl } from './AudioAnalysis/wasmConfig'
+export { extractPreviewBars } from './AudioAnalysis/extractPreviewBars'
 
 export {
     AudioRecorderProvider,
@@ -60,6 +61,15 @@ export {
     useAudioRecorder,
     useSharedAudioRecorder,
 }
+
+export {
+    AudioExtractionError,
+    mapExtractionError,
+} from './errors/AudioExtractionError'
+export type {
+    AudioExtractionErrorCode,
+    AudioExtractionErrorPayload,
+} from './errors/AudioExtractionError'
 
 // Export all types
 export type * from './AudioAnalysis/AudioAnalysis.types'
