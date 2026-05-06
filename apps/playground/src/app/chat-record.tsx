@@ -53,9 +53,24 @@ function makeMessageId(): string {
     return `msg-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`
 }
 
+// Always returns exactly LIVE_BARS_WINDOW bars: the most recent N audio
+// points, padded on the left with zero-amplitude "silence" bars when the
+// recording is shorter than the window. Without the pad the bar count grows
+// from ~10 → 56 over the first six seconds while the canvas width stays
+// fixed, so each bar visibly shrinks mid-recording. With the pad, new audio
+// always enters from the right at a constant bar width — WhatsApp-style.
 function takeLiveWindow(points: WaveformPoint[]): WaveformPoint[] {
-    if (points.length <= LIVE_BARS_WINDOW) return points
-    return points.slice(points.length - LIVE_BARS_WINDOW)
+    if (points.length >= LIVE_BARS_WINDOW) {
+        return points.slice(points.length - LIVE_BARS_WINDOW)
+    }
+    const padCount = LIVE_BARS_WINDOW - points.length
+    const pad: WaveformPoint[] = Array.from({ length: padCount }, (_, i) => ({
+        id: `live-pad-${i}`,
+        amplitude: 0,
+        rms: 0,
+        silent: true,
+    }))
+    return pad.concat(points)
 }
 
 interface ChatBubbleProps {
