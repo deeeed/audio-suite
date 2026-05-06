@@ -171,15 +171,16 @@ export default function WidgetComparisonScreen() {
             </View>
 
             <View style={[styles.section, { backgroundColor: colors.surface }]}>
-                <Text variant="titleMedium">audio-ui · AudioFilePlayerWidget</Text>
+                <Text variant="titleMedium">
+                    audio-ui · default styling
+                </Text>
                 <Text
                     variant="bodySmall"
                     style={{ color: colors.onSurfaceVariant, marginBottom: 4 }}
                 >
-                    File-aware wrapper. Pass a `fileUri` + an `extract` impl
-                    (here: audio-studio's `extractPreviewBars`); the widget
-                    extracts once, caches per uri, and feeds the bars into the
-                    underlying AudioPlayerWidget.
+                    File-aware wrapper with the library defaults: chunky bars
+                    (pixelsPerBar=3), perceptual `sqrt` amplitude scaling,
+                    played-fill on top of an outline-color base.
                 </Text>
                 {fileUri ? (
                     <AudioFilePlayerWidget
@@ -219,6 +220,66 @@ export default function WidgetComparisonScreen() {
                         style={{ color: colors.onSurfaceVariant }}
                     >
                         Tap "Load JFK Sample" to feed a file into both widgets.
+                    </Text>
+                )}
+            </View>
+
+            <View style={[styles.section, { backgroundColor: colors.surface }]}>
+                <Text variant="titleMedium">
+                    audio-ui · Simform-styled
+                </Text>
+                <Text
+                    variant="bodySmall"
+                    style={{ color: colors.onSurfaceVariant, marginBottom: 4 }}
+                >
+                    Same widget, only the props differ: `pixelsPerBar=5`
+                    (matching Simform&apos;s candleWidth+candleSpace stride),
+                    `amplitudeScale=&apos;linear&apos;` for the peak-meter look,
+                    no playhead, no time label, no silence track. Proof that
+                    AudioFilePlayerWidget is configurable enough to mimic
+                    Simform&apos;s native render without forking.
+                </Text>
+                {fileUri ? (
+                    <AudioFilePlayerWidget
+                        fileUri={fileUri}
+                        extract={extractor}
+                        numberOfBars={Math.min(
+                            400,
+                            Math.max(120, Math.floor(widgetWidth)),
+                        )}
+                        pixelsPerBar={5}
+                        barGap={2}
+                        amplitudeScale="linear"
+                        width={widgetWidth}
+                        waveformHeight={40}
+                        density="comfortable"
+                        transportPlacement="none"
+                        showSilenceTrack={false}
+                        showPlayhead={false}
+                        currentTimeMs={ourPlayback.currentTimeMs}
+                        isPlaying={ourPlayback.isPlaying}
+                        onPlayPause={ourPlayback.toggle}
+                        onSeek={ourPlayback.seek}
+                        barColor={colors.primary}
+                        silentBarColor={colors.primary}
+                        playedBarColor={colors.onSurface}
+                        playedSilentBarColor={colors.onSurface}
+                        backgroundColor={colors.surface}
+                        accentColor={colors.primary}
+                        textColor={colors.onSurface}
+                        statusColor={colors.onSurfaceVariant}
+                        errorColor={colors.error}
+                        disabledColor={colors.outlineVariant}
+                        iconColor={colors.onPrimary}
+                        testID="comparison-our-widget-simform"
+                    />
+                ) : (
+                    <Text
+                        variant="bodySmall"
+                        style={{ color: colors.onSurfaceVariant }}
+                    >
+                        Tap &quot;Load JFK Sample&quot; to feed a file into all
+                        three widgets.
                     </Text>
                 )}
             </View>

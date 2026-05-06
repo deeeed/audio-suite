@@ -95,6 +95,11 @@ export interface AudioPlayerWidgetProps {
      */
     pixelsPerBar?: number
     /**
+     * Pixels of empty space between adjacent bars. Default 1. Bump to 2-3 to
+     * mimic Simform's `candleSpace` look; drop to 0 for a continuous wash.
+     */
+    barGap?: number
+    /**
      * Optional per-`dataPoint` voice mask. Same length as `dataPoints` —
      * bars are colored by voice activity instead of the amplitude-threshold
      * `silent` flag. Real-VAD callers should drive this.
@@ -216,6 +221,7 @@ export function AudioPlayerWidget({
     iconColor = '#FFFFFF',
     amplitudeScale = 'sqrt',
     pixelsPerBar = 3,
+    barGap = 1,
     voiceMask,
     renderTransport,
     formatTime,
@@ -365,6 +371,7 @@ export function AudioPlayerWidget({
                                 dataPoints={renderPoints}
                                 width={waveformWidth}
                                 height={resolvedWaveformHeight}
+                                gap={barGap}
                                 barColor={barColor}
                                 silentBarColor={silentBarColor}
                                 amplitudeScale={amplitudeScale}
