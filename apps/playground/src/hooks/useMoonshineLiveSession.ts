@@ -87,12 +87,17 @@ function eventToSamples(event: AudioDataEvent): number[] {
 
 const BASE_RECORDING_CONFIG: RecordingConfig = {
     interval: LIVE_INTERVAL_MS,
+    intervalAnalysis: LIVE_INTERVAL_MS,
+    segmentDurationMs: 100,
     sampleRate: SAMPLE_RATE,
     keepAwake: true,
     showNotification: Platform.OS === 'android',
     encoding: 'pcm_32bit',
     streamFormat: 'float32',
-    enableProcessing: false,
+    // analysisData feeds the chat-record live waveform without breaking
+    // existing moonshine-live behavior (which simply ignores the extra data).
+    enableProcessing: true,
+    keepFullAnalysis: true,
     output: {
         primary: { enabled: true },
         compressed: { enabled: false },

@@ -472,6 +472,14 @@ export const MoreScreen = () => {
             />
             <ListItem
                 contentContainerStyle={styles.listItemContainer}
+                label="Chat Record"
+                subLabel="Record voice notes, send them as bubbles, and play them back"
+                onPress={() => {
+                    router.navigate('/chat-record')
+                }}
+            />
+            <ListItem
+                contentContainerStyle={styles.listItemContainer}
                 label="Audio Analysis"
                 subLabel="Extract spectral, MFCC, and chromagram features"
                 onPress={() => {

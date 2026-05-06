@@ -1,6 +1,11 @@
-import React, { useMemo, useState } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 
-import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native'
+import {
+    LayoutChangeEvent,
+    ScrollView,
+    StyleSheet,
+    View,
+} from 'react-native'
 import { Button, Text } from 'react-native-paper'
 
 import {
@@ -52,7 +57,6 @@ const SCALES: WaveformAmplitudeScale[] = ['linear', 'sqrt', 'log']
 const CHAT_STATES: ChatRecordWidgetState[] = [
     'idle',
     'recording',
-    'paused',
     'processing',
     'ready',
     'error',
@@ -60,9 +64,6 @@ const CHAT_STATES: ChatRecordWidgetState[] = [
 ]
 
 export default function AudioUiWidgetsScreen() {
-    const { width: windowWidth } = useWindowDimensions()
-    const width = Math.min(560, Math.max(280, Math.floor(windowWidth - 32)))
-    const compactWidth = Math.min(width, 420)
     const dataPoints = useMemo(createDemoPoints, [])
     const voiceMask = useMemo(() => dataPoints.map((point) => !point.silent), [dataPoints])
     const [isPlaying, setIsPlaying] = useState(false)
@@ -90,7 +91,6 @@ export default function AudioUiWidgetsScreen() {
         textColor: colors.onSurface,
         secondaryTextColor: colors.onSurfaceVariant,
         errorColor: colors.error,
-        secondaryButtonBackgroundColor: colors.surface,
     }
 
     useScreenHeader({
@@ -111,155 +111,205 @@ export default function AudioUiWidgetsScreen() {
             />
 
             <Section title="WaveformPreview variants" surfaceColor={colors.surface}>
-                <WaveformPreview
-                    dataPoints={dataPoints}
-                    width={width}
-                    height={72}
-                    barColor={colors.primary}
-                    silentBarColor={colors.outlineVariant}
-                    backgroundColor={colors.surfaceVariant}
-                    playButtonBackgroundColor={colors.surface}
-                    playButtonIconColor={colors.primary}
-                    showPlayButton
-                    isPlaying={isPlaying}
-                    onPlayPress={() => setIsPlaying((value) => !value)}
-                    testID="audio-ui-waveform-preview-play"
-                />
-                {SCALES.map((scale) => (
-                    <View key={scale} style={styles.variantBlock}>
-                        <Text variant="labelLarge">Scale: {scale}</Text>
+                {(width) => (
+                    <>
                         <WaveformPreview
                             dataPoints={dataPoints}
                             width={width}
-                            height={56}
-                            amplitudeScale={scale}
-                            voiceMask={voiceMask}
-                            barColor={colors.tertiary}
+                            height={72}
+                            barColor={colors.primary}
                             silentBarColor={colors.outlineVariant}
                             backgroundColor={colors.surfaceVariant}
-                            testID={`audio-ui-waveform-preview-${scale}`}
+                            playButtonBackgroundColor={colors.surface}
+                            playButtonIconColor={colors.primary}
+                            showPlayButton
+                            isPlaying={isPlaying}
+                            onPlayPress={() => setIsPlaying((value) => !value)}
+                            testID="audio-ui-waveform-preview-play"
                         />
-                    </View>
-                ))}
+                        {SCALES.map((scale) => (
+                            <View key={scale} style={styles.variantBlock}>
+                                <Text variant="labelLarge">Scale: {scale}</Text>
+                                <WaveformPreview
+                                    dataPoints={dataPoints}
+                                    width={width}
+                                    height={56}
+                                    amplitudeScale={scale}
+                                    voiceMask={voiceMask}
+                                    barColor={colors.tertiary}
+                                    silentBarColor={colors.outlineVariant}
+                                    backgroundColor={colors.surfaceVariant}
+                                    testID={`audio-ui-waveform-preview-${scale}`}
+                                />
+                            </View>
+                        ))}
+                    </>
+                )}
             </Section>
 
             <Section title="SilenceTrack variants" surfaceColor={colors.surface}>
-                <Text variant="bodySmall">Merged contiguous silence bands</Text>
-                <SilenceTrack
-                    dataPoints={dataPoints}
-                    width={width}
-                    height={10}
-                    color={colors.tertiary}
-                    backgroundColor={colors.tertiaryContainer}
-                    testID="audio-ui-silence-track-merged"
-                />
-                <Text variant="bodySmall">Unmerged per-bar silence bands</Text>
-                <SilenceTrack
-                    dataPoints={dataPoints}
-                    width={width}
-                    height={10}
-                    color={colors.primary}
-                    backgroundColor={colors.primaryContainer}
-                    mergeContiguous={false}
-                    testID="audio-ui-silence-track-unmerged"
-                />
+                {(width) => (
+                    <>
+                        <Text variant="bodySmall">Merged contiguous silence bands</Text>
+                        <SilenceTrack
+                            dataPoints={dataPoints}
+                            width={width}
+                            height={10}
+                            color={colors.tertiary}
+                            backgroundColor={colors.tertiaryContainer}
+                            testID="audio-ui-silence-track-merged"
+                        />
+                        <Text variant="bodySmall">Unmerged per-bar silence bands</Text>
+                        <SilenceTrack
+                            dataPoints={dataPoints}
+                            width={width}
+                            height={10}
+                            color={colors.primary}
+                            backgroundColor={colors.primaryContainer}
+                            mergeContiguous={false}
+                            testID="audio-ui-silence-track-unmerged"
+                        />
+                    </>
+                )}
             </Section>
 
             <Section title="AudioPlayerWidget densities" surfaceColor={colors.surface}>
-                {DENSITIES.map((density) => (
-                    <View key={density} style={styles.variantBlock}>
-                        <Text variant="labelLarge">Density: {density}</Text>
-                        <AudioPlayerWidget
-                            dataPoints={dataPoints}
-                            width={width}
-                            density={density}
-                            currentTimeMs={currentTimeMs}
-                            durationMs={DURATION_MS}
-                            isPlaying={isPlaying}
-                            showSilenceTrack
-                            voiceMask={voiceMask}
-                            onPlayPause={() => setIsPlaying((value) => !value)}
-                            onSeek={setCurrentTimeMs}
-                            testID={`audio-ui-player-density-${density}`}
-                            {...widgetColors}
-                        />
-                    </View>
-                ))}
+                {(width) => (
+                    <>
+                        {DENSITIES.map((density) => (
+                            <View key={density} style={styles.variantBlock}>
+                                <Text variant="labelLarge">Density: {density}</Text>
+                                <AudioPlayerWidget
+                                    dataPoints={dataPoints}
+                                    width={width}
+                                    density={density}
+                                    currentTimeMs={currentTimeMs}
+                                    durationMs={DURATION_MS}
+                                    isPlaying={isPlaying}
+                                    showSilenceTrack
+                                    voiceMask={voiceMask}
+                                    onPlayPause={() => setIsPlaying((value) => !value)}
+                                    onSeek={setCurrentTimeMs}
+                                    testID={`audio-ui-player-density-${density}`}
+                                    {...widgetColors}
+                                />
+                            </View>
+                        ))}
+                    </>
+                )}
             </Section>
 
             <Section title="AudioPlayerWidget transport placements" surfaceColor={colors.surface}>
-                {PLACEMENTS.map((placement) => (
-                    <View key={placement} style={styles.variantBlock}>
-                        <Text variant="labelLarge">Transport: {placement}</Text>
-                        <AudioPlayerWidget
-                            dataPoints={dataPoints}
-                            width={width}
-                            transportPlacement={placement}
-                            currentTimeMs={currentTimeMs}
-                            durationMs={DURATION_MS}
-                            isPlaying={placement !== 'none' && isPlaying}
-                            showSilenceTrack={placement !== 'none'}
-                            onPlayPause={() => setIsPlaying((value) => !value)}
-                            onSeek={setCurrentTimeMs}
-                            testID={`audio-ui-player-transport-${placement}`}
-                            {...widgetColors}
-                        />
-                    </View>
-                ))}
+                {(width) => (
+                    <>
+                        {PLACEMENTS.map((placement) => (
+                            <View key={placement} style={styles.variantBlock}>
+                                <Text variant="labelLarge">Transport: {placement}</Text>
+                                <AudioPlayerWidget
+                                    dataPoints={dataPoints}
+                                    width={width}
+                                    transportPlacement={placement}
+                                    currentTimeMs={currentTimeMs}
+                                    durationMs={DURATION_MS}
+                                    isPlaying={placement !== 'none' && isPlaying}
+                                    showSilenceTrack={placement !== 'none'}
+                                    onPlayPause={() => setIsPlaying((value) => !value)}
+                                    onSeek={setCurrentTimeMs}
+                                    testID={`audio-ui-player-transport-${placement}`}
+                                    {...widgetColors}
+                                />
+                            </View>
+                        ))}
+                    </>
+                )}
             </Section>
 
             <Section
                 title="AudioPlayerWidget loading and error states"
                 surfaceColor={colors.surface}
             >
-                <AudioPlayerWidget
-                    dataPoints={[]}
-                    width={width}
-                    loading
-                    currentTimeMs={0}
-                    durationMs={0}
-                    isPlaying={false}
-                    onPlayPause={() => undefined}
-                    onSeek={() => undefined}
-                    testID="audio-ui-player-loading"
-                    {...widgetColors}
-                />
-                <AudioPlayerWidget
-                    dataPoints={dataPoints}
-                    width={width}
-                    errorMessage="Preview extraction failed"
-                    currentTimeMs={0}
-                    durationMs={DURATION_MS}
-                    isPlaying={false}
-                    onPlayPause={() => undefined}
-                    onSeek={() => undefined}
-                    testID="audio-ui-player-error"
-                    {...widgetColors}
-                />
+                {(width) => (
+                    <>
+                        <AudioPlayerWidget
+                            dataPoints={[]}
+                            width={width}
+                            loading
+                            currentTimeMs={0}
+                            durationMs={0}
+                            isPlaying={false}
+                            onPlayPause={() => undefined}
+                            onSeek={() => undefined}
+                            testID="audio-ui-player-loading"
+                            {...widgetColors}
+                        />
+                        <AudioPlayerWidget
+                            dataPoints={dataPoints}
+                            width={width}
+                            errorMessage="Preview extraction failed"
+                            currentTimeMs={0}
+                            durationMs={DURATION_MS}
+                            isPlaying={false}
+                            onPlayPause={() => undefined}
+                            onSeek={() => undefined}
+                            testID="audio-ui-player-error"
+                            {...widgetColors}
+                        />
+                    </>
+                )}
             </Section>
 
             <Section title="ChatRecordWidget states" surfaceColor={colors.surface}>
-                {CHAT_STATES.map((state) => (
-                    <ChatRecordWidget
-                        key={state}
-                        state={state}
-                        width={compactWidth}
-                        dataPoints={
-                            state === 'idle' || state === 'error' ? [] : dataPoints.slice(0, 56)
-                        }
-                        elapsedMs={state === 'idle' ? 0 : 42_000}
-                        errorMessage="Microphone unavailable"
-                        onRecordPress={() => undefined}
-                        onStopPress={() => undefined}
-                        onPausePress={() => undefined}
-                        onResumePress={() => undefined}
-                        onRetryPress={() => undefined}
-                        cancelSlot={<Button compact>Cancel</Button>}
-                        sendSlot={state === 'ready' ? <Button compact>Send</Button> : undefined}
-                        testID={`audio-ui-chat-record-${state}`}
-                        {...chatWidgetColors}
-                    />
-                ))}
+                {(width) => (
+                    <>
+                        {CHAT_STATES.map((state) => (
+                            <ChatRecordWidget
+                                key={state}
+                                state={state}
+                                width={width}
+                                dataPoints={
+                                    state === 'idle' || state === 'error'
+                                        ? []
+                                        : dataPoints.slice(0, 56)
+                                }
+                                elapsedMs={state === 'idle' ? 0 : 42_000}
+                                errorMessage="Microphone unavailable"
+                                onRecordPress={() => undefined}
+                                onStopPress={() => undefined}
+                                onRetryPress={() => undefined}
+                                cancelSlot={<Button compact>Cancel</Button>}
+                                sendSlot={
+                                    state === 'ready' ? <Button compact>Send</Button> : undefined
+                                }
+                                testID={`audio-ui-chat-record-${state}`}
+                                {...chatWidgetColors}
+                            />
+                        ))}
+                        <Text variant="labelLarge">Variant: button-only</Text>
+                        <ChatRecordWidget
+                            state="idle"
+                            width={width}
+                            variant="button"
+                            onRecordPress={() => undefined}
+                            testID="audio-ui-chat-record-button"
+                            {...chatWidgetColors}
+                        />
+                        <Text variant="labelLarge">Hold-to-record</Text>
+                        <ChatRecordWidget
+                            state="recording"
+                            width={width}
+                            interaction="hold"
+                            dataPoints={dataPoints.slice(0, 56)}
+                            elapsedMs={5_400}
+                            showElapsed={false}
+                            caption="Release to send"
+                            onRecordPress={() => undefined}
+                            onStopPress={() => undefined}
+                            cancelSlot={<Button compact>Cancel</Button>}
+                            testID="audio-ui-chat-record-hold"
+                            {...chatWidgetColors}
+                        />
+                    </>
+                )}
             </Section>
         </ScrollView>
     )
@@ -271,13 +321,23 @@ function Section({
     surfaceColor,
 }: {
     title: string
-    children: React.ReactNode
+    children: (width: number) => React.ReactNode
     surfaceColor: string
 }) {
+    const [contentWidth, setContentWidth] = useState(0)
+    const onLayout = useCallback((e: LayoutChangeEvent) => {
+        const next = Math.floor(e.nativeEvent.layout.width)
+        if (next > 0) {
+            setContentWidth((prev) => (prev === next ? prev : next))
+        }
+    }, [])
+
     return (
         <View style={[styles.section, { backgroundColor: surfaceColor }]}>
             <Text variant="titleMedium">{title}</Text>
-            {children}
+            <View onLayout={onLayout} style={styles.sectionContent}>
+                {contentWidth > 0 ? children(contentWidth) : null}
+            </View>
         </View>
     )
 }
@@ -291,6 +351,9 @@ const styles = StyleSheet.create({
         gap: 12,
         padding: 12,
         borderRadius: 12,
+    },
+    sectionContent: {
+        gap: 12,
     },
     variantBlock: {
         gap: 6,

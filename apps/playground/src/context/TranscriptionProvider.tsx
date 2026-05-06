@@ -594,7 +594,18 @@ export const TranscriptionProvider: React.FC<TranscriptionProviderProps> = ({
                         // Call the callback with the transcription data
                         onTranscriptionUpdate(transcriptionData)
                     } else if (error) {
-                        logger.error('Realtime transcription error:', error)
+                        // whisper.rn surfaces benign cases (no usable audio,
+                        // cancellation) as -999 / 1. Downgrade these to warn
+                        // so they don't spam LogBox in normal "user stopped
+                        // recording before speaking" flows.
+                        const benign = code === -999 || code === 1
+                        if (benign) {
+                            logger.warn(
+                                `Realtime transcription stopped (code=${code}): ${error}`
+                            )
+                        } else {
+                            logger.error('Realtime transcription error:', error)
+                        }
                     }
                     
                     // If capturing has stopped, update state

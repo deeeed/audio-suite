@@ -15,6 +15,7 @@ import { getLogger } from '@siteed/react-native-logger'
 
 import { ApplicationContextProvider } from '../context/ApplicationProvider'
 import { AudioFilesProvider } from '../context/AudioFilesProvider'
+import { MoonshinePreloadProvider } from '../context/MoonshinePreloadProvider'
 import { TranscriptionProvider } from '../context/TranscriptionProvider'
 import { WebAppBanner } from '../components/WebAppBanner'
 import { AgentStepHud } from '../components/AgentStepHud'
@@ -96,10 +97,11 @@ export default function RootLayout() {
                         }}
                     >
                         <AudioFilesProvider>
+                            <MoonshinePreloadProvider>
                             <ThemeProvider value={navigationTheme}>
                                 {/* Use SystemBars to manage system bars styling */}
                                 <SystemBars style={theme.dark ? 'light' : 'dark'} />
-                                
+
                                 {/* WebAppBanner appears above all content on web platform */}
                                 <WebAppBanner />
                                 <AgenticBridgeSync />
@@ -125,6 +127,7 @@ export default function RootLayout() {
                                     {/* <Stack.Screen name="playbug" /> */}
                                 </Stack>
                             </ThemeProvider>
+                            </MoonshinePreloadProvider>
                         </AudioFilesProvider>
                     </AudioRecorderProvider>
                 </TranscriptionProvider>
