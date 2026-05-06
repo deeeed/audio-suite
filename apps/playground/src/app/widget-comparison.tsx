@@ -34,7 +34,11 @@ interface RenderTiming {
 
 export default function WidgetComparisonScreen() {
     const { width: windowWidth } = useWindowDimensions()
-    const widgetWidth = Math.min(560, Math.max(280, Math.floor(windowWidth - 32)))
+    // Section padding (12 each side) + screen padding (16 each side) = 56
+    // total horizontal chrome before the widget. Subtracting both keeps the
+    // widget bounded inside its surface card; the previous calc only
+    // accounted for screen padding and overflowed the section by 24px.
+    const widgetWidth = Math.min(560, Math.max(256, Math.floor(windowWidth - 56)))
     const theme = useTheme()
     const colors = theme.colors
 
