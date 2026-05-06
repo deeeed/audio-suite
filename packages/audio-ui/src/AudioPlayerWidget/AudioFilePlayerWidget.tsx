@@ -39,9 +39,19 @@ export interface AudioFilePlayerWidgetProps
     /**
      * How many bars to ask the extractor for. Defaults to 240 — enough for
      * most phone widths at the default `pixelsPerBar` of 3 without forcing
-     * the extractor to over-resolve.
+     * the extractor to over-resolve. Ignored when `barDurationMs` and
+     * `durationMs` are both set (resolved count is computed from those).
      */
     numberOfBars?: number
+    /**
+     * Time-per-bar in ms. Mirrors the same field on `PreviewBarsResult` from
+     * @siteed/audio-studio: when set together with a known `durationMs`,
+     * the widget computes `numberOfBars = floor(durationMs / barDurationMs)`
+     * — useful for "1 bar per N ms" layouts on long-form audio. Requires the
+     * caller to pass `durationMs` (file length is unknown until extraction
+     * completes; we won't probe twice).
+     */
+    barDurationMs?: number
     /**
      * Implementation of the file-to-bars step. Usually
      * `(opts) => extractPreviewBars(opts).then((r) => ({ bars: r.bars, durationMs: r.durationMs }))`.
@@ -49,7 +59,10 @@ export interface AudioFilePlayerWidgetProps
      * @siteed/audio-studio.
      */
     extract: AudioFilePlayerExtractor
-    /** Override the duration the widget displays. Otherwise the extractor's. */
+    /**
+     * Override the duration the widget displays. Otherwise inferred from the
+     * extractor result. Also acts as the duration hint for `barDurationMs`.
+     */
     durationMs?: number
     /** Surfaces the extractor's error to the caller without breaking render. */
     onExtractError?: (error: Error) => void
@@ -70,6 +83,7 @@ interface ExtractedEntry {
 export function AudioFilePlayerWidget({
     fileUri,
     numberOfBars = 240,
+    barDurationMs,
     extract,
     durationMs: durationMsOverride,
     onExtractError,
@@ -77,10 +91,25 @@ export function AudioFilePlayerWidget({
 }: AudioFilePlayerWidgetProps) {
     const [entry, setEntry] = useState<ExtractedEntry | null>(null)
     const [loading, setLoading] = useState(true)
+    // Cache by `fileUri:resolvedNumberOfBars` so the same file extracted at
+    // two different densities doesn't clobber each other in the cache.
     const cacheRef = useRef<Map<string, ExtractedEntry>>(new Map())
 
+    const resolvedNumberOfBars = useMemo(() => {
+        if (
+            typeof barDurationMs === 'number' &&
+            barDurationMs > 0 &&
+            typeof durationMsOverride === 'number' &&
+            durationMsOverride > 0
+        ) {
+            return Math.max(1, Math.floor(durationMsOverride / barDurationMs))
+        }
+        return numberOfBars
+    }, [barDurationMs, durationMsOverride, numberOfBars])
+
     useEffect(() => {
-        const cached = cacheRef.current.get(fileUri)
+        const cacheKey = `${fileUri}:${resolvedNumberOfBars}`
+        const cached = cacheRef.current.get(cacheKey)
         if (cached) {
             setEntry(cached)
             setLoading(false)
@@ -95,7 +124,7 @@ export function AudioFilePlayerWidget({
             try {
                 const result = await extract({
                     fileUri,
-                    numberOfBars,
+                    numberOfBars: resolvedNumberOfBars,
                     signal: controller.signal,
                 })
                 if (cancelled) return
@@ -104,7 +133,7 @@ export function AudioFilePlayerWidget({
                     durationMs: result.durationMs ?? 0,
                     error: null,
                 }
-                cacheRef.current.set(fileUri, next)
+                cacheRef.current.set(cacheKey, next)
                 setEntry(next)
             } catch (err) {
                 if (cancelled) return
@@ -120,7 +149,7 @@ export function AudioFilePlayerWidget({
             cancelled = true
             controller.abort()
         }
-    }, [fileUri, numberOfBars, extract, onExtractError])
+    }, [fileUri, resolvedNumberOfBars, extract, onExtractError])
 
     const dataPoints = entry?.bars ?? []
     const resolvedDuration = useMemo(() => {
