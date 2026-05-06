@@ -1,14 +1,14 @@
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons'
-import { AudioAnalysis, DataPoint } from '@siteed/audio-studio'
+import type { WaveformAnalysis, WaveformBar } from '../types/waveform'
 import React from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 import { AudioVisualizerTheme } from '../AudioVisualizer/AudioVisualiser.types'
 
 export interface NavigationControlsProps {
-    selectedCandle: DataPoint | null
+    selectedCandle: WaveformBar | null
     selectedIndex: number
-    audioData: AudioAnalysis
+    audioData: WaveformAnalysis
     currentTime?: number
     onPrev: () => void
     onNext: () => void

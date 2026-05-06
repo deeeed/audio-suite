@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 
-import type { DataPoint } from '@siteed/audio-studio'
+import type { WaveformPoint } from '../types/waveform'
 
 export type WaveformAmplitudeScale = 'linear' | 'sqrt' | 'log'
 
@@ -16,7 +16,7 @@ export interface WaveformLayoutBar {
 export interface UseWaveformLayoutOptions {
     width: number
     height: number
-    dataPoints: DataPoint[]
+    dataPoints: WaveformPoint[]
     gap?: number
     minBarHeight?: number
     amplitudeRange?: { min: number; max: number }
@@ -43,7 +43,7 @@ const LOG_FLOOR = 1e-4
 function scaleAmplitude(
     value: number,
     peak: number,
-    mode: WaveformAmplitudeScale,
+    mode: WaveformAmplitudeScale
 ): number {
     if (peak <= 0) return 0
     const ratio = Math.max(0, Math.min(1, value / peak))
@@ -53,7 +53,9 @@ function scaleAmplitude(
         case 'log': {
             // Map ratio in [LOG_FLOOR, 1] to [0, 1] on a log scale.
             const r = Math.max(LOG_FLOOR, ratio)
-            return (Math.log10(r) - Math.log10(LOG_FLOOR)) / -Math.log10(LOG_FLOOR)
+            return (
+                (Math.log10(r) - Math.log10(LOG_FLOOR)) / -Math.log10(LOG_FLOOR)
+            )
         }
         case 'sqrt':
         default:
@@ -95,7 +97,7 @@ export function useWaveformLayout({
         const effectiveGap = idealBarWidth < 1 ? 0 : gap
         const barWidth = Math.max(
             0.5,
-            (width - effectiveGap * Math.max(0, n - 1)) / n,
+            (width - effectiveGap * Math.max(0, n - 1)) / n
         )
         const stride = barWidth + effectiveGap
 
@@ -109,7 +111,7 @@ export function useWaveformLayout({
                 x: i * stride,
                 width: barWidth,
                 height: h,
-                silent: p.silent,
+                silent: p.silent ?? false,
                 amplitude: p.amplitude,
             }
         }

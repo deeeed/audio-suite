@@ -1126,6 +1126,104 @@ class AudioProcessor(private val filesDir: File) {
         }
     }
 
+    fun generatePreviewBars(
+        audioData: AudioData,
+        numberOfBars: Int,
+        startTimeMs: Long? = null,
+        endTimeMs: Long? = null,
+        silenceRmsThreshold: Float = 0.01f
+    ): Map<String, Any> {
+        val totalDurationMs = audioData.durationMs
+        val requestedBars = numberOfBars.coerceAtLeast(1)
+
+        if (startTimeMs != null) {
+            require(startTimeMs >= 0) { "startTimeMs must be non-negative, got: $startTimeMs" }
+            require(startTimeMs <= totalDurationMs) { "startTimeMs ($startTimeMs) is beyond audio duration ($totalDurationMs)" }
+        }
+        if (endTimeMs != null) {
+            require(endTimeMs >= 0) { "endTimeMs must be non-negative, got: $endTimeMs" }
+            if (startTimeMs != null) {
+                require(startTimeMs < endTimeMs) { "startTimeMs ($startTimeMs) must be less than endTimeMs ($endTimeMs)" }
+            }
+        }
+
+        val effectiveStartMs = startTimeMs ?: 0L
+        val effectiveEndMs = (endTimeMs ?: totalDurationMs).coerceAtMost(totalDurationMs)
+        val durationMs = (effectiveEndMs - effectiveStartMs).coerceAtLeast(1L)
+        val bytesPerSample = (audioData.bitDepth / 8).coerceAtLeast(1)
+        val bytesPerFrame = (bytesPerSample * audioData.channels).coerceAtLeast(1)
+        val totalFrames = audioData.data.size / bytesPerFrame
+        val startFrameIndex = ((effectiveStartMs * audioData.sampleRate) / 1000)
+            .toInt()
+            .coerceIn(0, totalFrames)
+        val endFrameIndex = ((effectiveEndMs * audioData.sampleRate) / 1000)
+            .toInt()
+            .coerceIn(startFrameIndex, totalFrames)
+        val framesInRange = endFrameIndex - startFrameIndex
+        require(framesInRange > 0) { "Invalid sample range: contains no samples" }
+
+        val framesPerBar = (framesInRange / requestedBars).coerceAtLeast(1)
+        val bars = mutableListOf<Map<String, Any>>()
+        var minAmplitude = Float.MAX_VALUE
+        var maxAmplitude = Float.NEGATIVE_INFINITY
+        var minRms = Float.MAX_VALUE
+        var maxRms = Float.NEGATIVE_INFINITY
+
+        val extractionTimeMs = measureTimeMillis {
+            for (i in 0 until requestedBars) {
+                val barStartFrame = startFrameIndex + (i * framesPerBar)
+                val barEndFrame = minOf(startFrameIndex + ((i + 1) * framesPerBar), endFrameIndex)
+                if (barStartFrame >= barEndFrame) break
+
+                val barStartByte = barStartFrame * bytesPerFrame
+                val barEndByte = minOf(barEndFrame * bytesPerFrame, audioData.data.size)
+                val segmentBytes = audioData.data.sliceArray(barStartByte until barEndByte)
+                val segmentData = when (audioData.bitDepth) {
+                    16 -> convert16BitPcmToFloat(segmentBytes)
+                    32 -> convert32BitPcmToFloat(segmentBytes)
+                    else -> convert8BitPcmToFloat(segmentBytes)
+                }
+                if (segmentData.isEmpty()) continue
+
+                val rms = sqrt(segmentData.map { it * it }.average().toFloat())
+                val amplitude = segmentData.maxOf { abs(it) }
+                minAmplitude = minOf(minAmplitude, amplitude)
+                maxAmplitude = maxOf(maxAmplitude, amplitude)
+                minRms = minOf(minRms, rms)
+                maxRms = maxOf(maxRms, rms)
+
+                val startBarTimeMs = ((barStartFrame - startFrameIndex).toDouble() / framesInRange.toDouble() * durationMs).toLong()
+                val endBarTimeMs = ((barEndFrame - startFrameIndex).toDouble() / framesInRange.toDouble() * durationMs).toLong()
+                bars.add(mapOf(
+                    "id" to i,
+                    "amplitude" to amplitude.coerceIn(0f, 1f),
+                    "rms" to rms.coerceIn(0f, 1f),
+                    "silent" to (rms < silenceRmsThreshold),
+                    "startTimeMs" to startBarTimeMs,
+                    "endTimeMs" to endBarTimeMs.coerceAtLeast(startBarTimeMs)
+                ))
+            }
+        }
+
+        if (bars.isEmpty()) {
+            throw IllegalStateException("No preview bars were generated")
+        }
+
+        return mapOf(
+            "bars" to bars,
+            "durationMs" to durationMs.toInt(),
+            "sampleRate" to audioData.sampleRate,
+            "numberOfChannels" to audioData.channels,
+            "bitDepth" to audioData.bitDepth,
+            "samples" to framesInRange,
+            "requestedNumberOfBars" to requestedBars,
+            "barDurationMs" to (durationMs.toDouble() / bars.size.toDouble()),
+            "amplitudeRange" to mapOf("min" to minAmplitude, "max" to maxAmplitude),
+            "rmsRange" to mapOf("min" to minRms, "max" to maxRms),
+            "extractionTimeMs" to extractionTimeMs.toFloat()
+        )
+    }
+
     fun generatePreview(
         audioData: AudioData,
         numberOfPoints: Int,

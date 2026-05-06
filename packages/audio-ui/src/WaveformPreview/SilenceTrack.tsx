@@ -3,10 +3,10 @@ import React, { useMemo } from 'react'
 import { Canvas, Rect } from '@shopify/react-native-skia'
 import { View } from 'react-native'
 
-import type { DataPoint } from '@siteed/audio-studio'
+import type { WaveformPoint } from '../types/waveform'
 
 export interface SilenceTrackProps {
-    dataPoints: DataPoint[]
+    dataPoints: WaveformPoint[]
     width: number
     height?: number
     color?: string
@@ -21,9 +21,9 @@ interface SilenceBand {
 }
 
 function computeBands(
-    dataPoints: DataPoint[],
+    dataPoints: WaveformPoint[],
     width: number,
-    merge: boolean,
+    merge: boolean
 ): SilenceBand[] {
     const n = dataPoints.length
     if (n === 0 || width <= 0) return []
@@ -68,7 +68,7 @@ export function SilenceTrack({
 }: SilenceTrackProps) {
     const bands = useMemo(
         () => computeBands(dataPoints, width, mergeContiguous),
-        [dataPoints, width, mergeContiguous],
+        [dataPoints, width, mergeContiguous]
     )
 
     return (

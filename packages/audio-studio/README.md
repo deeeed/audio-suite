@@ -54,20 +54,20 @@ yarn add @siteed/audio-studio
 ## Quick Start
 
 ```typescript
-import { useAudioRecorder } from '@siteed/audio-studio';
+import { useAudioRecorder } from '@siteed/audio-studio'
 
-const { startRecording, stopRecording, isRecording } = useAudioRecorder();
+const { startRecording, stopRecording, isRecording } = useAudioRecorder()
 
 // Record
 await startRecording({
-  sampleRate: 44100,
-  channels: 1,
-  encoding: 'pcm_16bit',
-});
+    sampleRate: 44100,
+    channels: 1,
+    encoding: 'pcm_16bit',
+})
 
 // ... later
-const result = await stopRecording();
-console.log('Saved to:', result.fileUri);
+const result = await stopRecording()
+console.log('Saved to:', result.fileUri)
 ```
 
 ### Zero-Latency Recording
@@ -75,12 +75,17 @@ console.log('Saved to:', result.fileUri);
 Pre-initialize to eliminate startup delay:
 
 ```typescript
-const { prepareRecording, startRecording, stopRecording } = useSharedAudioRecorder();
+const { prepareRecording, startRecording, stopRecording } =
+    useSharedAudioRecorder()
 
-await prepareRecording({ sampleRate: 44100, channels: 1, encoding: 'pcm_16bit' });
+await prepareRecording({
+    sampleRate: 44100,
+    channels: 1,
+    encoding: 'pcm_16bit',
+})
 
 // Later — starts instantly
-await startRecording();
+await startRecording()
 ```
 
 ### Shared State Across Components
@@ -100,15 +105,15 @@ Set `streamFormat: 'float32'` to get `Float32Array` on all platforms instead of 
 
 ```typescript
 await startRecording({
-  sampleRate: 16000,
-  channels: 1,
-  encoding: 'pcm_32bit',
-  streamFormat: 'float32',
-  onAudioStream: async (event) => {
-    const samples = event.data as Float32Array;
-    await myModel.feed(samples);
-  },
-});
+    sampleRate: 16000,
+    channels: 1,
+    encoding: 'pcm_32bit',
+    streamFormat: 'float32',
+    onAudioStream: async (event) => {
+        const samples = event.data as Float32Array
+        await myModel.feed(samples)
+    },
+})
 ```
 
 ## Audio Analysis
@@ -122,55 +127,61 @@ retention to avoid unbounded JS memory growth:
 
 ```typescript
 await startRecording({
-  sampleRate: 16000,
-  channels: 1,
-  enableProcessing: true,
-  keepFullAnalysis: false,
-  onAudioAnalysis: async (analysis) => {
-    // Consume each analysis chunk without retaining the full recording history.
-    updateVoiceActivity(analysis.dataPoints);
-  },
-});
+    sampleRate: 16000,
+    channels: 1,
+    enableProcessing: true,
+    keepFullAnalysis: false,
+    onAudioAnalysis: async (analysis) => {
+        // Consume each analysis chunk without retaining the full recording history.
+        updateVoiceActivity(analysis.dataPoints)
+    },
+})
 ```
 
 ```typescript
-import { extractAudioAnalysis, extractPreview, extractMelSpectrogram, trimAudio } from '@siteed/audio-studio';
+import {
+    extractAudioAnalysis,
+    extractPreview,
+    extractMelSpectrogram,
+    trimAudio,
+} from '@siteed/audio-studio'
 
 // Feature extraction
 const analysis = await extractAudioAnalysis({
-  fileUri: 'path/to/recording.wav',
-  features: { rms: true, zcr: true, mfcc: true, spectralCentroid: true }
-});
+    fileUri: 'path/to/recording.wav',
+    features: { rms: true, zcr: true, mfcc: true, spectralCentroid: true },
+})
 
 // Lightweight waveform for visualization
 const preview = await extractPreview({
-  fileUri: 'path/to/recording.wav',
-  pointsPerSecond: 50
-});
+    fileUri: 'path/to/recording.wav',
+    pointsPerSecond: 50,
+})
 
 // Mel spectrogram for ML
 const mel = await extractMelSpectrogram({
-  fileUri: 'path/to/recording.wav',
-  nMels: 40, hopLengthMs: 10
-});
+    fileUri: 'path/to/recording.wav',
+    nMels: 40,
+    hopLengthMs: 10,
+})
 
 // Trim audio
 const trimmed = await trimAudio({
-  fileUri: 'path/to/recording.wav',
-  ranges: [{ startTimeMs: 1000, endTimeMs: 5000 }],
-  mode: 'keep'
-});
+    fileUri: 'path/to/recording.wav',
+    ranges: [{ startTimeMs: 1000, endTimeMs: 5000 }],
+    mode: 'keep',
+})
 ```
 
 ### Which Method to Use
 
-| Method | Cost | Use case |
-|--------|------|----------|
-| `extractPreview` | Light | Waveform visualization |
-| `extractRawWavAnalysis` | Light | WAV metadata without decoding |
-| `extractAudioData` | Medium | Raw PCM for custom processing |
-| `extractAudioAnalysis` | Medium-Heavy | MFCC, spectral features, pitch, tempo |
-| `extractMelSpectrogram` | Heavy | Frequency-domain for ML |
+| Method                  | Cost         | Use case                              |
+| ----------------------- | ------------ | ------------------------------------- |
+| `extractPreview`        | Light        | Waveform visualization                |
+| `extractRawWavAnalysis` | Light        | WAV metadata without decoding         |
+| `extractAudioData`      | Medium       | Raw PCM for custom processing         |
+| `extractAudioAnalysis`  | Medium-Heavy | MFCC, spectral features, pitch, tempo |
+| `extractMelSpectrogram` | Heavy        | Frequency-domain for ML               |
 
 ## Docs
 
@@ -184,4 +195,40 @@ const trimmed = await trimAudio({
 MIT — see [LICENSE](LICENSE).
 
 ---
+
 <sub>Created by [Arthur Breton](https://siteed.net)</sub>
+
+### Compact waveform preview bars
+
+For UI waveform previews, prefer `extractPreviewBars` over adapting a full
+`AudioAnalysis` when detailed features are not needed:
+
+```typescript
+import { extractPreviewBars } from '@siteed/audio-studio'
+
+const preview = await extractPreviewBars({
+    fileUri,
+    numberOfBars: 120,
+    startTimeMs: 0,
+    endTimeMs: 30_000,
+})
+
+console.log(preview.bars, preview.durationMs, preview.amplitudeRange)
+```
+
+`extractPreviewBars` returns compact `PreviewBar[]` data plus duration, sample
+rate, channel count, bit depth, amplitude/RMS ranges, and extraction timing. The
+existing `extractPreview` API remains available for compatibility with callers
+that expect `AudioAnalysis` / `DataPoint[]`.
+
+Native Android and iOS expose an `extractPreviewBars` bridge for compact
+bars-out results. JS also keeps a compatibility fallback through `extractPreview`
+for older native runtimes that do not yet provide the compact bridge.
+
+#### C++ scope note
+
+Waveform preview bar extraction intentionally keeps file decode in platform
+code. A future C++ `WaveformBarsProcessor` should be considered only as a pure
+PCM-in/bars-out processor if Kotlin/Swift/Web implementations become a real
+maintenance problem or if waveform bars are bundled into a broader shared
+processor/VAD effort. This is not a formal benchmark claim.

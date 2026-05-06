@@ -4,7 +4,7 @@ import { MaterialIcons } from '@expo/vector-icons'
 import { Canvas, Rect } from '@shopify/react-native-skia'
 import { Pressable, StyleSheet, View } from 'react-native'
 
-import type { DataPoint } from '@siteed/audio-studio'
+import type { WaveformPoint } from '../types/waveform'
 
 import {
     useWaveformLayout,
@@ -12,7 +12,7 @@ import {
 } from '../hooks/useWaveformLayout'
 
 export interface WaveformPreviewProps {
-    dataPoints: DataPoint[]
+    dataPoints: WaveformPoint[]
     width: number
     height: number
     barColor?: string
@@ -67,10 +67,7 @@ export function WaveformPreview({
             testID={testID}
             style={[styles.container, { width, height, backgroundColor }]}
         >
-            <Canvas
-                style={{ width, height }}
-                testID={`${testID}-canvas`}
-            >
+            <Canvas style={{ width, height }} testID={`${testID}-canvas`}>
                 {bars.map((bar) => {
                     const inactive = useVoiceMask
                         ? !voiceMask![bar.index]

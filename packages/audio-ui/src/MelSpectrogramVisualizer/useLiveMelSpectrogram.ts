@@ -1,5 +1,5 @@
 import { useRef, useMemo } from 'react'
-import type { AudioAnalysis } from '@siteed/audio-studio'
+import type { WaveformAnalysis } from '../types/waveform'
 
 export interface LiveMelSpectrogramData {
     spectrogram: number[][]
@@ -8,7 +8,7 @@ export interface LiveMelSpectrogramData {
 }
 
 export function useLiveMelSpectrogram(
-    analysisData: AudioAnalysis | undefined,
+    analysisData: WaveformAnalysis | undefined,
     maxFrames: number = 50
 ): LiveMelSpectrogramData | null {
     const lastProcessedIdRef = useRef(-1)

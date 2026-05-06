@@ -55,4 +55,62 @@ yarn storybook
 MIT — see [LICENSE](LICENSE).
 
 ---
+
 <sub>Created by [Arthur Breton](https://siteed.net)</sub>
+
+## Waveform/player/recorder contracts
+
+`@siteed/audio-ui` is a controlled rendering package. It does not read files,
+play audio, request permissions, start recorders, or call native extraction
+modules from its main entrypoint. Apps pass waveform bars and state in through
+props.
+
+### Existing-file preview
+
+Use an app/domain extraction layer such as `@siteed/audio-studio` to create
+compact bars, then render them with `WaveformPreview` or `AudioPlayerWidget`:
+
+```tsx
+import { AudioPlayerWidget } from '@siteed/audio-ui'
+import { extractPreviewBars } from '@siteed/audio-studio'
+
+const preview = await extractPreviewBars({ fileUri, numberOfBars: 96 })
+
+<AudioPlayerWidget
+  dataPoints={preview.bars}
+  width={280}
+  density="chat"
+  currentTimeMs={currentTimeMs}
+  durationMs={preview.durationMs}
+  isPlaying={isPlaying}
+  onPlayPause={togglePlayback}
+  onSeek={seekTo}
+/>
+```
+
+### Controlled chat recorder
+
+`ChatRecordWidget` displays the recorder state and live waveform bars supplied by
+the app. The app still owns `useAudioRecorder`, permissions, final URI, duration,
+and send/cancel behavior.
+
+```tsx
+<ChatRecordWidget
+    state={isRecording ? 'recording' : 'idle'}
+    dataPoints={liveBars}
+    elapsedMs={elapsedMs}
+    width={320}
+    onRecordPress={startRecording}
+    onStopPress={stopRecording}
+    sendSlot={<SendButton />}
+    cancelSlot={<CancelButton />}
+/>
+```
+
+### Migrating from `DataPoint[]`
+
+The UI components accept structural waveform points: `amplitude`, optional `rms`,
+optional `silent`, and optional time fields. Existing `AudioAnalysis` and
+`DataPoint[]` objects can be passed directly when they have those fields, or
+normalized with `waveformAnalysisFromAudioStudioAnalysis` /
+`waveformBarsFromAudioStudioDataPoints`.

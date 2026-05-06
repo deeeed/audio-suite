@@ -1,5 +1,5 @@
 // packages/audio-ui/src/AudioVisualizer/GestureHandler.tsx
-import { DataPoint } from '@siteed/audio-studio'
+import type { WaveformBar } from '../types/waveform'
 import React from 'react'
 import { Platform } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
@@ -23,7 +23,7 @@ export interface GestureHandlerProps {
     translateX: SharedValue<number>
     maxTranslateX: number
     activePoints: CandleData[]
-    onSelection: (dataPoint: DataPoint) => void
+    onSelection: (dataPoint: WaveformBar) => void
     onDragEnd: (params: { newTranslateX: number }) => void
     children: React.ReactNode
     enableInertia?: boolean
@@ -64,10 +64,7 @@ export const GestureHandler: React.FC<GestureHandlerProps> = ({
             return
         }
 
-        translateX.value = Math.max(
-            -maxTranslateX,
-            Math.min(0, newTranslateX)
-        )
+        translateX.value = Math.max(-maxTranslateX, Math.min(0, newTranslateX))
     })
 
     if (playing || mode === 'live') {

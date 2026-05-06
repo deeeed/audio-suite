@@ -7,9 +7,10 @@ import {
     StyleSheet,
     Text,
     View,
+    ViewStyle,
 } from 'react-native'
 
-import type { DataPoint } from '@siteed/audio-studio'
+import type { WaveformPoint } from '../types/waveform'
 
 import type { WaveformAmplitudeScale } from '../hooks/useWaveformLayout'
 import {
@@ -20,10 +21,23 @@ import {
 import { SilenceTrack } from '../WaveformPreview/SilenceTrack'
 import { WaveformPreview } from '../WaveformPreview/WaveformPreview'
 
+export type AudioPlayerWidgetDensity = 'compact' | 'comfortable' | 'chat'
+export type AudioPlayerWidgetTransportPlacement =
+    | 'bottom'
+    | 'left'
+    | 'right'
+    | 'none'
+
 export interface AudioPlayerWidgetProps {
-    dataPoints: DataPoint[]
+    dataPoints: WaveformPoint[]
     width: number
     waveformHeight?: number
+    density?: AudioPlayerWidgetDensity
+    transportPlacement?: AudioPlayerWidgetTransportPlacement
+    showTimeLabel?: boolean
+    loading?: boolean
+    disabled?: boolean
+    errorMessage?: string
     silenceTrackHeight?: number
     showSilenceTrack?: boolean
     currentTimeMs: number
@@ -50,7 +64,38 @@ export interface AudioPlayerWidgetProps {
      * amplitude-threshold `silent` flag. Real-VAD callers should drive this.
      */
     voiceMask?: boolean[]
+    style?: ViewStyle
     testID?: string
+}
+
+function getDensityDefaults(density: AudioPlayerWidgetDensity) {
+    switch (density) {
+        case 'chat':
+            return {
+                padding: 6,
+                borderRadius: 18,
+                playButtonSize: 34,
+                iconSize: 22,
+                timeFontSize: 12,
+            }
+        case 'compact':
+            return {
+                padding: 6,
+                borderRadius: 12,
+                playButtonSize: 36,
+                iconSize: 22,
+                timeFontSize: 12,
+            }
+        case 'comfortable':
+        default:
+            return {
+                padding: 8,
+                borderRadius: 12,
+                playButtonSize: 44,
+                iconSize: 26,
+                timeFontSize: 14,
+            }
+    }
 }
 
 function formatTime(ms: number): string {
@@ -64,7 +109,13 @@ function formatTime(ms: number): string {
 export function AudioPlayerWidget({
     dataPoints,
     width,
-    waveformHeight = 64,
+    waveformHeight,
+    density = 'comfortable',
+    transportPlacement = 'bottom',
+    showTimeLabel = true,
+    loading = false,
+    disabled = false,
+    errorMessage,
     silenceTrackHeight = 6,
     /**
      * Whether to render the amplitude-threshold silence ribbon below the bars.
@@ -87,97 +138,171 @@ export function AudioPlayerWidget({
     amplitudeScale = 'sqrt',
     pixelsPerBar = 3,
     voiceMask,
+    style,
     testID = 'audio-player',
 }: AudioPlayerWidgetProps) {
+    const densityDefaults = getDensityDefaults(density)
+    const resolvedWaveformHeight =
+        waveformHeight ?? (density === 'chat' ? 40 : 64)
+    const isDisabled = disabled || loading || Boolean(errorMessage)
+    const waveformWidth =
+        transportPlacement === 'left' || transportPlacement === 'right'
+            ? Math.max(1, width - densityDefaults.playButtonSize - 20)
+            : width
+
     const renderPoints = useMemo(() => {
-        const target = pickBarCountForWidth(width, pixelsPerBar)
+        const target = pickBarCountForWidth(waveformWidth, pixelsPerBar)
         return decimateDataPoints(dataPoints, target)
-    }, [dataPoints, width, pixelsPerBar])
+    }, [dataPoints, waveformWidth, pixelsPerBar])
 
     const renderVoiceMask = useMemo(() => {
         if (!voiceMask || voiceMask.length === 0) return undefined
         if (voiceMask.length !== dataPoints.length) return undefined
-        return decimateVoiceMask(voiceMask, dataPoints.length, renderPoints.length)
+        return decimateVoiceMask(
+            voiceMask,
+            dataPoints.length,
+            renderPoints.length
+        )
     }, [voiceMask, dataPoints.length, renderPoints.length])
 
     const playheadX = useMemo(() => {
         if (durationMs <= 0) return 0
         const ratio = currentTimeMs / durationMs
-        return Math.max(0, Math.min(width, ratio * width))
-    }, [currentTimeMs, durationMs, width])
+        return Math.max(0, Math.min(waveformWidth, ratio * waveformWidth))
+    }, [currentTimeMs, durationMs, waveformWidth])
 
     const handleCanvasPress = useCallback(
         (e: GestureResponderEvent) => {
-            if (durationMs <= 0) return
+            if (durationMs <= 0 || isDisabled) return
             const x = e.nativeEvent.locationX
-            const ratio = Math.max(0, Math.min(1, x / width))
+            const ratio = Math.max(0, Math.min(1, x / waveformWidth))
             onSeek(ratio * durationMs)
         },
-        [durationMs, width, onSeek],
+        [durationMs, waveformWidth, onSeek, isDisabled]
     )
 
-    return (
-        <View
-            testID={testID}
-            style={[styles.container, { width, backgroundColor }]}
-        >
-            <Pressable
-                onPress={handleCanvasPress}
-                testID={`${testID}-canvas`}
-                accessibilityRole="adjustable"
-                accessibilityLabel="Seek bar"
-            >
-                <View style={{ width, height: waveformHeight }}>
-                    <WaveformPreview
-                        dataPoints={renderPoints}
-                        width={width}
-                        height={waveformHeight}
-                        barColor={barColor}
-                        silentBarColor={silentBarColor}
-                        amplitudeScale={amplitudeScale}
-                        voiceMask={renderVoiceMask}
-                        testID="waveform-preview"
-                    />
-                    <View
-                        pointerEvents="none"
-                        style={[
-                            styles.playhead,
-                            {
-                                left: playheadX,
-                                height: waveformHeight,
-                                backgroundColor: playheadColor,
-                            },
-                        ]}
-                    />
-                </View>
-            </Pressable>
-            {showSilenceTrack ? (
-                <SilenceTrack
-                    dataPoints={renderPoints}
-                    width={width}
-                    height={silenceTrackHeight}
-                    color={silenceBandColor}
-                    testID="silence-track"
-                />
-            ) : null}
+    const transport =
+        transportPlacement === 'none' ? null : (
             <View style={styles.transport}>
                 <Pressable
                     onPress={onPlayPause}
-                    style={[styles.playButton, { backgroundColor: accentColor }]}
+                    disabled={isDisabled}
+                    style={[
+                        styles.playButton,
+                        {
+                            width: densityDefaults.playButtonSize,
+                            height: densityDefaults.playButtonSize,
+                            borderRadius: densityDefaults.playButtonSize / 2,
+                            backgroundColor: isDisabled
+                                ? '#CBD5E1'
+                                : accentColor,
+                        },
+                    ]}
                     testID={isPlaying ? `${testID}-pause` : `${testID}-play`}
                     accessibilityRole="button"
                     accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
                 >
                     <MaterialIcons
                         name={isPlaying ? 'pause' : 'play-arrow'}
-                        size={26}
+                        size={densityDefaults.iconSize}
                         color="#FFFFFF"
                     />
                 </Pressable>
-                <Text testID={`${testID}-time`} style={styles.time}>
-                    {formatTime(currentTimeMs)} / {formatTime(durationMs)}
-                </Text>
+                {showTimeLabel ? (
+                    <Text
+                        testID={`${testID}-time`}
+                        style={[
+                            styles.time,
+                            { fontSize: densityDefaults.timeFontSize },
+                        ]}
+                        numberOfLines={1}
+                    >
+                        {formatTime(currentTimeMs)} / {formatTime(durationMs)}
+                    </Text>
+                ) : null}
             </View>
+        )
+
+    return (
+        <View
+            testID={testID}
+            style={[
+                styles.container,
+                {
+                    width,
+                    backgroundColor,
+                    padding: densityDefaults.padding,
+                    borderRadius: densityDefaults.borderRadius,
+                },
+                (transportPlacement === 'left' ||
+                    transportPlacement === 'right') &&
+                    styles.inlineContainer,
+                style,
+            ]}
+        >
+            {transportPlacement === 'left' ? transport : null}
+            <View style={styles.waveformColumn}>
+                <Pressable
+                    onPress={handleCanvasPress}
+                    disabled={isDisabled}
+                    testID={`${testID}-canvas`}
+                    accessibilityRole="adjustable"
+                    accessibilityLabel="Seek bar"
+                >
+                    <View
+                        style={{
+                            width: waveformWidth,
+                            height: resolvedWaveformHeight,
+                        }}
+                    >
+                        <WaveformPreview
+                            dataPoints={renderPoints}
+                            width={waveformWidth}
+                            height={resolvedWaveformHeight}
+                            barColor={barColor}
+                            silentBarColor={silentBarColor}
+                            amplitudeScale={amplitudeScale}
+                            voiceMask={renderVoiceMask}
+                            testID="waveform-preview"
+                        />
+                        <View
+                            pointerEvents="none"
+                            style={[
+                                styles.playhead,
+                                {
+                                    left: playheadX,
+                                    height: resolvedWaveformHeight,
+                                    backgroundColor: playheadColor,
+                                    opacity: isDisabled ? 0.4 : 1,
+                                },
+                            ]}
+                        />
+                    </View>
+                </Pressable>
+                {showSilenceTrack ? (
+                    <SilenceTrack
+                        dataPoints={renderPoints}
+                        width={waveformWidth}
+                        height={silenceTrackHeight}
+                        color={silenceBandColor}
+                        testID="silence-track"
+                    />
+                ) : null}
+                {loading || errorMessage ? (
+                    <Text
+                        testID={`${testID}-status`}
+                        style={[
+                            styles.status,
+                            errorMessage ? styles.error : undefined,
+                        ]}
+                        numberOfLines={1}
+                    >
+                        {errorMessage || 'Loading audio…'}
+                    </Text>
+                ) : null}
+            </View>
+            {transportPlacement === 'right' ? transport : null}
+            {transportPlacement === 'bottom' ? transport : null}
         </View>
     )
 }
@@ -185,13 +310,20 @@ export function AudioPlayerWidget({
 const styles = StyleSheet.create({
     container: {
         gap: 6,
-        padding: 8,
-        borderRadius: 12,
     },
     playhead: {
         position: 'absolute',
         top: 0,
         width: 2,
+    },
+    inlineContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    waveformColumn: {
+        flex: 1,
+        minWidth: 0,
+        gap: 4,
     },
     transport: {
         flexDirection: 'row',
@@ -200,15 +332,18 @@ const styles = StyleSheet.create({
         marginTop: 6,
     },
     playButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
         alignItems: 'center',
         justifyContent: 'center',
     },
     time: {
         fontVariant: ['tabular-nums'],
         color: '#1F2937',
-        fontSize: 14,
+    },
+    status: {
+        color: '#64748B',
+        fontSize: 12,
+    },
+    error: {
+        color: '#DC2626',
     },
 })

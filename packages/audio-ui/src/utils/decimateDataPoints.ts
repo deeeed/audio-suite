@@ -1,7 +1,8 @@
-import type { DataPoint } from '@siteed/audio-studio'
+import { normalizeWaveformPoint } from '../types/waveform'
+import type { WaveformBar, WaveformPoint } from '../types/waveform'
 
 /**
- * Reduce a `DataPoint[]` down to `target` bins using peak-preserving binning.
+ * Reduce a `WaveformPoint[]` down to `target` bins using peak-preserving binning.
  * - amplitude / rms: take the maximum in the bin (waveform readability)
  * - dB: take the minimum (most negative) so quiet bins stay quiet
  * - silent: a bin is silent only if every sub-point is silent
@@ -10,18 +11,21 @@ import type { DataPoint } from '@siteed/audio-studio'
  * returned unchanged.
  */
 export function decimateDataPoints(
-    points: DataPoint[],
-    target: number,
-): DataPoint[] {
+    points: WaveformPoint[],
+    target: number
+): WaveformBar[] {
     const n = points.length
     if (target <= 0 || n === 0) return []
-    if (target >= n) return points
+    if (target >= n) return points.map(normalizeWaveformPoint)
 
     const stride = n / target
-    const out: DataPoint[] = new Array(target)
+    const out: WaveformBar[] = new Array(target)
     for (let i = 0; i < target; i++) {
         const start = Math.floor(i * stride)
-        const end = Math.max(start + 1, Math.min(n, Math.floor((i + 1) * stride)))
+        const end = Math.max(
+            start + 1,
+            Math.min(n, Math.floor((i + 1) * stride))
+        )
 
         let maxAmp = -Infinity
         let maxRms = -Infinity
@@ -34,11 +38,13 @@ export function decimateDataPoints(
         for (let k = start; k < end; k++) {
             const p = points[k]!
             if (p.amplitude > maxAmp) maxAmp = p.amplitude
-            if (p.rms > maxRms) maxRms = p.rms
-            if (p.dB < minDb) minDb = p.dB
-            if (!p.silent) allSilent = false
+            const rms = p.rms ?? p.amplitude
+            if (rms > maxRms) maxRms = rms
+            const dB = p.dB ?? (rms > 0 ? 20 * Math.log10(rms) : -100)
+            if (dB < minDb) minDb = dB
+            if (!(p.silent ?? false)) allSilent = false
             if (firstId === -1) {
-                firstId = p.id
+                firstId = typeof p.id === 'number' ? p.id : start
                 firstStart = p.startTime
             }
             lastEnd = p.endTime
@@ -62,10 +68,7 @@ export function decimateDataPoints(
  * Default density is one bar per ~3 pixels — gives clean readability without
  * sub-pixel overlap and matches typical music-app waveform thumbnails.
  */
-export function pickBarCountForWidth(
-    width: number,
-    pixelsPerBar = 3,
-): number {
+export function pickBarCountForWidth(width: number, pixelsPerBar = 3): number {
     if (width <= 0) return 0
     return Math.max(1, Math.floor(width / Math.max(1, pixelsPerBar)))
 }
@@ -78,7 +81,7 @@ export function pickBarCountForWidth(
 export function decimateVoiceMask(
     mask: boolean[],
     sourceLength: number,
-    target: number,
+    target: number
 ): boolean[] {
     if (target <= 0 || sourceLength === 0) return []
     if (target >= sourceLength) return mask.slice(0, sourceLength)
@@ -89,7 +92,7 @@ export function decimateVoiceMask(
         const start = Math.floor(i * stride)
         const end = Math.max(
             start + 1,
-            Math.min(sourceLength, Math.floor((i + 1) * stride)),
+            Math.min(sourceLength, Math.floor((i + 1) * stride))
         )
         for (let k = start; k < end; k++) {
             if (mask[k]) {

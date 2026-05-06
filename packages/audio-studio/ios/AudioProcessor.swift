@@ -1022,6 +1022,105 @@ public class AudioProcessor {
     ///   - endTimeMs: Optional end time in milliseconds
     ///   - featureOptions: The features to extract
     /// - Returns: An `AudioAnalysisData` object containing the extracted features
+    public func extractPreviewBars(
+        numberOfBars: Int,
+        startTimeMs: Double? = nil,
+        endTimeMs: Double? = nil,
+        silenceRmsThreshold: Float = 0.01
+    ) -> [String: Any]? {
+        guard let audioFile = audioFile else {
+            reject("FILE_NOT_INITIALIZED", "Audio file is not initialized.")
+            return nil
+        }
+
+        let requestedBars = max(1, numberOfBars)
+        let sampleRate = audioFile.fileFormat.sampleRate
+        let totalDurationMs = Double(audioFile.length) / sampleRate * 1000
+        let effectiveStartMs = max(0, startTimeMs ?? 0)
+        let effectiveEndMs = min(endTimeMs ?? totalDurationMs, totalDurationMs)
+        let durationMs = max(1, effectiveEndMs - effectiveStartMs)
+        let startFrame = AVAudioFramePosition(effectiveStartMs * sampleRate / 1000.0)
+        let endFrame = AVAudioFramePosition(effectiveEndMs * sampleRate / 1000.0)
+        let samplesInRange = Int(endFrame - startFrame)
+
+        guard samplesInRange > 0 else {
+            reject("INVALID_RANGE", "Invalid sample range: contains no samples")
+            return nil
+        }
+
+        let framesPerBar = max(1, samplesInRange / requestedBars)
+        let startTime = CACurrentMediaTime()
+        var bars: [[String: Any]] = []
+        bars.reserveCapacity(requestedBars)
+        var minAmplitude: Float = .greatestFiniteMagnitude
+        var maxAmplitude: Float = -.greatestFiniteMagnitude
+        var minRms: Float = .greatestFiniteMagnitude
+        var maxRms: Float = -.greatestFiniteMagnitude
+
+        for index in 0..<requestedBars {
+            let barStartFrame = startFrame + AVAudioFramePosition(index * framesPerBar)
+            let barEndFrame = min(startFrame + AVAudioFramePosition((index + 1) * framesPerBar), endFrame)
+            let framesToRead = AVAudioFrameCount(barEndFrame - barStartFrame)
+            if framesToRead == 0 { break }
+
+            do {
+                audioFile.framePosition = barStartFrame
+                guard let buffer = AVAudioPCMBuffer(pcmFormat: audioFile.processingFormat, frameCapacity: framesToRead) else { continue }
+                try audioFile.read(into: buffer, frameCount: framesToRead)
+                guard let floatData = buffer.floatChannelData else { continue }
+
+                var sumSquares: Float = 0
+                var amplitude: Float = 0
+                for frame in 0..<Int(buffer.frameLength) {
+                    let value = floatData[0][frame]
+                    sumSquares += value * value
+                    amplitude = max(amplitude, abs(value))
+                }
+                let frameLength = max(1, Int(buffer.frameLength))
+                let rms = sqrt(sumSquares / Float(frameLength))
+                minAmplitude = min(minAmplitude, amplitude)
+                maxAmplitude = max(maxAmplitude, amplitude)
+                minRms = min(minRms, rms)
+                maxRms = max(maxRms, rms)
+
+                let startBarTimeMs = Double(barStartFrame - startFrame) / Double(samplesInRange) * durationMs
+                let endBarTimeMs = Double(barEndFrame - startFrame) / Double(samplesInRange) * durationMs
+                bars.append([
+                    "id": index,
+                    "amplitude": min(max(amplitude, 0), 1),
+                    "rms": min(max(rms, 0), 1),
+                    "silent": rms < silenceRmsThreshold,
+                    "startTimeMs": startBarTimeMs,
+                    "endTimeMs": max(startBarTimeMs, endBarTimeMs)
+                ])
+            } catch {
+                reject("AUDIO_READ_ERROR", "Error reading audio data: \(error.localizedDescription)")
+                return nil
+            }
+        }
+
+        guard !bars.isEmpty else {
+            reject("PROCESSING_ERROR", "No preview bars were generated")
+            return nil
+        }
+
+        let bitDepth = audioFile.fileFormat.settings[AVLinearPCMBitDepthKey] as? Int ?? 32
+        let extractionTimeMs = Float((CACurrentMediaTime() - startTime) * 1000)
+        return [
+            "bars": bars,
+            "durationMs": durationMs,
+            "sampleRate": Int(sampleRate),
+            "numberOfChannels": Int(audioFile.processingFormat.channelCount),
+            "bitDepth": bitDepth,
+            "samples": samplesInRange,
+            "requestedNumberOfBars": requestedBars,
+            "barDurationMs": durationMs / Double(bars.count),
+            "amplitudeRange": ["min": minAmplitude, "max": maxAmplitude],
+            "rmsRange": ["min": minRms, "max": maxRms],
+            "extractionTimeMs": extractionTimeMs
+        ]
+    }
+
     public func extractPreview(
         numberOfPoints: Int,
         startTimeMs: Double? = nil,

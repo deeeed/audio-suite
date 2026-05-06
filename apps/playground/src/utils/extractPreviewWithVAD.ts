@@ -78,6 +78,25 @@ async function ensureVadInitialized(threshold: number) {
         modelInitOnce = null
     }
     modelInitOnce = (async () => {
+        if (Platform.OS === 'web') {
+            const result = await VAD.init({
+                modelDir: '/wasm/vad',
+                modelFile: 'silero_vad.onnx',
+                threshold,
+            })
+            if (!result.success) {
+                modelInitOnce = null
+                throw new Error(result.error || 'VAD init failed')
+            }
+            lastInitThreshold = threshold
+            logger.info('Silero VAD ready', {
+                modelDir: '/wasm/vad',
+                modelFile: 'silero_vad.onnx',
+                threshold,
+            })
+            return
+        }
+
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const [asset] = await Asset.loadAsync(require('@assets/silero_vad_v5.onnx'))
         await asset.downloadAsync()
@@ -85,7 +104,7 @@ async function ensureVadInitialized(threshold: number) {
         if (!resolvedUri) throw new Error('Silero VAD asset did not resolve')
 
         let fileUri = resolvedUri
-        if (Platform.OS !== 'web' && !fileUri.startsWith('file://')) {
+        if (!fileUri.startsWith('file://')) {
             const targetUri = `${FileSystem.cacheDirectory}silero_vad_v5.onnx`
             await FileSystem.downloadAsync(fileUri, targetUri)
             fileUri = targetUri
@@ -159,8 +178,8 @@ function buildVoiceMask(
 /**
  * Run `extractPreview` and Silero VAD over the same file, returning the
  * usual analysis plus a per-bar voice mask. The combined call hides the
- * VAD plumbing from callers and degrades to extraction-only on web (which
- * doesn't ship the Silero model in this repo today).
+ * VAD plumbing from callers and degrades to extraction-only if VAD init or
+ * inference fails.
  *
  * Lives in the playground because it bridges two domain packages
  * (`@siteed/audio-studio` for extraction, `@siteed/sherpa-onnx.rn` for

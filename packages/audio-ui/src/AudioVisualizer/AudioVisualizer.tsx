@@ -1,10 +1,10 @@
 // playground/src/component/audio-visualizer/audio-visualizer.tsx
 import { SkFont } from '@shopify/react-native-skia'
-import {
-    AudioAnalysis,
+import type {
     ConsoleLike,
-    DataPoint,
-} from '@siteed/audio-studio'
+    WaveformAnalysis,
+    WaveformBar,
+} from '../types/waveform'
 import React, {
     useCallback,
     useEffect,
@@ -63,7 +63,7 @@ const reducer = (
     }
 }
 export interface AudioVisualizerProps {
-    audioData: AudioAnalysis
+    audioData: WaveformAnalysis
     currentTime?: number // in seconds
     canvasHeight?: number
     candleWidth?: number
@@ -82,7 +82,7 @@ export interface AudioVisualizerProps {
         dataPoint,
         index,
     }: {
-        dataPoint: DataPoint
+        dataPoint: WaveformBar
         index: number
     }) => void
     mode?: 'static' | 'live'
@@ -207,6 +207,9 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
             ).fill({
                 id: -1,
                 amplitude: 0,
+                rms: 0,
+                dB: -100,
+                silent: true,
                 visible: false,
             })
             updateActivePointsResult.current = {
@@ -373,7 +376,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     )
 
     const handleSelectionChange = useCallback(
-        (candle: DataPoint) => {
+        (candle: WaveformBar) => {
             const currentIndex = audioData.dataPoints.findIndex(
                 (point) => point.id === candle.id
             )

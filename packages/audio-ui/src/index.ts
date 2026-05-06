@@ -1,6 +1,9 @@
 // packages/audio-ui/src/index.ts
 
 export * from './AudioPlayerWidget/AudioPlayerWidget'
+export * from './ChatRecordWidget/ChatRecordWidget'
+export * from './types/waveform'
+export * from './adapters/audio-studio'
 export * from './AudioTimeRangeSelector/AudioTimeRangeSelector'
 export * from './AudioVisualizer/AudioVisualiser.types'
 export * from './AudioVisualizer/AudioVisualizer'

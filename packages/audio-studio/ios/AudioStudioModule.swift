@@ -163,6 +163,44 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                 }
             })
         }
+        AsyncFunction("extractPreviewBars") { (options: [String: Any], promise: Promise) in
+            Logger.debug("AudioStudioModule", "extractPreviewBars called with options: \(options)")
+            guard let fileUri = options["fileUri"] as? String else {
+                promise.reject("INVALID_ARGUMENTS", "Invalid file URI provided")
+                return
+            }
+
+            let url = URL(string: fileUri) ?? URL(fileURLWithPath: fileUri.replacingOccurrences(of: "file://", with: ""))
+            let numberOfBars = (options["numberOfBars"] as? NSNumber)?.intValue ?? 100
+            let startTimeMs = (options["startTimeMs"] as? NSNumber)?.doubleValue
+            let endTimeMs = (options["endTimeMs"] as? NSNumber)?.doubleValue
+            let decodingOptions = options["decodingOptions"] as? [String: Any]
+            let silenceRmsThreshold = (decodingOptions?["silenceRmsThreshold"] as? NSNumber)?.floatValue ?? 0.01
+
+            DispatchQueue.global().async(execute: {
+                do {
+                    let audioProcessor = try AudioProcessor(url: url, resolve: { _ in
+                        Logger.warn("AudioStudioModule", "extractPreviewBars: AudioProcessor resolve called unexpectedly.")
+                    }, reject: { code, message in
+                        Logger.warn("AudioStudioModule", "extractPreviewBars: AudioProcessor reject called unexpectedly: \(code) - \(message)")
+                    })
+
+                    if let result = audioProcessor.extractPreviewBars(
+                        numberOfBars: numberOfBars,
+                        startTimeMs: startTimeMs,
+                        endTimeMs: endTimeMs,
+                        silenceRmsThreshold: silenceRmsThreshold
+                    ) {
+                        promise.resolve(result)
+                    } else {
+                        promise.reject("PROCESSING_ERROR", "Failed to extract preview bars")
+                    }
+                } catch {
+                    promise.reject("PROCESSING_ERROR", "Failed to initialize audio processor: \(error.localizedDescription)")
+                }
+            })
+        }
+
         
         
         /// Asynchronously starts audio recording with the given settings.
