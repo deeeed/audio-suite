@@ -104,7 +104,6 @@ function assertGeneratedArtifacts() {
 try {
   fs.mkdirSync(path.join(packageDir, 'scripts'), { recursive: true })
   fs.copyFileSync(SOURCE_SCRIPT, scriptPath)
-  fs.chmodSync(scriptPath, 0o755)
 
   const deviceSlice = path.join(
     artifactRoot,
