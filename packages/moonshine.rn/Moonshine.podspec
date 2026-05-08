@@ -38,6 +38,10 @@ Pod::Spec.new do |s|
     DEFAULT_SLICE="#{simulator_slice}"
     FALLBACK_SLICE="#{device_slice}"
 
+    if [ ! -d "$DEFAULT_SLICE" ] || [ ! -d "$FALLBACK_SLICE" ]; then
+      bash ./scripts/ensure-ios-artifacts.sh
+    fi
+
     mkdir -p "$CURRENT_DIR"
     if [ -d "$DEFAULT_SLICE" ]; then
       rsync -a --delete --exclude 'libmoonshine.a' "$DEFAULT_SLICE/" "$CURRENT_DIR/"
@@ -64,6 +68,10 @@ Pod::Spec.new do |s|
         SELECTED_SLICE="$XCFRAMEWORK_DIR/ios-arm64_x86_64-simulator"
       else
         SELECTED_SLICE="$XCFRAMEWORK_DIR/ios-arm64"
+      fi
+
+      if [ ! -d "$SELECTED_SLICE" ]; then
+        bash "${PODS_TARGET_SRCROOT}/scripts/ensure-ios-artifacts.sh"
       fi
 
       if [ ! -d "$SELECTED_SLICE" ]; then

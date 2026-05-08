@@ -184,17 +184,37 @@ upstream native options that are not yet modeled in the typed surface.
 
 ### Android
 
-By default, the published package uses the Maven Moonshine Android artifact.
-That is the intended path for external consumers.
+The public npm package does not ship the Android AAR so installs stay small.
+Published consumers resolve Moonshine dynamically from Maven by default:
+`ai.moonshine:moonshine-voice`.
 
-The package also supports repo-local source builds for internal development, but
-that is an advanced workflow and not the default installation path.
+For repo-local source builds, Gradle automatically uses
+`prebuilt/android/moonshine-voice-source-release.aar` when that file exists.
+You can also set `SITEED_MOONSHINE_ANDROID_AAR` /
+`siteedMoonshineAndroidAar` to point at a custom AAR.
+
+To force Maven even when a local source AAR exists, set
+`SITEED_MOONSHINE_ANDROID_USE_MAVEN=1` or
+`siteedMoonshineAndroidUseMaven=true`.
+
+If you explicitly use a source AAR, ensure it does not conflict with any
+app-level `libonnxruntime.so` packaged for the same ABI.
 
 ### iOS
 
-The podspec consumes the packaged Moonshine xcframework. After upgrading the
-package, rebuild the native iOS app so the JS layer and native bridge stay in
-sync.
+The public npm package does not ship the Moonshine xcframework. During
+`pod install`, the podspec runs `scripts/ensure-ios-artifacts.sh` to prepare the
+xcframework dynamically.
+
+By default, the script downloads
+`Moonshine.xcframework.zip` from the package release artifact URL for the
+current npm version, using the `@siteed/moonshine.rn@<version>` GitHub release
+tag. To use an internal mirror or a locally staged artifact URL, set
+`SITEED_MOONSHINE_IOS_XCFRAMEWORK_URL`. To pin integrity, set
+`SITEED_MOONSHINE_IOS_XCFRAMEWORK_SHA256`.
+
+After upgrading the package, rebuild the native iOS app so the JS layer and
+native bridge stay in sync.
 
 ### Web
 
