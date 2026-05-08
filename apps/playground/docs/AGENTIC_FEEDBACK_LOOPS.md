@@ -35,10 +35,34 @@ All accept `--device <name>` for multi-device targeting.
 .startRecording(config)  .stopRecording()   .pauseRecording()  .resumeRecording()
 .pressTestId(testId)     .scrollView({testId, offset, animated})
 .getLastResult()         .getDevices()      .testExtractPreview()
+.testAudioStudioAndroidDecodeContract()         .testExtractAudioData()
 .testMoonshineLoad()     .testMoonshineStart()  .benchmarkMoonshineSampleFile()  ...
 ```
 
-Config: JSON-serializable only (no callbacks). Poll `getState()` for recording progress.
+Config: JSON-serializable only (no callbacks). Poll `getState()` for recording progress. Poll `getLastResult()` for fire-and-store contracts.
+
+
+## Regression Contracts for PRs
+
+Keep reusable CDP probes out of the monolithic bridge. Feature-specific contracts live under `src/agentic/*Contracts.ts`; `src/agentic-bridge.ts` should mostly wire shared state, bundled assets, and `globalThis.__AGENTIC__`.
+
+When a PR fixes a runtime bridge or cross-platform contract:
+
+1. Add a small `create<Feature>AgenticContracts(deps)` module with explicit dependencies instead of importing bridge globals.
+2. Use the fire-and-store pattern: return `{ op, status: 'pending' }`, write the final result to `_lastAsyncResult`, then poll `.getLastResult()` from CDP.
+3. Assert product invariants, not snapshots or timing. Avoid flaky assumptions such as speaker-to-mic audio, long default soak tests, network availability, or arbitrary sleeps beyond app-settle delays.
+4. Run the contract against the real playground app and paste the result plus native-log check into the PR validation section.
+
+Audio Studio example:
+
+```bash
+scripts/agentic/app-state.sh eval "globalThis.__AGENTIC__?.testAudioStudioAndroidDecodeContract?.()"
+sleep 6
+scripts/agentic/app-state.sh eval "globalThis.__AGENTIC__?.getLastResult?.()"
+scripts/agentic/native-logs.sh android 200
+```
+
+For future PRs, add a contract when native/unit tests cannot prove the JS-to-native consumer behavior. If a contract becomes part of repeated release validation, promote it into a recipe under `scripts/agentic/teams/playground/recipes/`.
 
 ## UI Interaction (press / scroll by testID)
 

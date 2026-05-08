@@ -9,6 +9,7 @@ import androidx.test.rule.GrantPermissionRule
 import expo.modules.kotlin.Promise
 import org.junit.After
 import org.junit.Assert.*
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -116,17 +117,32 @@ class AudioRecorderPerformanceInstrumentedTest {
     
     @Test
     fun measureStopTime_5minutes() {
+        assumeLongPerformanceTestsEnabled()
         runPerformanceTest(300_000L, "5 minute recording")
     }
     
     @Test
     fun measureStopTime_10minutes() {
+        assumeLongPerformanceTestsEnabled()
         runPerformanceTest(600_000L, "10 minute recording")
     }
     
     @Test
     fun measureStopTime_15minutes() {
+        assumeLongPerformanceTestsEnabled()
         runPerformanceTest(900_000L, "15 minute recording")
+    }
+
+    private fun assumeLongPerformanceTestsEnabled() {
+        val enabled = InstrumentationRegistry.getArguments()
+            .getString("runLongPerformanceTests")
+            ?.equals("true", ignoreCase = true) == true
+
+        assumeTrue(
+            "Long physical-device performance benchmarks are opt-in. " +
+                "Run with -Pandroid.testInstrumentationRunnerArguments.runLongPerformanceTests=true",
+            enabled
+        )
     }
     
     private fun runPerformanceTest(recordingDurationMs: Long, testName: String) {

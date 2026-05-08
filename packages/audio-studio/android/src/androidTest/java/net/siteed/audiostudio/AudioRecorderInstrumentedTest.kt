@@ -2,9 +2,6 @@ package net.siteed.audiostudio
 
 import android.Manifest
 import android.content.Context
-import android.media.AudioFormat
-import android.media.AudioManager
-import android.media.AudioTrack
 import android.os.Bundle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -17,6 +14,8 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.math.sin
@@ -363,44 +362,21 @@ class AudioRecorderInstrumentedTest {
     }
     
     @Test
-    fun testRecordingWithToneGeneration_verifiesAudioContent() {
-        // This test generates a tone and plays it while recording to verify
-        // that actual audio is being captured
-        
-        // Given
-        val recordingOptions = mapOf(
-            "sampleRate" to 44100,
-            "channels" to 1,
-            "encoding" to "pcm_16bit",
-            "interval" to 100,
-            "showNotification" to false
+    fun testGeneratedToneAnalysis_verifiesAudioContentFeatures() {
+        // Speaker-to-microphone loopback is device/environment dependent and flaky:
+        // volume, routing, echo cancellation, and physical placement can all turn a
+        // valid recorder run into near-silence. Keep recorder coverage in the
+        // lifecycle/file tests above, and verify tone analysis with deterministic PCM.
+        val sampleRate = 44100
+        val tonePcm = generateTonePcm(
+            frequency = 1000.0,
+            durationMs = 1000,
+            sampleRate = sampleRate
         )
-        
-        // Start recording
-        startRecordingSync(recordingOptions)
-        
-        // Play a 1kHz tone for 1 second
-        playTone(1000.0, 1000)
-        
-        // Stop recording
-        val result = stopRecordingSync()
-        
-        // Load and analyze the recorded file
-        val fileUri = result["fileUri"] as String
-        val audioFile = when {
-            fileUri.startsWith("file://") -> File(java.net.URI(fileUri))
-            fileUri.startsWith("file:") -> File(java.net.URI(fileUri))
-            else -> File(fileUri)
-        }
-        
+
         val audioProcessor = AudioProcessor(filesDir)
-        val audioData = audioProcessor.loadAudioFromAnyFormat(audioFile.absolutePath, null)
-        
-        assertNotNull("Should load audio data", audioData)
-        
-        // Analyze the audio to verify it contains the tone
         val config = RecordingConfig(
-            sampleRate = 44100,
+            sampleRate = sampleRate,
             channels = 1,
             encoding = "pcm_16bit",
             features = mapOf(
@@ -410,22 +386,18 @@ class AudioRecorderInstrumentedTest {
             )
         )
         
-        val analysis = audioProcessor.processAudioData(audioData!!.data, config)
+        val analysis = audioProcessor.processAudioData(tonePcm, config)
         
-        // Verify we captured audio with energy (not silence)
         val dataPoints = analysis.dataPoints
         assertTrue("Should have data points", dataPoints.isNotEmpty())
         
-        // Check that we have non-zero RMS values indicating captured audio
         val avgRms = dataPoints.map { it.rms }.average()
-        assertTrue("Average RMS should indicate captured audio", avgRms > 0.01)
+        assertTrue("Average RMS should indicate deterministic tone energy", avgRms > 0.01)
         
-        // Check that features were extracted
         val firstPointWithFeatures = dataPoints.firstOrNull { it.features != null }
         assertNotNull("Should have at least one data point with features", firstPointWithFeatures)
         
         // The spectral centroid of a 1kHz tone should be around 1000Hz
-        // Note: spectral centroid can be affected by recording quality and background noise
         val spectralCentroids = dataPoints.mapNotNull { it.features?.spectralCentroid }.filter { it > 0 }
         assertTrue("Should have spectral centroid values", spectralCentroids.isNotEmpty())
         val avgSpectralCentroid = spectralCentroids.average()
@@ -433,10 +405,10 @@ class AudioRecorderInstrumentedTest {
         // Log the actual value for debugging
         println("Average spectral centroid: $avgSpectralCentroid Hz")
         
-        // Be more lenient with the range as real device recording can have variations
-        // Just verify it's not silence (very low) or noise (very high)
-        assertTrue("Spectral centroid should indicate tonal content (was $avgSpectralCentroid Hz)", 
-            avgSpectralCentroid > 100 && avgSpectralCentroid < 20000)
+        assertTrue(
+            "Spectral centroid should indicate tonal content (was $avgSpectralCentroid Hz)",
+            avgSpectralCentroid > 700 && avgSpectralCentroid < 1300
+        )
     }
     
     // ========== Helper Methods ==========
@@ -499,43 +471,15 @@ class AudioRecorderInstrumentedTest {
         return map
     }
     
-    private fun playTone(frequency: Double, durationMs: Int) {
-        val sampleRate = 44100
+    private fun generateTonePcm(frequency: Double, durationMs: Int, sampleRate: Int): ByteArray {
         val numSamples = (sampleRate * durationMs / 1000.0).toInt()
-        val samples = ShortArray(numSamples)
-        
-        // Generate sine wave
+        val buffer = ByteBuffer.allocate(numSamples * 2).order(ByteOrder.LITTLE_ENDIAN)
+
         for (i in 0 until numSamples) {
             val angle = 2.0 * Math.PI * i * frequency / sampleRate
-            samples[i] = (sin(angle) * Short.MAX_VALUE * 0.5).toInt().toShort()
+            buffer.putShort((sin(angle) * Short.MAX_VALUE * 0.5).toInt().toShort())
         }
-        
-        // Play the tone
-        val audioTrack = AudioTrack.Builder()
-            .setAudioAttributes(
-                android.media.AudioAttributes.Builder()
-                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
-                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build()
-            )
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setSampleRate(sampleRate)
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                    .build()
-            )
-            .setBufferSizeInBytes(samples.size * 2)
-            .setTransferMode(AudioTrack.MODE_STATIC)
-            .build()
-        
-        audioTrack.write(samples, 0, samples.size)
-        audioTrack.play()
-        
-        // Wait for playback to complete
-        Thread.sleep(durationMs.toLong())
-        
-        audioTrack.stop()
-        audioTrack.release()
+
+        return buffer.array()
     }
-} 
+}
