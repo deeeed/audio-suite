@@ -86,7 +86,7 @@ function inspectAndroidAar(aarPath) {
         .map((entry) => entry.match(/^jni\/([^/]+)\//)?.[1])
         .filter(Boolean)
     ),
-  ].sort()
+  ].sort((left, right) => left.localeCompare(right))
   if (abiNames.length === 0) {
     throw new Error(`${aarPath} does not package any jni/<abi>/ native libraries`)
   }

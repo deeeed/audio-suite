@@ -8,7 +8,7 @@ XCFRAMEWORK_DIR="$PREBUILT_IOS_DIR/Moonshine.xcframework"
 DEVICE_SLICE="$XCFRAMEWORK_DIR/ios-arm64"
 SIMULATOR_SLICE="$XCFRAMEWORK_DIR/ios-arm64_x86_64-simulator"
 
-if [ -d "$DEVICE_SLICE" ] && [ -d "$SIMULATOR_SLICE" ]; then
+if [[ -d "$DEVICE_SLICE" ]] && [[ -d "$SIMULATOR_SLICE" ]]; then
   exit 0
 fi
 
@@ -27,15 +27,15 @@ DEFAULT_ARTIFACT_SHA256="$(
 )"
 ARTIFACT_SHA256="${SITEED_MOONSHINE_IOS_XCFRAMEWORK_SHA256:-$DEFAULT_ARTIFACT_SHA256}"
 
-if [ -n "${SITEED_MOONSHINE_IOS_CACHE_DIR:-}" ]; then
+if [[ -n "${SITEED_MOONSHINE_IOS_CACHE_DIR:-}" ]]; then
   CACHE_ROOT="$SITEED_MOONSHINE_IOS_CACHE_DIR"
-elif [ -n "${HOME:-}" ] && [ "$(uname -s)" = "Darwin" ]; then
+elif [[ -n "${HOME:-}" ]] && [[ "$(uname -s)" == "Darwin" ]]; then
   CACHE_ROOT="$HOME/Library/Caches/@siteed/moonshine.rn/ios"
 else
   CACHE_ROOT="${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/@siteed/moonshine.rn/ios"
 fi
 
-if [ -n "$ARTIFACT_SHA256" ]; then
+if [[ -n "$ARTIFACT_SHA256" ]]; then
   CACHE_KEY="$PACKAGE_VERSION-$ARTIFACT_SHA256"
 else
   CACHE_KEY="$PACKAGE_VERSION-$(printf '%s' "$ARTIFACT_URL" | shasum -a 256 | awk '{print $1}')"
@@ -54,11 +54,11 @@ echo "  $CACHE_DIR"
 
 verify_zip_checksum() {
   local zip_path="$1"
-  if [ -n "$ARTIFACT_SHA256" ]; then
+  if [[ -n "$ARTIFACT_SHA256" ]]; then
     echo "Verifying Moonshine iOS xcframework checksum..."
     local actual_sha256
     actual_sha256="$(shasum -a 256 "$zip_path" | awk '{print $1}')"
-    if [ "$actual_sha256" != "$ARTIFACT_SHA256" ]; then
+    if [[ "$actual_sha256" != "$ARTIFACT_SHA256" ]]; then
       echo "Moonshine iOS xcframework checksum mismatch." >&2
       echo "Expected: $ARTIFACT_SHA256" >&2
       echo "Actual:   $actual_sha256" >&2
@@ -69,7 +69,7 @@ verify_zip_checksum() {
   fi
 }
 
-if [ -f "$CACHE_ZIP_PATH" ]; then
+if [[ -f "$CACHE_ZIP_PATH" ]]; then
   echo "Using cached Moonshine iOS xcframework archive."
   if ! verify_zip_checksum "$CACHE_ZIP_PATH"; then
     echo "Discarding invalid cached Moonshine iOS xcframework archive." >&2
@@ -79,7 +79,7 @@ if [ -f "$CACHE_ZIP_PATH" ]; then
   fi
 fi
 
-if [ ! -f "$ZIP_PATH" ]; then
+if [[ ! -f "$ZIP_PATH" ]]; then
   echo "Downloading Moonshine iOS xcframework:"
   echo "  $ARTIFACT_URL"
   if ! curl -fL --retry 3 --retry-delay 2 --progress-bar "$ARTIFACT_URL" -o "$ZIP_PATH"; then
@@ -98,7 +98,7 @@ echo "Extracting Moonshine iOS xcframework..."
 unzip -q "$ZIP_PATH" -d "$TMP_DIR/unzipped"
 DOWNLOADED_XCFRAMEWORK="$(find "$TMP_DIR/unzipped" -type d -name 'Moonshine.xcframework' | head -n 1)"
 
-if [ -z "$DOWNLOADED_XCFRAMEWORK" ]; then
+if [[ -z "$DOWNLOADED_XCFRAMEWORK" ]]; then
   echo "Downloaded archive does not contain Moonshine.xcframework" >&2
   exit 1
 fi
@@ -106,7 +106,7 @@ fi
 rm -rf "$XCFRAMEWORK_DIR"
 cp -R "$DOWNLOADED_XCFRAMEWORK" "$XCFRAMEWORK_DIR"
 
-if [ ! -f "$DEVICE_SLICE/libmoonshine.a" ] || [ ! -f "$SIMULATOR_SLICE/libmoonshine.a" ]; then
+if [[ ! -f "$DEVICE_SLICE/libmoonshine.a" ]] || [[ ! -f "$SIMULATOR_SLICE/libmoonshine.a" ]]; then
   echo "Downloaded Moonshine.xcframework is missing required device or simulator libmoonshine.a slices" >&2
   exit 1
 fi
