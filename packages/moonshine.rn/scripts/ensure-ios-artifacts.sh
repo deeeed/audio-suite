@@ -49,10 +49,32 @@ if [[ -n "${SITEED_MOONSHINE_IOS_XCFRAMEWORK_SHA256:-}" ]] &&
   echo "Use this only for trusted mirrors or local development artifacts." >&2
 fi
 
+hash_string_sha256() {
+  if command -v shasum >/dev/null 2>&1; then
+    printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then
+    printf '%s' "$1" | sha256sum | awk '{print $1}'
+  else
+    echo "Unable to find shasum or sha256sum for Moonshine iOS artifact hashing." >&2
+    exit 1
+  fi
+}
+
+hash_file_sha256() {
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    echo "Unable to find shasum or sha256sum for Moonshine iOS artifact hashing." >&2
+    exit 1
+  fi
+}
+
 if [[ -n "$ARTIFACT_SHA256" ]]; then
   CACHE_KEY="$PACKAGE_VERSION-$ARTIFACT_SHA256"
 else
-  CACHE_KEY="$PACKAGE_VERSION-$(printf '%s' "$ARTIFACT_URL" | shasum -a 256 | awk '{print $1}')"
+  CACHE_KEY="$PACKAGE_VERSION-$(hash_string_sha256 "$ARTIFACT_URL")"
 fi
 CACHE_DIR="$CACHE_ROOT/$CACHE_KEY"
 CACHE_ZIP_PATH="$CACHE_DIR/Moonshine.xcframework.zip"
@@ -71,7 +93,7 @@ verify_zip_checksum() {
   if [[ -n "$ARTIFACT_SHA256" ]]; then
     echo "Verifying Moonshine iOS xcframework checksum..."
     local actual_sha256
-    actual_sha256="$(shasum -a 256 "$zip_path" | awk '{print $1}')"
+    actual_sha256="$(hash_file_sha256 "$zip_path")"
     if [[ "$actual_sha256" != "$ARTIFACT_SHA256" ]]; then
       echo "Moonshine iOS xcframework checksum mismatch." >&2
       echo "Expected: $ARTIFACT_SHA256" >&2

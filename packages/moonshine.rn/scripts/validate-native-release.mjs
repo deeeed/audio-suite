@@ -30,7 +30,7 @@ function androidNdkReadelfCandidates(sdkRoot) {
   const ndkVersions = fs
     .readdirSync(ndkRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
-    .sort((left, right) => left.name.localeCompare(right.name))
+    .sort((left, right) => right.name.localeCompare(left.name))
 
   for (const ndkVersion of ndkVersions) {
     const prebuiltRoot = path.join(
@@ -43,7 +43,7 @@ function androidNdkReadelfCandidates(sdkRoot) {
     const hosts = fs
       .readdirSync(prebuiltRoot, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
-      .sort((left, right) => left.name.localeCompare(right.name))
+      .sort((left, right) => right.name.localeCompare(left.name))
 
     for (const host of hosts) {
       candidates.push(path.join(prebuiltRoot, host.name, 'bin/llvm-readelf'))

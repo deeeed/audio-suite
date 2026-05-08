@@ -279,10 +279,12 @@ development artifacts.
 Downloaded archives are cached outside `node_modules` so reinstalling packages
 does not force another network fetch. On macOS the default cache is
 `~/Library/Caches/@siteed/moonshine.rn/ios/<version>-<sha>/`; override it with
-`SITEED_MOONSHINE_IOS_CACHE_DIR`. Offline or sandboxed CI must either seed that
-cache or point `SITEED_MOONSHINE_IOS_XCFRAMEWORK_URL` at an accessible mirror.
-On non-macOS machines the fallback cache root is `$XDG_CACHE_HOME` or
-`$HOME/.cache`; if neither is available, set `SITEED_MOONSHINE_IOS_CACHE_DIR`.
+`SITEED_MOONSHINE_IOS_CACHE_DIR`. When no checksum is pinned, the cache key uses
+the artifact URL hash instead, so changing a mirror URL creates a separate cache
+entry. Offline or sandboxed CI must either seed that cache or point
+`SITEED_MOONSHINE_IOS_XCFRAMEWORK_URL` at an accessible mirror. On non-macOS
+machines the fallback cache root is `$XDG_CACHE_HOME` or `$HOME/.cache`; if
+neither is available, set `SITEED_MOONSHINE_IOS_CACHE_DIR`.
 
 Normal CocoaPods output may only show `Installing Moonshine <version>` while
 `prepare_command` runs; use verbose CocoaPods output or run

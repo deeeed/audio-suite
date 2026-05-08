@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3-beta.6] - 2026-05-08
+### Changed
+- Validate the iOS release artifact checksum during the publish gate, not only during consumer install.
+- Make CocoaPods artifact preparation use an explicit package root and POSIX shell conditionals.
+- Prefer newer Android NDK `llvm-readelf` candidates during native release validation.
+- Support `sha256sum` as a fallback when `shasum` is unavailable.
+
 ## [0.3.3-beta.5] - 2026-05-08
 ### Changed
 - Expand consumer README guidance with a cross-platform setup matrix, customization reference, and web asset/ORT examples.
@@ -64,7 +71,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Moonshine RN package with iOS, Android, and web transcription support, source-built native tooling, offline progress events, and word timestamp parity fixes.
 - Beta release plan and external consumer validation checklist.
 
-[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.5...HEAD
+[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.6...HEAD
+[0.3.3-beta.6]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.5...@siteed/moonshine.rn@0.3.3-beta.6
 [0.3.3-beta.5]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.4...@siteed/moonshine.rn@0.3.3-beta.5
 [0.3.3-beta.4]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.3...@siteed/moonshine.rn@0.3.3-beta.4
 [0.3.3-beta.3]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.2...@siteed/moonshine.rn@0.3.3-beta.3
