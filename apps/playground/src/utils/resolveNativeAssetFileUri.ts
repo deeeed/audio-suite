@@ -6,7 +6,8 @@ import * as FileSystem from 'expo-file-system/legacy'
  *
  * Prefer the app cache first so optional native models keep working after Metro
  * disconnects in dev sessions. Only hit expo-asset/Metro when the stable cache
- * entry is missing.
+ * entry is missing. Use a versioned target filename when the asset contents can
+ * change; otherwise this cache intentionally wins across reloads and upgrades.
  */
 export async function resolveNativeAssetFileUri(
     assetModule: number,

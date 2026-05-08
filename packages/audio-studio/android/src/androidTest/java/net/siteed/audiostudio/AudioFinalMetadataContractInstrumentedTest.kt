@@ -56,12 +56,23 @@ class AudioFinalMetadataContractInstrumentedTest {
         )
 
         val converted = requireNotNull(audioData) { "Audio range should load" }
-        val expectedBytes = TARGET_SAMPLE_RATE * TARGET_CHANNELS * BYTES_PER_TARGET_SAMPLE
+        val bytesPerTargetFrame = TARGET_CHANNELS * BYTES_PER_TARGET_SAMPLE
+        val finalFrameCount = converted.data.size / bytesPerTargetFrame
+        val durationFromFinalBytes = finalFrameCount * 1_000L / TARGET_SAMPLE_RATE
 
         assertEquals("sampleRate should describe final converted bytes", TARGET_SAMPLE_RATE, converted.sampleRate)
         assertEquals("channels should describe final converted bytes", TARGET_CHANNELS, converted.channels)
         assertEquals("bitDepth should describe final converted bytes", TARGET_BIT_DEPTH, converted.bitDepth)
-        assertEquals("final byte length should match one second of target PCM", expectedBytes, converted.data.size)
+        assertEquals("final PCM data must end on a target frame boundary", 0, converted.data.size % bytesPerTargetFrame)
+        assertEquals(
+            "duration should be derived from actual final PCM bytes",
+            durationFromFinalBytes,
+            converted.durationMs
+        )
+        assertTrue(
+            "duration should remain close to requested range: ${converted.durationMs}ms",
+            kotlin.math.abs(converted.durationMs - ONE_SECOND_MS) <= 25
+        )
     }
 
     @Test

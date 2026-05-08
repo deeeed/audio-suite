@@ -1047,6 +1047,8 @@ class AudioProcessor(private val filesDir: File) {
         if (sourceFrames == 0) return FloatArray(0)
 
         val ratio = toSampleRate.toDouble() / fromSampleRate
+        // roundToInt() preserves duration best for fractional sample-rate ratios;
+        // callers derive metadata from the actual output frame count below.
         val targetFrames = maxOf(1, (sourceFrames * ratio).roundToInt())
         val output = FloatArray(targetFrames * channels)
 
@@ -2185,6 +2187,9 @@ class AudioProcessor(private val filesDir: File) {
                 when (val outputBufferId = decoder.dequeueOutputBuffer(bufferInfo, 10_000)) {
                     MediaCodec.INFO_TRY_AGAIN_LATER -> Unit
                     MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                        // Decoder format changes are expected before the first decoded output.
+                        // If a decoder ever changes format mid-stream, metadata follows the
+                        // latest format while the byte guard still prevents runaway output.
                         decoder.outputFormat?.let { outputFormat ->
                             sampleRate = outputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
                             channels = outputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
@@ -2275,6 +2280,8 @@ class AudioProcessor(private val filesDir: File) {
         return when (encoding) {
             android.media.AudioFormat.ENCODING_PCM_8BIT -> 8
             android.media.AudioFormat.ENCODING_PCM_16BIT -> 16
+            // PCM_FLOAT decoder buffers are downconverted to signed 16-bit PCM
+            // in writeDecodedPcmChunk, so persisted bytes and metadata are 16-bit.
             android.media.AudioFormat.ENCODING_PCM_FLOAT -> 16
             else -> 16
         }

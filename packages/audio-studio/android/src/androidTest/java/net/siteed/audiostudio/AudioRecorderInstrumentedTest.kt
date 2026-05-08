@@ -366,7 +366,9 @@ class AudioRecorderInstrumentedTest {
         // Speaker-to-microphone loopback is device/environment dependent and flaky:
         // volume, routing, echo cancellation, and physical placement can all turn a
         // valid recorder run into near-silence. Keep recorder coverage in the
-        // lifecycle/file tests above, and verify tone analysis with deterministic PCM.
+        // lifecycle/file tests above, validate the physical mic path via the
+        // playground CDP/manual recorder flow, and verify tone analysis here
+        // with deterministic PCM.
         val sampleRate = 44100
         val tonePcm = generateTonePcm(
             frequency = 1000.0,
