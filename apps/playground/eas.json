@@ -12,7 +12,8 @@
         "APP_VARIANT": "development",
         "NPM_AUTH_TOKEN": "NONE",
         "YARN_ENABLE_IMMUTABLE_INSTALLS": "false",
-        "YARN_ENABLE_GLOBAL_CACHE": "false"
+        "YARN_ENABLE_GLOBAL_CACHE": "false",
+        "AUDIOLAB_NPM_TOKEN": "NONE"
       },
       "android": {
         "gradleCommand": ":app:assembleDebug"
@@ -38,7 +39,8 @@
         "APP_VARIANT": "test",
         "YARN_ENABLE_IMMUTABLE_INSTALLS": "false",
         "YARN_ENABLE_GLOBAL_CACHE": "false",
-        "NPM_AUTH_TOKEN": "NONE"
+        "NPM_AUTH_TOKEN": "NONE",
+        "AUDIOLAB_NPM_TOKEN": "NONE"
       }
     },
     "preview": {
@@ -54,7 +56,8 @@
         "APP_VARIANT": "preview",
         "NPM_AUTH_TOKEN": "NONE",
         "YARN_ENABLE_IMMUTABLE_INSTALLS": "false",
-        "YARN_ENABLE_GLOBAL_CACHE": "false"
+        "YARN_ENABLE_GLOBAL_CACHE": "false",
+        "AUDIOLAB_NPM_TOKEN": "NONE"
       }
     },
     "production": {
@@ -64,7 +67,8 @@
         "NPM_AUTH_TOKEN": "NONE",
         "NODE_ENV": "production",
         "YARN_ENABLE_IMMUTABLE_INSTALLS": "false",
-        "YARN_ENABLE_GLOBAL_CACHE": "false"
+        "YARN_ENABLE_GLOBAL_CACHE": "false",
+        "AUDIOLAB_NPM_TOKEN": "NONE"
       },
       "autoIncrement": true,
       "ios": {
