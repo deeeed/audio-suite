@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3-beta.5] - 2026-05-08
+### Changed
+- Expand consumer README guidance with a cross-platform setup matrix, customization reference, and web asset/ORT examples.
+
 ## [0.3.3-beta.4] - 2026-05-08
 ### Changed
 - Allow the iOS artifact installer to use an explicit `NODE_BINARY` while keeping normal consumer installs on `node`.
@@ -60,7 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Moonshine RN package with iOS, Android, and web transcription support, source-built native tooling, offline progress events, and word timestamp parity fixes.
 - Beta release plan and external consumer validation checklist.
 
-[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.4...HEAD
+[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.5...HEAD
+[0.3.3-beta.5]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.4...@siteed/moonshine.rn@0.3.3-beta.5
 [0.3.3-beta.4]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.3...@siteed/moonshine.rn@0.3.3-beta.4
 [0.3.3-beta.3]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.2...@siteed/moonshine.rn@0.3.3-beta.3
 [0.3.3-beta.2]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.1...@siteed/moonshine.rn@0.3.3-beta.2
