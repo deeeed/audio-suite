@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3-beta.2] - 2026-05-08
+### Changed
+- Keep the publish-time native validator off mutable `PATH` lookup and satisfy SonarCloud quality-gate checks without changing install behavior.
+- Switch the iOS artifact preparation script to Bash `[[ ... ]]` conditionals for static-analysis compatibility.
+
 ## [0.3.3-beta.1] - 2026-05-08
 ### Added
 - Gate npm publishing on the matching iOS release asset being reachable before publish.
@@ -40,7 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Moonshine RN package with iOS, Android, and web transcription support, source-built native tooling, offline progress events, and word timestamp parity fixes.
 - Beta release plan and external consumer validation checklist.
 
-[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.1...HEAD
+[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.2...HEAD
+[0.3.3-beta.2]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.1...@siteed/moonshine.rn@0.3.3-beta.2
 [0.3.3-beta.1]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.0...@siteed/moonshine.rn@0.3.3-beta.1
 [0.3.3-beta.0]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.2...@siteed/moonshine.rn@0.3.3-beta.0
 [0.3.2]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.1...@siteed/moonshine.rn@0.3.2
