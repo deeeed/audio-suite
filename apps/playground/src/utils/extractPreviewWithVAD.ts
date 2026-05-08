@@ -1,5 +1,3 @@
-import { Asset } from 'expo-asset'
-import * as FileSystem from 'expo-file-system/legacy'
 import { Platform } from 'react-native'
 
 import {
@@ -12,6 +10,7 @@ import {
 import { VAD } from '@siteed/sherpa-onnx.rn'
 
 import { baseLogger } from '../config'
+import { resolveNativeAssetFileUri } from './resolveNativeAssetFileUri'
 
 const logger = baseLogger.extend('extractPreviewWithVAD')
 
@@ -88,18 +87,11 @@ async function initializeVadModel(threshold: number): Promise<void> {
         return
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const [asset] = await Asset.loadAsync(require('@assets/silero_vad_v5.onnx'))
-    await asset.downloadAsync()
-    const resolvedUri = asset.localUri ?? asset.uri
-    if (!resolvedUri) throw new Error('Silero VAD asset did not resolve')
-
-    let fileUri = resolvedUri
-    if (!fileUri.startsWith('file://')) {
-        const targetUri = `${FileSystem.cacheDirectory}silero_vad_v5.onnx`
-        await FileSystem.downloadAsync(fileUri, targetUri)
-        fileUri = targetUri
-    }
+    const fileUri = await resolveNativeAssetFileUri(
+        require('@assets/silero_vad_v5.onnx'),
+        'silero_vad_v5.onnx',
+        'Silero VAD model',
+    )
     const path = fileUri.startsWith('file://') ? fileUri.substring(7) : fileUri
     const lastSlash = path.lastIndexOf('/')
     if (lastSlash < 0) throw new Error(`Silero asset path invalid: ${path}`)
@@ -284,7 +276,7 @@ export async function extractPreviewWithVAD(
         }
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
-        logger.error('VAD pipeline failed', message)
+        logger.warn(`VAD pipeline skipped: ${message}`)
         onVadStatus?.({ phase: 'error', error: message })
         return {
             analysis,

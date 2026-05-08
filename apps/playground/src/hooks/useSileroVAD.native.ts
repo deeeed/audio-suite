@@ -1,11 +1,10 @@
 // apps/playground/src/hooks/useSileroVAD.native.ts
-import { Asset } from 'expo-asset'
-import * as FileSystem from 'expo-file-system/legacy'
 import { useCallback, useRef, useState } from 'react'
 
 import { VAD } from '@siteed/sherpa-onnx.rn'
 
 import { baseLogger } from '../config'
+import { resolveNativeAssetFileUri } from '../utils/resolveNativeAssetFileUri'
 import type { UseSileroVADProps, VADResult } from './useSileroVAD'
 
 const logger = baseLogger.extend('useSileroVAD')
@@ -24,20 +23,11 @@ export function useSileroVAD({ onError }: UseSileroVADProps) {
         initializingRef.current = true
         setIsModelLoading(true)
         try {
-            const [asset] = await Asset.loadAsync(require('@assets/silero_vad_v5.onnx'))
-            await asset.downloadAsync()
-            const resolvedUri = asset.localUri ?? asset.uri
-            if (!resolvedUri) {
-                throw new Error('VAD asset did not resolve to a usable URI')
-            }
-
-            let fileUri = resolvedUri
-            if (!fileUri.startsWith('file://')) {
-                const targetUri = `${FileSystem.cacheDirectory}silero_vad_v5.onnx`
-                await FileSystem.downloadAsync(fileUri, targetUri)
-                fileUri = targetUri
-            }
-
+            const fileUri = await resolveNativeAssetFileUri(
+                require('@assets/silero_vad_v5.onnx'),
+                'silero_vad_v5.onnx',
+                'VAD model',
+            )
             const path = fileUri.startsWith('file://') ? fileUri.substring(7) : fileUri
             const lastSlash = path.lastIndexOf('/')
             if (lastSlash < 0) {
@@ -45,7 +35,7 @@ export function useSileroVAD({ onError }: UseSileroVADProps) {
             }
             const modelDir = path.substring(0, lastSlash)
             const modelFile = path.substring(lastSlash + 1)
-            logger.info('VAD model path', { modelDir, modelFile, resolvedUri })
+            logger.info('VAD model path', { modelDir, modelFile, fileUri })
             const result = await VAD.init({ modelDir, modelFile })
             if (!result.success) throw new Error(result.error || 'VAD init failed')
             initializedRef.current = true
@@ -56,7 +46,7 @@ export function useSileroVAD({ onError }: UseSileroVADProps) {
             const normalizedError = error instanceof Error ? error : new Error('VAD init failed')
             initFailedRef.current = true
             initFailureRef.current = normalizedError
-            logger.error('VAD init error', normalizedError)
+            logger.warn(`VAD disabled: ${normalizedError.message}`)
             onError?.(normalizedError)
         } finally {
             setIsModelLoading(false)
@@ -88,8 +78,9 @@ export function useSileroVAD({ onError }: UseSileroVADProps) {
                     timestamp,
                 }
             } catch (error) {
-                logger.error('VAD processing error', error)
-                onError?.(error instanceof Error ? error : new Error('VAD processing failed'))
+                const normalizedError = error instanceof Error ? error : new Error('VAD processing failed')
+                logger.warn(`VAD processing skipped: ${normalizedError.message}`)
+                onError?.(normalizedError)
                 return null
             } finally {
                 isProcessingRef.current = false
