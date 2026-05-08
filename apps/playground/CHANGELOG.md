@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 
+## [2.3.0] - 2026-05-08
+
+### Added
+- 
+
+### Changed
+- make stable package versions publishable
+- Release stable native and UI packages
+- Prevent missing native prebuilts from reaching beta consumers (#383)
+- publish 0.3.1 + AUDIOLAB_NPM_TOKEN wiring (#382)
+- bump to v0.0.59 + sync intent API refactor (#380)
+- update docs with latest models (#379)
+- bump to v1.13.0 + iOS handler refactor (#377)
+- Expo SDK 55 dep dedupe + per-app upgrade (#376)
+- bump deprecated package
+- update api references for v3.1.0
+- release @siteed/audio-studio@3.1.0
+- roadmap update
+- Document when to avoid retaining live analysis history (#373)
+- Let long-running analysis skip full history retention (#372)
+- Keep low-rate iOS AAC recordings from losing compressed output (#371)
+- bump version
+- release @siteed/audio-studio@3.0.5
+- version bump
+- update api references for v3.0.4
+- release @siteed/audio-studio@3.0.4
+- release @siteed/audio-studio@3.0.3
+- bump moonshine v0.3.0
+- add Moonshine to monorepo package index
+- slim beta payload and record consumer findings
+- add beta release plan and external validation prompt
+- polish iOS tooling and bridge diagnostics
+- remove benchmark and harden dev-client workflow
+- add ORT alignment and upstream sync tooling
+- Harden live ASR benchmark startup
+- Hide ASR benchmark outside dev builds
+- improve live benchmark recorder state and automation
+- add agentic automation for asr benchmark
+- Ignore local CLAUDE override file
+- Align workflow terminology and rename flow_ref to call
+- Add workflow-based agentic recipe validation
+- improve web worker design — singleton, single-source ASR, useWorker config (#349)
+- release 1.1.0
+
+### Fixed
+- move module ops off main thread + fix iOS stop crash (#363)
+- Moonshine word timestamp parity, offline progress, and Android launch determinism (#359)
+
+
 ## [2.2.0] - 2026-03-23
 
 ### Added
@@ -338,7 +387,9 @@ All notable changes to this project will be documented in this file.
 
 
 
-[unreleased]: https://github.com/deeeed/expo-audio-stream/compare/audio-playground@2.2.0...HEAD
+
+[unreleased]: https://github.com/deeeed/expo-audio-stream/compare/audio-playground@2.3.0...HEAD
+[2.3.0]: https://github.com/deeeed/expo-audio-stream/compare/audio-playground@2.2.0...audio-playground@2.3.0
 [2.2.0]: https://github.com/deeeed/expo-audio-stream/compare/audio-playground@2.0.0...audio-playground@2.2.0
 [2.1.0]: https://github.com/deeeed/expo-audio-stream/compare/audio-playground@2.1.0...audio-playground@2.1.0
 [2.0.0]: https://github.com/deeeed/expo-audio-stream/compare/audio-playground@1.10.1...audio-playground@2.0.0
