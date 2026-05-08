@@ -7,6 +7,7 @@ PREBUILT_IOS_DIR="$PACKAGE_DIR/prebuilt/ios"
 XCFRAMEWORK_DIR="$PREBUILT_IOS_DIR/Moonshine.xcframework"
 DEVICE_SLICE="$XCFRAMEWORK_DIR/ios-arm64"
 SIMULATOR_SLICE="$XCFRAMEWORK_DIR/ios-arm64_x86_64-simulator"
+NODE_BINARY="${NODE_BINARY:-node}"
 
 if [[ -d "$DEVICE_SLICE" ]] && [[ -d "$SIMULATOR_SLICE" ]]; then
   exit 0
@@ -14,16 +15,16 @@ fi
 
 PACKAGE_VERSION="$(
   cd "$PACKAGE_DIR"
-  node -e "process.stdout.write(require('./package.json').version)"
+  "$NODE_BINARY" -e "process.stdout.write(require('./package.json').version)"
 )"
 RELEASE_TAG="$(
-  node -e "process.stdout.write(encodeURIComponent('@siteed/moonshine.rn@${PACKAGE_VERSION}'))"
+  "$NODE_BINARY" -e "process.stdout.write(encodeURIComponent('@siteed/moonshine.rn@${PACKAGE_VERSION}'))"
 )"
 DEFAULT_URL="https://github.com/deeeed/audiolab/releases/download/${RELEASE_TAG}/Moonshine.xcframework.zip"
 ARTIFACT_URL="${SITEED_MOONSHINE_IOS_XCFRAMEWORK_URL:-$DEFAULT_URL}"
 DEFAULT_ARTIFACT_SHA256="$(
   cd "$PACKAGE_DIR"
-  node -e "process.stdout.write(require('./package.json').moonshineArtifacts?.ios?.xcframeworkSha256 || '')"
+  "$NODE_BINARY" -e "process.stdout.write(require('./package.json').moonshineArtifacts?.ios?.xcframeworkSha256 || '')"
 )"
 ARTIFACT_SHA256="${SITEED_MOONSHINE_IOS_XCFRAMEWORK_SHA256:-$DEFAULT_ARTIFACT_SHA256}"
 

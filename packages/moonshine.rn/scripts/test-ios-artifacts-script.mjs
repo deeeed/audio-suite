@@ -18,7 +18,7 @@ const scriptPath = path.join(packageDir, 'scripts/ensure-ios-artifacts.sh')
 const cacheRoot = path.join(tempRoot, 'cache')
 const artifactRoot = path.join(tempRoot, 'artifact')
 const goodZip = path.join(tempRoot, 'Moonshine.xcframework.zip')
-const SAFE_PATH = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin'
+const SAFE_PATH = '/usr/bin:/bin:/usr/sbin:/sbin'
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -75,6 +75,7 @@ function runInstaller(envOverrides = {}, expectedStatus = 0) {
     env: {
       PATH: SAFE_PATH,
       HOME: process.env.HOME || '',
+      NODE_BINARY: process.execPath,
       SITEED_MOONSHINE_IOS_CACHE_DIR: cacheRoot,
       SITEED_MOONSHINE_IOS_XCFRAMEWORK_URL: pathToFileURL(goodZip).href,
       ...envOverrides,

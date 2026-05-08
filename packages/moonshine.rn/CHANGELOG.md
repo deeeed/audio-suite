@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3-beta.4] - 2026-05-08
+### Changed
+- Allow the iOS artifact installer to use an explicit `NODE_BINARY` while keeping normal consumer installs on `node`.
+- Keep the installer test harness on fixed system tool paths for static-analysis compatibility.
+
 ## [0.3.3-beta.3] - 2026-05-08
 ### Added
 - Add a fixture-based test harness for `scripts/ensure-ios-artifacts.sh` covering cache hit, cache miss, corrupt cache refetch, checksum mismatch, and missing cache-root failures.
@@ -55,7 +60,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Moonshine RN package with iOS, Android, and web transcription support, source-built native tooling, offline progress events, and word timestamp parity fixes.
 - Beta release plan and external consumer validation checklist.
 
-[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.3...HEAD
+[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.4...HEAD
+[0.3.3-beta.4]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.3...@siteed/moonshine.rn@0.3.3-beta.4
 [0.3.3-beta.3]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.2...@siteed/moonshine.rn@0.3.3-beta.3
 [0.3.3-beta.2]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.1...@siteed/moonshine.rn@0.3.3-beta.2
 [0.3.3-beta.1]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.0...@siteed/moonshine.rn@0.3.3-beta.1
