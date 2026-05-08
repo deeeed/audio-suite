@@ -33,6 +33,8 @@ Pod::Spec.new do |s|
   }
 
   s.prepare_command = <<-CMD
+    # Keep this block POSIX-shell compatible. There are no pipelines below;
+    # if a future edit adds one, handle failures explicitly or invoke bash with pipefail.
     set -eu
     PACKAGE_ROOT="${PODS_TARGET_SRCROOT:-$(pwd)}"
     CURRENT_DIR="$PACKAGE_ROOT/#{current_ios_dir}"
@@ -62,6 +64,8 @@ Pod::Spec.new do |s|
   s.script_phase = {
     :name => 'Select Moonshine iOS Slice',
     :script => <<-CMD,
+      # Keep this block POSIX-shell compatible. There are no pipelines below;
+      # if a future edit adds one, handle failures explicitly or invoke bash with pipefail.
       set -eu
       XCFRAMEWORK_DIR="${PODS_TARGET_SRCROOT}/#{xcframework_dir}"
       CURRENT_DIR="${PODS_TARGET_SRCROOT}/#{current_ios_dir}"

@@ -7,52 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.3-beta.6] - 2026-05-08
+## [0.3.3-beta.7] - 2026-05-08
+### Added
+- Add CocoaPods-driven iOS artifact preparation for public installs without shipping the xcframework in npm.
+- Add Android Maven fallback for public installs while preserving source-AAR/custom-AAR overrides for development.
+- Add release validators for the packed npm tarball contract, iOS release asset integrity, and optional Android AAR symbol inspection.
+- Add fixture-based tests for the iOS artifact installer covering cache hit, cache miss, corrupt cache refetch, checksum mismatch, and missing cache-root failures.
+- Add consumer README guidance for cross-platform setup, customization hooks, and web ORT/model asset configuration.
+
 ### Changed
-- Validate the iOS release artifact checksum during the publish gate, not only during consumer install.
-- Make CocoaPods artifact preparation use an explicit package root and POSIX shell conditionals.
+- Keep the public npm tarball lightweight by excluding heavyweight iOS xcframework and Android AAR binaries.
+- Cache downloaded iOS artifacts outside `node_modules` using version/checksum keys, with URL-hash fallback for unpinned artifacts.
+- Verify pinned iOS artifact checksums both during consumer install and during the publish gate.
+- Make CocoaPods artifact preparation use explicit package-root paths and POSIX-compatible shell conditionals.
 - Prefer newer Android NDK `llvm-readelf` candidates during native release validation.
 - Support `sha256sum` as a fallback when `shasum` is unavailable.
-
-## [0.3.3-beta.5] - 2026-05-08
-### Changed
-- Expand consumer README guidance with a cross-platform setup matrix, customization reference, and web asset/ORT examples.
-
-## [0.3.3-beta.4] - 2026-05-08
-### Changed
-- Allow the iOS artifact installer to use an explicit `NODE_BINARY` while keeping normal consumer installs on `node`.
-- Keep the installer test harness on fixed system tool paths for static-analysis compatibility.
-
-## [0.3.3-beta.3] - 2026-05-08
-### Added
-- Add a fixture-based test harness for `scripts/ensure-ios-artifacts.sh` covering cache hit, cache miss, corrupt cache refetch, checksum mismatch, and missing cache-root failures.
-
-### Changed
-- Make fresh-download checksum failures explicit and avoid caching failed downloads.
-- Document exact beta artifact sizes, mirror validation requirements, non-macOS cache roots, and checksum override risk.
-- Discover Android NDK `llvm-readelf` across installed host prebuilts instead of assuming a single Darwin host directory.
-- Use an explicit `OrtGetApiBase@@?VERS_` pattern for Android ONNX Runtime symbol checks.
-
-## [0.3.3-beta.2] - 2026-05-08
-### Changed
-- Keep the publish-time native validator off mutable `PATH` lookup and satisfy SonarCloud quality-gate checks without changing install behavior.
-- Switch the iOS artifact preparation script to Bash `[[ ... ]]` conditionals for static-analysis compatibility.
-
-## [0.3.3-beta.1] - 2026-05-08
-### Added
-- Gate npm publishing on the matching iOS release asset being reachable before publish.
-- Pin the default iOS xcframework checksum in package metadata and verify it during install.
-- Cache downloaded iOS artifacts outside `node_modules` to support repeat installs and CI cache seeding.
-
-### Changed
-- Document the iOS artifact download size, cache location, offline/mirror requirements, and CocoaPods progress-output behavior.
-- Clarify the deprecated Android packaged-AAR override and remove unused Gradle helper code.
-
-## [0.3.3-beta.0] - 2026-05-08
-### Changed
-- Keep the public npm tarball small by excluding heavyweight iOS xcframework and Android AAR binaries.
-- Resolve Android native bits dynamically from Maven by default while preserving local source-AAR overrides.
-- Prepare iOS native artifacts dynamically during CocoaPods install/build with visible download progress and optional checksum pinning.
 
 ## [0.3.2] - 2026-05-06
 ### Added
@@ -71,14 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Moonshine RN package with iOS, Android, and web transcription support, source-built native tooling, offline progress events, and word timestamp parity fixes.
 - Beta release plan and external consumer validation checklist.
 
-[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.6...HEAD
-[0.3.3-beta.6]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.5...@siteed/moonshine.rn@0.3.3-beta.6
-[0.3.3-beta.5]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.4...@siteed/moonshine.rn@0.3.3-beta.5
-[0.3.3-beta.4]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.3...@siteed/moonshine.rn@0.3.3-beta.4
-[0.3.3-beta.3]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.2...@siteed/moonshine.rn@0.3.3-beta.3
-[0.3.3-beta.2]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.1...@siteed/moonshine.rn@0.3.3-beta.2
-[0.3.3-beta.1]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.0...@siteed/moonshine.rn@0.3.3-beta.1
-[0.3.3-beta.0]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.2...@siteed/moonshine.rn@0.3.3-beta.0
+[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.7...HEAD
+[0.3.3-beta.7]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.2...@siteed/moonshine.rn@0.3.3-beta.7
 [0.3.2]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.1...@siteed/moonshine.rn@0.3.2
 [0.3.1]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.0...@siteed/moonshine.rn@0.3.1
 [0.3.0]: https://github.com/deeeed/audiolab/releases/tag/@siteed/moonshine.rn@0.3.0

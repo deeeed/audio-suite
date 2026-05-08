@@ -110,7 +110,7 @@ if [[ -f "$CACHE_ZIP_PATH" ]]; then
   if ! verify_zip_checksum "$CACHE_ZIP_PATH"; then
     echo "Discarding invalid cached Moonshine iOS xcframework archive." >&2
     rm -f "$CACHE_ZIP_PATH"
-    echo "Falling back to download because the cache entry was invalid." >&2
+    echo "Cache entry was invalid; continuing to download path." >&2
   else
     cp "$CACHE_ZIP_PATH" "$ZIP_PATH"
   fi

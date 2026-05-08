@@ -382,8 +382,15 @@ Useful package-local checks:
 
 ```bash
 yarn release:beta:preflight
+yarn validate:ios-release-artifact
 yarn validate:offline:contract <model-id> [device-filter]
 ```
+
+`release:beta:preflight` validates local type/tests/tarball/native contracts.
+`validate:ios-release-artifact` is intentionally separate because it is a
+networked publish gate: it checks reachability and downloads the full iOS
+release archive, about `87 MiB` for the `0.3.3` beta line, to verify the pinned
+SHA-256 before npm publish.
 
 ## Known limitations
 
