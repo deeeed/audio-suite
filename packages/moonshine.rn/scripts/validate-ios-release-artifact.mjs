@@ -26,10 +26,35 @@ if (!sha256 || !/^[a-f0-9]{64}$/i.test(sha256)) {
   )
 }
 
-const response = await fetch(artifactUrl, {
-  method: 'HEAD',
-  redirect: 'follow',
-})
+async function cancelBody(response) {
+  await response.body?.cancel().catch(() => {})
+}
+
+async function checkArtifactUrl(url) {
+  const headResponse = await fetch(url, {
+    method: 'HEAD',
+    redirect: 'follow',
+  })
+  await cancelBody(headResponse)
+
+  if (headResponse.ok) {
+    return { response: headResponse, method: 'HEAD' }
+  }
+
+  if (![405, 501].includes(headResponse.status)) {
+    return { response: headResponse, method: 'HEAD' }
+  }
+
+  const getResponse = await fetch(url, {
+    method: 'GET',
+    headers: { Range: 'bytes=0-0' },
+    redirect: 'follow',
+  })
+  await cancelBody(getResponse)
+  return { response: getResponse, method: 'GET range' }
+}
+
+const { response, method } = await checkArtifactUrl(artifactUrl)
 
 if (!response.ok) {
   throw new Error(
@@ -43,5 +68,6 @@ const contentType = response.headers.get('content-type')
 console.log('Moonshine iOS release artifact is reachable.')
 console.log(`URL: ${artifactUrl}`)
 console.log(`SHA256: ${sha256}`)
+console.log(`Checked-With: ${method}`)
 if (length) console.log(`Content-Length: ${length} bytes`)
 if (contentType) console.log(`Content-Type: ${contentType}`)

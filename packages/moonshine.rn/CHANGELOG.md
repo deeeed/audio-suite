@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3-beta.3] - 2026-05-08
+### Added
+- Add a fixture-based test harness for `scripts/ensure-ios-artifacts.sh` covering cache hit, cache miss, corrupt cache refetch, checksum mismatch, and missing cache-root failures.
+
+### Changed
+- Make fresh-download checksum failures explicit and avoid caching failed downloads.
+- Document exact beta artifact sizes, mirror validation requirements, non-macOS cache roots, and checksum override risk.
+- Discover Android NDK `llvm-readelf` across installed host prebuilts instead of assuming a single Darwin host directory.
+- Use an explicit `OrtGetApiBase@@?VERS_` pattern for Android ONNX Runtime symbol checks.
+
 ## [0.3.3-beta.2] - 2026-05-08
 ### Changed
 - Keep the publish-time native validator off mutable `PATH` lookup and satisfy SonarCloud quality-gate checks without changing install behavior.
@@ -45,7 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Moonshine RN package with iOS, Android, and web transcription support, source-built native tooling, offline progress events, and word timestamp parity fixes.
 - Beta release plan and external consumer validation checklist.
 
-[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.2...HEAD
+[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.3...HEAD
+[0.3.3-beta.3]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.2...@siteed/moonshine.rn@0.3.3-beta.3
 [0.3.3-beta.2]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.1...@siteed/moonshine.rn@0.3.3-beta.2
 [0.3.3-beta.1]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.0...@siteed/moonshine.rn@0.3.3-beta.1
 [0.3.3-beta.0]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.2...@siteed/moonshine.rn@0.3.3-beta.0

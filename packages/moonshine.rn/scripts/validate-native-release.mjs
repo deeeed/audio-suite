@@ -18,6 +18,7 @@ const READ_ELF_CANDIDATES = [
   '/usr/bin/readelf',
   '/bin/readelf',
 ]
+const ORT_VERSIONED_IMPORT_PATTERN = /OrtGetApiBase@@?VERS_/
 
 function androidNdkReadelfCandidates(sdkRoot) {
   if (!sdkRoot) return []
@@ -25,17 +26,31 @@ function androidNdkReadelfCandidates(sdkRoot) {
   const ndkRoot = path.join(sdkRoot, 'ndk')
   if (!fs.existsSync(ndkRoot)) return []
 
-  return fs
+  const candidates = []
+  const ndkVersions = fs
     .readdirSync(ndkRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .sort((left, right) => left.name.localeCompare(right.name))
-    .map((entry) =>
-      path.join(
-        ndkRoot,
-        entry.name,
-        'toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-readelf'
-      )
+
+  for (const ndkVersion of ndkVersions) {
+    const prebuiltRoot = path.join(
+      ndkRoot,
+      ndkVersion.name,
+      'toolchains/llvm/prebuilt'
     )
+    if (!fs.existsSync(prebuiltRoot)) continue
+
+    const hosts = fs
+      .readdirSync(prebuiltRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .sort((left, right) => left.name.localeCompare(right.name))
+
+    for (const host of hosts) {
+      candidates.push(path.join(prebuiltRoot, host.name, 'bin/llvm-readelf'))
+    }
+  }
+
+  return candidates
 }
 
 function readelfCandidates() {
@@ -160,7 +175,7 @@ function inspectAndroidAar(aarPath) {
 
       for (const lib of requiredLibs) {
         const symbols = inspectSymbols(readelfCommand, path.join(aarExtractDir, 'jni', abi, lib))
-        if (/OrtGetApiBase@+VERS_/.test(symbols)) {
+        if (ORT_VERSIONED_IMPORT_PATTERN.test(symbols)) {
           throw new Error(
             `${aarPath} ${abi}/${lib} imports a versioned OrtGetApiBase symbol; ` +
               'expected no OrtGetApiBase@VERS_ imports'
@@ -187,6 +202,16 @@ const iosDynamicArtifacts = [
   'prebuilt/ios/Moonshine.xcframework/ios-arm64_x86_64-simulator/Headers/moonshine-c-api.h',
   'prebuilt/ios/Moonshine.xcframework/ios-arm64_x86_64-simulator/Headers/module.modulemap',
 ]
+
+if (!ORT_VERSIONED_IMPORT_PATTERN.test('OrtGetApiBase@@VERS_1.22')) {
+  throw new Error('OrtGetApiBase default-version import regex must match @@VERS_ symbols')
+}
+if (!ORT_VERSIONED_IMPORT_PATTERN.test('OrtGetApiBase@VERS_1.22')) {
+  throw new Error('OrtGetApiBase non-default-version import regex must match @VERS_ symbols')
+}
+if (ORT_VERSIONED_IMPORT_PATTERN.test('OrtGetApiBase')) {
+  throw new Error('OrtGetApiBase versioned import regex must not match unversioned symbols')
+}
 
 const androidGradle = fs.readFileSync(path.join(PACKAGE_ROOT, 'android/build.gradle'), 'utf8')
 const podspec = fs.readFileSync(path.join(PACKAGE_ROOT, 'Moonshine.podspec'), 'utf8')

@@ -209,20 +209,29 @@ xcframework dynamically.
 By default, the script downloads
 `Moonshine.xcframework.zip` from the package release artifact URL for the
 current npm version, using the `@siteed/moonshine.rn@<version>` GitHub release
-tag. The archive is roughly 80-90 MB compressed and about 300 MB after
-extraction, so CI and developer machines need network access the first time
-each version is prepared.
+tag. For the `0.3.3` beta line, the released archive is `91,320,003` bytes
+(about `87 MiB`) and expands to about `198 MiB` for the xcframework. The
+prepared `prebuilt/ios` directory is about `333 MiB` after the selected slice is
+copied into `prebuilt/ios/current`, so CI and developer machines need network
+access the first time each version is prepared.
 
 The published package pins the expected SHA-256 checksum in `package.json` and
 the install script verifies it by default. To use an internal mirror or a
-locally staged artifact URL, set `SITEED_MOONSHINE_IOS_XCFRAMEWORK_URL`. To
-override the expected checksum, set `SITEED_MOONSHINE_IOS_XCFRAMEWORK_SHA256`.
+locally staged artifact URL, set `SITEED_MOONSHINE_IOS_XCFRAMEWORK_URL`. Mirrors
+used for publishing must respond to `HEAD` or to a ranged `GET` request
+(`Range: bytes=0-0`) so `validate:ios-release-artifact` can confirm the asset
+before npm publish. To override the expected checksum, set
+`SITEED_MOONSHINE_IOS_XCFRAMEWORK_SHA256`; this intentionally replaces the
+package-pinned checksum and should only be used for trusted mirrors or local
+development artifacts.
 
 Downloaded archives are cached outside `node_modules` so reinstalling packages
 does not force another network fetch. On macOS the default cache is
 `~/Library/Caches/@siteed/moonshine.rn/ios/<version>-<sha>/`; override it with
 `SITEED_MOONSHINE_IOS_CACHE_DIR`. Offline or sandboxed CI must either seed that
 cache or point `SITEED_MOONSHINE_IOS_XCFRAMEWORK_URL` at an accessible mirror.
+On non-macOS machines the fallback cache root is `$XDG_CACHE_HOME` or
+`$HOME/.cache`; if neither is available, set `SITEED_MOONSHINE_IOS_CACHE_DIR`.
 
 Normal CocoaPods output may only show `Installing Moonshine <version>` while
 `prepare_command` runs; use verbose CocoaPods output or run
@@ -232,7 +241,7 @@ directly if you need to see curl progress.
 Before publishing a new npm version, upload the matching GitHub release asset
 first. `npm publish` is gated by `validate:ios-release-artifact` so a missing
 asset fails fast instead of shipping a package whose first `pod install` would
-404.
+404. This publish-time check intentionally requires network access.
 
 After upgrading the package, rebuild the native iOS app so the JS layer and
 native bridge stay in sync.

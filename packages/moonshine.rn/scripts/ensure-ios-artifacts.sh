@@ -31,8 +31,21 @@ if [[ -n "${SITEED_MOONSHINE_IOS_CACHE_DIR:-}" ]]; then
   CACHE_ROOT="$SITEED_MOONSHINE_IOS_CACHE_DIR"
 elif [[ -n "${HOME:-}" ]] && [[ "$(uname -s)" == "Darwin" ]]; then
   CACHE_ROOT="$HOME/Library/Caches/@siteed/moonshine.rn/ios"
+elif [[ -n "${XDG_CACHE_HOME:-}" ]]; then
+  CACHE_ROOT="$XDG_CACHE_HOME/@siteed/moonshine.rn/ios"
+elif [[ -n "${HOME:-}" ]]; then
+  CACHE_ROOT="$HOME/.cache/@siteed/moonshine.rn/ios"
 else
-  CACHE_ROOT="${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/@siteed/moonshine.rn/ios"
+  echo "Unable to determine Moonshine iOS artifact cache directory." >&2
+  echo "Set SITEED_MOONSHINE_IOS_CACHE_DIR, XDG_CACHE_HOME, or HOME." >&2
+  exit 1
+fi
+
+if [[ -n "${SITEED_MOONSHINE_IOS_XCFRAMEWORK_SHA256:-}" ]] &&
+  [[ -n "$DEFAULT_ARTIFACT_SHA256" ]] &&
+  [[ "$SITEED_MOONSHINE_IOS_XCFRAMEWORK_SHA256" != "$DEFAULT_ARTIFACT_SHA256" ]]; then
+  echo "Warning: SITEED_MOONSHINE_IOS_XCFRAMEWORK_SHA256 overrides the package-pinned checksum." >&2
+  echo "Use this only for trusted mirrors or local development artifacts." >&2
 fi
 
 if [[ -n "$ARTIFACT_SHA256" ]]; then
@@ -74,6 +87,7 @@ if [[ -f "$CACHE_ZIP_PATH" ]]; then
   if ! verify_zip_checksum "$CACHE_ZIP_PATH"; then
     echo "Discarding invalid cached Moonshine iOS xcframework archive." >&2
     rm -f "$CACHE_ZIP_PATH"
+    echo "Falling back to download because the cache entry was invalid." >&2
   else
     cp "$CACHE_ZIP_PATH" "$ZIP_PATH"
   fi
@@ -89,7 +103,10 @@ if [[ ! -f "$ZIP_PATH" ]]; then
     echo "or set SITEED_MOONSHINE_IOS_XCFRAMEWORK_URL to an accessible mirror." >&2
     exit 1
   fi
-  verify_zip_checksum "$ZIP_PATH"
+  if ! verify_zip_checksum "$ZIP_PATH"; then
+    echo "Downloaded Moonshine iOS xcframework failed checksum verification." >&2
+    exit 1
+  fi
   mkdir -p "$CACHE_DIR"
   cp "$ZIP_PATH" "$CACHE_ZIP_PATH"
 fi

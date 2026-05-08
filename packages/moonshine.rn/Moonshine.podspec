@@ -38,16 +38,16 @@ Pod::Spec.new do |s|
     DEFAULT_SLICE="#{simulator_slice}"
     FALLBACK_SLICE="#{device_slice}"
 
-    if [ ! -d "$DEFAULT_SLICE" ] || [ ! -d "$FALLBACK_SLICE" ]; then
+    if [[ ! -d "$DEFAULT_SLICE" ]] || [[ ! -d "$FALLBACK_SLICE" ]]; then
       bash ./scripts/ensure-ios-artifacts.sh
     fi
 
     mkdir -p "$CURRENT_DIR"
-    if [ -d "$DEFAULT_SLICE" ]; then
+    if [[ -d "$DEFAULT_SLICE" ]]; then
       rsync -a --delete --exclude 'libmoonshine.a' "$DEFAULT_SLICE/" "$CURRENT_DIR/"
       cp "$DEFAULT_SLICE/libmoonshine.a" "$CURRENT_DIR/libmoonshine_core.a"
       rm -f "$CURRENT_DIR/libmoonshine.a"
-    elif [ -d "$FALLBACK_SLICE" ]; then
+    elif [[ -d "$FALLBACK_SLICE" ]]; then
       rsync -a --delete --exclude 'libmoonshine.a' "$FALLBACK_SLICE/" "$CURRENT_DIR/"
       cp "$FALLBACK_SLICE/libmoonshine.a" "$CURRENT_DIR/libmoonshine_core.a"
       rm -f "$CURRENT_DIR/libmoonshine.a"
@@ -70,11 +70,11 @@ Pod::Spec.new do |s|
         SELECTED_SLICE="$XCFRAMEWORK_DIR/ios-arm64"
       fi
 
-      if [ ! -d "$SELECTED_SLICE" ]; then
+      if [[ ! -d "$SELECTED_SLICE" ]]; then
         bash "${PODS_TARGET_SRCROOT}/scripts/ensure-ios-artifacts.sh"
       fi
 
-      if [ ! -d "$SELECTED_SLICE" ]; then
+      if [[ ! -d "$SELECTED_SLICE" ]]; then
         echo "Moonshine iOS slice missing: $SELECTED_SLICE" >&2
         exit 1
       fi
