@@ -21,7 +21,27 @@ RELEASE_TAG="$(
 )"
 DEFAULT_URL="https://github.com/deeeed/audiolab/releases/download/${RELEASE_TAG}/Moonshine.xcframework.zip"
 ARTIFACT_URL="${SITEED_MOONSHINE_IOS_XCFRAMEWORK_URL:-$DEFAULT_URL}"
-ARTIFACT_SHA256="${SITEED_MOONSHINE_IOS_XCFRAMEWORK_SHA256:-}"
+DEFAULT_ARTIFACT_SHA256="$(
+  cd "$PACKAGE_DIR"
+  node -e "process.stdout.write(require('./package.json').moonshineArtifacts?.ios?.xcframeworkSha256 || '')"
+)"
+ARTIFACT_SHA256="${SITEED_MOONSHINE_IOS_XCFRAMEWORK_SHA256:-$DEFAULT_ARTIFACT_SHA256}"
+
+if [ -n "${SITEED_MOONSHINE_IOS_CACHE_DIR:-}" ]; then
+  CACHE_ROOT="$SITEED_MOONSHINE_IOS_CACHE_DIR"
+elif [ -n "${HOME:-}" ] && [ "$(uname -s)" = "Darwin" ]; then
+  CACHE_ROOT="$HOME/Library/Caches/@siteed/moonshine.rn/ios"
+else
+  CACHE_ROOT="${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/@siteed/moonshine.rn/ios"
+fi
+
+if [ -n "$ARTIFACT_SHA256" ]; then
+  CACHE_KEY="$PACKAGE_VERSION-$ARTIFACT_SHA256"
+else
+  CACHE_KEY="$PACKAGE_VERSION-$(printf '%s' "$ARTIFACT_URL" | shasum -a 256 | awk '{print $1}')"
+fi
+CACHE_DIR="$CACHE_ROOT/$CACHE_KEY"
+CACHE_ZIP_PATH="$CACHE_DIR/Moonshine.xcframework.zip"
 
 mkdir -p "$PREBUILT_IOS_DIR"
 TMP_DIR="$(mktemp -d)"
@@ -29,19 +49,49 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 ZIP_PATH="$TMP_DIR/Moonshine.xcframework.zip"
 echo "Moonshine iOS xcframework is not present in the npm package."
-echo "Downloading Moonshine iOS xcframework:"
-echo "  $ARTIFACT_URL"
-curl -fL --retry 3 --retry-delay 2 --progress-bar "$ARTIFACT_URL" -o "$ZIP_PATH"
+echo "Moonshine iOS artifact cache:"
+echo "  $CACHE_DIR"
 
-if [ -n "$ARTIFACT_SHA256" ]; then
-  echo "Verifying Moonshine iOS xcframework checksum..."
-  ACTUAL_SHA256="$(shasum -a 256 "$ZIP_PATH" | awk '{print $1}')"
-  if [ "$ACTUAL_SHA256" != "$ARTIFACT_SHA256" ]; then
-    echo "Moonshine iOS xcframework checksum mismatch." >&2
-    echo "Expected: $ARTIFACT_SHA256" >&2
-    echo "Actual:   $ACTUAL_SHA256" >&2
+verify_zip_checksum() {
+  local zip_path="$1"
+  if [ -n "$ARTIFACT_SHA256" ]; then
+    echo "Verifying Moonshine iOS xcframework checksum..."
+    local actual_sha256
+    actual_sha256="$(shasum -a 256 "$zip_path" | awk '{print $1}')"
+    if [ "$actual_sha256" != "$ARTIFACT_SHA256" ]; then
+      echo "Moonshine iOS xcframework checksum mismatch." >&2
+      echo "Expected: $ARTIFACT_SHA256" >&2
+      echo "Actual:   $actual_sha256" >&2
+      return 1
+    fi
+  else
+    echo "Warning: Moonshine iOS xcframework checksum is not pinned." >&2
+  fi
+}
+
+if [ -f "$CACHE_ZIP_PATH" ]; then
+  echo "Using cached Moonshine iOS xcframework archive."
+  if ! verify_zip_checksum "$CACHE_ZIP_PATH"; then
+    echo "Discarding invalid cached Moonshine iOS xcframework archive." >&2
+    rm -f "$CACHE_ZIP_PATH"
+  else
+    cp "$CACHE_ZIP_PATH" "$ZIP_PATH"
+  fi
+fi
+
+if [ ! -f "$ZIP_PATH" ]; then
+  echo "Downloading Moonshine iOS xcframework:"
+  echo "  $ARTIFACT_URL"
+  if ! curl -fL --retry 3 --retry-delay 2 --progress-bar "$ARTIFACT_URL" -o "$ZIP_PATH"; then
+    echo "Failed to download Moonshine iOS xcframework." >&2
+    echo "If this is an offline or sandboxed build, seed the cache at:" >&2
+    echo "  $CACHE_ZIP_PATH" >&2
+    echo "or set SITEED_MOONSHINE_IOS_XCFRAMEWORK_URL to an accessible mirror." >&2
     exit 1
   fi
+  verify_zip_checksum "$ZIP_PATH"
+  mkdir -p "$CACHE_DIR"
+  cp "$ZIP_PATH" "$CACHE_ZIP_PATH"
 fi
 
 echo "Extracting Moonshine iOS xcframework..."

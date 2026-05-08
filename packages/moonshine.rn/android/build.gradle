@@ -21,10 +21,6 @@ buildscript {
     value != null && ['1', 'true', 'yes', 'on'].contains(value.toString().trim().toLowerCase())
   }
 
-  ext.isFalsy = { value ->
-    value != null && ['0', 'false', 'no', 'off'].contains(value.toString().trim().toLowerCase())
-  }
-
   repositories {
     google()
     mavenCentral()
@@ -53,6 +49,7 @@ def moonshineAndroidUseMavenOverride = getEnvOrProp(
 def moonshineAndroidUseSourceOverride = getEnvOrProp(
   'SITEED_MOONSHINE_ANDROID_USE_SOURCE',
   'siteedMoonshineAndroidUseSource',
+  // Deprecated compatibility alias. Prefer SITEED_MOONSHINE_ANDROID_USE_SOURCE.
   getEnvOrProp('SITEED_MOONSHINE_ANDROID_USE_PACKAGED_AAR', 'siteedMoonshineAndroidUsePackagedAar', null)
 )
 def moonshineAndroidUseMaven = isTruthy(moonshineAndroidUseMavenOverride)

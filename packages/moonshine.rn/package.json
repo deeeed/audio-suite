@@ -1,6 +1,6 @@
 {
   "name": "@siteed/moonshine.rn",
-  "version": "0.3.3-beta.0",
+  "version": "0.3.3-beta.1",
   "description": "React Native wrapper for Moonshine Voice on-device transcription",
   "source": "./src/index.ts",
   "main": "./lib/commonjs/index.js",
@@ -56,7 +56,9 @@
     "pack:check": "npm pack --json --dry-run",
     "release:beta:preflight": "yarn typecheck && yarn test && yarn validate:native-release",
     "validate:offline:contract": "node ./scripts/validate-offline-contract.mjs",
-    "validate:native-release": "node ./scripts/validate-native-release.mjs"
+    "validate:native-release": "node ./scripts/validate-native-release.mjs",
+    "validate:ios-release-artifact": "node ./scripts/validate-ios-release-artifact.mjs",
+    "prepublishOnly": "yarn release:beta:preflight && yarn validate:ios-release-artifact"
   },
   "keywords": [
     "react-native",
@@ -104,6 +106,11 @@
   },
   "packageManager": "yarn@4.2.2",
   "moonshineVersion": "v0.0.59",
+  "moonshineArtifacts": {
+    "ios": {
+      "xcframeworkSha256": "3756a7d4aae038ace7d40fbb6ebbb27fa80dfe005394127d61d1b1514c330ab0"
+    }
+  },
   "eslintConfig": {
     "root": true,
     "extends": [

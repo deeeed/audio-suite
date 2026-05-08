@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3-beta.1] - 2026-05-08
+### Added
+- Gate npm publishing on the matching iOS release asset being reachable before publish.
+- Pin the default iOS xcframework checksum in package metadata and verify it during install.
+- Cache downloaded iOS artifacts outside `node_modules` to support repeat installs and CI cache seeding.
+
+### Changed
+- Document the iOS artifact download size, cache location, offline/mirror requirements, and CocoaPods progress-output behavior.
+- Clarify the deprecated Android packaged-AAR override and remove unused Gradle helper code.
+
 ## [0.3.3-beta.0] - 2026-05-08
 ### Changed
 - Keep the public npm tarball small by excluding heavyweight iOS xcframework and Android AAR binaries.
@@ -30,7 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Moonshine RN package with iOS, Android, and web transcription support, source-built native tooling, offline progress events, and word timestamp parity fixes.
 - Beta release plan and external consumer validation checklist.
 
-[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.0...HEAD
+[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.1...HEAD
+[0.3.3-beta.1]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.0...@siteed/moonshine.rn@0.3.3-beta.1
 [0.3.3-beta.0]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.2...@siteed/moonshine.rn@0.3.3-beta.0
 [0.3.2]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.1...@siteed/moonshine.rn@0.3.2
 [0.3.1]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.0...@siteed/moonshine.rn@0.3.1

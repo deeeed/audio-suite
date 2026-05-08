@@ -93,7 +93,10 @@ function inspectAndroidAar(aarPath) {
 
   const readelfCommand = findCommand(['llvm-readelf', 'readelf'])
   if (!readelfCommand) {
-    throw new Error('Unable to inspect Android native symbols: llvm-readelf/readelf is required')
+    throw new Error(
+      'Unable to inspect Android native symbols: llvm-readelf/readelf is required. ' +
+        'On macOS, install it with `brew install llvm` and ensure llvm-readelf is on PATH.'
+    )
   }
 
   const aarExtractDir = fs.mkdtempSync(path.join(path.dirname(aarPath), 'aar-inspect-'))
@@ -169,6 +172,17 @@ if (!packageJson.files.includes('scripts/ensure-ios-artifacts.sh')) {
 }
 if (!podspec.includes('scripts/ensure-ios-artifacts.sh')) {
   throw new Error('Moonshine podspec must dynamically prepare missing iOS artifacts')
+}
+if (!packageJson.scripts?.prepublishOnly?.includes('validate:ios-release-artifact')) {
+  throw new Error('npm publish must be gated on the iOS release artifact URL')
+}
+if (!/^[a-f0-9]{64}$/i.test(packageJson.moonshineArtifacts?.ios?.xcframeworkSha256 || '')) {
+  throw new Error(
+    'package.json must pin moonshineArtifacts.ios.xcframeworkSha256 for default iOS install integrity'
+  )
+}
+if (!podspec.includes('prepare_command')) {
+  throw new Error('Moonshine podspec must prepare missing iOS artifacts during CocoaPods install')
 }
 
 const packOutput = run('npm', ['pack', '--json', '--dry-run'])
