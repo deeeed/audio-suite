@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.1] - 2026-05-08
+### Fixed
+- Trust Android final decoded PCM metadata for range extraction and trimming, including JS `Number` options bridged as Kotlin `Double`.
+- Keep default Android validation deterministic by replacing physical loopback assertions and gating long recorder benchmarks behind an opt-in flag.
+
+### Changed
+- Document the playground CDP regression-contract workflow and make optional VAD model loading cache-first.
+
 
 ## [3.1.0] - 2026-05-01
 ### Changed
@@ -357,7 +365,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Audio features extraction during recording
 - Consistent WAV PCM recording format across all platforms
 
-[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.1.0...HEAD
+[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.1.1...HEAD
+[3.1.1]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.1.0...@siteed/audio-studio@3.1.1
 [3.1.0]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.0.5...@siteed/audio-studio@3.1.0
 [3.0.5]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.0.4...@siteed/audio-studio@3.0.5
 [3.0.4]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.0.3...@siteed/audio-studio@3.0.4

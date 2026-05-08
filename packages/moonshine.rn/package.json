@@ -1,6 +1,6 @@
 {
   "name": "@siteed/moonshine.rn",
-  "version": "0.3.3-beta.7",
+  "version": "0.3.3",
   "description": "React Native wrapper for Moonshine Voice on-device transcription",
   "source": "./src/index.ts",
   "main": "./lib/commonjs/index.js",
@@ -54,11 +54,12 @@
     "build:web:source": "bash ./build-moonshine-web.sh",
     "prepare": "bob build",
     "pack:check": "npm pack --json --dry-run",
-    "release:beta:preflight": "yarn typecheck && yarn test && yarn test:ios-artifacts-script && yarn validate:native-release",
+    "release:preflight": "yarn typecheck && yarn test && yarn test:ios-artifacts-script && yarn validate:native-release",
+    "release:beta:preflight": "yarn release:preflight",
     "validate:offline:contract": "node ./scripts/validate-offline-contract.mjs",
     "validate:native-release": "node ./scripts/validate-native-release.mjs",
     "validate:ios-release-artifact": "node ./scripts/validate-ios-release-artifact.mjs",
-    "prepublishOnly": "yarn release:beta:preflight && yarn validate:ios-release-artifact",
+    "prepublishOnly": "yarn release:preflight && yarn validate:ios-release-artifact",
     "test:ios-artifacts-script": "node ./scripts/test-ios-artifacts-script.mjs"
   },
   "keywords": [
