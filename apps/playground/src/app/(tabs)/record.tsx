@@ -312,7 +312,7 @@ export default function RecordScreen() {
         isModelLoading: isVADModelLoading,
     } = useSileroVAD({
         onError: (error) => {
-            logger.error('VAD error:', error)
+            logger.warn(`VAD unavailable: ${error.message}`)
         },
     })
 

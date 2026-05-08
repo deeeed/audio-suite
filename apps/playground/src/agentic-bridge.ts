@@ -48,6 +48,8 @@ import Moonshine, {
     type MoonshineTranscriptEvent,
 } from '@siteed/moonshine.rn'
 import { readMonoPcm16Wav } from './utils/wav'
+import { createAudioStudioAgenticContracts } from './agentic/audioStudioContracts'
+import type { AgenticAsyncResult } from './agentic/types'
 
 // State holders updated by AgenticBridgeSync component
 let _audioState: Record<string, unknown> = {}
@@ -150,12 +152,7 @@ function stripFunctions(obj: Record<string, unknown>): Record<string, unknown> {
 }
 
 // --- Async result store for fire-and-store pattern (CDP awaitPromise:false) ---
-let _lastAsyncResult: {
-    op: string
-    status: 'pending' | 'success' | 'error'
-    result?: unknown
-    error?: string
-} | null = null
+let _lastAsyncResult: AgenticAsyncResult | null = null
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const JFK_MP3_ASSET = require('@assets/jfk.mp3')
@@ -439,6 +436,13 @@ if (__DEV__) {
         getLastResult: () => {
             return _lastAsyncResult
         },
+
+        ...createAudioStudioAgenticContracts({
+            loadSampleFileUri,
+            setLastAsyncResult: (result) => {
+                _lastAsyncResult = result
+            },
+        }),
 
         benchmarkAsrFile: (modelId: string, audioUri: string) => {
             const op = 'benchmarkAsrFile'
