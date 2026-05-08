@@ -17,6 +17,10 @@ buildscript {
     return fallback
   }
 
+  ext.isTruthy = { value ->
+    value != null && ['1', 'true', 'yes', 'on'].contains(value.toString().trim().toLowerCase())
+  }
+
   repositories {
     google()
     mavenCentral()
@@ -37,18 +41,27 @@ def moonshineAndroidSourceAar = getEnvOrProp(
   'siteedMoonshineAndroidSourceAar',
   new File(projectDir, '../prebuilt/android/moonshine-voice-source-release.aar').absolutePath
 )
-// Default: use the locally built source AAR when present (development /
-// monorepo workflow). When the AAR is absent (typical for npm-published
-// consumers — package.json excludes it), fall back to the Maven coordinate so
-// builds do not fail with "source-built AAR is missing".
+def moonshineAndroidUseMavenOverride = getEnvOrProp(
+  'SITEED_MOONSHINE_ANDROID_USE_MAVEN',
+  'siteedMoonshineAndroidUseMaven',
+  null
+)
 def moonshineAndroidUseSourceOverride = getEnvOrProp(
   'SITEED_MOONSHINE_ANDROID_USE_SOURCE',
   'siteedMoonshineAndroidUseSource',
-  null
+  // Deprecated compatibility alias. Prefer SITEED_MOONSHINE_ANDROID_USE_SOURCE.
+  getEnvOrProp('SITEED_MOONSHINE_ANDROID_USE_PACKAGED_AAR', 'siteedMoonshineAndroidUsePackagedAar', null)
 )
+def moonshineAndroidUseMaven = isTruthy(moonshineAndroidUseMavenOverride)
 def moonshineAndroidUseSource = moonshineAndroidUseSourceOverride != null
-  ? moonshineAndroidUseSourceOverride == '1'
-  : file(moonshineAndroidSourceAar).exists()
+  ? isTruthy(moonshineAndroidUseSourceOverride)
+  : (!moonshineAndroidUseMaven && file(moonshineAndroidSourceAar).exists())
+if (moonshineAndroidUseMaven && moonshineAndroidUseSource) {
+  throw new GradleException(
+    'Conflicting Moonshine Android dependency settings: SITEED_MOONSHINE_ANDROID_USE_MAVEN and ' +
+    'SITEED_MOONSHINE_ANDROID_USE_SOURCE/SITEED_MOONSHINE_ANDROID_USE_PACKAGED_AAR both request use.'
+  )
+}
 def moonshineAndroidMavenCoord = getEnvOrProp(
   'SITEED_MOONSHINE_ANDROID_MAVEN_COORD',
   'siteedMoonshineAndroidMavenCoord',
@@ -108,18 +121,22 @@ dependencies {
     def sourceAarFile = file(moonshineAndroidSourceAar)
     if (!sourceAarFile.exists()) {
       throw new GradleException(
-        "Moonshine source-built AAR is missing: ${sourceAarFile}. " +
+        "Moonshine source-built Android AAR is missing: ${sourceAarFile}. " +
         "Run `bash packages/moonshine.rn/setup.sh && bash packages/moonshine.rn/build-moonshine-android.sh` " +
-        "or set SITEED_MOONSHINE_ANDROID_SOURCE_AAR / SITEED_MOONSHINE_ANDROID_AAR."
+        "or set SITEED_MOONSHINE_ANDROID_AAR. Public npm installs do not ship this AAR; " +
+        "leave source usage unset to use the Maven dependency."
       )
     }
     println("Using Moonshine Android source-built AAR: ${sourceAarFile}")
     implementation files(sourceAarFile)
   } else {
+    if (!moonshineAndroidUseMaven) {
+      println('Using Moonshine Android Maven dependency because no source-built AAR is packaged.')
+    }
     if (moonshineAndroidMavenRepo != null) {
       println("Using Moonshine Android Maven repo override: ${moonshineAndroidMavenRepo}")
     }
-    println("Using Moonshine Android dependency: ${moonshineAndroidMavenCoord}")
+    println("Using Moonshine Android Maven dependency: ${moonshineAndroidMavenCoord}")
     implementation moonshineAndroidMavenCoord
   }
 }

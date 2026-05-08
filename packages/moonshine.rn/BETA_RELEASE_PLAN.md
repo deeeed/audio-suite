@@ -45,7 +45,7 @@ At minimum, run the native release validation on every beta tarball:
 yarn validate:native-release
 ```
 
-This checks that the packaged iOS xcframework contains device and simulator slices, confirms Android published consumers use the Maven fallback instead of a missing local AAR, and verifies `npm pack --json --dry-run` includes/excludes the expected native artifacts. Record packed size, unpacked size, largest files, and whether each large artifact is intentionally included.
+This checks that the public npm tarball excludes heavyweight iOS xcframework and Android AAR binaries, confirms the iOS podspec prepares its xcframework dynamically, confirms Android published consumers resolve Moonshine dynamically from Maven, and verifies `npm pack --json --dry-run` includes/excludes the expected native artifacts. When a repo-local Android source AAR exists, the validator also inspects its packaged ABIs for `libmoonshine.so` and `libmoonshine-jni.so`, rejects versioned `OrtGetApiBase@VERS_` imports from those Moonshine libraries, and reports whether each ABI bundles `libonnxruntime.so`. Record packed size, unpacked size, largest files, and whether each large artifact is intentionally included.
 
 ## Beta publish flow
 
@@ -125,5 +125,5 @@ Do not cut a stable release until the external app validates:
 - tighten README installation section based on external feedback
 - add one minimal example snippet per platform
 - simplify any setup that repeatedly trips the external client
-- keep `npm pack --json --dry-run` as a hard release gate
+- keep `yarn validate:native-release` / `npm pack --json` as hard release gates
 - cut `0.2.0-beta.1`, `beta.2`, etc. until the flow is clean enough for stable

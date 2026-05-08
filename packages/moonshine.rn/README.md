@@ -40,6 +40,18 @@ nodeLinker: node-modules
 - **iOS:** native rebuild required after installing or upgrading the package
 - **Web:** `window.ort` must be available before creating a transcriber
 
+## Consumer setup at a glance
+
+| Platform | What consumers do | What the package does | Customization hooks |
+| --- | --- | --- | --- |
+| iOS | Install the package, then run `pod install` / rebuild the native app. | Downloads the checksum-pinned `Moonshine.xcframework.zip` for the installed package version and caches it outside `node_modules`. | `SITEED_MOONSHINE_IOS_XCFRAMEWORK_URL`, `SITEED_MOONSHINE_IOS_XCFRAMEWORK_SHA256`, `SITEED_MOONSHINE_IOS_CACHE_DIR`. |
+| Android | Install the package and rebuild the app. | Resolves `ai.moonshine:moonshine-voice` from Maven by default; the heavy AAR is not shipped in npm. | `SITEED_MOONSHINE_ANDROID_MAVEN_COORD`, `SITEED_MOONSHINE_ANDROID_MAVEN_REPO`, `SITEED_MOONSHINE_ANDROID_AAR`, `SITEED_MOONSHINE_ANDROID_USE_MAVEN`. |
+| Web | Load `onnxruntime-web`, configure asset URLs if needed, then create a transcriber. | Uses the package web backend and fetches model assets from the configured CDN/base path. | `configureMoonshineWeb()`, `webEncoderUrl`, `webDecoderUrl`, `webProgressModelBasePath`. |
+
+Most apps do not need native customization. Use the override hooks only for
+mirrors, offline CI cache seeding, source-built native artifacts, or self-hosted
+web model assets.
+
 ## Quick start
 
 ### Create a transcriber from files
@@ -180,35 +192,166 @@ Typed transcriber options include:
 `transcriberOptions` is also available as a low-level escape hatch for
 upstream native options that are not yet modeled in the typed surface.
 
+## Customization reference
+
+### Common transcriber options
+
+Pass typed options when creating a transcriber:
+
+```ts
+const transcriber = await Moonshine.createTranscriberFromFiles({
+  modelArch: 'small-streaming',
+  modelPath: '/absolute/path/to/model-dir',
+  options: {
+    wordTimestamps: true,
+    vadThreshold: 0.5,
+    identifySpeakers: false,
+    speakerIdClusterThreshold: 0.7,
+  },
+});
+```
+
+| Need | Prefer | Notes |
+| --- | --- | --- |
+| Enable word timings | `options.wordTimestamps` | Requires compatible model assets; see [Word timestamps](#word-timestamps). |
+| Tune voice activity detection | `vadThreshold`, `vadHopSize`, `vadWindowDurationMs`, `vadMaxSegmentDurationMs`, `vadLookBehindSampleCount` | Useful when input has long silence, noise, or unusual speech pacing. |
+| Debug model calls | `logApiCalls`, `logOrtRuns`, `logOutputText`, `saveInputWavPath` | Development-only; avoid verbose logging in production builds. |
+| Experimental speaker hints | `identifySpeakers`, `speakerIdClusterThreshold` | Not trusted diarization; see [Speaker metadata](#speaker-metadata). |
+| Upstream option not typed yet | `transcriberOptions` | Low-level escape hatch; prefer typed options when available. |
+
+### Native install overrides
+
+| Platform | Variable / setting | Use when |
+| --- | --- | --- |
+| iOS | `SITEED_MOONSHINE_IOS_XCFRAMEWORK_URL` | Mirror or locally host `Moonshine.xcframework.zip`. |
+| iOS | `SITEED_MOONSHINE_IOS_XCFRAMEWORK_SHA256` | Override the package-pinned checksum for a trusted mirror or local artifact. |
+| iOS | `SITEED_MOONSHINE_IOS_CACHE_DIR` | Seed or persist the artifact cache in CI. |
+| Android | `SITEED_MOONSHINE_ANDROID_MAVEN_COORD` / `siteedMoonshineAndroidMavenCoord` | Use a different Maven coordinate. |
+| Android | `SITEED_MOONSHINE_ANDROID_MAVEN_REPO` / `siteedMoonshineAndroidMavenRepo` | Use an internal Maven repository. |
+| Android | `SITEED_MOONSHINE_ANDROID_AAR` / `siteedMoonshineAndroidAar` | Use a custom source-built AAR. |
+| Android | `SITEED_MOONSHINE_ANDROID_USE_MAVEN` / `siteedMoonshineAndroidUseMaven` | Force Maven even when a local source AAR exists. |
+
 ## Platform notes
 
 ### Android
 
-By default, the published package uses the Maven Moonshine Android artifact.
-That is the intended path for external consumers.
+The public npm package does not ship the Android AAR so installs stay small.
+Published consumers resolve Moonshine dynamically from Maven by default:
+`ai.moonshine:moonshine-voice`.
 
-The package also supports repo-local source builds for internal development, but
-that is an advanced workflow and not the default installation path.
+For repo-local source builds, Gradle automatically uses
+`prebuilt/android/moonshine-voice-source-release.aar` when that file exists.
+You can also set `SITEED_MOONSHINE_ANDROID_AAR` /
+`siteedMoonshineAndroidAar` to point at a custom AAR.
+
+To force Maven even when a local source AAR exists, set
+`SITEED_MOONSHINE_ANDROID_USE_MAVEN=1` or
+`siteedMoonshineAndroidUseMaven=true`.
+
+If you explicitly use a source AAR, ensure it does not conflict with any
+app-level `libonnxruntime.so` packaged for the same ABI.
 
 ### iOS
 
-The podspec consumes the packaged Moonshine xcframework. After upgrading the
-package, rebuild the native iOS app so the JS layer and native bridge stay in
-sync.
+The public npm package does not ship the Moonshine xcframework. During
+`pod install`, the podspec runs `scripts/ensure-ios-artifacts.sh` to prepare the
+xcframework dynamically.
+
+By default, the script downloads
+`Moonshine.xcframework.zip` from the package release artifact URL for the
+current npm version, using the `@siteed/moonshine.rn@<version>` GitHub release
+tag. For the `0.3.3` beta line, the released archive is `91,320,003` bytes
+(about `87 MiB`) and expands to about `198 MiB` for the xcframework. The
+prepared `prebuilt/ios` directory is about `333 MiB` after the selected slice is
+copied into `prebuilt/ios/current`, so CI and developer machines need network
+access the first time each version is prepared.
+
+The published package pins the expected SHA-256 checksum in `package.json` and
+the install script verifies it by default. To use an internal mirror or a
+locally staged artifact URL, set `SITEED_MOONSHINE_IOS_XCFRAMEWORK_URL`. Mirrors
+used for publishing must respond to `HEAD` or to a ranged `GET` request
+(`Range: bytes=0-0`) so `validate:ios-release-artifact` can confirm the asset
+before npm publish. To override the expected checksum, set
+`SITEED_MOONSHINE_IOS_XCFRAMEWORK_SHA256`; this intentionally replaces the
+package-pinned checksum and should only be used for trusted mirrors or local
+development artifacts.
+
+Downloaded archives are cached outside `node_modules` so reinstalling packages
+does not force another network fetch. On macOS the default cache is
+`~/Library/Caches/@siteed/moonshine.rn/ios/<version>-<sha>/`; override it with
+`SITEED_MOONSHINE_IOS_CACHE_DIR`. When no checksum is pinned, the cache key uses
+the artifact URL hash instead, so changing a mirror URL creates a separate cache
+entry. Offline or sandboxed CI must either seed that cache or point
+`SITEED_MOONSHINE_IOS_XCFRAMEWORK_URL` at an accessible mirror. On non-macOS
+machines the fallback cache root is `$XDG_CACHE_HOME` or `$HOME/.cache`; if
+neither is available, set `SITEED_MOONSHINE_IOS_CACHE_DIR`.
+
+Normal CocoaPods output may only show `Installing Moonshine <version>` while
+`prepare_command` runs; use verbose CocoaPods output or run
+`bash node_modules/@siteed/moonshine.rn/scripts/ensure-ios-artifacts.sh`
+directly if you need to see curl progress.
+
+Before publishing a new npm version, upload the matching GitHub release asset
+first. `npm publish` is gated by `validate:ios-release-artifact` so a missing
+asset fails fast instead of shipping a package whose first `pod install` would
+404. This publish-time check intentionally requires network access.
+
+After upgrading the package, rebuild the native iOS app so the JS layer and
+native bridge stay in sync.
 
 ### Web
 
 The web backend is package-owned and does not depend on the published
-`@moonshine-ai/moonshine-js` runtime bundle.
+`@moonshine-ai/moonshine-js` runtime bundle. It uses `onnxruntime-web`, so
+`window.ort` must be available before creating a transcriber.
 
-Web-specific typed load-config overrides are available when needed:
+A minimal browser setup can load ORT from a CDN before your app bundle:
 
-- `webEncoderUrl`
-- `webDecoderUrl`
-- `webProgressModelBasePath`
+```html
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.1/dist/ort.min.js"></script>
+```
 
-Use `configureMoonshineWeb()` to override the default model CDN or the
-`onnxruntime-web` wasm base path.
+Then configure Moonshine if you want to self-host model or wasm assets:
+
+```ts
+import Moonshine, { configureMoonshineWeb } from '@siteed/moonshine.rn';
+
+configureMoonshineWeb({
+  // Defaults to https://download.moonshine.ai/model/
+  modelAssetBasePath: 'https://cdn.example.com/moonshine/',
+  // Defaults to the jsDelivr onnxruntime-web dist path for this package.
+  onnxRuntimeWasmBasePath: 'https://cdn.example.com/onnxruntime-web/',
+});
+
+const transcriber = await Moonshine.createTranscriberFromFiles({
+  // Web currently normalizes streaming/native names to tiny/base web tiers.
+  modelArch: 'base',
+  // Relative to modelAssetBasePath; an absolute URL also works.
+  modelPath: 'model/base',
+  options: {
+    wordTimestamps: true,
+  },
+});
+```
+
+For per-transcriber web assets, pass typed load-config overrides instead of
+changing global config:
+
+```ts
+const transcriber = await Moonshine.createTranscriberFromFiles({
+  modelArch: 'base',
+  modelPath: 'model/base',
+  webEncoderUrl: 'https://cdn.example.com/moonshine/model/base/quantized/encoder_model_quantized.onnx',
+  webDecoderUrl: 'https://cdn.example.com/moonshine/model/base/quantized/decoder_model_merged_quantized.onnx',
+  webProgressModelBasePath: 'https://cdn.example.com/moonshine/model/tiny',
+});
+```
+
+The public npm package does not include web model binaries. By default, web
+models are fetched from `https://download.moonshine.ai/model/`; production apps
+can self-host or mirror those assets and point `configureMoonshineWeb()` at the
+mirror. Web currently supports the `tiny` and `base` model tiers; streaming
+model names are mapped to those tiers for web execution.
 
 ## Word timestamps
 
@@ -239,8 +382,15 @@ Useful package-local checks:
 
 ```bash
 yarn release:beta:preflight
+yarn validate:ios-release-artifact
 yarn validate:offline:contract <model-id> [device-filter]
 ```
+
+`release:beta:preflight` validates local type/tests/tarball/native contracts.
+`validate:ios-release-artifact` is intentionally separate because it is a
+networked publish gate: it checks reachability and downloads the full iOS
+release archive, about `87 MiB` for the `0.3.3` beta line, to verify the pinned
+SHA-256 before npm publish.
 
 ## Known limitations
 

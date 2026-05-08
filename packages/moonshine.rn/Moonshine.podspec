@@ -33,10 +33,18 @@ Pod::Spec.new do |s|
   }
 
   s.prepare_command = <<-CMD
-    set -euo pipefail
-    CURRENT_DIR="#{current_ios_dir}"
-    DEFAULT_SLICE="#{simulator_slice}"
-    FALLBACK_SLICE="#{device_slice}"
+    # Keep this block POSIX-shell compatible. There are no pipelines below;
+    # if a future edit adds one, handle failures explicitly or invoke bash with pipefail.
+    set -eu
+    PACKAGE_ROOT="${PODS_TARGET_SRCROOT:-$(pwd)}"
+    CURRENT_DIR="$PACKAGE_ROOT/#{current_ios_dir}"
+    DEFAULT_SLICE="$PACKAGE_ROOT/#{simulator_slice}"
+    FALLBACK_SLICE="$PACKAGE_ROOT/#{device_slice}"
+    INSTALLER_SCRIPT="$PACKAGE_ROOT/scripts/ensure-ios-artifacts.sh"
+
+    if [ ! -d "$DEFAULT_SLICE" ] || [ ! -d "$FALLBACK_SLICE" ]; then
+      bash "$INSTALLER_SCRIPT"
+    fi
 
     mkdir -p "$CURRENT_DIR"
     if [ -d "$DEFAULT_SLICE" ]; then
@@ -48,7 +56,7 @@ Pod::Spec.new do |s|
       cp "$FALLBACK_SLICE/libmoonshine.a" "$CURRENT_DIR/libmoonshine_core.a"
       rm -f "$CURRENT_DIR/libmoonshine.a"
     else
-      echo "Moonshine iOS slices not found under #{xcframework_dir}" >&2
+      echo "Moonshine iOS slices not found under $PACKAGE_ROOT/#{xcframework_dir}" >&2
       exit 1
     fi
   CMD
@@ -56,14 +64,19 @@ Pod::Spec.new do |s|
   s.script_phase = {
     :name => 'Select Moonshine iOS Slice',
     :script => <<-CMD,
-      set -euo pipefail
+      # Keep this block POSIX-shell compatible. There are no pipelines below;
+      # if a future edit adds one, handle failures explicitly or invoke bash with pipefail.
+      set -eu
       XCFRAMEWORK_DIR="${PODS_TARGET_SRCROOT}/#{xcframework_dir}"
       CURRENT_DIR="${PODS_TARGET_SRCROOT}/#{current_ios_dir}"
 
-      if [[ "$PLATFORM_NAME" == *simulator* ]]; then
-        SELECTED_SLICE="$XCFRAMEWORK_DIR/ios-arm64_x86_64-simulator"
-      else
-        SELECTED_SLICE="$XCFRAMEWORK_DIR/ios-arm64"
+      case "$PLATFORM_NAME" in
+        *simulator*) SELECTED_SLICE="$XCFRAMEWORK_DIR/ios-arm64_x86_64-simulator" ;;
+        *) SELECTED_SLICE="$XCFRAMEWORK_DIR/ios-arm64" ;;
+      esac
+
+      if [ ! -d "$SELECTED_SLICE" ]; then
+        bash "${PODS_TARGET_SRCROOT}/scripts/ensure-ios-artifacts.sh"
       fi
 
       if [ ! -d "$SELECTED_SLICE" ]; then

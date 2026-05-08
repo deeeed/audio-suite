@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3-beta.7] - 2026-05-08
+### Added
+- Add CocoaPods-driven iOS artifact preparation for public installs without shipping the xcframework in npm.
+- Add Android Maven fallback for public installs while preserving source-AAR/custom-AAR overrides for development.
+- Add release validators for the packed npm tarball contract, iOS release asset integrity, and optional Android AAR symbol inspection.
+- Add fixture-based tests for the iOS artifact installer covering cache hit, cache miss, corrupt cache refetch, checksum mismatch, and missing cache-root failures.
+- Add consumer README guidance for cross-platform setup, customization hooks, and web ORT/model asset configuration.
+
+### Changed
+- Keep the public npm tarball lightweight by excluding heavyweight iOS xcframework and Android AAR binaries.
+- Cache downloaded iOS artifacts outside `node_modules` using version/checksum keys, with URL-hash fallback for unpinned artifacts.
+- Verify pinned iOS artifact checksums both during consumer install and during the publish gate.
+- Make CocoaPods artifact preparation use explicit package-root paths and POSIX-compatible shell conditionals.
+- Prefer newer Android NDK `llvm-readelf` candidates during native release validation.
+- Support `sha256sum` as a fallback when `shasum` is unavailable.
+
 ## [0.3.2] - 2026-05-06
 ### Added
 - Native release validation via `yarn validate:native-release`, covering the packed npm tarball, required iOS xcframework device/simulator slices, Android Maven fallback expectations, headers, and package-size reporting.
@@ -24,7 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Moonshine RN package with iOS, Android, and web transcription support, source-built native tooling, offline progress events, and word timestamp parity fixes.
 - Beta release plan and external consumer validation checklist.
 
-[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.2...HEAD
+[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.7...HEAD
+[0.3.3-beta.7]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.2...@siteed/moonshine.rn@0.3.3-beta.7
 [0.3.2]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.1...@siteed/moonshine.rn@0.3.2
 [0.3.1]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.0...@siteed/moonshine.rn@0.3.1
 [0.3.0]: https://github.com/deeeed/audiolab/releases/tag/@siteed/moonshine.rn@0.3.0
