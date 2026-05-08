@@ -8,6 +8,44 @@ import { fileURLToPath } from 'node:url'
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
 const PACKAGE_ROOT = path.resolve(SCRIPT_DIR, '..')
 const ANDROID_AAR = 'prebuilt/android/moonshine-voice-source-release.aar'
+const READ_ELF_CANDIDATES = [
+  '/opt/homebrew/opt/llvm/bin/llvm-readelf',
+  '/opt/homebrew/bin/llvm-readelf',
+  '/usr/local/opt/llvm/bin/llvm-readelf',
+  '/usr/local/bin/llvm-readelf',
+  '/opt/local/bin/llvm-readelf',
+  '/usr/bin/llvm-readelf',
+  '/usr/bin/readelf',
+  '/bin/readelf',
+]
+
+function androidNdkReadelfCandidates(sdkRoot) {
+  if (!sdkRoot) return []
+
+  const ndkRoot = path.join(sdkRoot, 'ndk')
+  if (!fs.existsSync(ndkRoot)) return []
+
+  return fs
+    .readdirSync(ndkRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .map((entry) =>
+      path.join(
+        ndkRoot,
+        entry.name,
+        'toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-readelf'
+      )
+    )
+}
+
+function readelfCandidates() {
+  return [
+    ...READ_ELF_CANDIDATES,
+    ...androidNdkReadelfCandidates(process.env.ANDROID_HOME),
+    ...androidNdkReadelfCandidates(process.env.ANDROID_SDK_ROOT),
+  ]
+}
+
 const packageJson = JSON.parse(
   fs.readFileSync(path.join(PACKAGE_ROOT, 'package.json'), 'utf8')
 )
@@ -39,10 +77,14 @@ function run(command, args, options = {}) {
   return result.stdout.trim()
 }
 
-function findCommand(candidates) {
-  for (const command of candidates) {
-    const result = spawnSync('which', [command], { encoding: 'utf8' })
-    if (result.status === 0 && result.stdout.trim()) return command
+function findExecutable(candidates) {
+  for (const executablePath of candidates) {
+    try {
+      fs.accessSync(executablePath, fs.constants.X_OK)
+      return executablePath
+    } catch {
+      // Try the next fixed executable path.
+    }
   }
   return null
 }
@@ -91,11 +133,11 @@ function inspectAndroidAar(aarPath) {
     throw new Error(`${aarPath} does not package any jni/<abi>/ native libraries`)
   }
 
-  const readelfCommand = findCommand(['llvm-readelf', 'readelf'])
+  const readelfCommand = findExecutable(readelfCandidates())
   if (!readelfCommand) {
     throw new Error(
       'Unable to inspect Android native symbols: llvm-readelf/readelf is required. ' +
-        'On macOS, install it with `brew install llvm` and ensure llvm-readelf is on PATH.'
+        'On macOS, install it with `brew install llvm` or set ANDROID_HOME to an Android SDK with an installed NDK.'
     )
   }
 
