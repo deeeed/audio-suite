@@ -209,6 +209,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
                         }
                     },
                     android: {
+                        // Moonshine's Android AAR declares minSdk 35; keep the app aligned so release manifest merging succeeds.
+                        minSdkVersion: 35,
                         // Keep .so files uncompressed so AGP 8.5+ can zipalign them at 16KB boundaries
                         // Required for Google Play's 16KB page size alignment check (Android 15+)
                         useLegacyPackaging: false,
