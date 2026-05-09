@@ -264,27 +264,23 @@ SITEED_SHERPA_ONNX_ORT_VERSION=1.23.0 \
 yarn install
 ```
 
-See [`docs/ANDROID_ORT_ALIGNMENT.md`](../../docs/ANDROID_ORT_ALIGNMENT.md) for
-the full mixed-engine alignment workflow with Moonshine.
-
-### Expo mixed-engine packaging
+### Using Sherpa with Moonshine or another ONNX Runtime package
 
 If your Expo Android app installs both `@siteed/sherpa-onnx.rn` and
-`@siteed/moonshine.rn`, add the Sherpa config plugin so prebuild injects
-`android.packagingOptions.pickFirsts=**/libonnxruntime.so` into
-`android/gradle.properties`:
+`@siteed/moonshine.rn`, keep the Sherpa config plugin enabled so prebuild can
+add the `libonnxruntime.so` `pickFirst` packaging rule. That rule only resolves
+duplicate files; it does not prove that Moonshine, Sherpa, and the selected
+ONNX Runtime binary are symbol-compatible.
 
-```json
-{
-  "expo": {
-    "plugins": ["@siteed/sherpa-onnx.rn"]
-  }
-}
-```
-
-That only resolves the duplicate-file packaging error. Both engines still need
-to be built against the same ONNX Runtime ABI before the resulting APK will
-load reliably at runtime.
+`@siteed/sherpa-onnx.rn@1.2.0` Android prebuilts import/export
+`OrtGetApiBase` with `VERS_1.24.3`. The default
+`@siteed/moonshine.rn@0.3.3` Maven artifact has been observed importing
+`OrtGetApiBase@VERS_1.23.0`, which is risky when both packages are shipped in
+the same app. Use a compatible Moonshine artifact, rebuild Sherpa against the
+same ONNX Runtime, or patch Moonshine after Android native libraries are merged
+and stripped. See
+[Android ONNX Runtime coexistence](../../docs/ANDROID_ORT_ALIGNMENT.md) for the
+single troubleshooting workflow and commands.
 
 ## API Reference
 

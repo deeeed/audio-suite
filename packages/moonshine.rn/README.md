@@ -248,8 +248,20 @@ To force Maven even when a local source AAR exists, set
 `SITEED_MOONSHINE_ANDROID_USE_MAVEN=1` or
 `siteedMoonshineAndroidUseMaven=true`.
 
-If you explicitly use a source AAR, ensure it does not conflict with any
-app-level `libonnxruntime.so` packaged for the same ABI.
+#### Using Moonshine with Sherpa or another ONNX Runtime package
+
+Android apps can package only one `libonnxruntime.so` per ABI. If the app also
+installs `@siteed/sherpa-onnx.rn` or another ONNX Runtime provider, do not rely
+on file presence or `pickFirst` alone. Moonshine is safest when
+`libmoonshine.so` imports unversioned `UND OrtGetApiBase`; a versioned import
+such as `OrtGetApiBase@VERS_...` must match the selected `libonnxruntime.so`.
+
+The `0.3.3` default Maven artifact (`ai.moonshine:moonshine-voice:0.0.59`) has
+been observed with `OrtGetApiBase@VERS_1.23.0`, which is risky beside
+`@siteed/sherpa-onnx.rn@1.2.0`'s `VERS_1.24.3` runtime. Use a compatible custom
+or source Moonshine AAR, align the other runtime provider, or patch after
+Android native libraries are merged and stripped. See
+[Android ONNX Runtime coexistence](../../docs/ANDROID_ORT_ALIGNMENT.md).
 
 ### iOS
 
@@ -396,7 +408,8 @@ SHA-256 before npm publish.
 
 - `MicTranscriber` is not wrapped directly; apps are expected to own microphone
   capture and audio routing.
-- Android and Sherpa must use a compatible ONNX Runtime ABI when linked into the
-  same app binary.
+- Android apps that combine Moonshine with Sherpa or another ONNX Runtime
+  provider must verify ONNX Runtime symbol compatibility; see
+  [Android ONNX Runtime coexistence](../../docs/ANDROID_ORT_ALIGNMENT.md).
 - External Android consumers still need an app configuration compatible with
   `minSdkVersion 35`.

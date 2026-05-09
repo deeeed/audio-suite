@@ -1,133 +1,136 @@
-# Android ORT Alignment
+# Android ONNX Runtime Coexistence
 
-This repo can build and run both `@siteed/sherpa-onnx.rn` and `@siteed/moonshine.rn`,
-but they can only coexist in one Android app binary if both native stacks link
-against the exact same ONNX Runtime ABI.
+This note is the shared Android troubleshooting reference for apps that use more
+than one native ONNX Runtime consumer, especially `@siteed/moonshine.rn` together
+with `@siteed/sherpa-onnx.rn`.
 
-Why this matters:
+## Why this matters
 
-- both stacks depend on `libonnxruntime.so`
-- Android loads that library by SONAME, not by package name
-- versioned ELF symbols must match exactly
+Android packages native libraries by ABI. At runtime there is only one
+`libonnxruntime.so` loaded for a given ABI and SONAME, even if multiple React
+Native packages contributed their own copy during the Gradle build.
 
-A version-prefixed ORT library can work, but only if the producing native
-artifact is rebuilt so its JNI/native library declares that renamed dependency.
-Renaming `libonnxruntime.so` inside the APK after the fact is not enough,
-because both current engines explicitly declare `NEEDED libonnxruntime.so`.
+`packagingOptions.pickFirst` or `android.packagingOptions.pickFirsts` can resolve
+a duplicate-file build error, but it only chooses one file. It does **not** prove
+that every native library in the app can bind to the selected ONNX Runtime
+binary.
 
-Current validated state on April 2, 2026:
-
-- refreshed Sherpa imports `OrtGetApiBase@VERS_1.23.0`
-- refreshed Sherpa exports `OrtGetApiBase@VERS_1.23.0`
-- Moonshine `0.0.51` imports `OrtGetApiBase@VERS_1.23.0`
-- the mixed-engine sample validation recipe passes on a physical Pixel 6a
-
-That combination does coexist in one APK.
-If Sherpa is rebuilt back to upstream's newer default ORT ABI, the mismatch
-returns and mixed-engine loading breaks again.
-
-## Sherpa Override
-
-Sherpa now supports Android ONNX Runtime selection at build time.
-
-Supported inputs:
-
-- `SITEED_SHERPA_ONNX_ORT_VERSION`
-  Uses a different downloadable ORT release when building Sherpa.
-  Example: `1.23.0`
-
-- `SITEED_SHERPA_ONNX_ORT_ROOT`
-  Points to an extracted `onnxruntime-android-<version>` directory that
-  contains `headers/` and `jni/<abi>/libonnxruntime.so`.
-
-- `SITEED_SHERPA_ONNX_ORT_LIB_DIR`
-- `SITEED_SHERPA_ONNX_ORT_INCLUDE_DIR`
-  Direct override for advanced use. Use these when `SITEED_SHERPA_ONNX_ORT_ROOT`
-  is not enough.
-
-Typical rebuild:
-
-```bash
-SITEED_SHERPA_ONNX_ORT_VERSION=1.23.0 \
-yarn workspace @siteed/sherpa-onnx.rn build:android
-```
-
-Using a pre-extracted ORT bundle:
-
-```bash
-SITEED_SHERPA_ONNX_ORT_ROOT=/abs/path/to/onnxruntime-android-1.23.0 \
-yarn workspace @siteed/sherpa-onnx.rn build:android
-```
-
-Optional install-time rebuild:
-
-```bash
-SITEED_SHERPA_ONNX_REBUILD_ANDROID=1 \
-SITEED_SHERPA_ONNX_ORT_VERSION=1.23.0 \
-yarn install
-```
-
-Sherpa writes build metadata to:
+The failure mode can look like a missing library even when the APK/AAB contains
+all expected files:
 
 ```text
-packages/sherpa-onnx.rn/prebuilt/android/build-metadata.json
+Exception in HostFunction failed to load moonshine-jni library
+java.lang.UnsatisfiedLinkError: dlopen failed: cannot locate symbol ...
 ```
 
-## Moonshine Override
+When this happens, check symbol compatibility, not just file presence.
 
-Moonshine does not currently rebuild from source in this repo. Instead, the
-Android wrapper now supports replacing the upstream native artifact.
+## Native libraries involved
 
-Supported inputs:
+`@siteed/moonshine.rn` contributes, through its Android AAR or Maven dependency:
 
-- `SITEED_MOONSHINE_ANDROID_MAVEN_COORD`
-  Override the Maven coordinate.
+- `libmoonshine-jni.so`
+- `libmoonshine.so`
+- `libonnxruntime.so`
 
-- `SITEED_MOONSHINE_ANDROID_MAVEN_REPO`
-  Add a custom Maven repository for the override coordinate.
+`@siteed/sherpa-onnx.rn` contributes:
 
-- `SITEED_MOONSHINE_ANDROID_AAR`
-  Point directly to a local `.aar` file.
+- `libsherpa-onnx-jni.so`
+- `libonnxruntime.so`
 
-Recommended path:
+A consumer app that installs both packages must ensure the selected
+`libonnxruntime.so` satisfies every native library that imports
+`OrtGetApiBase`.
 
-- publish a rebuilt Moonshine artifact to a local or internal Maven repo
-- point the wrapper at that repo and coordinate
+## Inspecting a built app or intermediate
 
-Example:
+Find the libraries in an APK/AAB extraction or Gradle intermediate:
 
 ```bash
-SITEED_MOONSHINE_ANDROID_MAVEN_REPO=/abs/path/to/local-maven \
-SITEED_MOONSHINE_ANDROID_MAVEN_COORD=ai.moonshine:moonshine-voice:0.0.51-ort1232 \
-yarn workspace @siteed/sherpa-voice android
+find . -path '*libmoonshine*.so' -o -path '*libsherpa*.so' -o -path '*libonnxruntime.so'
 ```
 
-Direct AAR override:
+Inspect Moonshine:
 
 ```bash
-SITEED_MOONSHINE_ANDROID_AAR=/abs/path/to/moonshine-voice-0.0.51-ort1232.aar \
-yarn workspace @siteed/sherpa-voice android
+llvm-readelf -Ws path/to/libmoonshine.so | rg 'OrtGetApiBase'
+llvm-readelf -d path/to/libmoonshine.so | rg 'NEEDED|SONAME'
+llvm-readelf -d path/to/libmoonshine-jni.so | rg 'NEEDED|SONAME'
 ```
 
-Use the AAR path only when necessary. A Maven repo is cleaner because it keeps
-artifact coordinates and dependency metadata explicit.
-
-## Compatibility Check
-
-Before building a mixed-engine Android app, run:
+Inspect Sherpa and the ONNX Runtime that the app packages:
 
 ```bash
-yarn android:ort:check
+llvm-readelf -Ws path/to/libsherpa-onnx-jni.so | rg 'OrtGetApiBase'
+llvm-readelf -Ws path/to/libonnxruntime.so | rg 'OrtGetApiBase'
 ```
 
-or from the app:
+Interpretation:
 
-```bash
-yarn workspace @siteed/sherpa-voice android:ort:check
+```text
+SAFE for Moonshine:  UND OrtGetApiBase
+RISKY for Moonshine: UND OrtGetApiBase@VERS_<version>
 ```
 
-For Expo apps that install both packages, add the Sherpa config plugin so
-prebuild injects `android.packagingOptions.pickFirsts=**/libonnxruntime.so`:
+A versioned import such as `OrtGetApiBase@VERS_1.23.0` must be paired with a
+packaged `libonnxruntime.so` that exports that same symbol version. If the app
+packages an ONNX Runtime exporting only `OrtGetApiBase@@VERS_1.24.3`, a
+`VERS_1.23.0` Moonshine import is risky even though all `.so` files are present.
+
+An unversioned Moonshine import (`UND OrtGetApiBase`) is the most tolerant form
+and can bind to the selected ONNX Runtime default export. Sherpa's JNI library is
+normally versioned, so its imported version should match the selected Sherpa
+`libonnxruntime.so` export.
+
+## Current package guidance
+
+For `@siteed/sherpa-onnx.rn@1.2.0`, Android prebuilts use ONNX Runtime
+`VERS_1.24.3`:
+
+```text
+libsherpa-onnx-jni.so: UND OrtGetApiBase@VERS_1.24.3
+libonnxruntime.so:    OrtGetApiBase@@VERS_1.24.3
+```
+
+For `@siteed/moonshine.rn@0.3.3`, published Android consumers resolve
+`ai.moonshine:moonshine-voice:0.0.59` from Maven by default. That Maven AAR has
+been observed with:
+
+```text
+libmoonshine.so: UND OrtGetApiBase@VERS_1.23.0
+```
+
+That default Maven artifact is therefore risky in an app that also packages
+Sherpa's ONNX Runtime `VERS_1.24.3`. Use one of the mitigation paths below when
+shipping both packages together.
+
+The audiolab playground monorepo release intermediates were also checked with a
+repo-local source Moonshine AAR whose `libmoonshine.so` imports unversioned
+`OrtGetApiBase`; that path is safe with the Sherpa `VERS_1.24.3` ONNX Runtime.
+Do not assume a client app has that source AAR unless it explicitly configures
+one.
+
+## Mitigation paths for consumer apps
+
+Pick one path and verify the final APK/AAB output:
+
+1. **Use a Moonshine artifact with an unversioned `OrtGetApiBase` import.**
+   Point `@siteed/moonshine.rn` at the artifact with
+   `SITEED_MOONSHINE_ANDROID_AAR` / `siteedMoonshineAndroidAar`, or publish it to
+   an internal Maven repo and set `SITEED_MOONSHINE_ANDROID_MAVEN_REPO` plus
+   `SITEED_MOONSHINE_ANDROID_MAVEN_COORD`.
+2. **Align Sherpa to the Moonshine artifact's ONNX Runtime version.** Rebuild
+   Sherpa with `SITEED_SHERPA_ONNX_ORT_VERSION` or
+   `SITEED_SHERPA_ONNX_ORT_ROOT`, then verify Sherpa's JNI import and packaged
+   ONNX Runtime export match the Moonshine requirement.
+3. **Patch the Moonshine native library after Gradle merges native libs.** If you
+   own the app build and cannot replace the artifact, use a deterministic
+   Node-based ELF patch that clears the Moonshine `OrtGetApiBase@VERS_...` import
+   after `mergeNativeLibs` and again after `stripDebugSymbols`. Do not rely on
+   `patchelf` being available in EAS/CI images.
+
+For Expo apps, a packaging rule is still required when both packages contribute
+`libonnxruntime.so`:
 
 ```json
 {
@@ -137,48 +140,42 @@ prebuild injects `android.packagingOptions.pickFirsts=**/libonnxruntime.so`:
 }
 ```
 
-That packaging rule is only safe after ABI alignment is complete; it tells Gradle
-which duplicate `libonnxruntime.so` to keep once both engines are shipping the
-same SONAME and symbol version.
+or in Android Gradle configuration:
 
-The checker inspects:
-
-- Sherpa JNI imported ORT symbol version
-- Sherpa packaged `libonnxruntime.so` exported symbol version
-- Moonshine `libmoonshine.so` imported ORT symbol version
-
-It exits non-zero if the versions do not match.
-
-ORT alignment is necessary, but not sufficient. If Sherpa JNI is refreshed,
-the Android Kotlin bindings in
-`packages/sherpa-onnx.rn/android/src/main/kotlin/com/k2fsa/sherpa/onnx/`
-must stay in sync with the refreshed JNI. This repo now handles that through
-`packages/sherpa-onnx.rn/android/scripts/sync-kotlin-api.sh`, which copies the
-vendored upstream Kotlin API files into the shipped Android wrapper and reapplies
-the tracked repo overrides from
-`packages/sherpa-onnx.rn/patches/KotlinApiOverrides.patch`.
-
-## Practical Workflow
-
-1. Pick the ORT ABI version you want both engines to use.
-2. Rebuild Sherpa with `SITEED_SHERPA_ONNX_ORT_VERSION` or `SITEED_SHERPA_ONNX_ORT_ROOT`.
-3. Produce or obtain a Moonshine artifact built against that same ORT ABI.
-4. Point `@siteed/moonshine.rn` at the custom artifact.
-5. Run `yarn android:ort:check`.
-6. Sync the refreshed Sherpa Android bindings:
-
-```bash
-bash packages/sherpa-onnx.rn/android/scripts/sync-kotlin-api.sh
+```properties
+android.packagingOptions.pickFirsts=**/libonnxruntime.so
 ```
 
-7. Build the app.
-8. Run the mixed-engine device recipe:
+That packaging rule is only the duplicate-file resolution step. Run the symbol
+checks above after building because `pickFirst` does not validate ABI or symbol
+compatibility.
+
+## Repository checker
+
+Inside this monorepo, run:
 
 ```bash
-bash apps/sherpa-voice/scripts/agentic/validate-recipe.sh \
-  scripts/agentic/teams/sherpa/recipes/asr-benchmark-mixed-engine-validation.json \
-  --device "Pixel 6a - 16 - API 36"
+yarn android:ort:check
 ```
 
-That recipe proves the actual product condition we care about: Moonshine and
-Sherpa both complete sample benchmarks in the same app session on a real device.
+The checker inspects the arm64-v8a Sherpa JNI import, Sherpa packaged ONNX
+Runtime export, and Moonshine `libmoonshine.so` import. By default it mirrors the
+Moonshine Gradle wrapper: a repo-local source AAR is used when present, otherwise
+the public Maven coordinate is used.
+
+Use environment overrides when checking a client-specific Moonshine artifact:
+
+```bash
+SITEED_MOONSHINE_ANDROID_AAR=/absolute/path/to/moonshine.aar \
+yarn android:ort:check
+```
+
+To check the public Maven path that npm consumers get by default, run:
+
+```bash
+SITEED_MOONSHINE_ANDROID_USE_MAVEN=1 yarn android:ort:check
+```
+
+The checker treats an unversioned Moonshine import as compatible, and treats a
+versioned Moonshine import as compatible only when it matches the selected ONNX
+Runtime export.
