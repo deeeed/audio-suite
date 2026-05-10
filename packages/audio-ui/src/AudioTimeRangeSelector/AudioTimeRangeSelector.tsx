@@ -8,7 +8,14 @@ import Animated, {
     withTiming,
 } from 'react-native-reanimated'
 
-interface AudioTimeRangeSelectorTheme {
+const MIN_RANGE_DURATION_MS = 100
+const HANDLE_GAP_PX = 20
+const HANDLE_HIT_SLOP_PX = 32
+const EXTRA_LABEL_SPACE_PX = 30
+const TIME_LABEL_WIDTH_PX = 56
+const ACTIVE_HANDLE_BACKGROUND_COLOR = '#0056b3'
+
+export interface AudioTimeRangeSelectorTheme {
     container: {
         backgroundColor: string
         height: number
@@ -20,8 +27,15 @@ interface AudioTimeRangeSelectorTheme {
     }
     handle: {
         backgroundColor: string
+        activeBackgroundColor?: string
         width: number
     }
+}
+
+export type AudioTimeRangeSelectorThemeOverrides = {
+    [Section in keyof AudioTimeRangeSelectorTheme]?: Partial<
+        AudioTimeRangeSelectorTheme[Section]
+    >
 }
 
 const DEFAULT_THEME: AudioTimeRangeSelectorTheme = {
@@ -36,18 +50,45 @@ const DEFAULT_THEME: AudioTimeRangeSelectorTheme = {
     },
     handle: {
         backgroundColor: '#007AFF',
+        activeBackgroundColor: ACTIVE_HANDLE_BACKGROUND_COLOR,
         width: 20,
     },
 }
 
-interface AudioTimeRangeSelectorProps {
+export interface AudioTimeRangeSelectorProps {
     durationMs: number
     startTime: number
     endTime: number
+    /**
+     * Called when the user commits a range change.
+     *
+     * This fires after a handle or selected-range drag finishes, preserving
+     * the previous end-only update behavior for controlled consumers.
+     */
     onRangeChange: (start: number, end: number) => void
+    /**
+     * Called continuously while a handle or selected range is dragged.
+     *
+     * Use this for live previews, scrub indicators, or transient UI. Keep
+     * `onRangeChange` as the source of committed state.
+     */
+    onRangeChanging?: (start: number, end: number) => void
+    /**
+     * Called after `onRangeChange` when a drag commits.
+     *
+     * Kept for consumers that distinguish committed changes from completion
+     * side effects such as analytics, persistence, or expensive recalculation.
+     */
     onRangeChangeComplete?: (start: number, end: number) => void
     disabled?: boolean
-    theme?: Partial<AudioTimeRangeSelectorTheme>
+    /**
+     * Enables dragging the selected range body while preserving its duration.
+     *
+     * Defaults to true. Set false when the selected range should not intercept
+     * body gestures, such as tap-to-seek or parent scroll interactions.
+     */
+    rangeDragEnabled?: boolean
+    theme?: AudioTimeRangeSelectorThemeOverrides
 }
 
 interface TimeLabel {
@@ -61,8 +102,10 @@ export function AudioTimeRangeSelector({
     startTime,
     endTime,
     onRangeChange,
+    onRangeChanging,
     onRangeChangeComplete,
     disabled,
+    rangeDragEnabled = true,
     theme: customTheme,
 }: AudioTimeRangeSelectorProps) {
     const theme = {
@@ -75,6 +118,7 @@ export function AudioTimeRangeSelector({
     }
     const [containerWidth, setContainerWidth] = useState(0)
     const [activeLabel, setActiveLabel] = useState<TimeLabel | null>(null)
+    const isRangeDragActive = !disabled && rangeDragEnabled
     const isDragging = useSharedValue(false)
     const activeHandle = useSharedValue<'start' | 'end' | null>(null)
 
@@ -82,11 +126,12 @@ export function AudioTimeRangeSelector({
     const endPosition = useSharedValue(0)
 
     const lastUpdate = useSharedValue({ start: startTime, end: endTime })
+    const rangeDragStart = useSharedValue({ start: startTime, end: endTime })
 
     const updateTimeout = useSharedValue<number | null>(null)
 
     useEffect(() => {
-        if (containerWidth === 0 || durationMs === 0 || isDragging.value) return
+        if (containerWidth === 0 || durationMs <= 0 || isDragging.value) return
 
         // Clear any existing timeout
         if (updateTimeout.value) {
@@ -100,7 +145,7 @@ export function AudioTimeRangeSelector({
                 startTime >= 0 &&
                 endTime > startTime &&
                 endTime <= durationMs &&
-                endTime - startTime >= 100
+                endTime - startTime >= MIN_RANGE_DURATION_MS
 
             // If range is invalid, default to full range
             const validStartTime = isValidRange ? startTime : 0
@@ -124,6 +169,16 @@ export function AudioTimeRangeSelector({
         }
     }, [startTime, endTime, durationMs, containerWidth])
 
+    const emitRangeChangeComplete = useCallback(
+        (start: number, end: number) => {
+            onRangeChange(start, end)
+            if (onRangeChangeComplete) {
+                onRangeChangeComplete(start, end)
+            }
+        },
+        [onRangeChange, onRangeChangeComplete]
+    )
+
     const createHandleGesture = (isStart: boolean) => {
         return Gesture.Pan()
             .enabled(!disabled)
@@ -139,10 +194,13 @@ export function AudioTimeRangeSelector({
                 runOnJS(setActiveLabel)({
                     time: currentTime,
                     handle: isStart ? 'start' : 'end',
+                    position: isStart ? startPosition.value : endPosition.value,
                 })
             })
             .onChange((event) => {
                 'worklet'
+                if (containerWidth <= 0 || durationMs <= 0) return
+
                 const position = isStart ? startPosition : endPosition
                 const handleWidth = theme.handle.width
                 const maxX = isStart
@@ -153,8 +211,14 @@ export function AudioTimeRangeSelector({
                 const clampedX = Math.min(Math.max(0, newPosition), maxX)
 
                 position.value = isStart
-                    ? Math.min(clampedX, endPosition.value - handleWidth - 20)
-                    : Math.max(clampedX, startPosition.value + handleWidth + 20)
+                    ? Math.min(
+                          clampedX,
+                          endPosition.value - handleWidth - HANDLE_GAP_PX
+                      )
+                    : Math.max(
+                          clampedX,
+                          startPosition.value + handleWidth + HANDLE_GAP_PX
+                      )
 
                 const newTimeMs = Math.round(
                     (position.value / containerWidth) * durationMs
@@ -162,29 +226,41 @@ export function AudioTimeRangeSelector({
                 const clampedTimeMs = isStart
                     ? Math.min(
                           Math.max(0, newTimeMs),
-                          lastUpdate.value.end - 100
+                          lastUpdate.value.end - MIN_RANGE_DURATION_MS
                       )
                     : Math.min(
-                          Math.max(lastUpdate.value.start + 100, newTimeMs),
+                          Math.max(
+                              lastUpdate.value.start + MIN_RANGE_DURATION_MS,
+                              newTimeMs
+                          ),
                           durationMs
                       )
+
+                const nextStart = isStart
+                    ? clampedTimeMs
+                    : lastUpdate.value.start
+                const nextEnd = isStart ? lastUpdate.value.end : clampedTimeMs
 
                 if (isStart) {
                     lastUpdate.value = {
                         ...lastUpdate.value,
-                        start: clampedTimeMs,
+                        start: nextStart,
                     }
                 } else {
                     lastUpdate.value = {
                         ...lastUpdate.value,
-                        end: clampedTimeMs,
+                        end: nextEnd,
                     }
                 }
 
                 runOnJS(setActiveLabel)({
                     time: clampedTimeMs,
                     handle: isStart ? 'start' : 'end',
+                    position: position.value,
                 })
+                if (onRangeChanging) {
+                    runOnJS(onRangeChanging)(nextStart, nextEnd)
+                }
             })
             .onFinalize(() => {
                 'worklet'
@@ -195,16 +271,64 @@ export function AudioTimeRangeSelector({
                 activeHandle.value = null
                 runOnJS(setActiveLabel)(null)
 
-                // Emit both range change and complete at the end
-                runOnJS(onRangeChange)(finalStart, finalEnd)
-                if (onRangeChangeComplete) {
-                    runOnJS(onRangeChangeComplete)(finalStart, finalEnd)
-                }
+                runOnJS(emitRangeChangeComplete)(finalStart, finalEnd)
             })
     }
 
     const startHandleGesture = createHandleGesture(true)
     const endHandleGesture = createHandleGesture(false)
+
+    const rangeMoveGesture = Gesture.Pan()
+        .enabled(isRangeDragActive)
+        .activeOffsetX([-5, 5])
+        .activateAfterLongPress(0)
+        .onStart(() => {
+            'worklet'
+            isDragging.value = true
+            activeHandle.value = null
+            rangeDragStart.value = {
+                start: lastUpdate.value.start,
+                end: lastUpdate.value.end,
+            }
+            runOnJS(setActiveLabel)(null)
+        })
+        .onChange((event) => {
+            'worklet'
+            if (containerWidth <= 0 || durationMs <= 0) return
+
+            const rangeDuration =
+                rangeDragStart.value.end - rangeDragStart.value.start
+            const maxStartTime = Math.max(0, durationMs - rangeDuration)
+            const deltaTimeMs = Math.round(
+                (event.translationX / containerWidth) * durationMs
+            )
+            const nextStartTime = Math.min(
+                Math.max(0, rangeDragStart.value.start + deltaTimeMs),
+                maxStartTime
+            )
+            const nextEndTime = nextStartTime + rangeDuration
+
+            lastUpdate.value = {
+                start: nextStartTime,
+                end: nextEndTime,
+            }
+            startPosition.value = (nextStartTime / durationMs) * containerWidth
+            endPosition.value = (nextEndTime / durationMs) * containerWidth
+            if (onRangeChanging) {
+                runOnJS(onRangeChanging)(nextStartTime, nextEndTime)
+            }
+        })
+        .onFinalize(() => {
+            'worklet'
+            const finalStart = lastUpdate.value.start
+            const finalEnd = lastUpdate.value.end
+
+            isDragging.value = false
+            activeHandle.value = null
+            runOnJS(setActiveLabel)(null)
+
+            runOnJS(emitRangeChangeComplete)(finalStart, finalEnd)
+        })
 
     const formatTime = useCallback((ms: number) => {
         if (typeof ms !== 'number' || isNaN(ms)) {
@@ -218,17 +342,17 @@ export function AudioTimeRangeSelector({
 
     const labelStyle = useAnimatedStyle(() => ({
         opacity: isDragging.value ? 1 : 0,
-        transform: [
-            { translateX: -20 },
-            { translateY: isDragging.value ? 0 : 10 },
-        ],
+        transform: [{ translateY: isDragging.value ? 0 : 10 }],
     }))
 
     const startHandleAnimatedStyle = useAnimatedStyle(() => ({
         transform: [{ translateX: startPosition.value }],
         backgroundColor:
             activeHandle.value === 'start'
-                ? withTiming('#0056b3')
+                ? withTiming(
+                      theme.handle.activeBackgroundColor ??
+                          ACTIVE_HANDLE_BACKGROUND_COLOR
+                  )
                 : withTiming(theme.handle.backgroundColor),
     }))
 
@@ -236,7 +360,10 @@ export function AudioTimeRangeSelector({
         transform: [{ translateX: endPosition.value - theme.handle.width }],
         backgroundColor:
             activeHandle.value === 'end'
-                ? withTiming('#0056b3')
+                ? withTiming(
+                      theme.handle.activeBackgroundColor ??
+                          ACTIVE_HANDLE_BACKGROUND_COLOR
+                  )
                 : withTiming(theme.handle.backgroundColor),
     }))
 
@@ -252,6 +379,12 @@ export function AudioTimeRangeSelector({
             const width = event.nativeEvent.layout.width
             setContainerWidth(width)
 
+            if (durationMs <= 0) {
+                startPosition.value = 0
+                endPosition.value = 0
+                return
+            }
+
             startPosition.value = (lastUpdate.value.start / durationMs) * width
             endPosition.value = (lastUpdate.value.end / durationMs) * width
         },
@@ -261,7 +394,10 @@ export function AudioTimeRangeSelector({
     return (
         <View
             onLayout={handleLayout}
-            style={[styles.container, { height: theme.container.height + 30 }]}
+            style={[
+                styles.container,
+                { height: theme.container.height + EXTRA_LABEL_SPACE_PX },
+            ]}
         >
             <View
                 style={[
@@ -274,17 +410,20 @@ export function AudioTimeRangeSelector({
                 ]}
             >
                 <View style={styles.gestureContainer}>
-                    <Animated.View
-                        style={[styles.selectedRange, selectedRangeStyle]}
-                    />
+                    <GestureDetector gesture={rangeMoveGesture}>
+                        <Animated.View
+                            pointerEvents={isRangeDragActive ? 'auto' : 'none'}
+                            style={[styles.selectedRange, selectedRangeStyle]}
+                        />
+                    </GestureDetector>
                     <GestureDetector gesture={startHandleGesture}>
                         <Animated.View
                             pointerEvents="auto"
                             hitSlop={{
-                                left: 32,
-                                right: 32,
-                                top: 32,
-                                bottom: 32,
+                                left: HANDLE_HIT_SLOP_PX,
+                                right: HANDLE_HIT_SLOP_PX,
+                                top: HANDLE_HIT_SLOP_PX,
+                                bottom: HANDLE_HIT_SLOP_PX,
                             }}
                             style={[
                                 styles.handle,
@@ -298,10 +437,10 @@ export function AudioTimeRangeSelector({
                         <Animated.View
                             pointerEvents="auto"
                             hitSlop={{
-                                left: 32,
-                                right: 32,
-                                top: 32,
-                                bottom: 32,
+                                left: HANDLE_HIT_SLOP_PX,
+                                right: HANDLE_HIT_SLOP_PX,
+                                top: HANDLE_HIT_SLOP_PX,
+                                bottom: HANDLE_HIT_SLOP_PX,
                             }}
                             style={[
                                 styles.handle,
@@ -318,9 +457,22 @@ export function AudioTimeRangeSelector({
                     style={[
                         styles.timeLabel,
                         labelStyle,
-                        activeLabel.handle === 'start'
-                            ? styles.leftLabel
-                            : styles.rightLabel,
+                        {
+                            left: Math.min(
+                                Math.max(
+                                    0,
+                                    (activeLabel.position ??
+                                        (activeLabel.handle === 'end'
+                                            ? containerWidth
+                                            : 0)) -
+                                        TIME_LABEL_WIDTH_PX / 2
+                                ),
+                                Math.max(
+                                    0,
+                                    containerWidth - TIME_LABEL_WIDTH_PX
+                                )
+                            ),
+                        },
                     ]}
                 >
                     <Text style={styles.timeLabelText}>
@@ -365,6 +517,8 @@ const styles = StyleSheet.create({
     timeLabel: {
         position: 'absolute',
         top: -25,
+        width: TIME_LABEL_WIDTH_PX,
+        alignItems: 'center',
         backgroundColor: 'rgba(0,0,0,0.8)',
         padding: 4,
         borderRadius: 4,
@@ -372,11 +526,5 @@ const styles = StyleSheet.create({
     timeLabelText: {
         color: 'white',
         fontSize: 12,
-    },
-    leftLabel: {
-        left: 0,
-    },
-    rightLabel: {
-        right: 0,
     },
 })

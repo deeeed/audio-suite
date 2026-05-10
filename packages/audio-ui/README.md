@@ -22,8 +22,25 @@ Audio visualization and control components for React Native, built with Skia and
 - **DecibelMeter** — linear meter with customizable thresholds
 - **RecordButton** — recording button with visual feedback and animations
 - **Waveform** — lightweight waveform renderer
-- **AudioTimeRangeSelector** — interactive time range selection with drag handles
+- **AudioTimeRangeSelector** — interactive time range selection with drag handles and optional selected-range dragging
 - **MelSpectrogramVisualizer** — real-time mel spectrogram display
+
+### Audio time range selection
+
+`AudioTimeRangeSelector` is controlled by committed `startTime` and `endTime`
+values. Drag the handles to resize the range, or drag the selected range body
+to move it without changing its duration.
+
+```tsx
+<AudioTimeRangeSelector
+    durationMs={durationMs}
+    startTime={startTime}
+    endTime={endTime}
+    onRangeChanging={(start, end) => updatePreview(start, end)}
+    onRangeChange={(start, end) => setRange({ start, end })}
+    rangeDragEnabled={false} // optional: disable selected-range body dragging
+/>
+```
 
 ## Install
 

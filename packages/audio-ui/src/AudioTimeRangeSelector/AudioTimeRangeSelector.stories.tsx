@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-webpack5'
 import React from 'react'
-import { StyleSheet, View } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
 
 import { AudioTimeRangeSelector } from './AudioTimeRangeSelector'
 
@@ -72,17 +72,40 @@ export const Disabled: Story = {
     },
 }
 
+export const RangeDragDisabled: Story = {
+    args: {
+        durationMs: 60000,
+        startTime: 15000,
+        endTime: 45000,
+        rangeDragEnabled: false,
+    },
+}
+
 export const InteractiveDemo: Story = {
     render: function Render() {
         const [range, setRange] = React.useState({ start: 15000, end: 45000 })
+        const [previewRange, setPreviewRange] = React.useState(range)
 
         return (
-            <AudioTimeRangeSelector
-                durationMs={60000}
-                startTime={range.start}
-                endTime={range.end}
-                onRangeChange={(start, end) => setRange({ start, end })}
-            />
+            <View>
+                <AudioTimeRangeSelector
+                    durationMs={60000}
+                    startTime={range.start}
+                    endTime={range.end}
+                    onRangeChanging={(start, end) =>
+                        setPreviewRange({ start, end })
+                    }
+                    onRangeChange={(start, end) => {
+                        const nextRange = { start, end }
+                        setRange(nextRange)
+                        setPreviewRange(nextRange)
+                    }}
+                />
+                <Text style={{ color: 'white', marginTop: 8 }}>
+                    Preview: {(previewRange.start / 1000).toFixed(1)}s –{' '}
+                    {(previewRange.end / 1000).toFixed(1)}s
+                </Text>
+            </View>
         )
     },
 }
