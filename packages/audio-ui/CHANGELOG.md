@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+## [1.1.0] - 2026-05-10
+### Changed
+- feat(audio-ui): improve time range selector dragging ([22c2dbb](https://github.com/deeeed/audiolab/commit/22c2dbbd7463106073ddce8da99cd3244eb586b4))
 ## [1.0.1] - 2026-05-06
 ### Added
 - `AudioPlayerWidget` and `AudioFilePlayerWidget` for reusable audio playback UI with navigation controls, waveform rendering, and built-in state helpers.
@@ -17,7 +21,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Decoupled waveform/UI contracts from app-specific playground code so package consumers can compose the widgets directly.
 - Improved audio visualizer gesture/container handling and live mel spectrogram accumulation behavior.
-
 ## [1.0.0] - 2026-03-20
 - Package renamed from `@siteed/expo-audio-ui` to `@siteed/audio-ui`
 - Folder renamed from `packages/expo-audio-ui` to `packages/audio-ui`
@@ -105,7 +108,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Feature: Seamless integration with @siteed/expo-audio-studio
 - Feature: Support for iOS, Android, and web platforms
 
-[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/audio-ui@1.0.1...HEAD
+[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/audio-ui@1.1.0...HEAD
+[1.1.0]: https://github.com/deeeed/audiolab/compare/@siteed/audio-ui@1.0.1...@siteed/audio-ui@1.1.0
 [1.0.1]: https://github.com/deeeed/audiolab/compare/@siteed/audio-ui@1.0.0...@siteed/audio-ui@1.0.1
 [1.0.0]: https://github.com/deeeed/audiolab/compare/@siteed/audio-ui@0.7.2...@siteed/audio-ui@1.0.0
 [0.7.2]: https://github.com/deeeed/expo-audio-stream/compare/@siteed/expo-audio-ui@0.7.1...@siteed/expo-audio-ui@0.7.2
