@@ -15,6 +15,7 @@ import { baseLogger, config } from '../config'
 import { useSampleAudio } from '../hooks/useSampleAudio'
 import { isWeb } from '../utils/utils'
 import { useScreenHeader } from '../hooks/useScreenHeader'
+import { getWebAudioDurationMs } from '../utils/audioMetadata'
 
 const SAMPLE_AUDIO_WEB = `${config.baseUrl}/audio_samples/jfk.mp3`
 
@@ -101,6 +102,12 @@ export default function MelSpectrogramScreen() {
                     sampleRate: result.sampleRate,
                 })
 
+                if (result.durationMs > 0) {
+                    setFileDurationMs(result.durationMs)
+                    setStartTimeMs((currentStart) => Math.min(currentStart, result.durationMs))
+                    setEndTimeMs((currentEnd) => Math.min(currentEnd, result.durationMs))
+                }
+
                 setMelData(result)
                 show({
                     type: 'success',
@@ -132,12 +139,15 @@ export default function MelSpectrogramScreen() {
                 fileUri: result.assets[0].uri,
                 filename: result.assets[0].name ?? 'Unknown',
             }
+            const duration = isWeb
+                ? (await getWebAudioDurationMs(newFile.fileUri)) ?? 60000
+                : 60000
             setCurrentFile(newFile)
             setMelData(null)
             setError(undefined)
-            setFileDurationMs(60000)
+            setFileDurationMs(duration)
             setStartTimeMs(0)
-            setEndTimeMs(5000)
+            setEndTimeMs(Math.min(5000, duration))
         } catch (err) {
             show({ type: 'error', message: 'Failed to load audio file', duration: 3000 })
         }
@@ -148,12 +158,13 @@ export default function MelSpectrogramScreen() {
             setIsProcessing(true)
 
             if (isWeb) {
+                const duration = (await getWebAudioDurationMs(SAMPLE_AUDIO_WEB)) ?? 60000
                 setCurrentFile({ fileUri: SAMPLE_AUDIO_WEB, filename: 'JFK Speech Sample' })
                 setMelData(null)
                 setError(undefined)
-                setFileDurationMs(60000)
+                setFileDurationMs(duration)
                 setStartTimeMs(0)
-                setEndTimeMs(5000)
+                setEndTimeMs(Math.min(5000, duration))
                 return
             }
 

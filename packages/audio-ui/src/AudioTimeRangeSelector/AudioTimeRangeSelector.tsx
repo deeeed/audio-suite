@@ -8,7 +8,11 @@ import Animated, {
     withTiming,
 } from 'react-native-reanimated'
 
-const MIN_RANGE_DURATION_MS = 100
+import {
+    getMinRangeDuration,
+    sanitizeTimeRange,
+} from './AudioTimeRangeSelector.utils'
+
 const HANDLE_GAP_PX = 20
 const HANDLE_HIT_SLOP_PX = 32
 const EXTRA_LABEL_SPACE_PX = 30
@@ -140,24 +144,14 @@ export function AudioTimeRangeSelector({
 
         // Set a new timeout to update positions after a delay
         updateTimeout.value = setTimeout(() => {
-            // Check if the time range is valid
-            const isValidRange =
-                startTime >= 0 &&
-                endTime > startTime &&
-                endTime <= durationMs &&
-                endTime - startTime >= MIN_RANGE_DURATION_MS
+            const range = sanitizeTimeRange(startTime, endTime, durationMs)
 
-            // If range is invalid, default to full range
-            const validStartTime = isValidRange ? startTime : 0
-            const validEndTime = isValidRange ? endTime : durationMs
+            lastUpdate.value = range
+            startPosition.value = (range.start / durationMs) * containerWidth
+            endPosition.value = (range.end / durationMs) * containerWidth
 
-            lastUpdate.value = { start: validStartTime, end: validEndTime }
-            startPosition.value = (validStartTime / durationMs) * containerWidth
-            endPosition.value = (validEndTime / durationMs) * containerWidth
-
-            // Notify of the range change if using default values
-            if (!isValidRange) {
-                runOnJS(onRangeChange)(validStartTime, validEndTime)
+            if (range.start !== startTime || range.end !== endTime) {
+                runOnJS(onRangeChange)(range.start, range.end)
             }
         }, 100) as unknown as number
 
@@ -223,23 +217,34 @@ export function AudioTimeRangeSelector({
                 const newTimeMs = Math.round(
                     (position.value / containerWidth) * durationMs
                 )
+                const minRange = getMinRangeDuration(durationMs)
+                const maxStartTime = Math.max(
+                    0,
+                    Math.min(
+                        durationMs - minRange,
+                        lastUpdate.value.end - minRange
+                    )
+                )
                 const clampedTimeMs = isStart
-                    ? Math.min(
-                          Math.max(0, newTimeMs),
-                          lastUpdate.value.end - MIN_RANGE_DURATION_MS
-                      )
+                    ? Math.min(Math.max(0, newTimeMs), maxStartTime)
                     : Math.min(
                           Math.max(
-                              lastUpdate.value.start + MIN_RANGE_DURATION_MS,
+                              lastUpdate.value.start + minRange,
                               newTimeMs
                           ),
                           durationMs
                       )
 
-                const nextStart = isStart
-                    ? clampedTimeMs
-                    : lastUpdate.value.start
-                const nextEnd = isStart ? lastUpdate.value.end : clampedTimeMs
+                const safeCurrentStart = Math.min(
+                    Math.max(0, lastUpdate.value.start),
+                    Math.max(0, durationMs - minRange)
+                )
+                const safeCurrentEnd = Math.min(
+                    Math.max(safeCurrentStart + minRange, lastUpdate.value.end),
+                    durationMs
+                )
+                const nextStart = isStart ? clampedTimeMs : safeCurrentStart
+                const nextEnd = isStart ? safeCurrentEnd : clampedTimeMs
 
                 if (isStart) {
                     lastUpdate.value = {
@@ -286,18 +291,34 @@ export function AudioTimeRangeSelector({
             'worklet'
             isDragging.value = true
             activeHandle.value = null
+            const minRange = getMinRangeDuration(durationMs)
+            const safeStart = Math.min(
+                Math.max(0, lastUpdate.value.start),
+                Math.max(0, durationMs - minRange)
+            )
+            const safeEnd = Math.min(
+                Math.max(safeStart + minRange, lastUpdate.value.end),
+                durationMs
+            )
             rangeDragStart.value = {
-                start: lastUpdate.value.start,
-                end: lastUpdate.value.end,
+                start: safeStart,
+                end: safeEnd,
             }
+            lastUpdate.value = rangeDragStart.value
+            startPosition.value =
+                durationMs > 0 ? (safeStart / durationMs) * containerWidth : 0
+            endPosition.value =
+                durationMs > 0 ? (safeEnd / durationMs) * containerWidth : 0
             runOnJS(setActiveLabel)(null)
         })
         .onChange((event) => {
             'worklet'
             if (containerWidth <= 0 || durationMs <= 0) return
 
-            const rangeDuration =
-                rangeDragStart.value.end - rangeDragStart.value.start
+            const rangeDuration = Math.min(
+                rangeDragStart.value.end - rangeDragStart.value.start,
+                durationMs
+            )
             const maxStartTime = Math.max(0, durationMs - rangeDuration)
             const deltaTimeMs = Math.round(
                 (event.translationX / containerWidth) * durationMs
@@ -385,8 +406,14 @@ export function AudioTimeRangeSelector({
                 return
             }
 
-            startPosition.value = (lastUpdate.value.start / durationMs) * width
-            endPosition.value = (lastUpdate.value.end / durationMs) * width
+            const range = sanitizeTimeRange(
+                lastUpdate.value.start,
+                lastUpdate.value.end,
+                durationMs
+            )
+            lastUpdate.value = range
+            startPosition.value = (range.start / durationMs) * width
+            endPosition.value = (range.end / durationMs) * width
         },
         [durationMs]
     )
