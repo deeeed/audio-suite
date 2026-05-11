@@ -11,12 +11,12 @@ import type { MelSpectrogram } from '@siteed/audio-studio'
 import { extractMelSpectrogram, MAX_DURATION_MS } from '@siteed/audio-studio'
 import { AudioTimeRangeSelector, MelSpectrogramVisualizer } from '@siteed/audio-ui'
 
-import { baseLogger } from '../config'
+import { baseLogger, config } from '../config'
 import { useSampleAudio } from '../hooks/useSampleAudio'
 import { isWeb } from '../utils/utils'
 import { useScreenHeader } from '../hooks/useScreenHeader'
 
-const SAMPLE_AUDIO_WEB = '/audio_samples/jfk.mp3'
+const SAMPLE_AUDIO_WEB = `${config.baseUrl}/audio_samples/jfk.mp3`
 
 const logger = baseLogger.extend('MelSpectrogramScreen')
 

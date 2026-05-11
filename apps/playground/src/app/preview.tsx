@@ -12,13 +12,13 @@ import type { AudioAnalysis } from '@siteed/audio-studio'
 import { extractPreview } from '@siteed/audio-studio'
 import { AudioTimeRangeSelector, AudioVisualizer } from '@siteed/audio-ui'
 
-import { baseLogger } from '../config'
+import { baseLogger, config } from '../config'
 import { useSampleAudio } from '../hooks/useSampleAudio'
 import { isWeb } from '../utils/utils'
 import { useScreenHeader } from '../hooks/useScreenHeader'
 
 const SAMPLE_AUDIO = {
-    web: '/audio_samples/jfk.mp3',
+    web: `${config.baseUrl}/audio_samples/jfk.mp3`,
 }
 
 const logger = baseLogger.extend('PreviewScreen')
