@@ -11,6 +11,10 @@ object Constants {
     const val RECORDING_INTERRUPTED_EVENT_NAME = "onRecordingInterrupted"
     const val TRIM_PROGRESS_EVENT = "TrimProgress"
     const val DEVICE_CHANGED_EVENT = "deviceChangedEvent"
+    const val AUDIO_STREAM_CHUNK_EVENT = "AudioDataStreamChunk"
+    const val AUDIO_STREAM_PROGRESS_EVENT = "AudioDataStreamProgress"
+    const val AUDIO_STREAM_COMPLETE_EVENT = "AudioDataStreamComplete"
+    const val AUDIO_STREAM_ERROR_EVENT = "AudioDataStreamError"
     
     // Audio constants
     const val DEFAULT_SAMPLE_RATE = 16000 // Default sample rate for audio recording

@@ -21,14 +21,17 @@ import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class AudioStudioModule : Module(), EventSender {
+class AudioStudioModule : Module(), EventSender, AudioStreamDecoderDelegate {
     companion object {
         private const val CLASS_NAME = "AudioStudioModule"
     }
-    
+
     private lateinit var audioRecorderManager: AudioRecorderManager
     private lateinit var audioProcessor: AudioProcessor
     private lateinit var audioDeviceManager: AudioDeviceManager
+
+    private val streamDecoders = mutableMapOf<String, AudioStreamDecoder>()
+    private val streamDecodersLock = Object()
     private var enablePhoneStateHandling: Boolean = false // Default to false until we check manifest
     private var enableNotificationHandling: Boolean = false // Default to false until we check manifest
     private var enableBackgroundAudio: Boolean = false // Default to false until we check manifest
@@ -88,7 +91,11 @@ class AudioStudioModule : Module(), EventSender {
             Constants.AUDIO_ANALYSIS_EVENT_NAME,
             Constants.RECORDING_INTERRUPTED_EVENT_NAME,
             Constants.TRIM_PROGRESS_EVENT,
-            Constants.DEVICE_CHANGED_EVENT // Add device changed event name
+            Constants.DEVICE_CHANGED_EVENT, // Add device changed event name
+            Constants.AUDIO_STREAM_CHUNK_EVENT,
+            Constants.AUDIO_STREAM_PROGRESS_EVENT,
+            Constants.AUDIO_STREAM_COMPLETE_EVENT,
+            Constants.AUDIO_STREAM_ERROR_EVENT
         )
 
         // Initialize Managers
@@ -657,6 +664,21 @@ class AudioStudioModule : Module(), EventSender {
             // while keeping the same module instance, and a fully cancelled
             // scope would silently no-op every subsequent launch.
             coroutineScope.coroutineContext.cancelChildren()
+            // Cancel any in-flight streamAudioData decoders before teardown.
+            // Their worker threads are not children of `coroutineScope` and
+            // would otherwise keep running, emitting events through a
+            // destroyed module. We clear the map *before* cancelling so that
+            // any terminal events the worker emits after observing
+            // `cancel()` are dropped by `streamDecoderEmit` (which gates on
+            // map membership). The map itself stays usable so Expo can
+            // recreate decoders on a dev-client reload without resetting any
+            // global flag.
+            val inflight = synchronized(streamDecodersLock) {
+                val snapshot = streamDecoders.values.toList()
+                streamDecoders.clear()
+                snapshot
+            }
+            inflight.forEach { it.cancel() }
             AudioRecorderManager.destroy()
         }
 
@@ -994,6 +1016,149 @@ class AudioStudioModule : Module(), EventSender {
                 }
             }
         }
+
+        AsyncFunction("streamAudioData") { options: Map<String, Any?>, promise: Promise ->
+            try {
+                val requestId = options["requestId"] as? String
+                    ?: throw IllegalArgumentException("requestId is required")
+                val fileUri = options["fileUri"] as? String
+                    ?: throw IllegalArgumentException("fileUri is required")
+                val streamFormat = (options["streamFormat"] as? String) ?: "float32"
+                if (streamFormat != "float32") {
+                    promise.reject(
+                        "ERR_AUDIO_STREAM_UNSUPPORTED_FORMAT",
+                        "Only streamFormat='float32' is supported",
+                        null
+                    )
+                    return@AsyncFunction
+                }
+
+                val context = appContext.reactContext
+                    ?: throw IllegalStateException("React context not available")
+
+                val chunkDurationMs = (options["chunkDurationMs"] as? Number)?.toInt() ?: 1000
+                if (chunkDurationMs !in 10..60000) {
+                    promise.reject(
+                        "ERR_AUDIO_STREAM_INVALID_RANGE",
+                        "chunkDurationMs must be in [10, 60000]",
+                        null
+                    )
+                    return@AsyncFunction
+                }
+
+                val decoderOptions = AudioStreamDecoder.Options(
+                    requestId = requestId,
+                    fileUri = fileUri,
+                    startTimeMs = (options["startTimeMs"] as? Number)?.toLong(),
+                    endTimeMs = (options["endTimeMs"] as? Number)?.toLong(),
+                    targetSampleRate = (options["targetSampleRate"] as? Number)?.toInt()
+                        ?: (options["sampleRate"] as? Number)?.toInt(),
+                    channels = (options["channels"] as? Number)?.toInt(),
+                    normalizeAudio = (options["normalizeAudio"] as? Boolean) ?: true,
+                    chunkDurationMs = chunkDurationMs,
+                    maxChunkBytes = (options["maxChunkBytes"] as? Number)?.toInt(),
+                    maxBufferedChunks = ((options["maxBufferedChunks"] as? Number)?.toInt() ?: 4)
+                        .coerceAtLeast(1),
+                    backpressureTimeoutMs = (options["backpressureTimeoutMs"] as? Number)?.toLong(),
+                )
+
+                val decoder = AudioStreamDecoder(context, decoderOptions, this@AudioStudioModule)
+                synchronized(streamDecodersLock) {
+                    if (streamDecoders.containsKey(requestId)) {
+                        promise.reject(
+                            "ERR_AUDIO_STREAM_BUSY",
+                            "requestId already in use",
+                            null
+                        )
+                        return@AsyncFunction
+                    }
+                    streamDecoders[requestId] = decoder
+                }
+                decoder.start()
+                promise.resolve(bundleOf("requestId" to requestId))
+            } catch (e: Exception) {
+                LogUtils.e(CLASS_NAME, "streamAudioData failed: ${e.message}", e)
+                promise.reject(
+                    "ERR_AUDIO_STREAM_DECODE_FAILED",
+                    e.message ?: "streamAudioData failed",
+                    e
+                )
+            }
+        }
+
+        AsyncFunction("cancelStreamAudioData") { requestId: String, promise: Promise ->
+            val decoder = synchronized(streamDecodersLock) {
+                streamDecoders[requestId]
+            }
+            decoder?.cancel()
+            promise.resolve(bundleOf(
+                "requestId" to requestId,
+                "cancelled" to (decoder != null)
+            ))
+        }
+
+        Function("acknowledgeStreamAudioChunk") { requestId: String, chunkIndex: Int ->
+            val decoder = synchronized(streamDecodersLock) {
+                streamDecoders[requestId]
+            }
+            decoder?.acknowledgeChunk(chunkIndex)
+        }
+
+        AsyncFunction("getAudioDecodeCapabilities") { promise: Promise ->
+            promise.resolve(bundleOf(
+                "platform" to "android",
+                "supportedInputFormats" to listOf(
+                    "audio/wav",
+                    "audio/mpeg",
+                    "audio/mp4",
+                    "audio/aac",
+                    "audio/ogg",
+                    "audio/opus",
+                    "audio/webm",
+                    "audio/flac",
+                    "audio/amr-wb",
+                ),
+                "supportedOutputFormats" to listOf("float32"),
+                "supportsCancellation" to true,
+                "supportsBackpressure" to true,
+                "supportsTimeRange" to true,
+                "supportsTargetSampleRate" to true,
+                "supportsChannelMixing" to true,
+                "knownLimitations" to listOf(
+                    "MediaCodec output rate may differ from extractor metadata for some encoders; output is resampled via linear interpolation."
+                )
+            ))
+        }
+    }
+
+    private fun releaseStreamDecoder(requestId: String) {
+        synchronized(streamDecodersLock) {
+            streamDecoders.remove(requestId)
+        }
+    }
+
+    override fun streamDecoderEmit(eventName: String, payload: Bundle) {
+        // Drop events from decoders that are no longer tracked. This catches
+        // both the OnDestroy teardown path (map cleared before `cancel()`) and
+        // post-completion stragglers, without depending on a one-way shutdown
+        // flag that would survive Expo's `definition()` re-runs.
+        val requestId = payload.getString("requestId") ?: return
+        val isActive = synchronized(streamDecodersLock) {
+            streamDecoders.containsKey(requestId)
+        }
+        if (!isActive) return
+        when (eventName) {
+            Constants.AUDIO_STREAM_COMPLETE_EVENT -> {
+                releaseStreamDecoder(requestId)
+            }
+            Constants.AUDIO_STREAM_ERROR_EVENT -> {
+                val code = payload.getString("code") ?: ""
+                if (code != "ERR_AUDIO_STREAM_CANCELLED") {
+                    releaseStreamDecoder(requestId)
+                }
+            }
+        }
+        safeSendEvent(eventName, payload)
     }
 
     private fun initializeManager() {
