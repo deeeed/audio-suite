@@ -1,6 +1,6 @@
 {
     "name": "@siteed/expo-audio-studio",
-    "version": "3.2.0",
+    "version": "3.2.1",
     "description": "DEPRECATED - Use @siteed/audio-studio instead. This package re-exports @siteed/audio-studio for backwards compatibility.",
     "license": "MIT",
     "main": "index.js",
@@ -11,5 +11,11 @@
     "publishConfig": {
         "access": "public",
         "registry": "https://registry.npmjs.org"
-    }
+    },
+    "files": [
+        "index.js",
+        "index.d.ts",
+        "README.md",
+        "package.json"
+    ]
 }
