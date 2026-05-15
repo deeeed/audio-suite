@@ -20,6 +20,38 @@ cd "$APP_ROOT"
 PLATFORM="${PLATFORM:-ios}"
 APP_VARIANT_EFFECTIVE="${APP_VARIANT:-development}"
 
+load_env_defaults() {
+  local env_file="$1"
+  [ -f "$env_file" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    [[ -z "$line" || "$line" == \#* || "$line" != *=* ]] && continue
+    local key="${line%%=*}"
+    local value="${line#*=}"
+    key="${key#"${key%%[![:space:]]*}"}"
+    key="${key%"${key##*[![:space:]]}"}"
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    # Preserve explicit CLI environment such as IOS_SIMULATOR= for ios:device.
+    if [ -z "${!key+x}" ]; then
+      value="${value#"${value%%[![:space:]]*}"}"
+      value="${value%"${value##*[![:space:]]}"}"
+      if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+        value="${value:1:${#value}-2}"
+      elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
+        value="${value:1:${#value}-2}"
+      fi
+      export "$key=$value"
+    fi
+  done < "$env_file"
+}
+
+load_env_defaults ".env"
+load_env_defaults ".env.local"
+load_env_defaults ".env.${APP_VARIANT_EFFECTIVE}"
+load_env_defaults ".env.${APP_VARIANT_EFFECTIVE}.local"
+IOS_DEVELOPMENT_TEAM="${IOS_DEVELOPMENT_TEAM:-${APPLE_TEAM_ID:-}}"
+
 run_simctl_timeout() {
   python3 - "$@" <<'PY'
 import subprocess
@@ -316,12 +348,28 @@ if [ "$APP_INSTALLED" = false ]; then
   if [ "$PLATFORM" = "ios" ] && [ "${IOS_DEVICE_MODE:-simulator}" = "physical" ]; then
     resolve_ios_workspace_and_scheme "$APP_VARIANT_EFFECTIVE"
     info "Building iOS app for physical device ${IOS_DEVICE_UDID} using ${IOS_SCHEME_NAME}..."
+    BUILD_LOG=".agent/ios-device-build-$(date -u +%Y%m%dT%H%M%SZ).log"
+    mkdir -p .agent
+    XCODEBUILD_SIGNING_ARGS=()
+    if [ -n "${IOS_DEVELOPMENT_TEAM:-}" ]; then
+      XCODEBUILD_SIGNING_ARGS+=(DEVELOPMENT_TEAM="${IOS_DEVELOPMENT_TEAM}")
+      XCODEBUILD_SIGNING_ARGS+=(CODE_SIGN_STYLE=Automatic)
+    fi
+    set +e
     xcodebuild -workspace "$IOS_WORKSPACE_PATH" -scheme "$IOS_SCHEME_NAME" \
       -destination "id=${IOS_DEVICE_UDID}" \
       -configuration Debug \
       -derivedDataPath ios/build-device \
       -allowProvisioningUpdates \
-      build 2>&1 | tail -5
+      -allowProvisioningDeviceRegistration \
+      "${XCODEBUILD_SIGNING_ARGS[@]}" \
+      build 2>&1 | tee "$BUILD_LOG"
+    XCODEBUILD_STATUS=${PIPESTATUS[0]}
+    set -e
+    if [ "$XCODEBUILD_STATUS" -ne 0 ]; then
+      fail "iOS device build failed; full log: ${APP_ROOT}/${BUILD_LOG}"
+      exit "$XCODEBUILD_STATUS"
+    fi
     APP_PATH="ios/build-device/Build/Products/Debug-iphoneos/${IOS_SCHEME_NAME}.app"
     if [ ! -d "$APP_PATH" ]; then
       fail "Built .app not found at $APP_PATH"
@@ -332,11 +380,20 @@ if [ "$APP_INSTALLED" = false ]; then
   elif [ "$PLATFORM" = "ios" ]; then
     resolve_ios_workspace_and_scheme "$APP_VARIANT_EFFECTIVE"
     info "Building iOS app for simulator ${SIM} (${SIM_UUID}) using ${IOS_SCHEME_NAME}..."
+    BUILD_LOG=".agent/ios-simulator-build-$(date -u +%Y%m%dT%H%M%SZ).log"
+    mkdir -p .agent
+    set +e
     xcodebuild -workspace "$IOS_WORKSPACE_PATH" -scheme "$IOS_SCHEME_NAME" \
       -destination "platform=iOS Simulator,id=${SIM_UUID}" \
       -configuration Debug \
       -derivedDataPath ios/build \
-      build 2>&1 | tail -5
+      build 2>&1 | tee "$BUILD_LOG"
+    XCODEBUILD_STATUS=${PIPESTATUS[0]}
+    set -e
+    if [ "$XCODEBUILD_STATUS" -ne 0 ]; then
+      fail "iOS simulator build failed; full log: ${APP_ROOT}/${BUILD_LOG}"
+      exit "$XCODEBUILD_STATUS"
+    fi
     APP_PATH="ios/build/Build/Products/Debug-iphonesimulator/${IOS_SCHEME_NAME}.app"
     if [ ! -d "$APP_PATH" ]; then
       fail "Built .app not found at $APP_PATH"

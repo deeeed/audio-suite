@@ -1274,6 +1274,12 @@ RCT_EXPORT_METHOD(unregisterIntent:(NSString *)intentRecognizerId
     });
   };
 
+  BOOL includeAudioData = BoolFromValue(config[@"includeAudioData"]);
+  // `includeAudioData` is the public RN switch for returning per-line PCM.
+  // The upstream native core defaults `return_audio_data` to true, which makes
+  // long streaming transcripts retain each VAD segment's samples even when RN
+  // suppresses `line.audioData` in emitted dictionaries. Keep native retention
+  // aligned with the JS contract and default it off for long sessions.
   NSDictionary *nativeOptions = [config[@"options"] isKindOfClass:NSDictionary.class] ? config[@"options"] : nil;
   if (nativeOptions != nil) {
     if (nativeOptions[@"identifySpeakers"] != nil && nativeOptions[@"identifySpeakers"] != (id)kCFNull) {
@@ -1338,6 +1344,7 @@ RCT_EXPORT_METHOD(unregisterIntent:(NSString *)intentRecognizerId
     addOption(name, valueString ?: @"");
   }
 
+  addOption(@"return_audio_data", includeAudioData ? @"true" : @"false");
   return buffer;
 }
 

@@ -1,35 +1,41 @@
-Moonshine Patch Inventory for v0.0.51
-====================================
+# Moonshine Patch Inventory for v0.0.59
 
 These patches track our modifications to upstream `moonshine-ai/moonshine`
 sources so the Android source build is reproducible from a clean checkout.
 
-Pinned version: `v0.0.51`
+Pinned version: `v0.0.59`
 
+## Files patched
 
-Files patched
--------------
-OrtAndroidOverrides.patch
-  - patches upstream Android and CMake build files so the vendored source build
-    can honor:
-      `SITEED_MOONSHINE_ANDROID_ABIS`
-      `SITEED_MOONSHINE_ORT_LIB_PATH`
-      `SITEED_MOONSHINE_ORT_INCLUDE_DIR`
-  - adds a public `close()` method to upstream `Transcriber` so wrappers do not
-    need to reflectively call `finalize()`
-  - applied automatically by `./setup.sh` and `./build-moonshine-android.sh`
+### OrtAndroidOverrides.patch
 
+- patches upstream Android and CMake build files so the vendored source build
+  can honor:
+  `SITEED_MOONSHINE_ANDROID_ABIS`
+  `SITEED_MOONSHINE_ORT_LIB_PATH`
+  `SITEED_MOONSHINE_ORT_INCLUDE_DIR`
+- adds a public `close()` method to upstream `Transcriber` so wrappers do not
+  need to reflectively call `finalize()`
+- applied automatically by `./setup.sh` and `./build-moonshine-android.sh`
 
-How to apply on version upgrade
--------------------------------
+### LongStreamingMemory.patch
+
+- avoids copying historical VAD segment PCM on every streaming transcription
+  update and clears completed VAD segment samples after transcription when
+  `return_audio_data=false`, so long Moonshine streams keep bounded native
+  audio retention while callers that explicitly request audio data retain the
+  upstream debugging/analysis behavior.
+
+## How to apply on version upgrade
+
 When `setup.sh` is updated to a new upstream version:
 
 1. Refresh or re-pin `third_party/moonshine`.
-2. Rebase `OrtAndroidOverrides.patch` against the new upstream checkout.
+2. Rebase each patch in this inventory against the new upstream checkout.
 3. Re-run `bash packages/moonshine.rn/build-moonshine-android.sh`.
 4. Revalidate the resulting AAR and ORT compatibility.
 
 Note:
-- `OrtAndroidOverrides.patch` is applied from inside
-  `third_party/moonshine` via `git apply`, so its paths are relative to the
-  upstream checkout root.
+
+- All patch files are applied from inside `third_party/moonshine` via
+  `git apply`, so their paths are relative to the upstream checkout root.

@@ -71,11 +71,11 @@ decouple_bundled_ort_in_aar() {
   fi
 
   local stage="$(mktemp -d)"
-  trap "rm -rf \"$stage\"" RETURN
 
   unzip -q "$aar_path" -d "$stage"
   local jni_dir="$stage/jni"
   if [ ! -d "$jni_dir" ]; then
+    rm -rf "$stage"
     return
   fi
 
@@ -90,11 +90,13 @@ decouple_bundled_ort_in_aar() {
   done
 
   if [ "$touched" = "0" ]; then
+    rm -rf "$stage"
     return
   fi
 
   rm -f "$aar_path"
   ( cd "$stage" && zip -qr "$aar_path" . )
+  rm -rf "$stage"
 }
 
 extract_ort_symbol_version() {
@@ -256,6 +258,7 @@ fi
 if unzip -p "$OUTPUT_AAR" jni/arm64-v8a/libonnxruntime.so > "$TMP_DIR/libonnxruntime.so" 2>/dev/null; then
   MOONSHINE_PACKAGED_ORT_VERSION="$(extract_ort_symbol_version "$TMP_DIR/libonnxruntime.so")"
 fi
+AAR_SHA256="$(shasum -a 256 "$OUTPUT_AAR" | awk '{print $1}')"
 
 cat > "$METADATA_PATH" <<EOF
 {
@@ -265,7 +268,8 @@ cat > "$METADATA_PATH" <<EOF
   "onnxRuntimeLibPathOverride": "$(sanitize_metadata_path "$ORT_LIB_PATH")",
   "onnxRuntimeIncludeDirOverride": "$(sanitize_metadata_path "$ORT_INCLUDE_DIR")",
   "arm64ImportedOrtSymbolVersion": "${MOONSHINE_IMPORTED_ORT_VERSION}",
-  "arm64PackagedOrtSymbolVersion": "${MOONSHINE_PACKAGED_ORT_VERSION}"
+  "arm64PackagedOrtSymbolVersion": "${MOONSHINE_PACKAGED_ORT_VERSION}",
+  "aarSha256": "${AAR_SHA256}"
 }
 EOF
 

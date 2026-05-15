@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UPSTREAM_DIR="$SCRIPT_DIR/third_party/moonshine"
 PATCHES=(
   "patches/OrtAndroidOverrides.patch"
+  "patches/LongStreamingMemory.patch"
 )
 
 if [ ! -d "$UPSTREAM_DIR/.git" ]; then
@@ -23,9 +24,13 @@ for relative_patch_path in "${PATCHES[@]}"; do
     exit 1
   fi
 
-  if git apply --check "$patch_path" >/dev/null 2>&1; then
+  if git apply --3way --check "$patch_path" >/dev/null 2>&1; then
     echo "Applying upstream patch: $relative_patch_path"
-    git apply "$patch_path"
+    git apply --3way "$patch_path"
+    if find . -name '*.rej' -print -quit | grep -q .; then
+      echo "Error: patch left reject files after 3-way apply: $relative_patch_path" >&2
+      exit 1
+    fi
     continue
   fi
 

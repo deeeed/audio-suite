@@ -163,9 +163,9 @@ export interface MoonshineOfflineProgressOptions {
 }
 
 export interface MoonshinePcmTranscribeOptions {
-  // PCM is currently transported as number[] over the React Native bridge.
-  // Keep chunks reasonably small (roughly 100-250ms) until a JSI/ArrayBuffer
-  // path exists.
+  // PCM can be provided as number[] or Float32Array. Native legacy bridges may
+  // still materialize arrays internally, so keep chunks reasonably small
+  // (roughly 100-250ms) until a JSI/ArrayBuffer path exists.
   chunkDurationMs?: number;
   progress?: false | MoonshineOfflineProgressOptions;
 }

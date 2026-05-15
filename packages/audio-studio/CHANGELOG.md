@@ -19,6 +19,32 @@ Beta release for client validation of the progressive decode API.
   rate, channel downmix, and stable error codes via the new
   `AudioStreamError` class.
 - `getAudioDecodeCapabilities()` for platform feature discovery.
+- `validate:stream-long` physical-device harness for CDP/ADB JSONL validation
+  of long compressed files, including decode-only, full-buffer control,
+  Moonshine-feed, configurable Sherpa ONNX online-ASR, and bounded offline
+  Sherpa/Qwen3 segment modes, range-limited short-run comparisons, Android
+  memory snapshots, cancellation, stall detection, and pass/fail memory budgets.
+- `validate:stream-long` can copy a previously downloaded Sherpa model from
+  another debug app sandbox (for example `apps/sherpa-voice`) into the
+  playground sandbox via `--stage-sherpa-model-from package:path`, or stage a
+  host model directory with `--stage-sherpa-model-host-dir`, making Qwen3
+  benchmarking reproducible without re-downloading the ~GB extracted model.
+- Sherpa offline segment validation can release/reinitialize ASR between
+  segments (`--sherpa-release-between-segments`, defaulted on for Qwen3) to
+  reduce retained native heap during long segmented Qwen3 runs.
+- `summarize:stream-long` converts `validate:stream-long` JSONL logs into
+  Markdown/CSV/JSON benchmark tables for comparing decode-only, Moonshine,
+  Sherpa online, and Sherpa/Qwen3 segmented runs.
+- Long-fixture Android evidence now includes a full 100-minute Qwen3 offline
+  segment run with 30-second segments and ASR release/reinit between segments,
+  plus a Moonshine memory-budget failure path that cancels before OOM.
+- The long-fixture validation matrix now covers Opus, MP3, and AAC/M4A Android
+  decode, with MP3/AAC short Qwen3 decode/transcribe smokes against the same
+  100-minute source recording.
+- Playground `/long-audio-validation` page and agentic recipe for interactive
+  long compressed-audio validation with live progress, cancellation, Moonshine
+  model id selection, pasted Sherpa `AsrModelConfig` JSON, and a Qwen3-oriented
+  offline segment button.
 - iOS: `AVAssetReader`-based decoder with per-`requestId` cancellation.
 - Android: `MediaExtractor` + `MediaCodec` decoder with linear resampling that
   preserves continuity across codec buffer boundaries. Codec output-format
@@ -58,19 +84,22 @@ Beta release for client validation of the progressive decode API.
 - iOS `streamAudioData` no longer pays `O(n)` `Array.removeFirst` cost per
   emitted chunk; the pending buffer uses a head-index cursor with periodic
   compaction.
-- `streamAudioData` chunk timestamps are absolute (range start + offset)
+- `streamAudioData` chunk timestamps are now absolute (range start + offset)
   on Web to match iOS/Android, and `onProgress.processedMs` is elapsed time
   within the requested range on every platform so the
   `processedMs / durationMs` fraction stays in `[0, 1]` regardless of
   `startTimeMs`.
 - iOS/Android `streamAudioData` event delivery is now gated on the decoder
   still being tracked by the module. Terminal events emitted by a worker
-  thread after `OnDestroy` are dropped instead of forwarded through a
-  destroyed React context.
-- Android `streamAudioData` trims encoder pre-roll: when `SEEK_TO_CLOSEST_SYNC`
-  lands before the requested `startTimeMs`, source-rate frames whose
-  presentation time is before `startTimeMs` are dropped before resampling so
-  the first emitted sample lines up with the requested start.
+  thread after `OnDestroy` (which clears the map before cancelling) are
+  dropped instead of forwarded through a destroyed React context. This also
+  survives Expo's `definition()` re-runs because there is no one-way
+  shutdown flag.
+- Android `streamAudioData` trims encoder pre-roll: when
+  `SEEK_TO_CLOSEST_SYNC` lands before the requested `startTimeMs` (common
+  for AAC/MP3 sync-frame containers), source-rate frames whose presentation
+  time is before `startTimeMs` are dropped before resampling so the first
+  emitted sample lines up with the requested start.
 - Web `streamAudioData` clamps the `onProgress` fraction to `[0, 1]` so
   resample rounding on the tail chunk never reports `> 1`. iOS and Android
   also emit a final `onProgress` after the tail chunk for parity with the
