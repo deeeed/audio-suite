@@ -24,6 +24,16 @@
     "expression": "JSON.stringify(globalThis.__AGENTIC__?.getPageState?.() || null)",
     "async": false
   },
+  "long-audio-validation-state": {
+    "description": "Current state of the long audio validation page",
+    "expression": "JSON.stringify(globalThis.__AGENTIC__?.getPageState?.() || null)",
+    "async": false
+  },
+  "long-audio-validation-progress": {
+    "description": "Current long audio validation progress from the app-side bridge",
+    "expression": "JSON.stringify(globalThis.__AGENTIC__?.getLongAudioValidationProgress?.() || null)",
+    "async": false
+  },
   "audio-player-state": {
     "description": "AudioPlayer screen probe state (mounted flag plus ExtractionState fields).",
     "expression": "JSON.stringify(globalThis.__AGENTIC__?.audioPlayer?.getState() || null)",

@@ -360,6 +360,17 @@ export const MoreScreen = () => {
                                     ...styles.listItemContainer,
                                     backgroundColor: theme.colors.errorContainer,
                                 }}
+                                label="Long Audio Validation"
+                                subLabel="Decode and transcribe staged long fixtures with live progress"
+                                onPress={() => {
+                                    router.navigate('/long-audio-validation')
+                                }}
+                            />
+                            <ListItem
+                                contentContainerStyle={{
+                                    ...styles.listItemContainer,
+                                    backgroundColor: theme.colors.errorContainer,
+                                }}
                                 label="Moonshine Live Demo"
                                 subLabel="Small live streaming with medium finalize-on-stop"
                                 onPress={() => {
