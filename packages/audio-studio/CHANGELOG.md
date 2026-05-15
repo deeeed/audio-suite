@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-05-15
+
+Stable release of the progressive long-audio decode API introduced in `3.2.0-beta.1`.
+
+### Added
+
+- `streamAudioData(options, callbacks)` for cross-platform progressive file decoding without materializing full long recordings in memory.
+- `getAudioDecodeCapabilities()` for platform decode feature discovery.
+- Long-audio validation tooling and playground screen for decode/transcription progress, cancellation, and Moonshine/Sherpa benchmark runs.
+
+### Fixed
+
+- Improved `streamAudioData` parity across iOS, Android, and web for channel defaults, sample-rate handling, range progress, cancellation, chunk sizing, and long-file memory behavior.
+
 ## [3.2.0-beta.1] - 2026-05-14
 
 Beta release for client validation of the progressive decode API.
@@ -721,7 +735,8 @@ Beta release for client validation of the progressive decode API.
 - Audio features extraction during recording
 - Consistent WAV PCM recording format across all platforms
 
-[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.1.1...HEAD
+[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.2.0...HEAD
+[3.2.0]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.1.1...@siteed/audio-studio@3.2.0
 [3.1.1]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.1.0...@siteed/audio-studio@3.1.1
 [3.1.0]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.0.5...@siteed/audio-studio@3.1.0
 [3.0.5]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.0.4...@siteed/audio-studio@3.0.5

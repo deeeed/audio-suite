@@ -8465,7 +8465,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@siteed/audio-studio@npm:3.2.0-beta.1, @siteed/audio-studio@workspace:^, @siteed/audio-studio@workspace:packages/audio-studio":
+"@siteed/audio-studio@npm:3.2.0, @siteed/audio-studio@workspace:^, @siteed/audio-studio@workspace:packages/audio-studio":
   version: 0.0.0-use.local
   resolution: "@siteed/audio-studio@workspace:packages/audio-studio"
   dependencies:
@@ -8669,7 +8669,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@siteed/expo-audio-studio@workspace:packages/expo-audio-studio"
   dependencies:
-    "@siteed/audio-studio": "npm:3.2.0-beta.1"
+    "@siteed/audio-studio": "npm:3.2.0"
   languageName: unknown
   linkType: soft
 

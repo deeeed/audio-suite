@@ -256,7 +256,7 @@ on file presence or `pickFirst` alone. Moonshine is safest when
 `libmoonshine.so` imports unversioned `UND OrtGetApiBase`; a versioned import
 such as `OrtGetApiBase@VERS_...` must match the selected `libonnxruntime.so`.
 
-The `0.3.3` default Maven artifact (`ai.moonshine:moonshine-voice:0.0.59`) has
+The current default Maven artifact (`ai.moonshine:moonshine-voice:0.0.59`) has
 been observed with `OrtGetApiBase@VERS_1.23.0`, which is risky beside
 `@siteed/sherpa-onnx.rn@1.2.0`'s `VERS_1.24.3` runtime. Use a compatible custom
 or source Moonshine AAR, align the other runtime provider, or patch after
@@ -272,7 +272,7 @@ xcframework dynamically.
 By default, the script downloads
 `Moonshine.xcframework.zip` from the package release artifact URL for the
 current npm version, using the `@siteed/moonshine.rn@<version>` GitHub release
-tag. For the `0.3.3` beta line, the released archive is `91,320,003` bytes
+tag. For the current native artifact line, the released archive is `91,320,003` bytes
 (about `87 MiB`) and expands to about `198 MiB` for the xcframework. The
 prepared `prebuilt/ios` directory is about `333 MiB` after the selected slice is
 copied into `prebuilt/ios/current`, so CI and developer machines need network
@@ -401,7 +401,7 @@ yarn validate:offline:contract <model-id> [device-filter]
 `release:beta:preflight` validates local type/tests/tarball/native contracts.
 `validate:ios-release-artifact` is intentionally separate because it is a
 networked publish gate: it checks reachability and downloads the full iOS
-release archive, about `87 MiB` for the `0.3.3` beta line, to verify the pinned
+release archive, about `87 MiB` for the current native artifact line, to verify the pinned
 SHA-256 before npm publish.
 
 ## Known limitations
