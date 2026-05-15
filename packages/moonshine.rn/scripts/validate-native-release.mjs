@@ -3,6 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
@@ -64,6 +65,10 @@ function readelfCandidates() {
 const packageJson = JSON.parse(
   fs.readFileSync(path.join(PACKAGE_ROOT, 'package.json'), 'utf8')
 )
+
+function sha256File(filePath) {
+  return createHash('sha256').update(fs.readFileSync(filePath)).digest('hex')
+}
 
 if (!packageJson.moonshineVersion) {
   throw new Error('package.json must define moonshineVersion for native release validation')
@@ -269,6 +274,18 @@ console.log('Repo-local generated prebuilt/ios/current/ artifacts are intentiona
 
 const localAarPath = path.join(PACKAGE_ROOT, ANDROID_AAR)
 if (fs.existsSync(localAarPath)) {
+  const metadataPath = path.join(PACKAGE_ROOT, 'prebuilt/android/build-metadata.json')
+  const androidMetadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'))
+  if (!/^[a-f0-9]{64}$/i.test(androidMetadata.aarSha256 || '')) {
+    throw new Error('Android build metadata must include aarSha256 for repo-local AAR reproducibility')
+  }
+  const actualAarSha256 = sha256File(localAarPath)
+  if (androidMetadata.aarSha256 !== actualAarSha256) {
+    throw new Error(
+      `Android AAR sha256 mismatch. metadata=${androidMetadata.aarSha256} actual=${actualAarSha256}`
+    )
+  }
+
   const androidAbiReports = inspectAndroidAar(localAarPath)
   const bundledOnnxAbis = androidAbiReports
     .filter((report) => report.bundlesOnnxRuntime)
@@ -277,6 +294,7 @@ if (fs.existsSync(localAarPath)) {
     .filter((report) => !report.bundlesOnnxRuntime)
     .map((report) => report.abi)
 
+  console.log(`Repo-local Android AAR sha256 verified: ${actualAarSha256}`)
   console.log(
     `Repo-local Android AAR ABIs inspected: ${androidAbiReports
       .map((report) => report.abi)

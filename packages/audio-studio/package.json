@@ -100,7 +100,13 @@
         "release": "./publish.sh",
         "agent:test:unit": "yarn test:android:unit",
         "agent:test:integration": "yarn test:android:instrumented",
-        "agent:compilation:check": "yarn typecheck && yarn build"
+        "agent:compilation:check": "yarn typecheck && yarn build",
+        "android": "cd ../../apps/playground && yarn android",
+        "android:launch": "cd ../../apps/playground && yarn android:launch",
+        "validate:stream-long": "node scripts/validate-stream-long.mjs",
+        "android:device": "cd ../../apps/playground && yarn android:device",
+        "android:device:launch": "cd ../../apps/playground && yarn android:device:launch",
+        "summarize:stream-long": "node scripts/summarize-stream-long.mjs"
     },
     "devDependencies": {
         "@expo/config-plugins": "~54.0.0",

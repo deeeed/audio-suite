@@ -1,6 +1,6 @@
 export type AgenticAsyncResult = {
     op: string
-    status: 'pending' | 'success' | 'error'
+    status: 'pending' | 'success' | 'cancelled' | 'error'
     result?: unknown
     error?: string
 }

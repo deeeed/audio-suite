@@ -28,9 +28,17 @@ import {
     extractAudioAnalysis,
     extractMelSpectrogram,
     trimAudio,
+    streamAudioData,
+    getAudioDecodeCapabilities,
     AudioDeviceManager,
 } from '@siteed/audio-studio'
-import { OnnxInference, typedArrayToBase64, base64ToTypedArray } from '@siteed/sherpa-onnx.rn'
+import {
+    ASR as SherpaASR,
+    OnnxInference,
+    typedArrayToBase64,
+    base64ToTypedArray,
+    type AsrModelConfig,
+} from '@siteed/sherpa-onnx.rn'
 import type { OnnxTensorData } from '@siteed/sherpa-onnx.rn'
 import {
     getBenchmarkModelOrThrow,
@@ -46,6 +54,7 @@ import {
 import Moonshine, {
     type MoonshineTranscriber,
     type MoonshineTranscriptEvent,
+    type MoonshineTranscriptionInput,
 } from '@siteed/moonshine.rn'
 import { readMonoPcm16Wav } from './utils/wav'
 import { createAudioStudioAgenticContracts } from './agentic/audioStudioContracts'
@@ -153,6 +162,638 @@ function stripFunctions(obj: Record<string, unknown>): Record<string, unknown> {
 
 // --- Async result store for fire-and-store pattern (CDP awaitPromise:false) ---
 let _lastAsyncResult: AgenticAsyncResult | null = null
+
+export type LongAudioValidationMode =
+    | 'decode-only'
+    | 'moonshine'
+    | 'full-decode'
+    | 'sherpa-online'
+    | 'sherpa-offline-segments'
+export type LongAudioMoonshineFeedMode = 'typed-array' | 'array-copy'
+
+export interface LongAudioValidationOptions {
+    fileUri: string
+    mode?: LongAudioValidationMode
+    modelId?: string
+    startTimeMs?: number
+    endTimeMs?: number
+    chunkDurationMs?: number
+    maxBufferedChunks?: number
+    progressEveryChunks?: number
+    cancelAfterChunks?: number
+    moonshineFeedMode?: LongAudioMoonshineFeedMode
+    sherpaAsrConfig?: AsrModelConfig
+    sherpaSegmentDurationMs?: number
+    sherpaReleaseBetweenSegments?: boolean
+}
+
+export interface LongAudioValidationProgress {
+    op: 'validateLongAudioStream'
+    status: 'idle' | 'pending' | 'success' | 'cancelled' | 'error'
+    mode: LongAudioValidationMode
+    fileUri: string
+    modelId?: string
+    moonshineFeedMode?: LongAudioMoonshineFeedMode
+    sherpaModelType?: string
+    sherpaSegmentCount?: number
+    sherpaReleaseBetweenSegments?: boolean
+    startedAtMs: number
+    updatedAtMs: number
+    elapsedWallMs: number
+    processedAudioMs: number
+    durationMs: number
+    progress: number
+    chunkCount: number
+    sampleCount: number
+    sampleRate: number
+    channels: number
+    transcriptLineCount: number
+    transcriptCharCount: number
+    transcriptEventCount: number
+    lastError?: string
+    cancelReason?: string
+}
+
+let _longAudioValidationProgress: LongAudioValidationProgress | null = null
+let _longAudioValidationAbortController: AbortController | null = null
+
+function getTranscriptCharCount(lengthByLineId: Map<string, number>): number {
+    let total = 0
+    for (const length of lengthByLineId.values()) {
+        total += length
+    }
+    return total
+}
+
+function updateLongAudioValidationProgress(
+    patch: Partial<LongAudioValidationProgress>,
+) {
+    if (!_longAudioValidationProgress) return
+    const now = Date.now()
+    _longAudioValidationProgress = {
+        ..._longAudioValidationProgress,
+        ...patch,
+        updatedAtMs: now,
+        elapsedWallMs: now - _longAudioValidationProgress.startedAtMs,
+    }
+}
+
+export async function validateLongAudioStream(
+    options: LongAudioValidationOptions,
+): Promise<void> {
+    const op = 'validateLongAudioStream'
+    const mode = options.mode ?? 'decode-only'
+    const moonshineFeedMode = options.moonshineFeedMode ?? 'typed-array'
+    const progressEveryChunks = options.progressEveryChunks ?? 40
+    const sherpaSegmentDurationMs = options.sherpaSegmentDurationMs ?? 30_000
+    const sherpaReleaseBetweenSegments =
+        options.sherpaReleaseBetweenSegments ??
+        (mode === 'sherpa-offline-segments' &&
+            options.sherpaAsrConfig?.modelType === 'qwen3')
+    const startedAtMs = Date.now()
+    const transcriptLengthByLineId = new Map<string, number>()
+    let transcriber: MoonshineTranscriber | null = null
+    let streamId: string | null = null
+    let removeListener: (() => void) | null = null
+    let sherpaAsrInitialized = false
+    let sherpaOfflineConfig: AsrModelConfig | null = null
+    let sherpaSegmentChunks: Float32Array[] = []
+    let sherpaSegmentSampleCount = 0
+    let sherpaSegmentCount = 0
+    let sherpaTranscriptText = ''
+    const controller = new AbortController()
+
+    if (!options.fileUri) {
+        throw new Error('validateLongAudioStream requires fileUri')
+    }
+    if (
+        mode !== 'decode-only' &&
+        mode !== 'moonshine' &&
+        mode !== 'full-decode' &&
+        mode !== 'sherpa-online' &&
+        mode !== 'sherpa-offline-segments'
+    ) {
+        throw new Error(`Unsupported long-audio validation mode: ${mode}`)
+    }
+    if (_longAudioValidationProgress?.status === 'pending') {
+        throw new Error('validateLongAudioStream is already running')
+    }
+
+    _lastAsyncResult = { op, status: 'pending' }
+    _longAudioValidationAbortController = controller
+    _longAudioValidationProgress = {
+        op,
+        status: 'pending',
+        mode,
+        fileUri: options.fileUri,
+        modelId: options.modelId,
+        moonshineFeedMode: mode === 'moonshine' ? moonshineFeedMode : undefined,
+        sherpaModelType:
+            mode === 'sherpa-online' || mode === 'sherpa-offline-segments'
+                ? options.sherpaAsrConfig?.modelType
+                : undefined,
+        sherpaReleaseBetweenSegments:
+            mode === 'sherpa-offline-segments'
+                ? sherpaReleaseBetweenSegments
+                : undefined,
+        startedAtMs,
+        updatedAtMs: startedAtMs,
+        elapsedWallMs: 0,
+        processedAudioMs: 0,
+        durationMs: 0,
+        progress: 0,
+        chunkCount: 0,
+        sampleCount: 0,
+        sampleRate: 0,
+        channels: 0,
+        transcriptLineCount: 0,
+        transcriptCharCount: 0,
+        transcriptEventCount: 0,
+    }
+
+    try {
+        if (mode === 'full-decode') {
+            let probedDurationMs = 0
+            const probeController = new AbortController()
+            await streamAudioData(
+                {
+                    fileUri: options.fileUri,
+                    startTimeMs: options.startTimeMs,
+                    endTimeMs: options.endTimeMs,
+                    targetSampleRate: 16000,
+                    channels: 1,
+                    normalizeAudio: true,
+                    streamFormat: 'float32',
+                    chunkDurationMs: options.chunkDurationMs ?? 250,
+                    maxBufferedChunks: 1,
+                    signal: probeController.signal,
+                },
+                {
+                    onChunk: async () => {
+                        probeController.abort()
+                    },
+                    onProgress: (progress) => {
+                        probedDurationMs = progress.durationMs
+                        updateLongAudioValidationProgress({
+                            durationMs: progress.durationMs,
+                            progress: 0,
+                        })
+                    },
+                },
+            ).catch((e) => {
+                const error = String(e)
+                if (!error.includes('ERR_AUDIO_STREAM_CANCELLED')) {
+                    throw e
+                }
+            })
+            if (probedDurationMs <= 0) {
+                throw new Error('Unable to determine fixture duration for full decode')
+            }
+            const fullDecodeStartTimeMs = options.startTimeMs ?? 0
+            const fullDecodeEndTimeMs =
+                options.endTimeMs ?? fullDecodeStartTimeMs + probedDurationMs
+            const startedDecodeAtMs = Date.now()
+            const fullDecode = await extractAudioData({
+                fileUri: options.fileUri,
+                startTimeMs: fullDecodeStartTimeMs,
+                endTimeMs: fullDecodeEndTimeMs,
+                includeNormalizedData: false,
+                includeBase64Data: false,
+                includeWavHeader: false,
+                decodingOptions: {
+                    targetSampleRate: 16000,
+                    targetChannels: 1,
+                    targetBitDepth: 16,
+                    normalizeAudio: true,
+                },
+            })
+            const decodeWallMs = Date.now() - startedDecodeAtMs
+            const sampleCount = fullDecode.samples * fullDecode.channels
+            updateLongAudioValidationProgress({
+                status: 'success',
+                processedAudioMs: fullDecode.durationMs,
+                durationMs: fullDecode.durationMs,
+                progress: fullDecode.durationMs > 0 ? 1 : 0,
+                chunkCount: 0,
+                sampleCount,
+                sampleRate: fullDecode.sampleRate,
+                channels: fullDecode.channels,
+            })
+            _lastAsyncResult = {
+                op,
+                status: 'success',
+                result: {
+                    ..._longAudioValidationProgress,
+                    fullDecode: {
+                        bitDepth: fullDecode.bitDepth,
+                        channels: fullDecode.channels,
+                        decodeWallMs,
+                        durationMs: fullDecode.durationMs,
+                        format: fullDecode.format,
+                        pcmBytes: fullDecode.pcmData.byteLength,
+                        sampleRate: fullDecode.sampleRate,
+                        samples: fullDecode.samples,
+                    },
+                },
+            }
+            return
+        }
+
+        if (mode === 'moonshine') {
+            const modelId = options.modelId ?? 'moonshine-small-streaming-en'
+            const model = getBenchmarkModelOrThrow(modelId)
+            if (model.engine !== 'moonshine') {
+                throw new Error(
+                    `validateLongAudioStream moonshine mode requires a Moonshine model; got ${modelId}`,
+                )
+            }
+            const config = await getMoonshineRuntimeConfig(modelId)
+            transcriber = await Moonshine.createTranscriberFromFiles(config)
+            streamId = await transcriber.createStream()
+            removeListener = transcriber.addListener((event: MoonshineTranscriptEvent) => {
+                if (streamId && event.streamId !== streamId) return
+                const lineId = event.line?.lineId
+                if (lineId) {
+                    transcriptLengthByLineId.set(lineId, event.line?.text?.length ?? 0)
+                }
+                updateLongAudioValidationProgress({
+                    transcriptEventCount:
+                        (_longAudioValidationProgress?.transcriptEventCount ?? 0) + 1,
+                    transcriptLineCount: transcriptLengthByLineId.size,
+                    transcriptCharCount: getTranscriptCharCount(transcriptLengthByLineId),
+                })
+            })
+            await transcriber.startStream(streamId)
+            updateLongAudioValidationProgress({ modelId })
+        }
+
+        if (mode === 'sherpa-online') {
+            const config = options.sherpaAsrConfig
+            if (!config?.modelDir || !config.modelType) {
+                throw new Error(
+                    'sherpa-online mode requires sherpaAsrConfig with modelDir and modelType',
+                )
+            }
+            if (config.modelType === 'qwen3') {
+                throw new Error(
+                    'Qwen3-ASR is offline-only in the current Sherpa ONNX RN API; use sherpa-offline-segments instead.',
+                )
+            }
+            if (config.streaming === false) {
+                throw new Error(
+                    'sherpa-online mode requires a streaming-capable Sherpa model/config. Use sherpa-offline-segments for offline configs.',
+                )
+            }
+            const streamingConfig: AsrModelConfig = {
+                ...config,
+                streaming: true,
+            }
+            const initResult = await SherpaASR.initialize(streamingConfig)
+            if (!initResult.success) {
+                throw new Error(
+                    initResult.error ??
+                        `Sherpa ASR init failed for ${streamingConfig.modelType}`,
+                )
+            }
+            const streamResult = await SherpaASR.createOnlineStream()
+            if (!streamResult.success) {
+                throw new Error('Sherpa ASR createOnlineStream failed')
+            }
+            sherpaAsrInitialized = true
+            updateLongAudioValidationProgress({
+                modelId: options.modelId ?? `sherpa:${streamingConfig.modelType}`,
+                sherpaModelType: streamingConfig.modelType,
+            })
+        }
+
+        if (mode === 'sherpa-offline-segments') {
+            const config = options.sherpaAsrConfig
+            if (!config?.modelDir || !config.modelType) {
+                throw new Error(
+                    'sherpa-offline-segments mode requires sherpaAsrConfig with modelDir and modelType',
+                )
+            }
+            const offlineConfig: AsrModelConfig = {
+                ...config,
+                streaming: false,
+            }
+            sherpaOfflineConfig = offlineConfig
+            const initResult = await SherpaASR.initialize(offlineConfig)
+            if (!initResult.success) {
+                throw new Error(
+                    initResult.error ??
+                        `Sherpa ASR init failed for ${offlineConfig.modelType}`,
+                )
+            }
+            sherpaAsrInitialized = true
+            updateLongAudioValidationProgress({
+                modelId: options.modelId ?? `sherpa:${offlineConfig.modelType}`,
+                sherpaModelType: offlineConfig.modelType,
+                sherpaSegmentCount: 0,
+            })
+        }
+
+        const reinitializeSherpaOfflineAsr = async () => {
+            if (!sherpaOfflineConfig) {
+                throw new Error('Sherpa offline config unavailable for reinitialize')
+            }
+            try {
+                await SherpaASR.release()
+            } catch (error) {
+                console.warn(
+                    '[LongAudioValidation] Sherpa release between segments failed',
+                    error,
+                )
+            }
+            sherpaAsrInitialized = false
+            const initResult = await SherpaASR.initialize(sherpaOfflineConfig)
+            if (!initResult.success) {
+                throw new Error(
+                    initResult.error ??
+                        `Sherpa ASR re-init failed for ${sherpaOfflineConfig.modelType}`,
+                )
+            }
+            sherpaAsrInitialized = true
+        }
+
+        const flushSherpaOfflineSegment = async (
+            sampleRate: number,
+            force = false,
+        ) => {
+            if (mode !== 'sherpa-offline-segments') return
+            const minSamples = Math.max(
+                1,
+                Math.floor((sherpaSegmentDurationMs / 1000) * sampleRate),
+            )
+            if (!force && sherpaSegmentSampleCount < minSamples) return
+            if (sherpaSegmentSampleCount === 0) return
+            // Keep long segment accumulation in Float32Array chunks to avoid
+            // retaining millions of boxed JS numbers while decode is still
+            // running. The current Sherpa RN bridge still requires number[]
+            // at the recognition boundary, so materialize it only for the
+            // bounded segment being submitted.
+            const segmentSamples = new Array<number>(sherpaSegmentSampleCount)
+            let offset = 0
+            for (const samples of sherpaSegmentChunks) {
+                for (let i = 0; i < samples.length; i += 1) {
+                    segmentSamples[offset + i] = samples[i]
+                }
+                offset += samples.length
+            }
+            sherpaSegmentChunks = []
+            sherpaSegmentSampleCount = 0
+            const recognized = await SherpaASR.recognizeFromSamples(
+                sampleRate,
+                segmentSamples,
+            )
+            if (!recognized.success) {
+                throw new Error(
+                    recognized.error ??
+                        `Sherpa offline segment ${sherpaSegmentCount + 1} failed`,
+                )
+            }
+            sherpaSegmentCount += 1
+            const text = (recognized.text ?? '').trim()
+            if (text) {
+                sherpaTranscriptText = sherpaTranscriptText
+                    ? `${sherpaTranscriptText}\n${text}`
+                    : text
+            }
+            updateLongAudioValidationProgress({
+                transcriptLineCount: sherpaTranscriptText
+                    ? sherpaTranscriptText.split('\n').length
+                    : 0,
+                transcriptCharCount: sherpaTranscriptText.length,
+                transcriptEventCount:
+                    (_longAudioValidationProgress?.transcriptEventCount ?? 0) + 1,
+                sherpaSegmentCount,
+            })
+            if (
+                sherpaReleaseBetweenSegments &&
+                !force &&
+                !controller.signal.aborted
+            ) {
+                await reinitializeSherpaOfflineAsr()
+            }
+        }
+
+        const result = await streamAudioData(
+            {
+                fileUri: options.fileUri,
+                startTimeMs: options.startTimeMs,
+                endTimeMs: options.endTimeMs,
+                targetSampleRate: 16000,
+                channels: 1,
+                normalizeAudio: true,
+                streamFormat: 'float32',
+                chunkDurationMs: options.chunkDurationMs ?? 250,
+                maxBufferedChunks: options.maxBufferedChunks ?? 4,
+                signal: controller.signal,
+            },
+            {
+                onChunk: async (chunk) => {
+                    try {
+                        if (mode === 'moonshine') {
+                            if (!transcriber || !streamId) {
+                                throw new Error('Moonshine stream was not initialized')
+                            }
+                            const samples: MoonshineTranscriptionInput =
+                                moonshineFeedMode === 'array-copy'
+                                    ? Array.from(chunk.samples)
+                                    : chunk.samples
+                            await transcriber.addAudioToStream(
+                                streamId,
+                                samples,
+                                chunk.sampleRate,
+                            )
+                        }
+                        if (mode === 'sherpa-online') {
+                            // Sherpa's current React Native ASR service accepts
+                            // number[] at the JS boundary. This path still
+                            // benchmarks long-audio decode + online ASR progress,
+                            // but it is not zero-copy like a future typed-array/JSI
+                            // bridge could be.
+                            await SherpaASR.acceptWaveform(
+                                chunk.sampleRate,
+                                Array.from(chunk.samples),
+                            )
+                            if (
+                                chunk.chunkIndex % progressEveryChunks === 0 ||
+                                chunk.isFinal
+                            ) {
+                                const partial = await SherpaASR.getResult().catch(
+                                    () => null,
+                                )
+                                const text = partial?.text ?? ''
+                                updateLongAudioValidationProgress({
+                                    transcriptLineCount: text ? 1 : 0,
+                                    transcriptCharCount: text.length,
+                                    transcriptEventCount:
+                                        (_longAudioValidationProgress
+                                            ?.transcriptEventCount ?? 0) + 1,
+                                })
+                            }
+                        }
+                        if (mode === 'sherpa-offline-segments') {
+                            sherpaSegmentChunks.push(chunk.samples)
+                            sherpaSegmentSampleCount += chunk.samples.length
+                            await flushSherpaOfflineSegment(chunk.sampleRate, chunk.isFinal)
+                        }
+
+                        const chunkCount = chunk.chunkIndex + 1
+                        const sampleCount =
+                            (_longAudioValidationProgress?.sampleCount ?? 0) +
+                            chunk.sampleCount
+                        if (
+                            chunkCount % progressEveryChunks === 0 ||
+                            chunk.isFinal ||
+                            options.cancelAfterChunks === chunkCount
+                        ) {
+                            updateLongAudioValidationProgress({
+                                chunkCount,
+                                processedAudioMs: chunk.endTimeMs,
+                                sampleCount,
+                                sampleRate: chunk.sampleRate,
+                                channels: chunk.channels,
+                            })
+                        } else if (_longAudioValidationProgress) {
+                            _longAudioValidationProgress.sampleCount = sampleCount
+                        }
+                        if (
+                            options.cancelAfterChunks !== undefined &&
+                            chunkCount >= options.cancelAfterChunks
+                        ) {
+                            updateLongAudioValidationProgress({
+                                cancelReason: `cancelAfterChunks:${options.cancelAfterChunks}`,
+                            })
+                            controller.abort()
+                        }
+                    } catch (error) {
+                        controller.abort()
+                        throw error
+                    }
+                },
+                onProgress: (progress) => {
+                    updateLongAudioValidationProgress({
+                        processedAudioMs: progress.processedMs,
+                        durationMs: progress.durationMs,
+                        progress: progress.progress,
+                        chunkCount: progress.emittedChunks,
+                    })
+                },
+            },
+        )
+
+        let moonshineResult: { text?: string; lines?: unknown[] } | null = null
+        if (mode === 'moonshine' && transcriber && streamId) {
+            moonshineResult = (await transcriber.stopStream(streamId)) as unknown as {
+                text?: string
+                lines?: unknown[]
+            }
+        }
+        let sherpaResult: { text?: string; tokens?: unknown[]; timestamps?: unknown[] } | null =
+            null
+        if (mode === 'sherpa-online' && sherpaAsrInitialized) {
+            sherpaResult = await SherpaASR.getResult().catch(() => null)
+        }
+        if (mode === 'sherpa-offline-segments' && sherpaAsrInitialized) {
+            await flushSherpaOfflineSegment(result.sampleRate, true)
+            sherpaResult = { text: sherpaTranscriptText }
+        }
+
+        const cancelled = result.cancelled
+        const completionStatus = cancelled ? 'cancelled' : 'success'
+        updateLongAudioValidationProgress({
+            status: completionStatus,
+            processedAudioMs: cancelled
+                ? (_longAudioValidationProgress?.processedAudioMs ?? 0)
+                : result.durationMs,
+            durationMs: result.durationMs,
+            progress: cancelled
+                ? (_longAudioValidationProgress?.progress ?? 0)
+                : result.durationMs > 0
+                  ? 1
+                  : (_longAudioValidationProgress?.progress ?? 1),
+            chunkCount: result.chunks,
+            sampleCount: result.samples,
+            sampleRate: result.sampleRate,
+            channels: result.channels,
+            transcriptLineCount:
+                sherpaResult?.text != null
+                    ? sherpaResult.text
+                        ? sherpaResult.text.split('\n').length
+                        : 0
+                    : Math.max(
+                          moonshineResult?.lines?.length ?? 0,
+                          transcriptLengthByLineId.size
+                      ),
+            transcriptCharCount:
+                sherpaResult?.text?.length ??
+                moonshineResult?.text?.length ??
+                getTranscriptCharCount(transcriptLengthByLineId),
+        })
+
+        _lastAsyncResult = {
+            op,
+            status: completionStatus,
+            result: {
+                ..._longAudioValidationProgress,
+                audio: result,
+                moonshine: moonshineResult
+                    ? {
+                          lineCount: Math.max(
+                              moonshineResult.lines?.length ?? 0,
+                              transcriptLengthByLineId.size
+                          ),
+                          transcriptCharCount: moonshineResult.text?.length ?? 0,
+                      }
+                    : null,
+                sherpa: sherpaResult
+                    ? {
+                          transcriptCharCount: sherpaResult.text?.length ?? 0,
+                          tokenCount: sherpaResult.tokens?.length ?? 0,
+                          timestampCount: sherpaResult.timestamps?.length ?? 0,
+                      }
+                    : null,
+            },
+        }
+    } catch (e) {
+        const error = String(e)
+        updateLongAudioValidationProgress({ status: 'error', lastError: error })
+        _lastAsyncResult = {
+            op,
+            status: 'error',
+            error,
+            result: _longAudioValidationProgress,
+        }
+    } finally {
+        removeListener?.()
+        if (transcriber && streamId) {
+            await transcriber.removeStream(streamId).catch(() => undefined)
+        }
+        await safeReleaseMoonshineTranscriber(transcriber)
+        await safeReleaseMoonshine()
+        if (sherpaAsrInitialized) {
+            await SherpaASR.release().catch(() => undefined)
+        }
+        if (_longAudioValidationAbortController === controller) {
+            _longAudioValidationAbortController = null
+        }
+    }
+}
+
+export function getLongAudioValidationProgress(): LongAudioValidationProgress | null {
+    return _longAudioValidationProgress
+}
+
+export function cancelLongAudioValidation(reason = 'cancelled-by-agent') {
+    if (!_longAudioValidationAbortController) {
+        return { cancelled: false, reason: 'not-running' }
+    }
+    updateLongAudioValidationProgress({ cancelReason: reason })
+    _longAudioValidationAbortController.abort()
+    return { cancelled: true, reason }
+}
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const JFK_MP3_ASSET = require('@assets/jfk.mp3')
@@ -344,6 +985,15 @@ if (__DEV__) {
             }
         },
 
+        resolveDocumentFileUri: (relativePath: string) => {
+            const normalizedPath = String(relativePath || '').replace(/^\/+/, '')
+            return {
+                uri: `${FileSystem.documentDirectory}${normalizedPath}`,
+                documentDirectory: FileSystem.documentDirectory,
+                relativePath: normalizedPath,
+            }
+        },
+
         getStepHud: () => {
             return stepHudStore.getStep()
         },
@@ -435,6 +1085,29 @@ if (__DEV__) {
 
         getLastResult: () => {
             return _lastAsyncResult
+        },
+
+        getLongAudioValidationProgress: () => {
+            return getLongAudioValidationProgress()
+        },
+
+        cancelLongAudioValidation: (reason?: string) => {
+            return cancelLongAudioValidation(reason)
+        },
+
+        validateLongAudioStream: (options: LongAudioValidationOptions) => {
+            const op = 'validateLongAudioStream'
+            void validateLongAudioStream(options).catch((e) => {
+                const error = String(e)
+                updateLongAudioValidationProgress({ status: 'error', lastError: error })
+                _lastAsyncResult = {
+                    op,
+                    status: 'error',
+                    error,
+                    result: _longAudioValidationProgress,
+                }
+            })
+            return { op, status: 'pending' }
         },
 
         ...createAudioStudioAgenticContracts({
@@ -1286,6 +1959,108 @@ if (__DEV__) {
                             channels: result.channels,
                             durationMs: result.durationMs,
                             samples: result.samples,
+                        },
+                    }
+                } catch (e) {
+                    _lastAsyncResult = { op, status: 'error', error: String(e) }
+                }
+            })()
+            return { op, status: 'pending' }
+        },
+
+        testStreamAudioData: (opts?: {
+            chunkDurationMs?: number
+            targetSampleRate?: number
+            channels?: number
+            cancelAfterChunks?: number
+        }) => {
+            const op = 'streamAudioData'
+            _lastAsyncResult = { op, status: 'pending' }
+            void (async () => {
+                try {
+                    const caps = await getAudioDecodeCapabilities()
+                    const fileUri = await loadSampleFileUri()
+                    const controller = new AbortController()
+                    const chunkSummaries: {
+                        chunkIndex: number
+                        startTimeMs: number
+                        endTimeMs: number
+                        sampleCount: number
+                        firstSample: number
+                        lastSample: number
+                        isFinal: boolean
+                    }[] = []
+                    let monotonic = true
+                    let lastEnd = -1
+                    let prevIndex = -1
+                    let progressEvents = 0
+
+                    const result = await streamAudioData(
+                        {
+                            fileUri,
+                            chunkDurationMs: opts?.chunkDurationMs ?? 250,
+                            targetSampleRate: opts?.targetSampleRate ?? 16000,
+                            channels: opts?.channels ?? 1,
+                            streamFormat: 'float32',
+                            normalizeAudio: true,
+                            maxBufferedChunks: 2,
+                            signal: controller.signal,
+                        },
+                        {
+                            onChunk: ({
+                                chunkIndex,
+                                startTimeMs,
+                                endTimeMs,
+                                sampleCount,
+                                samples,
+                                isFinal,
+                            }) => {
+                                if (chunkIndex !== prevIndex + 1) {
+                                    monotonic = false
+                                }
+                                prevIndex = chunkIndex
+                                if (startTimeMs < lastEnd) {
+                                    monotonic = false
+                                }
+                                lastEnd = endTimeMs
+                                if (chunkSummaries.length < 8) {
+                                    chunkSummaries.push({
+                                        chunkIndex,
+                                        startTimeMs,
+                                        endTimeMs,
+                                        sampleCount,
+                                        firstSample: samples[0] ?? 0,
+                                        lastSample: samples[samples.length - 1] ?? 0,
+                                        isFinal,
+                                    })
+                                }
+                                if (
+                                    opts?.cancelAfterChunks !== undefined &&
+                                    chunkIndex + 1 >= opts.cancelAfterChunks
+                                ) {
+                                    controller.abort()
+                                }
+                            },
+                            onProgress: () => {
+                                progressEvents += 1
+                            },
+                        }
+                    )
+                    _lastAsyncResult = {
+                        op,
+                        status: 'success',
+                        result: {
+                            platform: caps.platform,
+                            requestId: result.requestId,
+                            durationMs: result.durationMs,
+                            sampleRate: result.sampleRate,
+                            channels: result.channels,
+                            chunks: result.chunks,
+                            samples: result.samples,
+                            cancelled: result.cancelled,
+                            monotonic,
+                            progressEvents,
+                            firstChunks: chunkSummaries,
                         },
                     }
                 } catch (e) {
