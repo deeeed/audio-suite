@@ -22,12 +22,18 @@ import type {
   MoonshineProcessUtteranceResult,
   MoonshineTranscriptEvent,
   MoonshineTranscriptionResult,
+  MoonshineTranscriptionInput,
   MoonshineTranscribeParams,
 } from '../types/interfaces';
 import { OfflineProgressTracker } from './offlineProgressTracker';
 import { runWithAbortSignal } from './transcriptionCancellation';
 
 type MoonshineListener = (event: MoonshineTranscriptEvent) => void;
+
+function toBridgeSamples(samples: MoonshineTranscriptionInput): number[] {
+  return Array.isArray(samples) ? samples : Array.from(samples);
+}
+
 export class MoonshineTranscriber {
   public constructor(
     private readonly service: MoonshineService,
@@ -35,7 +41,7 @@ export class MoonshineTranscriber {
   ) {}
 
   public addAudio(
-    samples: number[],
+    samples: MoonshineTranscriptionInput,
     sampleRate: number
   ): Promise<{ success: boolean }> {
     return this.service.addAudioForTranscriber(
@@ -47,7 +53,7 @@ export class MoonshineTranscriber {
 
   public addAudioToStream(
     streamId: string,
-    samples: number[],
+    samples: MoonshineTranscriptionInput,
     sampleRate: number
   ): Promise<{ success: boolean }> {
     return this.service.addAudioToStreamForTranscriber(
@@ -161,7 +167,7 @@ export class MoonshineService {
   private readonly offlineProgressTracker = new OfflineProgressTracker();
 
   public addAudio(
-    samples: number[],
+    samples: MoonshineTranscriptionInput,
     sampleRate: number
   ): Promise<{ success: boolean }> {
     return this.ensureDefaultTranscriber().addAudio(samples, sampleRate);
@@ -169,19 +175,19 @@ export class MoonshineService {
 
   public addAudioForTranscriber(
     transcriberId: string,
-    samples: number[],
+    samples: MoonshineTranscriptionInput,
     sampleRate: number
   ): Promise<{ success: boolean }> {
     return requireNativeMoonshineModule().addAudioForTranscriber(
       transcriberId,
       sampleRate,
-      samples
+      toBridgeSamples(samples)
     );
   }
 
   public addAudioToStream(
     streamId: string,
-    samples: number[],
+    samples: MoonshineTranscriptionInput,
     sampleRate: number
   ): Promise<{ success: boolean }> {
     return this.ensureDefaultTranscriber().addAudioToStream(
@@ -194,14 +200,14 @@ export class MoonshineService {
   public addAudioToStreamForTranscriber(
     transcriberId: string,
     streamId: string,
-    samples: number[],
+    samples: MoonshineTranscriptionInput,
     sampleRate: number
   ): Promise<{ success: boolean }> {
     return requireNativeMoonshineModule().addAudioToStreamForTranscriber(
       transcriberId,
       streamId,
       sampleRate,
-      samples
+      toBridgeSamples(samples)
     );
   }
 
@@ -546,13 +552,13 @@ export class MoonshineService {
   private transcribePcmForTranscriber(
     transcriberId: string,
     sampleRate: number,
-    samples: number[],
+    samples: MoonshineTranscriptionInput,
     options?: MoonshinePcmTranscribeOptions
   ): Promise<MoonshineTranscriptionResult> {
     return requireNativeMoonshineModule().transcribeFromSamplesForTranscriber(
       transcriberId,
       sampleRate,
-      samples,
+      toBridgeSamples(samples),
       options
     );
   }

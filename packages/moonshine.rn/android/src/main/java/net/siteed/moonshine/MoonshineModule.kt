@@ -720,6 +720,12 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
 
   private fun buildTranscriberOptions(config: ReadableMap): Array<TranscriberOption> {
     val options = mutableListOf<TranscriberOption>()
+    val includeAudioData = readIncludeAudioData(config)
+    // `includeAudioData` is the public RN switch for returning per-line PCM.
+    // The upstream native core defaults `return_audio_data` to true, which makes
+    // long streaming transcripts retain each VAD segment's FloatArray even when
+    // RN suppresses `line.audioData` in emitted maps. Keep the native retention
+    // policy aligned with the JS contract and default it off for long sessions.
     if (config.hasKey("options") && !config.isNull("options")) {
       val nativeOptions = config.getMap("options")
       nativeOptions?.let {
@@ -850,6 +856,7 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
         }
       }
     }
+    options.add(TranscriberOption("return_audio_data", includeAudioData.toString()))
     return options.toTypedArray()
   }
 
@@ -885,11 +892,6 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
         defaultTranscriberId?.let { releaseTranscriberInternal(it) }
       }
 
-      val includeAudioData =
-        config.hasKey("includeAudioData") &&
-        !config.isNull("includeAudioData") &&
-        config.getBoolean("includeAudioData")
-
       val transcriberOptions = buildTranscriberOptions(config)
       val modelArch = resolveModelArch(config)
       val handle = loader(transcriberOptions, modelArch)
@@ -902,7 +904,7 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
       val state = TranscriberState(
         handle = handle,
         defaultStreamHandle = loadedDefaultStreamHandle,
-        includeAudioDataInLines = includeAudioData
+        includeAudioDataInLines = readIncludeAudioData(config)
       )
       registerStreamState(state, loadedDefaultStreamHandle)
       transcriberStates[transcriberId] = state
@@ -916,6 +918,12 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
     } catch (error: Throwable) {
       promise.resolve(errorResult(error.message ?: "Moonshine load failed"))
     }
+  }
+
+  private fun readIncludeAudioData(config: ReadableMap): Boolean {
+    return config.hasKey("includeAudioData") &&
+      !config.isNull("includeAudioData") &&
+      config.getBoolean("includeAudioData")
   }
 
   private fun emitEvent(
