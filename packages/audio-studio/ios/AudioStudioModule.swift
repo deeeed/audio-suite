@@ -960,8 +960,7 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                 fileUri: fileUri,
                 startTimeMs: options["startTimeMs"] as? Double,
                 endTimeMs: options["endTimeMs"] as? Double,
-                targetSampleRate: options["targetSampleRate"] as? Double
-                    ?? (options["sampleRate"] as? Double),
+                targetSampleRate: options["targetSampleRate"] as? Double,
                 channels: options["channels"] as? Int,
                 normalizeAudio: options["normalizeAudio"] as? Bool ?? true,
                 chunkDurationMs: chunkDurationMs,

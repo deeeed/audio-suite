@@ -7,7 +7,7 @@ export interface ProcessAudioBufferOptions {
     arrayBuffer?: ArrayBuffer
     fileUri?: string
     targetSampleRate?: number
-    targetChannels: number
+    targetChannels?: number
     normalizeAudio: boolean
     startTimeMs?: number
     endTimeMs?: number
@@ -93,6 +93,7 @@ export async function processAudioBuffer({
         buffer = await ctx.decodeAudioData(audioData)
 
         const effectiveTargetSampleRate = targetSampleRate ?? buffer.sampleRate
+        const effectiveTargetChannels = targetChannels ?? buffer.numberOfChannels
 
         logger?.debug('Decoded audio buffer:', {
             originalChannels: buffer.numberOfChannels,
@@ -161,7 +162,7 @@ export async function processAudioBuffer({
 
         // Create offline context for resampling
         const offlineCtx = new OfflineAudioContext(
-            targetChannels,
+            effectiveTargetChannels,
             Math.ceil(
                 (samplesNeeded * effectiveTargetSampleRate) / buffer.sampleRate
             ),

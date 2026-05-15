@@ -599,7 +599,7 @@ async function streamAudioDataWeb(
         const processed = await processAudioBuffer({
             fileUri: options.fileUri,
             targetSampleRate: options.targetSampleRate,
-            targetChannels: options.channels ?? 1,
+            targetChannels: options.channels,
             normalizeAudio: options.normalizeAudio ?? true,
             startTimeMs: options.startTimeMs,
             endTimeMs: options.endTimeMs,

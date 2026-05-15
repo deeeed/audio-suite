@@ -1051,8 +1051,7 @@ class AudioStudioModule : Module(), EventSender, AudioStreamDecoderDelegate {
                     fileUri = fileUri,
                     startTimeMs = (options["startTimeMs"] as? Number)?.toLong(),
                     endTimeMs = (options["endTimeMs"] as? Number)?.toLong(),
-                    targetSampleRate = (options["targetSampleRate"] as? Number)?.toInt()
-                        ?: (options["sampleRate"] as? Number)?.toInt(),
+                    targetSampleRate = (options["targetSampleRate"] as? Number)?.toInt(),
                     channels = (options["channels"] as? Number)?.toInt(),
                     normalizeAudio = (options["normalizeAudio"] as? Boolean) ?: true,
                     chunkDurationMs = chunkDurationMs,
