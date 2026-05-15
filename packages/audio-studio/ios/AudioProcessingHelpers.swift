@@ -681,15 +681,20 @@ func extractRawAudioData(
         for channel in 0..<channels {
             let sample = floatData[channel][frame]
             
-            let normalizedSample = decodingConfig.normalizeAudio ? 
-                max(-1.0, min(1.0, sample)) : sample
-            
+            // Sanitize: replace NaN/Inf with 0 then clamp. Skip clamp when
+            // normalizeAudio=false so callers see the raw decoded magnitude,
+            // but always finite-check to avoid Swift's `Int16(_:)` /
+            // `Int32(_:)` trap on non-finite values.
+            let safeSample: Float = sample.isFinite ? sample : 0
+            let normalizedSample = decodingConfig.normalizeAudio ?
+                max(-1.0, min(1.0, safeSample)) : safeSample
+
             switch targetBitDepth {
             case 16:
-                let intValue = Int16(normalizedSample * Float(Int16.max))
+                let intValue = safeFloatToInt16(normalizedSample)
                 pcmData.append(contentsOf: withUnsafeBytes(of: intValue) { Array($0) })
             case 32:
-                let intValue = Int32(normalizedSample * Float(Int32.max))
+                let intValue = safeFloatToInt32(normalizedSample)
                 pcmData.append(contentsOf: withUnsafeBytes(of: intValue) { Array($0) })
             default:
                 throw NSError(domain: "AudioProcessing", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unsupported bit depth \(targetBitDepth)"])

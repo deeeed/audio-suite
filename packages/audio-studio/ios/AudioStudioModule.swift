@@ -9,6 +9,10 @@ private let recordingInterruptedEvent: String = "onRecordingInterrupted"
 private let deviceChangedEvent: String = "deviceChangedEvent"
 private let trimProgressEvent: String = "TrimProgress"
 private let errorEvent: String = "error"
+private let audioStreamChunkEvent: String = "AudioDataStreamChunk"
+private let audioStreamProgressEvent: String = "AudioDataStreamProgress"
+private let audioStreamCompleteEvent: String = "AudioDataStreamComplete"
+private let audioStreamErrorEvent: String = "AudioDataStreamError"
 private let DEFAULT_SEGMENT_DURATION_MS = 100
 private let audioDeviceTypeBuiltinMic = "builtin_mic"
 private let audioDeviceTypeBluetooth = "bluetooth"
@@ -18,12 +22,15 @@ private let audioDeviceTypeWiredHeadphones = "wired_headphones"
 private let audioDeviceTypeSpeaker = "speaker"
 private let audioDeviceTypeUnknown = "unknown"
 
-public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceManagerDelegate {
+public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceManagerDelegate, AudioStreamDecoderDelegate {
     private var streamManager = AudioStreamManager()
     private let notificationCenter = UNUserNotificationCenter.current()
     private let notificationIdentifier = "audio_recording_notification"
     private var deviceManager = AudioDeviceManager()
     private var deviceChangeObserver: Any?
+
+    private let streamDecodersLock = NSLock()
+    private var streamDecoders: [String: AudioStreamDecoder] = [:]
 
     // Serial queue for AVAudioEngine lifecycle ops (prepare/start/stop).
     // Prevents concurrent mutation of shared engine state and keeps callers
@@ -43,7 +50,11 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             recordingInterruptedEvent,
             deviceChangedEvent,
             trimProgressEvent,
-            errorEvent
+            errorEvent,
+            audioStreamChunkEvent,
+            audioStreamProgressEvent,
+            audioStreamCompleteEvent,
+            audioStreamErrorEvent
         ])
         
         OnCreate {
@@ -71,6 +82,20 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
         OnDestroy {
             Logger.debug("AudioStudioModule", "Module destroyed, stopping device monitoring.")
             _ = streamManager.stopRecording()
+            // Cancel any in-flight streamAudioData decoders before the module
+            // is torn down. Without this, decoder threads can outlive the
+            // module and try to emit events through a destroyed instance.
+            // Detach each decoder's delegate *before* cancelling so the
+            // terminal "cancelled" events the worker emits after observing
+            // `cancel()` are dropped instead of being forwarded.
+            self.streamDecodersLock.lock()
+            let inflight = self.streamDecoders
+            self.streamDecoders.removeAll()
+            self.streamDecodersLock.unlock()
+            for (_, decoder) in inflight {
+                decoder.delegate = nil
+                decoder.cancel()
+            }
             // Clear device manager delegate
             deviceManager.delegate = nil
         }
@@ -901,8 +926,166 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                 }
             }
         }
+
+        AsyncFunction("streamAudioData") { (options: [String: Any], promise: Promise) in
+            guard let requestId = options["requestId"] as? String,
+                  let fileUri = options["fileUri"] as? String else {
+                promise.reject(
+                    "ERR_AUDIO_STREAM_INVALID_RANGE",
+                    "fileUri and requestId are required"
+                )
+                return
+            }
+
+            let streamFormat = options["streamFormat"] as? String ?? "float32"
+            guard streamFormat == "float32" else {
+                promise.reject(
+                    "ERR_AUDIO_STREAM_UNSUPPORTED_FORMAT",
+                    "Only streamFormat='float32' is supported"
+                )
+                return
+            }
+
+            let chunkDurationMs = options["chunkDurationMs"] as? Int ?? 1000
+            guard (10...60000).contains(chunkDurationMs) else {
+                promise.reject(
+                    "ERR_AUDIO_STREAM_INVALID_RANGE",
+                    "chunkDurationMs must be in [10, 60000]"
+                )
+                return
+            }
+
+            let opts = AudioStreamDecoder.Options(
+                requestId: requestId,
+                fileUri: fileUri,
+                startTimeMs: options["startTimeMs"] as? Double,
+                endTimeMs: options["endTimeMs"] as? Double,
+                targetSampleRate: options["targetSampleRate"] as? Double,
+                channels: options["channels"] as? Int,
+                normalizeAudio: options["normalizeAudio"] as? Bool ?? true,
+                chunkDurationMs: chunkDurationMs,
+                maxChunkBytes: options["maxChunkBytes"] as? Int,
+                maxBufferedChunks: options["maxBufferedChunks"] as? Int ?? 4,
+                backpressureTimeoutMs: options["backpressureTimeoutMs"] as? Double
+            )
+
+            let decoder = AudioStreamDecoder(options: opts)
+            decoder.delegate = self
+            self.streamDecodersLock.lock()
+            if self.streamDecoders[requestId] != nil {
+                self.streamDecodersLock.unlock()
+                promise.reject(
+                    "ERR_AUDIO_STREAM_BUSY",
+                    "requestId already in use"
+                )
+                return
+            }
+            self.streamDecoders[requestId] = decoder
+            self.streamDecodersLock.unlock()
+            decoder.start()
+            promise.resolve(["requestId": requestId])
+        }
+
+        AsyncFunction("cancelStreamAudioData") { (requestId: String, promise: Promise) in
+            self.streamDecodersLock.lock()
+            let decoder = self.streamDecoders[requestId]
+            self.streamDecodersLock.unlock()
+            decoder?.cancel()
+            promise.resolve(["requestId": requestId, "cancelled": decoder != nil])
+        }
+
+        Function("acknowledgeStreamAudioChunk") { (requestId: String, chunkIndex: Int) in
+            self.streamDecodersLock.lock()
+            let decoder = self.streamDecoders[requestId]
+            self.streamDecodersLock.unlock()
+            decoder?.acknowledgeChunk(chunkIndex)
+        }
+
+        AsyncFunction("getAudioDecodeCapabilities") { (promise: Promise) in
+            promise.resolve([
+                "platform": "ios",
+                "supportedInputFormats": [
+                    "audio/wav",
+                    "audio/aac",
+                    "audio/mp4",
+                    "audio/mpeg",
+                    "audio/x-m4a",
+                    "audio/caf",
+                    "audio/aiff",
+                ],
+                "supportedOutputFormats": ["float32"],
+                "supportsCancellation": true,
+                "supportsBackpressure": true,
+                "supportsTimeRange": true,
+                "supportsTargetSampleRate": true,
+                "supportsChannelMixing": true,
+                "knownLimitations": [
+                    "Opus/WebM input depends on AVFoundation codec availability for the iOS version."
+                ],
+            ])
+        }
     }
-    
+
+    private func releaseStreamDecoder(_ requestId: String) {
+        streamDecodersLock.lock()
+        streamDecoders.removeValue(forKey: requestId)
+        streamDecodersLock.unlock()
+    }
+
+    /// Returns true when `requestId` is still tracked by the module. Used as
+    /// the lifecycle gate for delegate sends: callbacks that race with
+    /// `OnDestroy` (which clears the map *before* cancelling) see `false`
+    /// and skip `sendEvent`, so we never push events through a destroyed
+    /// React context.
+    private func isActiveStreamDecoder(_ requestId: String) -> Bool {
+        streamDecodersLock.lock()
+        defer { streamDecodersLock.unlock() }
+        return streamDecoders[requestId] != nil
+    }
+
+    // MARK: - AudioStreamDecoderDelegate
+
+    public func streamDecoder(
+        _ decoder: AudioStreamDecoder,
+        didEmitChunk payload: [String: Any]
+    ) {
+        guard let requestId = payload["requestId"] as? String,
+              isActiveStreamDecoder(requestId) else { return }
+        sendEvent(audioStreamChunkEvent, payload)
+    }
+
+    public func streamDecoder(
+        _ decoder: AudioStreamDecoder,
+        didReportProgress payload: [String: Any]
+    ) {
+        guard let requestId = payload["requestId"] as? String,
+              isActiveStreamDecoder(requestId) else { return }
+        sendEvent(audioStreamProgressEvent, payload)
+    }
+
+    public func streamDecoder(
+        _ decoder: AudioStreamDecoder,
+        didCompleteWith payload: [String: Any]
+    ) {
+        guard let requestId = payload["requestId"] as? String,
+              isActiveStreamDecoder(requestId) else { return }
+        releaseStreamDecoder(requestId)
+        sendEvent(audioStreamCompleteEvent, payload)
+    }
+
+    public func streamDecoder(
+        _ decoder: AudioStreamDecoder,
+        didFailWith payload: [String: Any]
+    ) {
+        guard let requestId = payload["requestId"] as? String,
+              isActiveStreamDecoder(requestId) else { return }
+        if let code = payload["code"] as? String,
+           code != "ERR_AUDIO_STREAM_CANCELLED" {
+            releaseStreamDecoder(requestId)
+        }
+        sendEvent(audioStreamErrorEvent, payload)
+    }
+
     func audioStreamManager(_ manager: AudioStreamManager, didReceiveInterruption info: [String: Any]) {
         Logger.debug("AudioStudioModule", "Delegate: didReceiveInterruption: \(info)")
         // Convert iOS interruption events to match the TypeScript types

@@ -6,8 +6,8 @@ import { ConsoleLike } from '../AudioStudio.types'
 export interface ProcessAudioBufferOptions {
     arrayBuffer?: ArrayBuffer
     fileUri?: string
-    targetSampleRate: number
-    targetChannels: number
+    targetSampleRate?: number
+    targetChannels?: number
     normalizeAudio: boolean
     startTimeMs?: number
     endTimeMs?: number
@@ -84,8 +84,16 @@ export async function processAudioBuffer({
         // Create context at original sample rate first
         ctx =
             audioContext ||
-            new (window.AudioContext || (window as any).webkitAudioContext)()
+            new (window.AudioContext ||
+                (
+                    window as unknown as {
+                        webkitAudioContext?: typeof AudioContext
+                    }
+                ).webkitAudioContext)()
         buffer = await ctx.decodeAudioData(audioData)
+
+        const effectiveTargetSampleRate = targetSampleRate ?? buffer.sampleRate
+        const effectiveTargetChannels = targetChannels ?? buffer.numberOfChannels
 
         logger?.debug('Decoded audio buffer:', {
             originalChannels: buffer.numberOfChannels,
@@ -109,7 +117,7 @@ export async function processAudioBuffer({
             position !== undefined
                 ? Math.floor(
                       (position / bytesPerSample) *
-                          (buffer.sampleRate / targetSampleRate)
+                          (buffer.sampleRate / effectiveTargetSampleRate)
                   )
                 : startSample
 
@@ -117,11 +125,12 @@ export async function processAudioBuffer({
             length !== undefined
                 ? Math.floor(
                       (length / bytesPerSample) *
-                          (buffer.sampleRate / targetSampleRate)
+                          (buffer.sampleRate / effectiveTargetSampleRate)
                   )
-                : endTimeMs !== undefined && startTimeMs !== undefined
+                : endTimeMs !== undefined
                   ? Math.floor(
-                        ((endTimeMs - startTimeMs) / 1000) * buffer.sampleRate
+                        ((endTimeMs - (startTimeMs ?? 0)) / 1000) *
+                            buffer.sampleRate
                     )
                   : buffer.length - adjustedStartSample
 
@@ -130,8 +139,8 @@ export async function processAudioBuffer({
             adjustedStartSample,
             samplesNeeded,
             originalSampleRate: buffer.sampleRate,
-            targetSampleRate,
-            conversionRatio: buffer.sampleRate / targetSampleRate,
+            targetSampleRate: effectiveTargetSampleRate,
+            conversionRatio: buffer.sampleRate / effectiveTargetSampleRate,
             expectedDurationMs: (samplesNeeded / buffer.sampleRate) * 1000,
         })
 
@@ -153,9 +162,11 @@ export async function processAudioBuffer({
 
         // Create offline context for resampling
         const offlineCtx = new OfflineAudioContext(
-            targetChannels,
-            Math.ceil((samplesNeeded * targetSampleRate) / buffer.sampleRate),
-            targetSampleRate
+            effectiveTargetChannels,
+            Math.ceil(
+                (samplesNeeded * effectiveTargetSampleRate) / buffer.sampleRate
+            ),
+            effectiveTargetSampleRate
         )
 
         // Create source and connect
@@ -175,7 +186,7 @@ export async function processAudioBuffer({
 
         logger?.debug('Final processed audio:', {
             outputSamples: channelData.length,
-            outputSampleRate: targetSampleRate,
+            outputSampleRate: effectiveTargetSampleRate,
             durationMs,
         })
 
@@ -184,7 +195,7 @@ export async function processAudioBuffer({
             channelData,
             samples: channelData.length,
             durationMs,
-            sampleRate: targetSampleRate,
+            sampleRate: effectiveTargetSampleRate,
             channels: processedBuffer.numberOfChannels,
         }
     } catch (error) {

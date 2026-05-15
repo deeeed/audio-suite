@@ -8465,7 +8465,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@siteed/audio-studio@npm:*, @siteed/audio-studio@workspace:^, @siteed/audio-studio@workspace:packages/audio-studio":
+"@siteed/audio-studio@npm:3.2.0-beta.1, @siteed/audio-studio@workspace:^, @siteed/audio-studio@workspace:packages/audio-studio":
   version: 0.0.0-use.local
   resolution: "@siteed/audio-studio@workspace:packages/audio-studio"
   dependencies:
@@ -8495,6 +8495,7 @@ __metadata:
     react-native: "npm:0.83.6"
     rimraf: "npm:^6.0.1"
     size-limit: "npm:^11.1.4"
+    ts-jest: "npm:^29.2.6"
     ts-node: "npm:^10.9.2"
     typedoc: "npm:^0.27.4"
     typedoc-plugin-markdown: "npm:~4.4.2"
@@ -8668,7 +8669,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@siteed/expo-audio-studio@workspace:packages/expo-audio-studio"
   dependencies:
-    "@siteed/audio-studio": "npm:*"
+    "@siteed/audio-studio": "npm:3.2.0-beta.1"
   languageName: unknown
   linkType: soft
 

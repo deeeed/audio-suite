@@ -19,6 +19,10 @@ import {
     useSharedAudioRecorder,
 } from './AudioRecorder.provider'
 import AudioStudioModule from './AudioStudioModule'
+import {
+    getAudioDecodeCapabilities,
+    streamAudioData,
+} from './streamAudioData'
 import { trimAudio } from './trimAudio'
 import { useAudioRecorder } from './useAudioRecorder'
 
@@ -54,6 +58,8 @@ export {
     extractPreview,
     trimAudio,
     extractAudioData,
+    streamAudioData,
+    getAudioDecodeCapabilities,
     extractMelSpectrogram,
     initMelStreamingWasm,
     computeMelFrameWasm,
@@ -70,6 +76,24 @@ export type {
     AudioExtractionErrorCode,
     AudioExtractionErrorPayload,
 } from './errors/AudioExtractionError'
+
+export {
+    AudioStreamError,
+    mapStreamError,
+} from './errors/AudioStreamError'
+export type {
+    AudioStreamErrorCode,
+    AudioStreamErrorPayload,
+} from './errors/AudioStreamError'
+
+export type {
+    StreamAudioDataOptions,
+    StreamAudioDataChunk,
+    StreamAudioDataProgress,
+    StreamAudioDataResult,
+    StreamAudioDataCallbacks,
+    AudioDecodeCapabilities,
+} from './streamAudioData'
 
 // Export all types
 export type * from './AudioAnalysis/AudioAnalysis.types'
