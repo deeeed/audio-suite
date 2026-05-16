@@ -14,6 +14,8 @@ import { baseLogger } from '../config'
 import { resolveNativeAssetFileUri } from '../utils/resolveNativeAssetFileUri'
 import {
     type MoonshineLiveChunkProcessedEvent,
+    type MoonshineLiveStartOptions,
+    type MoonshineLiveStopOptions,
     type MoonshineLiveStrategy,
     useMoonshineLiveSession,
 } from './useMoonshineLiveSession'
@@ -407,7 +409,7 @@ export function useMoonshineSherpaLiveDiarization(
         onMoonshineChunkProcessed: handleMoonshineChunkProcessed,
     })
 
-    const startSession = useCallback(async () => {
+    const startSession = useCallback(async (options?: MoonshineLiveStartOptions) => {
         setSpeakerEvents([])
         setSpeakerEventCounts({})
         setSherpaTurns([])
@@ -417,11 +419,12 @@ export function useMoonshineSherpaLiveDiarization(
         speakerQueueDepthRef.current = 0
         speakerChainRef.current = Promise.resolve()
         await prepareSherpa()
-        await moonshine.startSession()
+        speakerSessionRef.current?.reset()
+        await moonshine.startSession(options)
     }, [moonshine, prepareSherpa])
 
-    const stopSession = useCallback(async () => {
-        await moonshine.stopSession()
+    const stopSession = useCallback(async (options?: MoonshineLiveStopOptions) => {
+        await moonshine.stopSession(options)
         await speakerChainRef.current
         await speakerSessionRef.current?.flush().catch((error) => {
             const message = error instanceof Error ? error.message : String(error)
@@ -468,6 +471,7 @@ export function useMoonshineSherpaLiveDiarization(
         sherpaTurns,
         speakerEventCounts,
         speakerEvents,
+        processAudioEvent: moonshine.processAudioEvent,
         startSession,
         stopSession,
     }

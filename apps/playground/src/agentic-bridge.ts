@@ -38,8 +38,8 @@ import {
     typedArrayToBase64,
     base64ToTypedArray,
     type AsrModelConfig,
+    type OnnxTensorData,
 } from '@siteed/sherpa-onnx.rn'
-import type { OnnxTensorData } from '@siteed/sherpa-onnx.rn'
 import {
     getBenchmarkModelOrThrow,
     getMoonshineRuntimeConfig,
@@ -2260,16 +2260,25 @@ if (__DEV__) {
 
                 const props = fiber.memoizedProps as Record<string, unknown> | null
                 const onPress = props?.onPress as ((...args: unknown[]) => unknown) | undefined
+                const onValueChange = props?.onValueChange as
+                    | ((value: boolean) => unknown)
+                    | undefined
                 const click = (fiber.stateNode as { click?: () => void } | null)?.click
-                if (typeof onPress !== 'function' && typeof click !== 'function') {
+                if (
+                    typeof onPress !== 'function' &&
+                    typeof onValueChange !== 'function' &&
+                    typeof click !== 'function'
+                ) {
                     return {
                         ok: false,
-                        error: `Component with testID="${testId}" has no onPress prop`,
+                        error: `Component with testID="${testId}" has no onPress/onValueChange prop`,
                     }
                 }
 
                 if (typeof onPress === 'function') {
                     onPress()
+                } else if (typeof onValueChange === 'function') {
+                    onValueChange(props?.value !== true)
                 } else {
                     click?.()
                 }

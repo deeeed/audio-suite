@@ -46,6 +46,14 @@ export interface MoonshineLiveChunkProcessedEvent {
     sampleCount: number
 }
 
+export interface MoonshineLiveStartOptions {
+    externalAudio?: boolean
+}
+
+export interface MoonshineLiveStopOptions {
+    stopRecorder?: boolean
+}
+
 interface UseMoonshineLiveSessionOptions {
     onAudioSamples?: (event: MoonshineLiveAudioSamplesEvent) => void
     onMoonshineChunkProcessed?: (event: MoonshineLiveChunkProcessedEvent) => void
@@ -71,9 +79,10 @@ export interface UseMoonshineLiveSessionResult {
     prepareModels: () => Promise<void>
     refreshModelStatuses: () => Promise<void>
     smallModelStatus: BenchmarkDownloadState
-    startSession: () => Promise<void>
+    processAudioEvent: (event: AudioDataEvent) => Promise<void>
+    startSession: (options?: MoonshineLiveStartOptions) => Promise<void>
     statusMessage: string | null
-    stopSession: () => Promise<void>
+    stopSession: (options?: MoonshineLiveStopOptions) => Promise<void>
     strategy: MoonshineLiveStrategy
 }
 
@@ -265,7 +274,7 @@ export function useMoonshineLiveSession(
         }
     }, [refreshModelStatuses, strategy])
 
-    const handleAudioStream = useCallback(
+    const processAudioEvent = useCallback(
         async (event: AudioDataEvent) => {
             if (!sessionOwnedRef.current) return
             try {
@@ -298,13 +307,15 @@ export function useMoonshineLiveSession(
     const recordingConfig = useMemo<RecordingConfig>(
         () => ({
             ...BASE_RECORDING_CONFIG,
-            onAudioStream: handleAudioStream,
+            onAudioStream: processAudioEvent,
         }),
-        [handleAudioStream]
+        [processAudioEvent]
     )
 
-    const startSession = useCallback(async () => {
-        if (isRecording || isStarting || isPreparingModels || isStopping) return
+    const startSession = useCallback(async (options: MoonshineLiveStartOptions = {}) => {
+        const externalAudio = options.externalAudio === true
+        if ((!externalAudio && isRecording) || isStarting || isPreparingModels || isStopping) return
+        if (externalAudio && liveTranscription.isListening) return
 
         setError(null)
         setFinalTranscript('')
@@ -366,7 +377,9 @@ export function useMoonshineLiveSession(
             liveTranscription.start()
             await transcriber.start()
             sessionOwnedRef.current = true
-            await startRecording(recordingConfig)
+            if (!externalAudio) {
+                await startRecording(recordingConfig)
+            }
 
             if (mountedRef.current) {
                 const baseStatusMessage =
@@ -410,8 +423,9 @@ export function useMoonshineLiveSession(
         setCurrentLiveTranscriber,
     ])
 
-    const stopSession = useCallback(async () => {
-        if ((!isRecording && !liveTranscription.isListening) || isStopping) return
+    const stopSession = useCallback(async (options: MoonshineLiveStopOptions = {}) => {
+        const stopRecorder = options.stopRecorder !== false
+        if ((stopRecorder && !isRecording && !liveTranscription.isListening) || (!stopRecorder && !liveTranscription.isListening) || isStopping) return
 
         setError(null)
         setIsStopping(true)
@@ -419,8 +433,15 @@ export function useMoonshineLiveSession(
 
         try {
             sessionOwnedRef.current = false
-            const recording = await stopRecording()
-            setLastRecording(recording)
+            // Stop accepting queued live chunks before stopping the native recorder.
+            // Native callbacks can still drain during stopRecording(); without this,
+            // late chunks may race a stopped/released transcriber and surface a false
+            // "Failed to add audio to stream" error after an otherwise clean stop.
+            liveTranscription.stop()
+            const recording = stopRecorder ? await stopRecording() : null
+            if (recording) {
+                setLastRecording(recording)
+            }
 
             await liveTranscriberRef.current?.stop().catch((stopError) => {
                 logger.warn(`Ignoring Moonshine stop error: ${String(stopError)}`)
@@ -433,7 +454,6 @@ export function useMoonshineLiveSession(
                 .filter(Boolean)
                 .join(' ')
                 .trim()
-            liveTranscription.stop()
             await releaseLiveTranscriber()
 
             if (mountedRef.current) {
@@ -498,6 +518,7 @@ export function useMoonshineLiveSession(
         lastRecording,
         mediumModelStatus,
         prepareModels,
+        processAudioEvent,
         refreshModelStatuses,
         smallModelStatus,
         startSession,

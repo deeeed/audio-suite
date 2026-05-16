@@ -9,6 +9,11 @@
     "expression": "JSON.stringify(globalThis.__AGENTIC__?.getState() || null)",
     "async": false
   },
+  "record-page-state": {
+    "description": "Current Record tab page-specific state mirrored into the playground agentic bridge",
+    "expression": "JSON.stringify(globalThis.__AGENTIC__?.getPageState?.() || null)",
+    "async": false
+  },
   "filename-input": {
     "description": "Current value of the filename input on the record screen",
     "expression": "JSON.stringify((function(){ var fiber = globalThis.__AGENTIC__?.findFiberByTestId?.('filename-input'); var props = fiber && fiber.memoizedProps ? fiber.memoizedProps : null; return { value: props && props.value != null ? String(props.value) : null }; })())",
