@@ -38,6 +38,7 @@ protected:
     methodMap_["acceptAsrOnlineWaveform"] = MethodMetadata {.argCount = 2, .invoker = __acceptAsrOnlineWaveform};
     methodMap_["isAsrOnlineEndpoint"] = MethodMetadata {.argCount = 0, .invoker = __isAsrOnlineEndpoint};
     methodMap_["getAsrOnlineResult"] = MethodMetadata {.argCount = 0, .invoker = __getAsrOnlineResult};
+    methodMap_["finishAsrOnlineInput"] = MethodMetadata {.argCount = 0, .invoker = __finishAsrOnlineInput};
     methodMap_["resetAsrOnlineStream"] = MethodMetadata {.argCount = 0, .invoker = __resetAsrOnlineStream};
     methodMap_["initAudioTagging"] = MethodMetadata {.argCount = 1, .invoker = __initAudioTagging};
     methodMap_["processAndComputeAudioTagging"] = MethodMetadata {.argCount = 1, .invoker = __processAndComputeAudioTagging};
@@ -46,6 +47,7 @@ protected:
     methodMap_["initSpeakerId"] = MethodMetadata {.argCount = 1, .invoker = __initSpeakerId};
     methodMap_["processSpeakerIdSamples"] = MethodMetadata {.argCount = 2, .invoker = __processSpeakerIdSamples};
     methodMap_["computeSpeakerEmbedding"] = MethodMetadata {.argCount = 0, .invoker = __computeSpeakerEmbedding};
+    methodMap_["resetSpeakerIdStream"] = MethodMetadata {.argCount = 0, .invoker = __resetSpeakerIdStream};
     methodMap_["registerSpeaker"] = MethodMetadata {.argCount = 2, .invoker = __registerSpeaker};
     methodMap_["removeSpeaker"] = MethodMetadata {.argCount = 1, .invoker = __removeSpeaker};
     methodMap_["getSpeakers"] = MethodMetadata {.argCount = 0, .invoker = __getSpeakers};
@@ -203,6 +205,13 @@ private:
     return bridging::callFromJs<jsi::Value>(rt, &T::getAsrOnlineResult,  static_cast<NativeSherpaOnnxSpecCxxSpec*>(&turboModule)->jsInvoker_, static_cast<T*>(&turboModule));
   }
 
+  static jsi::Value __finishAsrOnlineInput(jsi::Runtime &rt, TurboModule &turboModule, const jsi::Value* /*args*/, size_t /*count*/) {
+    static_assert(
+      bridging::getParameterCount(&T::finishAsrOnlineInput) == 1,
+      "Expected finishAsrOnlineInput(...) to have 1 parameters");
+    return bridging::callFromJs<jsi::Value>(rt, &T::finishAsrOnlineInput,  static_cast<NativeSherpaOnnxSpecCxxSpec*>(&turboModule)->jsInvoker_, static_cast<T*>(&turboModule));
+  }
+
   static jsi::Value __resetAsrOnlineStream(jsi::Runtime &rt, TurboModule &turboModule, const jsi::Value* /*args*/, size_t /*count*/) {
     static_assert(
       bridging::getParameterCount(&T::resetAsrOnlineStream) == 1,
@@ -264,6 +273,13 @@ private:
       bridging::getParameterCount(&T::computeSpeakerEmbedding) == 1,
       "Expected computeSpeakerEmbedding(...) to have 1 parameters");
     return bridging::callFromJs<jsi::Value>(rt, &T::computeSpeakerEmbedding,  static_cast<NativeSherpaOnnxSpecCxxSpec*>(&turboModule)->jsInvoker_, static_cast<T*>(&turboModule));
+  }
+
+  static jsi::Value __resetSpeakerIdStream(jsi::Runtime &rt, TurboModule &turboModule, const jsi::Value* /*args*/, size_t /*count*/) {
+    static_assert(
+      bridging::getParameterCount(&T::resetSpeakerIdStream) == 1,
+      "Expected resetSpeakerIdStream(...) to have 1 parameters");
+    return bridging::callFromJs<jsi::Value>(rt, &T::resetSpeakerIdStream,  static_cast<NativeSherpaOnnxSpecCxxSpec*>(&turboModule)->jsInvoker_, static_cast<T*>(&turboModule));
   }
 
   static jsi::Value __registerSpeaker(jsi::Runtime &rt, TurboModule &turboModule, const jsi::Value* args, size_t count) {

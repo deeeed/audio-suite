@@ -1415,6 +1415,33 @@ class ASRHandler(private val reactContext: ReactApplicationContext) {
         }
     }
 
+
+    /**
+     * Mark online stream input as finished and drain ready frames.
+     * Matches upstream stream.inputFinished() before final getResult().
+     */
+    fun finishAsrOnlineInput(promise: Promise) {
+        executor.execute {
+            try {
+                if (onlineRecognizer == null || onlineStream == null) {
+                    throw Exception("Online stream not created. Call createAsrOnlineStream first.")
+                }
+                onlineStream?.inputFinished()
+                while (onlineRecognizer?.isReady(onlineStream!!) == true) {
+                    onlineRecognizer?.decode(onlineStream!!)
+                }
+                val resultMap = Arguments.createMap()
+                resultMap.putBoolean("success", true)
+                reactContext.runOnUiQueueThread { promise.resolve(resultMap) }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error finishing stream input: ${e.message}")
+                reactContext.runOnUiQueueThread {
+                    promise.reject("ERR_ASR_FINISH", "Failed to finish stream input: ${e.message}")
+                }
+            }
+        }
+    }
+
     /**
      * Reset the online stream for the next utterance (after endpoint).
      * Matches upstream OnlineRecognizer.reset(stream).

@@ -7,6 +7,8 @@ import type {
   LiveSpeakerTurnProvenance,
   LiveSpeakerTurnSpeakerCentroid,
   LiveSpeakerTurnSummary,
+  SpeakerEmbeddingResult,
+  SpeakerIdProcessResult,
   VadAcceptWaveformResult,
 } from '../types/interfaces';
 
@@ -274,11 +276,14 @@ export class LiveSpeakerTurnSession {
     }
 
     if (!this.speakerIdUsable) {
+      const error =
+        'Speaker ID stream is unavailable until the live speaker-turn session is reset';
+      this.emit({ type: 'error', turnId, error });
       this.emit({
-        type: 'error',
+        type: 'speaker_id_unavailable',
         turnId,
-        error:
-          'Speaker ID stream requires session reset after a failed embedding attempt',
+        error,
+        recoverable: false,
       });
       this.emitFinalTurn(turnId, startSample, endSample);
       return;
@@ -289,33 +294,49 @@ export class LiveSpeakerTurnSession {
       paddedStartSample,
       paddedEndSample
     );
-    const processResult = await this.config.speakerId.processSamples(
-      this.config.sampleRate,
-      turnSamples
-    );
-    if (!processResult.success) {
-      this.speakerIdUsable = false;
-      this.emit({
-        type: 'error',
+    let processResult: SpeakerIdProcessResult;
+    try {
+      processResult = await this.config.speakerId.processSamples(
+        this.config.sampleRate,
+        turnSamples
+      );
+    } catch (error) {
+      await this.handleSpeakerIdFailure(
         turnId,
-        error:
-          processResult.error ??
-          'Speaker ID failed while processing turn audio',
-      });
+        error instanceof Error
+          ? error.message
+          : 'Speaker ID failed while processing turn audio'
+      );
+      this.emitFinalTurn(turnId, startSample, endSample);
+      return;
+    }
+    if (!processResult.success) {
+      await this.handleSpeakerIdFailure(
+        turnId,
+        processResult.error ?? 'Speaker ID failed while processing turn audio'
+      );
       this.emitFinalTurn(turnId, startSample, endSample);
       return;
     }
 
-    const embeddingResult = await this.config.speakerId.computeEmbedding();
-    if (!embeddingResult.success) {
-      this.speakerIdUsable = false;
-      this.emit({
-        type: 'error',
+    let embeddingResult: SpeakerEmbeddingResult;
+    try {
+      embeddingResult = await this.config.speakerId.computeEmbedding();
+    } catch (error) {
+      await this.handleSpeakerIdFailure(
         turnId,
-        error:
-          embeddingResult.error ??
-          'Speaker ID failed while computing embedding',
-      });
+        error instanceof Error
+          ? error.message
+          : 'Speaker ID failed while computing embedding'
+      );
+      this.emitFinalTurn(turnId, startSample, endSample);
+      return;
+    }
+    if (!embeddingResult.success) {
+      await this.handleSpeakerIdFailure(
+        turnId,
+        embeddingResult.error ?? 'Speaker ID failed while computing embedding'
+      );
       this.emitFinalTurn(turnId, startSample, endSample);
       return;
     }
@@ -329,6 +350,38 @@ export class LiveSpeakerTurnSession {
       provenance: assignment.provenance,
     });
     this.emitFinalTurn(turnId, startSample, endSample, assignment.speakerId);
+  }
+
+  private async handleSpeakerIdFailure(
+    turnId: string,
+    error: string
+  ): Promise<void> {
+    let recoverable = false;
+    if (this.config.speakerId.resetStream) {
+      try {
+        const reset = await this.config.speakerId.resetStream();
+        recoverable = reset.success;
+        if (!reset.success && reset.error) {
+          error = `${error}; speaker stream reset failed: ${reset.error}`;
+        }
+      } catch (resetError) {
+        const resetMessage =
+          resetError instanceof Error ? resetError.message : String(resetError);
+        error = `${error}; speaker stream reset failed: ${resetMessage}`;
+      }
+    }
+
+    if (!recoverable) {
+      this.speakerIdUsable = false;
+    }
+
+    this.emit({ type: 'error', turnId, error });
+    this.emit({
+      type: 'speaker_id_unavailable',
+      turnId,
+      error,
+      recoverable,
+    });
   }
 
   private emitFinalTurn(
@@ -387,6 +440,7 @@ export class LiveSpeakerTurnSession {
     const maxSpeakers = this.config.maxSpeakers;
     if (
       typeof maxSpeakers === 'number' &&
+      maxSpeakers > 0 &&
       this.centroids.length >= maxSpeakers &&
       bestMatch
     ) {

@@ -32,6 +32,8 @@ function cloneEvent(
       return { ...event, affectedSegmentIds: [...event.affectedSegmentIds] };
     case 'turn_finalized':
       return { ...event, segmentIds: [...event.segmentIds] };
+    case 'transcript_segment_removed':
+      return { ...event };
     default:
       return { ...event };
   }
@@ -68,6 +70,7 @@ export class LiveAttributedTranscriptionSession {
   private currentSegmentStartSample = 0;
   private processingChunkEndSample: number | undefined;
   private resetAsrBeforeNextChunk = false;
+  private skipAsrForCurrentChunk = false;
   private activeTurnId: string | undefined;
   private asrHasAcceptedAudio = false;
   private released = false;
@@ -138,6 +141,7 @@ export class LiveAttributedTranscriptionSession {
     const samples = Array.from(chunk.samples);
     const endSample = startSample + samples.length;
 
+    this.skipAsrForCurrentChunk = false;
     this.processingChunkEndSample = endSample;
     try {
       await this.config.speakerTurns.acceptChunk({
@@ -152,6 +156,11 @@ export class LiveAttributedTranscriptionSession {
     // Speaker-turn state has consumed this chunk from here onward. Keep the
     // composer clock monotonic even if ASR reset/accept/result handling fails.
     this.nextSample = endSample;
+
+    if (this.skipAsrForCurrentChunk) {
+      this.skipAsrForCurrentChunk = false;
+      return;
+    }
 
     if (this.resetAsrBeforeNextChunk) {
       let reset: { success: boolean; error?: string };
@@ -216,8 +225,23 @@ export class LiveAttributedTranscriptionSession {
       const endpoint = await this.config.asr.isEndpoint();
       if (endpoint.isEndpoint) {
         await this.finalizeCurrentSegment(endSample);
-        const reset = await this.config.asr.resetStream();
+        let reset: { success: boolean; error?: string };
+        try {
+          reset = await this.config.asr.resetStream();
+        } catch (resetError) {
+          this.resetAsrBeforeNextChunk = true;
+          this.emit({
+            type: 'error',
+            source: 'asr',
+            error:
+              resetError instanceof Error
+                ? resetError.message
+                : 'ASR failed while resetting online stream',
+          });
+          return;
+        }
         if (!reset.success) {
+          this.resetAsrBeforeNextChunk = true;
           this.emit({
             type: 'error',
             source: 'asr',
@@ -288,38 +312,59 @@ export class LiveAttributedTranscriptionSession {
     }
     const paddingMs =
       this.config.flushTailPaddingMs ?? DEFAULT_FLUSH_TAIL_PADDING_MS;
-    if (paddingMs <= 0) {
-      return;
-    }
     const tailSamples = Math.round((paddingMs / 1000) * this.config.sampleRate);
-    if (tailSamples <= 0) {
-      return;
+
+    if (paddingMs > 0 && tailSamples > 0) {
+      let accepted: { success: boolean; error?: string };
+      try {
+        accepted = await this.config.asr.acceptWaveform(
+          this.config.sampleRate,
+          new Array(tailSamples).fill(0)
+        );
+      } catch (error) {
+        this.emit({
+          type: 'error',
+          source: 'asr',
+          error:
+            error instanceof Error
+              ? error.message
+              : 'ASR failed while flushing tail padding',
+        });
+        return;
+      }
+      if (!accepted.success) {
+        this.emit({
+          type: 'error',
+          source: 'asr',
+          error: accepted.error ?? 'ASR failed while flushing tail padding',
+        });
+        return;
+      }
     }
 
-    let accepted: { success: boolean; error?: string };
-    try {
-      accepted = await this.config.asr.acceptWaveform(
-        this.config.sampleRate,
-        Array.from({ length: tailSamples }, () => 0)
-      );
-    } catch (error) {
-      this.emit({
-        type: 'error',
-        source: 'asr',
-        error:
-          error instanceof Error
-            ? error.message
-            : 'ASR failed while flushing tail padding',
-      });
-      return;
-    }
-    if (!accepted.success) {
-      this.emit({
-        type: 'error',
-        source: 'asr',
-        error: accepted.error ?? 'ASR failed while flushing tail padding',
-      });
-      return;
+    if (this.config.asr.finishInput) {
+      let finished: { success: boolean; error?: string };
+      try {
+        finished = await this.config.asr.finishInput();
+      } catch (error) {
+        this.emit({
+          type: 'error',
+          source: 'asr',
+          error:
+            error instanceof Error
+              ? error.message
+              : 'ASR failed while finishing online stream input',
+        });
+        return;
+      }
+      if (!finished.success) {
+        this.emit({
+          type: 'error',
+          source: 'asr',
+          error: finished.error ?? 'ASR failed while finishing online stream input',
+        });
+        return;
+      }
     }
 
     try {
@@ -359,6 +404,7 @@ export class LiveAttributedTranscriptionSession {
     this.currentSegmentStartSample = 0;
     this.processingChunkEndSample = undefined;
     this.resetAsrBeforeNextChunk = false;
+    this.skipAsrForCurrentChunk = false;
     this.activeTurnId = undefined;
     this.asrHasAcceptedAudio = false;
     let reset: { success: boolean; error?: string };
@@ -464,6 +510,8 @@ export class LiveAttributedTranscriptionSession {
         }
       }
       this.turnSegments.delete(event.turnId);
+      this.turnSpeakers.delete(event.turnId);
+      this.skipAsrForCurrentChunk = true;
       this.resetAsrBeforeNextChunk = true;
       return;
     }

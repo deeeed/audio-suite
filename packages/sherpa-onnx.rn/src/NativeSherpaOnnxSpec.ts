@@ -216,6 +216,7 @@ export interface Spec extends TurboModule {
     tokens: string[];
     timestamps: number[];
   }>;
+  finishAsrOnlineInput(): Promise<{ success: boolean }>;
   resetAsrOnlineStream(): Promise<{ success: boolean }>;
 
   // Audio tagging methods
@@ -297,6 +298,8 @@ export interface Spec extends TurboModule {
     embeddingDim: number;
     error?: string;
   }>;
+
+  resetSpeakerIdStream(): Promise<{ success: boolean }>;
 
   registerSpeaker(
     name: string,

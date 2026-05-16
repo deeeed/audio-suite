@@ -401,6 +401,25 @@ export function SpeakerIdMixin<TBase extends Constructor>(Base: TBase) {
       }
     }
 
+    async resetSpeakerIdStream(): Promise<{ success: boolean }> {
+      if (!this.speakerExtractor) {
+        return { success: false };
+      }
+      if (this.speakerIdStream) {
+        try {
+          this.speakerExtractor.destroyStream(this.speakerIdStream);
+        } catch (_) {
+          console.error('[SpeakerId] resetSpeakerIdStream failed:', _);
+          this.speakerIdStream = null;
+          this.speakerIdSamplesProcessed = 0;
+          return { success: false };
+        }
+      }
+      this.speakerIdStream = this.speakerExtractor.createStream();
+      this.speakerIdSamplesProcessed = 0;
+      return { success: true };
+    }
+
     async releaseSpeakerId(): Promise<{ released: boolean }> {
       if (this.speakerIdStream && this.speakerExtractor) {
         try {

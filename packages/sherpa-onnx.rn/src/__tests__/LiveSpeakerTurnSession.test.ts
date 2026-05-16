@@ -261,10 +261,76 @@ describe('LiveSpeakerTurnSession', () => {
     expect(processCalls).toBe(1);
     expect(events.filter((event) => event.type === 'turn_final')).toHaveLength(2);
     expect(events).toContainEqual({
-      type: 'error',
+      type: 'speaker_id_unavailable',
       turnId: 'turn_2',
-      error: 'Speaker ID stream requires session reset after a failed embedding attempt',
+      error:
+        'Speaker ID stream is unavailable until the live speaker-turn session is reset',
+      recoverable: false,
     });
+  });
+
+  it('resets a failed speaker embedding stream so later turns can recover', async () => {
+    const events: LiveSpeakerTurnEvent[] = [];
+    let computeCalls = 0;
+    let resetCalls = 0;
+    const processLengths: number[] = [];
+    const session = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([true, false, true, false]),
+      speakerId: {
+        async processSamples(_sampleRate, samples) {
+          processLengths.push(samples.length);
+          return { success: true, samplesProcessed: samples.length };
+        },
+        async computeEmbedding() {
+          computeCalls += 1;
+          if (computeCalls === 1) {
+            return {
+              success: false,
+              durationMs: 0,
+              embedding: [],
+              embeddingDim: 0,
+              error: 'not enough audio',
+            };
+          }
+          return {
+            success: true,
+            durationMs: 1,
+            embedding: [1, 0],
+            embeddingDim: 2,
+          };
+        },
+        async resetStream() {
+          resetCalls += 1;
+          return { success: true };
+        },
+      },
+      minTurnDurationMs: 10,
+      onEvent: (event) => events.push(event),
+    });
+
+    for (const value of [1, 0, 2, 0]) {
+      await session.acceptChunk({ samples: createChunk(value) });
+    }
+
+    expect(resetCalls).toBe(1);
+    expect(processLengths).toEqual([320, 320]);
+    expect(events).toContainEqual({
+      type: 'speaker_id_unavailable',
+      turnId: 'turn_1',
+      error: 'not enough audio',
+      recoverable: true,
+    });
+    expect(
+      events.filter((event) => event.type === 'speaker_resolved')
+    ).toHaveLength(1);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'turn_final',
+        turnId: 'turn_2',
+        speakerId: 'speaker_1',
+      })
+    );
   });
 
   it('marks capped sub-threshold speaker assignments as forced fallback', async () => {

@@ -590,6 +590,50 @@ describe('LiveAttributedTranscriptionSession', () => {
     expect(asr.resetCount).toBe(1);
   });
 
+  it('signals ASR end-of-input before reading the flushed final result', async () => {
+    let finished = false;
+    const asr = {
+      async acceptWaveform() {
+        return { success: true };
+      },
+      async getResult() {
+        return { text: finished ? 'finished text' : '' };
+      },
+      async isEndpoint() {
+        return { isEndpoint: false };
+      },
+      async finishInput() {
+        finished = true;
+        return { success: true };
+      },
+      async resetStream() {
+        return { success: true };
+      },
+    } satisfies LiveTranscriptionAsrAdapter;
+    const speakerTurns = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([true]),
+      speakerId: createSpeakerIdAdapter([[1, 0]]),
+      minTurnDurationMs: 10,
+    });
+    const session = new LiveAttributedTranscriptionSession({
+      sampleRate: 16_000,
+      speakerTurns,
+      asr,
+      flushTailPaddingMs: 10,
+    });
+
+    await session.acceptChunk({ samples: createChunk(1) });
+    await session.flush();
+
+    expect(finished).toBe(true);
+    expect(session.getState().segments[0]).toMatchObject({
+      text: 'finished text',
+      final: true,
+    });
+  });
+
+
   it('resets ASR stream on flush before accepting a new utterance', async () => {
     let phase: 'first' | 'second' = 'first';
     const asr = {
@@ -861,18 +905,16 @@ describe('LiveAttributedTranscriptionSession', () => {
 
   it('clears stale active attribution and ASR context for discarded short turns', async () => {
     const events: LiveAttributedTranscriptionEvent[] = [];
-    let acceptedChunks = 0;
     let resetCount = 0;
     const asr = {
       async acceptWaveform() {
-        acceptedChunks += 1;
         return { success: true };
       },
       async getResult() {
         if (resetCount === 0) {
           return { text: 'discarded noise' };
         }
-        return { text: acceptedChunks >= 3 ? 'real speech' : '' };
+        return { text: resetCount >= 1 ? 'real speech' : '' };
       },
       async isEndpoint() {
         return { isEndpoint: false };
@@ -911,6 +953,48 @@ describe('LiveAttributedTranscriptionSession', () => {
       expect.objectContaining({
         turnId: 'turn_2',
         text: 'real speech',
+      }),
+    ]);
+  });
+
+  it('keeps ASR and attribution clean across back-to-back discarded turns', async () => {
+    let resetCount = 0;
+    const asr = {
+      async acceptWaveform() {
+        return { success: true };
+      },
+      async getResult() {
+        return { text: resetCount >= 2 ? 'real turn' : 'short noise' };
+      },
+      async isEndpoint() {
+        return { isEndpoint: false };
+      },
+      async resetStream() {
+        resetCount += 1;
+        return { success: true };
+      },
+    } satisfies LiveTranscriptionAsrAdapter;
+    const speakerTurns = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([true, false, true, false, true]),
+      speakerId: createSpeakerIdAdapter([[1, 0]]),
+      minTurnDurationMs: 1_000,
+    });
+    const session = new LiveAttributedTranscriptionSession({
+      sampleRate: 16_000,
+      speakerTurns,
+      asr,
+    });
+
+    for (const value of [1, 0, 1, 0, 2]) {
+      await session.acceptChunk({ samples: createChunk(value) });
+    }
+
+    expect(resetCount).toBeGreaterThanOrEqual(2);
+    expect(session.getState().segments).toEqual([
+      expect.objectContaining({
+        turnId: 'turn_3',
+        text: 'real turn',
       }),
     ]);
   });

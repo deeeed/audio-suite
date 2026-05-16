@@ -515,6 +515,17 @@ import CSherpaOnnx
         }
     }
 
+    @objc public func resetStream() -> NSDictionary {
+        guard let extractorPtr = extractor else {
+            return ["success": false, "error": "Speaker ID not initialized"]
+        }
+        resetEmbeddingStream(extractorPtr)
+        guard stream != nil else {
+            return ["success": false, "error": "Failed to create speaker ID stream"]
+        }
+        return ["success": true]
+    }
+
     // MARK: - Release
 
     @objc public func releaseResources() -> NSDictionary {

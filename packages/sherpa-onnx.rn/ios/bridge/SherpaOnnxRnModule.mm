@@ -490,6 +490,21 @@ RCT_EXPORT_METHOD(getAsrOnlineResult:(RCTPromiseResolveBlock)resolve
     }
 }
 
+RCT_EXPORT_METHOD(finishAsrOnlineInput:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+{
+    @try {
+        NSDictionary *result = [self.asrHandler finishAsrOnlineInput];
+        if ([result[@"success"] boolValue]) {
+            resolve(result);
+        } else {
+            reject(@"ERR_ASR_FINISH", result[@"error"], nil);
+        }
+    } @catch (NSException *exception) {
+        reject(@"ERR_ASR_FINISH", exception.reason, nil);
+    }
+}
+
 RCT_EXPORT_METHOD(resetAsrOnlineStream:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 {
@@ -770,6 +785,21 @@ RCT_EXPORT_METHOD(computeSpeakerEmbedding:(RCTPromiseResolveBlock)resolve
         }
     } @catch (NSException *exception) {
         reject(@"ERR_SPEAKER_ID_COMPUTE", exception.reason, nil);
+    }
+}
+
+RCT_EXPORT_METHOD(resetSpeakerIdStream:(RCTPromiseResolveBlock)resolve
+                         reject:(RCTPromiseRejectBlock)reject)
+{
+    @try {
+        NSDictionary *result = [self.speakerIdHandler resetStream];
+        if ([result[@"success"] boolValue]) {
+            resolve(result);
+        } else {
+            reject(@"ERR_SPEAKER_ID_RESET", result[@"error"], nil);
+        }
+    } @catch (NSException *exception) {
+        reject(@"ERR_SPEAKER_ID_RESET", exception.reason, nil);
     }
 }
 

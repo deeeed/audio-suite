@@ -130,6 +130,16 @@ export class AsrService {
   }
 
   /**
+   * Signal end-of-input and drain ready frames before reading the final result.
+   */
+  public async finishInput(): Promise<{ success: boolean }> {
+    if (!this.initialized) {
+      throw new Error('ASR is not initialized. Call initialize() first.');
+    }
+    return this.api.finishAsrOnlineInput();
+  }
+
+  /**
    * Reset the online stream for the next utterance (after endpoint).
    */
   public async resetStream(): Promise<{ success: boolean }> {

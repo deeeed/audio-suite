@@ -161,6 +161,10 @@ namespace facebook::react {
       return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, PromiseKind, "getAsrOnlineResult", @selector(getAsrOnlineResult:reject:), args, count);
     }
 
+    static facebook::jsi::Value __hostFunction_NativeSherpaOnnxSpecSpecJSI_finishAsrOnlineInput(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, PromiseKind, "finishAsrOnlineInput", @selector(finishAsrOnlineInput:reject:), args, count);
+    }
+
     static facebook::jsi::Value __hostFunction_NativeSherpaOnnxSpecSpecJSI_resetAsrOnlineStream(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
       return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, PromiseKind, "resetAsrOnlineStream", @selector(resetAsrOnlineStream:reject:), args, count);
     }
@@ -191,6 +195,10 @@ namespace facebook::react {
 
     static facebook::jsi::Value __hostFunction_NativeSherpaOnnxSpecSpecJSI_computeSpeakerEmbedding(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
       return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, PromiseKind, "computeSpeakerEmbedding", @selector(computeSpeakerEmbedding:reject:), args, count);
+    }
+
+    static facebook::jsi::Value __hostFunction_NativeSherpaOnnxSpecSpecJSI_resetSpeakerIdStream(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, PromiseKind, "resetSpeakerIdStream", @selector(resetSpeakerIdStream:reject:), args, count);
     }
 
     static facebook::jsi::Value __hostFunction_NativeSherpaOnnxSpecSpecJSI_registerSpeaker(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
@@ -380,6 +388,9 @@ namespace facebook::react {
         methodMap_["getAsrOnlineResult"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_getAsrOnlineResult};
 
 
+        methodMap_["finishAsrOnlineInput"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_finishAsrOnlineInput};
+
+
         methodMap_["resetAsrOnlineStream"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_resetAsrOnlineStream};
 
 
@@ -402,6 +413,9 @@ namespace facebook::react {
 
 
         methodMap_["computeSpeakerEmbedding"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_computeSpeakerEmbedding};
+
+
+        methodMap_["resetSpeakerIdStream"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_resetSpeakerIdStream};
 
 
         methodMap_["registerSpeaker"] = MethodMetadata {2, __hostFunction_NativeSherpaOnnxSpecSpecJSI_registerSpeaker};

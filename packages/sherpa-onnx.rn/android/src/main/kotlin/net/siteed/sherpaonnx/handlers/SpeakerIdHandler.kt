@@ -660,6 +660,31 @@ class SpeakerIdHandler(private val reactContext: ReactApplicationContext) {
     }
 
     /**
+     * Reset the incremental embedding stream exposed to JS live sessions.
+     */
+    fun resetStream(promise: Promise) {
+        executor.execute {
+            try {
+                if (speakerExtractor == null) {
+                    throw Exception("Speaker ID is not initialized")
+                }
+                resetEmbeddingStream()
+                if (stream == null) {
+                    throw Exception("Failed to create speaker ID stream")
+                }
+                val resultMap = Arguments.createMap()
+                resultMap.putBoolean("success", true)
+                reactContext.runOnUiQueueThread { promise.resolve(resultMap) }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error resetting speaker ID stream: ${e.message}")
+                reactContext.runOnUiQueueThread {
+                    promise.reject("ERR_SPEAKER_ID_RESET", "Failed to reset speaker ID stream: ${e.message}")
+                }
+            }
+        }
+    }
+
+    /**
      * Helper method to release resources
      */
     private fun releaseResources() {

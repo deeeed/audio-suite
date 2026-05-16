@@ -140,6 +140,25 @@ export class SpeakerIdService {
   }
 
   /**
+   * Reset the incremental speaker embedding stream without releasing the model.
+   * Useful after a failed live turn so the next turn starts from a clean buffer.
+   */
+  public async resetStream(): Promise<{ success: boolean; error?: string }> {
+    try {
+      if (!this.initialized) {
+        return { success: false, error: 'Speaker ID is not initialized' };
+      }
+
+      return await this.api.resetSpeakerIdStream();
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
    * Register a speaker with the given name and embedding
    * @param name Name of the speaker to register
    * @param embedding Speaker's embedding vector

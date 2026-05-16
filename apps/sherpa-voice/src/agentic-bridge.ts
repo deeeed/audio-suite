@@ -1251,7 +1251,8 @@ async function runLiveMicTranscriptionDiarization(
 
         const emitter = new LegacyEventEmitter(AudioStudioModule)
         subscription = emitter.addListener('AudioData', (eventData: AudioDataEvent) => {
-            if (stopped) {
+            if (stopped || fatalError) {
+                stats.droppedChunks += 1
                 return
             }
             const samples = getFloat32SamplesFromAudioEvent(eventData)
@@ -1295,6 +1296,7 @@ async function runLiveMicTranscriptionDiarization(
                 })
                 .catch((error: unknown) => {
                     fatalError ??= error instanceof Error ? error : new Error(String(error))
+                    stopped = true
                 })
         })
 
@@ -1316,6 +1318,7 @@ async function runLiveMicTranscriptionDiarization(
         await withTimeout(chain, 5_000, 'Timed out while draining live mic audio chunks')
         await session.flush().catch((error: unknown) => {
             fatalError ??= error instanceof Error ? error : new Error(String(error))
+            stopped = true
         })
         if (fatalError) {
             throw fatalError

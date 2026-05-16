@@ -1200,6 +1200,13 @@ export interface LiveSpeakerTurnSpeakerIdAdapter {
     samples: number[]
   ): Promise<SpeakerIdProcessResult>;
   computeEmbedding(): Promise<SpeakerEmbeddingResult>;
+  /**
+   * Discard the current incremental embedding stream after a failed live turn.
+   * Standalone SpeakerId callers keep their normal "not enough audio" behavior;
+   * live sessions use this optional hook to prevent the failed turn audio from
+   * contaminating the next finalized turn.
+   */
+  resetStream?(): Promise<{ success: boolean; error?: string }>;
 }
 
 export type LiveSpeakerTurnProvenance =
@@ -1232,6 +1239,12 @@ export type LiveSpeakerTurnEvent =
       speakerId: string;
       confidence: number;
       provenance: LiveSpeakerTurnProvenance;
+    }
+  | {
+      type: 'speaker_id_unavailable';
+      turnId: string;
+      error: string;
+      recoverable: boolean;
     }
   | {
       type: 'turn_final';
@@ -1326,6 +1339,12 @@ export interface LiveTranscriptionAsrAdapter {
   ): Promise<{ success: boolean; error?: string }>;
   getResult(): Promise<LiveTranscriptionAsrResult>;
   isEndpoint(): Promise<{ isEndpoint: boolean }>;
+  /**
+   * Signal end-of-input and drain ready frames before reading the final online
+   * result. Native Sherpa examples call inputFinished() after tail padding;
+   * custom tests/adapters may omit it, in which case flush falls back to getResult().
+   */
+  finishInput?(): Promise<{ success: boolean; error?: string }>;
   resetStream(): Promise<{ success: boolean; error?: string }>;
 }
 
@@ -1585,6 +1604,7 @@ export interface NativeSherpaOnnxInterface {
     tokens: string[];
     timestamps: number[];
   }>;
+  finishAsrOnlineInput(): Promise<{ success: boolean }>;
   resetAsrOnlineStream(): Promise<{ success: boolean }>;
 
   // Audio tagging methods
@@ -1609,6 +1629,7 @@ export interface NativeSherpaOnnxInterface {
     samples: number[]
   ): Promise<SpeakerIdProcessResult>;
   computeSpeakerEmbedding(): Promise<SpeakerEmbeddingResult>;
+  resetSpeakerIdStream(): Promise<{ success: boolean }>;
   registerSpeaker(
     name: string,
     embedding: number[]

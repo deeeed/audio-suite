@@ -370,6 +370,8 @@ namespace JS {
                      reject:(RCTPromiseRejectBlock)reject;
 - (void)getAsrOnlineResult:(RCTPromiseResolveBlock)resolve
                     reject:(RCTPromiseRejectBlock)reject;
+- (void)finishAsrOnlineInput:(RCTPromiseResolveBlock)resolve
+                      reject:(RCTPromiseRejectBlock)reject;
 - (void)resetAsrOnlineStream:(RCTPromiseResolveBlock)resolve
                       reject:(RCTPromiseRejectBlock)reject;
 - (void)initAudioTagging:(JS::NativeSherpaOnnxSpec::SpecInitAudioTaggingConfig &)config
@@ -393,6 +395,8 @@ namespace JS {
                          reject:(RCTPromiseRejectBlock)reject;
 - (void)computeSpeakerEmbedding:(RCTPromiseResolveBlock)resolve
                          reject:(RCTPromiseRejectBlock)reject;
+- (void)resetSpeakerIdStream:(RCTPromiseResolveBlock)resolve
+                      reject:(RCTPromiseRejectBlock)reject;
 - (void)registerSpeaker:(NSString *)name
               embedding:(NSArray *)embedding
                 resolve:(RCTPromiseResolveBlock)resolve
