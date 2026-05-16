@@ -67,27 +67,29 @@ if curl -sf "http://localhost:${PORT}/status" >/dev/null 2>&1; then
     fi
     rm -f "$PIDFILE" "$HOSTFILE"
   else
-    echo "$DEV_HOST" > "$HOSTFILE"
-    echo "Metro already running on port $PORT."
-    print_launch_hint
-    if [ -s "$LOGFILE" ]; then
-      echo "Recent logs from $LOGFILE:"
-      tail -20 "$LOGFILE"
+    echo "Metro is running on port $PORT without host metadata; restarting so physical-device host metadata is refreshed..."
+    PORT_PID=$(lsof -ti:"$PORT" 2>/dev/null || true)
+    if [ -n "$PORT_PID" ]; then
+      kill "$PORT_PID" 2>/dev/null || true
+      sleep 1
+      REMAINING=$(lsof -ti:"$PORT" 2>/dev/null || true)
+      [ -n "$REMAINING" ] && kill -9 "$REMAINING" 2>/dev/null || true
     fi
-    exit 0
+    rm -f "$PIDFILE" "$HOSTFILE"
   fi
 fi
 
 # A stale Metro may have been stopped above; re-check before starting.
 if curl -sf "http://localhost:${PORT}/status" >/dev/null 2>&1; then
-  echo "$DEV_HOST" > "$HOSTFILE"
-  echo "Metro already running on port $PORT."
-  print_launch_hint
-  if [ -s "$LOGFILE" ]; then
-    echo "Recent logs from $LOGFILE:"
-    tail -20 "$LOGFILE"
+  echo "Metro is still running on port $PORT without trusted host metadata; restarting..."
+  PORT_PID=$(lsof -ti:"$PORT" 2>/dev/null || true)
+  if [ -n "$PORT_PID" ]; then
+    kill "$PORT_PID" 2>/dev/null || true
+    sleep 1
+    REMAINING=$(lsof -ti:"$PORT" 2>/dev/null || true)
+    [ -n "$REMAINING" ] && kill -9 "$REMAINING" 2>/dev/null || true
   fi
-  exit 0
+  rm -f "$PIDFILE" "$HOSTFILE"
 fi
 
 # --- No Metro detected — start fresh ---

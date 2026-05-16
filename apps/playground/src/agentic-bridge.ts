@@ -2238,7 +2238,7 @@ if (__DEV__) {
 
         findFiberByTestId,
 
-        pressTestId: (testId: string) => {
+        pressTestId: (testId: string, targetValue?: boolean) => {
             try {
                 const fiber = findFiberByTestId(testId)
                 if (!fiber) {
@@ -2264,14 +2264,21 @@ if (__DEV__) {
 
                 if (typeof onPress === 'function') {
                     onPress()
+                    return { ok: true, testId, action: 'press' }
                 } else if (typeof onValueChange === 'function') {
                     const currentValue = props?.value
-                    const nextValue = typeof currentValue === 'boolean' ? !currentValue : true
+                    const nextValue =
+                        typeof targetValue === 'boolean'
+                            ? targetValue
+                            : typeof currentValue === 'boolean'
+                              ? !currentValue
+                              : true
                     onValueChange(nextValue)
+                    return { ok: true, testId, action: 'valueChange', value: nextValue }
                 } else {
                     click?.()
+                    return { ok: true, testId, action: 'click' }
                 }
-                return { ok: true, testId }
             } catch (e) {
                 return { ok: false, error: String(e) }
             }

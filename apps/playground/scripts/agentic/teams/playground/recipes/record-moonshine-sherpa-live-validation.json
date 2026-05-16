@@ -57,6 +57,7 @@
         "show-advanced": {
           "action": "press",
           "test_id": "record-show-advanced-settings",
+          "value": true,
           "next": "wait-moonshine-sherpa-toggle"
         },
         "wait-moonshine-sherpa-toggle": {
@@ -67,6 +68,7 @@
         "enable-moonshine-sherpa": {
           "action": "press",
           "test_id": "record-enable-moonshine-sherpa-live",
+          "value": true,
           "next": "wait-enabled"
         },
         "wait-enabled": {

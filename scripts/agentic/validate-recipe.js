@@ -348,7 +348,9 @@ function describeStep(step) {
     case 'wait_for':
       return `wait for ${step.test_id || step.route || step.not_route || 'condition'}`;
     case 'press':
-      return `press ${step.test_id}`;
+      return typeof step.value === 'boolean'
+        ? `set ${step.test_id} to ${step.value}`
+        : `press ${step.test_id}`;
     case 'scroll':
       return `scroll ${step.test_id || 'first scrollable view'}`;
     case 'set_input':
@@ -1368,9 +1370,15 @@ async function runExecutableNode(node, context, options = {}) {
       break;
     }
     case 'press':
-      bridgeResult = spawnBridge(appRoot, ['press-test-id', node.test_id], {
+      bridgeResult = spawnBridge(
+        appRoot,
+        typeof node.value === 'boolean'
+          ? ['press-test-id', node.test_id, '--value', String(node.value)]
+          : ['press-test-id', node.test_id],
+        {
         device: runOptions.device,
-      });
+        }
+      );
       break;
     case 'scroll': {
       const scrollArgs = ['scroll-view'];

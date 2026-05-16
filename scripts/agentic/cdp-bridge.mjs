@@ -839,9 +839,19 @@ const COMMANDS = {
   async 'press-test-id'(client, args, { deviceName } = {}) {
     const testId = args[0];
     if (!testId) {
-      throw new Error('Usage: press-test-id <testId>');
+      throw new Error('Usage: press-test-id <testId> [--value true|false]');
     }
-    const expr = `globalThis.__AGENTIC__?.pressTestId(${JSON.stringify(testId)})`;
+    let targetValue;
+    if (args[1] === '--value') {
+      if (!['true', 'false'].includes(args[2])) {
+        throw new Error('Usage: press-test-id <testId> [--value true|false]');
+      }
+      targetValue = args[2] === 'true';
+    }
+    const expr =
+      targetValue === undefined
+        ? `globalThis.__AGENTIC__?.pressTestId(${JSON.stringify(testId)})`
+        : `globalThis.__AGENTIC__?.pressTestId(${JSON.stringify(testId)}, ${JSON.stringify(targetValue)})`;
     const result = await cdpEval(client, expr);
     return { ...result, testId, deviceName };
   },
