@@ -163,6 +163,7 @@ class SpeakerIdHandler(private val reactContext: ReactApplicationContext) {
 
                 // Check if we have enough data to compute embedding
                 if (!speakerExtractor!!.isReady(stream!!)) {
+                    resetEmbeddingStream()
                     val resultMap = Arguments.createMap()
                     resultMap.putBoolean("success", false)
                     resultMap.putString("error", "Not enough audio data to compute embedding")
@@ -184,8 +185,7 @@ class SpeakerIdHandler(private val reactContext: ReactApplicationContext) {
                 }
 
                 // Create new stream for next compute operation
-                stream?.release()
-                stream = speakerExtractor?.createStream()
+                resetEmbeddingStream()
 
                 // Return results
                 val resultMap = Arguments.createMap()
@@ -199,6 +199,7 @@ class SpeakerIdHandler(private val reactContext: ReactApplicationContext) {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error computing speaker embedding: ${e.message}")
+                resetEmbeddingStream()
 
                 reactContext.runOnUiQueueThread {
                     promise.reject("ERR_SPEAKER_ID_COMPUTE", "Failed to compute speaker embedding: ${e.message}")
@@ -642,6 +643,19 @@ class SpeakerIdHandler(private val reactContext: ReactApplicationContext) {
                     promise.reject("ERR_SPEAKER_ID_RELEASE", "Failed to release Speaker ID resources: ${e.message}")
                 }
             }
+        }
+    }
+
+    /**
+     * Reset the streaming buffer used by processSamples/computeEmbedding.
+     */
+    private fun resetEmbeddingStream() {
+        try {
+            stream?.release()
+            stream = speakerExtractor?.createStream()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error resetting speaker ID stream: ${e.message}")
+            stream = null
         }
     }
 

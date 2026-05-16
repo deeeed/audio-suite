@@ -205,7 +205,7 @@ describe('LiveAttributedTranscriptionSession', () => {
     await expect(runReplay()).resolves.toEqual(await runReplay());
   });
 
-  it('rejects non-monotonic sample clocks before mutating ASR state', async () => {
+  it('rejects non-contiguous sample clocks before mutating ASR state', async () => {
     const speakerTurns = new LiveSpeakerTurnSession({
       sampleRate: 16_000,
       vad: createVadAdapter([false]),
@@ -220,7 +220,7 @@ describe('LiveAttributedTranscriptionSession', () => {
     await session.acceptChunk({ samples: createChunk(0) });
     await expect(
       session.acceptChunk({ samples: createChunk(0), startSample: 0 })
-    ).rejects.toThrow('non-monotonic startSample');
+    ).rejects.toThrow('non-contiguous startSample');
   });
 
   it('does not advance the sample cursor when speaker turn ingestion throws', async () => {

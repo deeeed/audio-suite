@@ -127,9 +127,9 @@ export class LiveAttributedTranscriptionSession {
     }
 
     const startSample = chunk.startSample ?? this.nextSample;
-    if (startSample < this.nextSample) {
+    if (startSample !== this.nextSample) {
       throw new Error(
-        `LiveAttributedTranscriptionSession received non-monotonic startSample ${startSample}; next expected sample is ${this.nextSample}`
+        `LiveAttributedTranscriptionSession received non-contiguous startSample ${startSample}; next expected sample is ${this.nextSample}`
       );
     }
 

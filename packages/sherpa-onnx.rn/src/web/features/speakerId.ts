@@ -113,6 +113,11 @@ export function SpeakerIdMixin<TBase extends Constructor>(Base: TBase) {
           samplesProcessed: this.speakerIdSamplesProcessed,
         };
       } catch (error) {
+        if (this.speakerExtractor && this.speakerIdStream) {
+          this.speakerExtractor.destroyStream(this.speakerIdStream);
+          this.speakerIdStream = null;
+          this.speakerIdSamplesProcessed = 0;
+        }
         return {
           success: false,
           samplesProcessed: 0,
@@ -136,6 +141,9 @@ export function SpeakerIdMixin<TBase extends Constructor>(Base: TBase) {
         this.speakerExtractor.inputFinished(this.speakerIdStream);
 
         if (!this.speakerExtractor.isReady(this.speakerIdStream)) {
+          this.speakerExtractor.destroyStream(this.speakerIdStream);
+          this.speakerIdStream = null;
+          this.speakerIdSamplesProcessed = 0;
           return {
             success: false,
             embedding: [],
@@ -162,6 +170,11 @@ export function SpeakerIdMixin<TBase extends Constructor>(Base: TBase) {
           embeddingDim: embedding.length,
         };
       } catch (error) {
+        if (this.speakerExtractor && this.speakerIdStream) {
+          this.speakerExtractor.destroyStream(this.speakerIdStream);
+          this.speakerIdStream = null;
+          this.speakerIdSamplesProcessed = 0;
+        }
         return {
           success: false,
           embedding: [],
