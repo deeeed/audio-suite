@@ -64,15 +64,15 @@ class SherpaOnnxImpl(private val reactContext: ReactApplicationContext) {
     fun initTts(config: ReadableMap, promise: Promise) {
         ttsHandler.init(config, promise)
     }
-    
+
     fun generateTts(config: ReadableMap, promise: Promise) {
         ttsHandler.generate(config, promise)
     }
-    
+
     fun stopTts(promise: Promise) {
         ttsHandler.stop(promise)
     }
-    
+
     fun releaseTts(promise: Promise) {
         ttsHandler.release(promise)
     }
@@ -118,23 +118,23 @@ class SherpaOnnxImpl(private val reactContext: ReactApplicationContext) {
     fun initAudioTagging(config: ReadableMap, promise: Promise) {
         audioTaggingHandler.init(config, promise)
     }
-    
+
     fun processAudioSamples(sampleRate: Int, audioBuffer: ReadableArray, topK: Int = -1, promise: Promise) {
         audioTaggingHandler.processAudioSamples(sampleRate, audioBuffer, topK, promise)
     }
-    
+
     fun computeAudioTagging(topK: Int = -1, promise: Promise) {
         audioTaggingHandler.computeAudioTagging(topK, promise)
     }
-    
+
     fun releaseAudioTagging(promise: Promise) {
         audioTaggingHandler.release(promise)
     }
-    
+
     fun processAndComputeAudioTagging(filePath: String, topK: Int = -1, promise: Promise) {
         audioTaggingHandler.processAndComputeAudioTagging(filePath, topK, promise)
     }
-    
+
     fun processAudioFile(filePath: String, topK: Int = -1, promise: Promise) {
         audioTaggingHandler.processAudioFile(filePath, topK, promise)
     }
@@ -143,39 +143,43 @@ class SherpaOnnxImpl(private val reactContext: ReactApplicationContext) {
     fun initSpeakerId(config: ReadableMap, promise: Promise) {
         speakerIdHandler.init(config, promise)
     }
-    
+
     fun processSpeakerIdSamples(sampleRate: Int, audioBuffer: ReadableArray, promise: Promise) {
         speakerIdHandler.processAudioSamples(sampleRate, audioBuffer, promise)
     }
-    
+
     fun computeSpeakerEmbedding(promise: Promise) {
         speakerIdHandler.computeEmbedding(promise)
     }
-    
+
     fun registerSpeaker(name: String, embedding: ReadableArray, promise: Promise) {
         speakerIdHandler.registerSpeaker(name, embedding, promise)
     }
-    
+
     fun removeSpeaker(name: String, promise: Promise) {
         speakerIdHandler.removeSpeaker(name, promise)
     }
-    
+
     fun getSpeakers(promise: Promise) {
         speakerIdHandler.getSpeakers(promise)
     }
-    
+
     fun identifySpeaker(embedding: ReadableArray, threshold: Float, promise: Promise) {
         speakerIdHandler.identifySpeaker(embedding, threshold, promise)
     }
-    
+
     fun verifySpeaker(name: String, embedding: ReadableArray, threshold: Float, promise: Promise) {
         speakerIdHandler.verifySpeaker(name, embedding, threshold, promise)
     }
-    
+
     fun processSpeakerIdFile(filePath: String, promise: Promise) {
         speakerIdHandler.processAudioFile(filePath, promise)
     }
-    
+
+    fun processSpeakerIdFileWindow(filePath: String, startTimeMs: Double, durationMs: Double, promise: Promise) {
+        speakerIdHandler.processAudioFileWindow(filePath, startTimeMs, durationMs, promise)
+    }
+
     fun releaseSpeakerId(promise: Promise) {
         speakerIdHandler.release(promise)
     }
@@ -187,6 +191,17 @@ class SherpaOnnxImpl(private val reactContext: ReactApplicationContext) {
 
     fun processDiarizationFile(filePath: String, numClusters: Int, threshold: Float, promise: Promise) {
         diarizationHandler.processDiarizationFile(filePath, numClusters, threshold, promise)
+    }
+
+    fun processDiarizationFileWindow(
+        filePath: String,
+        startTimeMs: Double,
+        durationMs: Double,
+        numClusters: Int,
+        threshold: Float,
+        promise: Promise
+    ) {
+        diarizationHandler.processDiarizationFileWindow(filePath, startTimeMs, durationMs, numClusters, threshold, promise)
     }
 
     fun releaseDiarization(promise: Promise) {
@@ -283,13 +298,13 @@ class SherpaOnnxImpl(private val reactContext: ReactApplicationContext) {
     fun validateLibraryLoaded(promise: Promise) {
         val resultMap = Arguments.createMap()
         resultMap.putBoolean("loaded", isLibraryLoaded)
-        
+
         if (isLibraryLoaded) {
             resultMap.putString("status", "Sherpa ONNX JNI library loaded successfully")
         } else {
             resultMap.putString("status", "Failed to load Sherpa ONNX JNI library")
         }
-        
+
         promise.resolve(resultMap)
     }
 
@@ -298,12 +313,12 @@ class SherpaOnnxImpl(private val reactContext: ReactApplicationContext) {
             // Test JNI communication by creating a simple stream
             val stream = OnlineStream()
             stream.release()
-            
+
             val response = Arguments.createMap().apply {
                 putString("status", "C library integration successful")
                 putBoolean("success", true)
             }
-            
+
             promise.resolve(response)
         } catch (e: Exception) {
             val response = Arguments.createMap().apply {
@@ -317,15 +332,15 @@ class SherpaOnnxImpl(private val reactContext: ReactApplicationContext) {
     fun getArchitectureInfo(promise: Promise) {
         getSystemInfo(promise)
     }
-    
+
     fun getSystemInfo(promise: Promise) {
         val response = Arguments.createMap()
-        
+
         try {
             // React Native Architecture Info
             val archInfo = Arguments.createMap()
             val isNewArchEnabled = true // New Architecture is always enabled (SDK 55+)
-            
+
             // Check if JSI is available (for additional context)
             val isJSIAvailable = try {
                 Class.forName("com.facebook.react.turbomodule.core.CallInvokerHolderImpl")
@@ -333,14 +348,14 @@ class SherpaOnnxImpl(private val reactContext: ReactApplicationContext) {
             } catch (e: ClassNotFoundException) {
                 false
             }
-            
+
             archInfo.putString("type", if (isNewArchEnabled) "new" else "old")
             archInfo.putString("description", if (isNewArchEnabled) "New Architecture (TurboModules)" else "Old Architecture (Bridge)")
             archInfo.putBoolean("jsiAvailable", isJSIAvailable)
             archInfo.putBoolean("turboModulesEnabled", isNewArchEnabled)
             archInfo.putString("moduleType", if (isNewArchEnabled) "TurboModule" else "Bridge Module")
             response.putMap("architecture", archInfo)
-            
+
             // Memory Information
             val memoryInfo = Arguments.createMap()
             val runtime = Runtime.getRuntime()
@@ -348,12 +363,12 @@ class SherpaOnnxImpl(private val reactContext: ReactApplicationContext) {
             val totalMemory = runtime.totalMemory()
             val freeMemory = runtime.freeMemory()
             val usedMemory = totalMemory - freeMemory
-            
+
             memoryInfo.putDouble("maxMemoryMB", maxMemory / 1024.0 / 1024.0)
             memoryInfo.putDouble("totalMemoryMB", totalMemory / 1024.0 / 1024.0)
             memoryInfo.putDouble("freeMemoryMB", freeMemory / 1024.0 / 1024.0)
             memoryInfo.putDouble("usedMemoryMB", usedMemory / 1024.0 / 1024.0)
-            
+
             // Get system memory info
             val activityManager = reactContext.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
             if (activityManager != null) {
@@ -365,11 +380,11 @@ class SherpaOnnxImpl(private val reactContext: ReactApplicationContext) {
                 memoryInfo.putDouble("lowMemoryThresholdMB", memInfo.threshold / 1024.0 / 1024.0)
             }
             response.putMap("memory", memoryInfo)
-            
+
             // CPU Information
             val cpuInfo = Arguments.createMap()
             cpuInfo.putInt("availableProcessors", runtime.availableProcessors())
-            
+
             // Read CPU info from /proc/cpuinfo if available
             try {
                 val cpuInfoFile = File("/proc/cpuinfo")
@@ -383,7 +398,7 @@ class SherpaOnnxImpl(private val reactContext: ReactApplicationContext) {
             } catch (e: Exception) {
                 Log.w(TAG, "Could not read CPU info", e)
             }
-            
+
             // ABI Information
             val abiInfo = Arguments.createArray()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
@@ -400,7 +415,7 @@ class SherpaOnnxImpl(private val reactContext: ReactApplicationContext) {
             }
             cpuInfo.putArray("supportedAbis", abiInfo)
             response.putMap("cpu", cpuInfo)
-            
+
             // Device Information
             val deviceInfo = Arguments.createMap()
             deviceInfo.putString("brand", Build.BRAND)
@@ -410,36 +425,36 @@ class SherpaOnnxImpl(private val reactContext: ReactApplicationContext) {
             deviceInfo.putInt("sdkVersion", Build.VERSION.SDK_INT)
             deviceInfo.putString("androidVersion", Build.VERSION.RELEASE)
             response.putMap("device", deviceInfo)
-            
+
             // GPU Information (limited on Android)
             val gpuInfo = Arguments.createMap()
             // Android doesn't provide direct GPU info access, but we can check for some features
             val packageManager = reactContext.packageManager
-            gpuInfo.putBoolean("supportsVulkan", 
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && 
+            gpuInfo.putBoolean("supportsVulkan",
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.N &&
                 packageManager.hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_LEVEL))
-            
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && 
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N &&
                 packageManager.hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_LEVEL)) {
                 // Note: getSystemFeatureLevel is available from API 24+
                 // For now, just indicate Vulkan is supported
                 gpuInfo.putBoolean("vulkanSupported", true)
             }
-            
+
             // Check OpenGL ES version
             val glEsVersion = activityManager?.deviceConfigurationInfo?.glEsVersion ?: "Unknown"
             gpuInfo.putString("openGLESVersion", glEsVersion)
             response.putMap("gpu", gpuInfo)
-            
+
             // Library Status
             response.putBoolean("libraryLoaded", isLibraryLoaded)
-            
+
             // Thread Information (for debugging)
             val threadInfo = Arguments.createMap()
             threadInfo.putString("currentThread", Thread.currentThread().name)
             threadInfo.putInt("threadId", Thread.currentThread().id.toInt())
             response.putMap("thread", threadInfo)
-            
+
             Log.i(TAG, "System info collected successfully")
             promise.resolve(response)
         } catch (e: Exception) {
@@ -449,4 +464,4 @@ class SherpaOnnxImpl(private val reactContext: ReactApplicationContext) {
         }
     }
 
-} 
+}

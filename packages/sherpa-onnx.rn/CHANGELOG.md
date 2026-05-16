@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Long diarization primitives: native/web file-window diarization and speaker-embedding window APIs for memory-bounded app-level long-file diarization.
+
+### Changed
+- Speaker diarization now defaults segmentation to full `model.onnx` for quality; `model.int8.onnx` remains available only when callers explicitly pass `segmentationModelFile`.
+
+
 ## [1.2.0] - 2026-05-06
 
 ### Added

@@ -40,7 +40,7 @@ import {
     MODEL_STATES_STORAGE_KEY,
 } from './utils/constants'
 import { resolveModelDir } from './utils/fileUtils'
-import { getAsrModelConfigById } from './hooks/useModelConfig'
+import { getAsrModelConfigById, getModelConfigById } from './hooks/useModelConfig'
 import { readMonoPcm16Wav } from './utils/wav'
 
 // App-variant-aware model base directory.
@@ -63,17 +63,6 @@ function _resolveModelsBase() {
     return `${docDir.replace('file://', '')}models`
 }
 const MODELS_BASE = _resolveModelsBase()
-
-// Helper for native-FS-only test methods to short-circuit on web with a
-// clear error result instead of silently building '__web_unavailable__/...'
-// paths. testASR has its own web path and should NOT call this.
-function nativeFsOnlyResult(op: string) {
-    return {
-        op,
-        status: 'error' as const,
-        error: `${op} requires the native filesystem (FileSystem.documentDirectory). Web is not supported for this method — use the in-app UI or a web-specific recipe instead.`,
-    }
-}
 
 // State holders updated by AgenticBridgeSync component
 let _routeInfo: { pathname: string; segments: string[] } = {
@@ -129,6 +118,841 @@ let _lastAsyncResult: {
     error?: string
 } | null = null
 
+type DownloadedModelStatus = {
+    localPath?: string | null
+    name?: string | null
+}
+
+type NativeDiarizationBenchmarkCase = {
+    label?: string
+    segmentationModelId?: string
+    segmentationModelFile?: string
+    embeddingModelId?: string
+    numClusters?: number
+    threshold?: number
+    numThreads?: number
+}
+
+type NativeDiarizationWindowedOptions = {
+    totalDurationMs: number
+    windowDurationMs?: number
+    overlapDurationMs?: number
+    stitchSpeakers?: boolean
+    globalSpeakerReid?: boolean
+    minReidSegmentDurationMs?: number
+    maxReidSegmentDurationMs?: number
+    reidSelfTrainingIterations?: number
+}
+
+type DiarizationSegment = {
+    start: number
+    end: number
+    speaker: string | number
+}
+
+function segmentOverlapSeconds(
+    a: DiarizationSegment,
+    b: DiarizationSegment,
+    rangeStart: number,
+    rangeEnd: number
+) {
+    return Math.max(
+        0,
+        Math.min(a.end, b.end, rangeEnd) - Math.max(a.start, b.start, rangeStart)
+    )
+}
+
+function cropSegmentToRange(
+    segment: DiarizationSegment,
+    start: number,
+    end: number
+): DiarizationSegment | null {
+    const croppedStart = Math.max(start, segment.start)
+    const croppedEnd = Math.min(end, segment.end)
+    if (croppedEnd <= croppedStart) {
+        return null
+    }
+    return { ...segment, start: croppedStart, end: croppedEnd }
+}
+
+function buildSpeakerStitchMap(
+    existingSegments: DiarizationSegment[],
+    windowSegments: DiarizationSegment[],
+    overlapStart: number,
+    overlapEnd: number
+) {
+    const localSpeakers = Array.from(
+        new Set(windowSegments.map((segment) => String(segment.speaker)))
+    )
+    const globalSpeakers = Array.from(
+        new Set(existingSegments.map((segment) => String(segment.speaker)))
+    )
+    const usedGlobalSpeakers = new Set<string>()
+    const mapping = new Map<string, string>()
+
+    for (const localSpeaker of localSpeakers) {
+        let bestGlobalSpeaker: string | null = null
+        let bestOverlap = 0
+        for (const globalSpeaker of globalSpeakers) {
+            if (usedGlobalSpeakers.has(globalSpeaker)) {
+                continue
+            }
+            let overlapSeconds = 0
+            for (const windowSegment of windowSegments) {
+                if (String(windowSegment.speaker) !== localSpeaker) {
+                    continue
+                }
+                for (const existingSegment of existingSegments) {
+                    if (String(existingSegment.speaker) !== globalSpeaker) {
+                        continue
+                    }
+                    overlapSeconds += segmentOverlapSeconds(
+                        windowSegment,
+                        existingSegment,
+                        overlapStart,
+                        overlapEnd
+                    )
+                }
+            }
+            if (overlapSeconds > bestOverlap) {
+                bestOverlap = overlapSeconds
+                bestGlobalSpeaker = globalSpeaker
+            }
+        }
+
+        if (bestGlobalSpeaker !== null && bestOverlap > 0) {
+            mapping.set(localSpeaker, bestGlobalSpeaker)
+            usedGlobalSpeakers.add(bestGlobalSpeaker)
+        }
+    }
+
+    for (const localSpeaker of localSpeakers) {
+        if (mapping.has(localSpeaker)) {
+            continue
+        }
+        const unusedGlobal = globalSpeakers.find(
+            (speaker) => !usedGlobalSpeakers.has(speaker)
+        )
+        if (unusedGlobal) {
+            mapping.set(localSpeaker, unusedGlobal)
+            usedGlobalSpeakers.add(unusedGlobal)
+        } else {
+            mapping.set(localSpeaker, localSpeaker)
+        }
+    }
+
+    return mapping
+}
+
+function applySpeakerMap(
+    segment: DiarizationSegment,
+    mapping: Map<string, string>
+): DiarizationSegment {
+    const mapped = mapping.get(String(segment.speaker))
+    if (mapped === undefined) {
+        return segment
+    }
+    const numericMapped = Number(mapped)
+    return {
+        ...segment,
+        speaker: Number.isNaN(numericMapped) ? mapped : numericMapped,
+    }
+}
+
+type SpeakerReidItem = {
+    segmentIndex: number
+    windowIndex: number
+    localSpeaker: string
+    durationSeconds: number
+    embedding: number[]
+    globalSpeaker?: number
+}
+
+type DiarizationWindowMetadata = {
+    startTimeMs?: number
+    durationMs?: number
+    outputStartMs?: number
+    outputEndMs?: number
+    elapsedMs?: number
+    segmentCount?: number
+    rawSegmentCount?: number
+    numSpeakers?: number
+    samples?: number
+    speakerMap?: Record<string, string>
+}
+
+function normalizeVector(values: number[]) {
+    const norm = Math.sqrt(values.reduce((sum, value) => sum + value * value, 0))
+    if (!Number.isFinite(norm) || norm <= 0) {
+        return values
+    }
+    return values.map((value) => value / norm)
+}
+
+function meanNormalized(vectors: number[][]) {
+    if (!vectors.length) {
+        return []
+    }
+    const mean = new Array(vectors[0].length).fill(0)
+    for (const vector of vectors) {
+        for (let index = 0; index < vector.length; index += 1) {
+            mean[index] += vector[index]
+        }
+    }
+    return normalizeVector(mean.map((value) => value / vectors.length))
+}
+
+function dotProduct(a: number[], b: number[]) {
+    let sum = 0
+    const length = Math.min(a.length, b.length)
+    for (let index = 0; index < length; index += 1) {
+        sum += a[index] * b[index]
+    }
+    return sum
+}
+
+function classifyWithCentroids(embedding: number[], centroids: number[][]) {
+    let bestIndex = 0
+    let bestScore = Number.NEGATIVE_INFINITY
+    let secondScore = Number.NEGATIVE_INFINITY
+    for (let index = 0; index < centroids.length; index += 1) {
+        const score = dotProduct(embedding, centroids[index])
+        if (score > bestScore) {
+            secondScore = bestScore
+            bestScore = score
+            bestIndex = index
+        } else if (score > secondScore) {
+            secondScore = score
+        }
+    }
+    return {
+        index: bestIndex,
+        score: bestScore,
+        margin: bestScore - secondScore,
+    }
+}
+
+function windowIndexForSegment(
+    segment: DiarizationSegment,
+    windows: DiarizationWindowMetadata[]
+) {
+    const midpointMs = ((segment.start + segment.end) / 2) * 1000
+    const found = windows.findIndex((window) => {
+        const outputStart = window.outputStartMs ?? window.startTimeMs ?? 0
+        const outputEnd =
+            window.outputEndMs ??
+            ((window.startTimeMs ?? 0) + (window.durationMs ?? 0))
+        return midpointMs >= outputStart && midpointMs < outputEnd
+    })
+    if (found >= 0) {
+        return found
+    }
+    return Math.max(0, windows.length - 1)
+}
+
+function computeGlobalSpeakerAssignments(
+    items: SpeakerReidItem[],
+    expectedSpeakerCount: number,
+    iterations: number
+) {
+    if (!items.length || expectedSpeakerCount <= 0) {
+        return []
+    }
+
+    const speakerCount = Math.min(expectedSpeakerCount, items.length)
+    const sortedWindowIndexes = Array.from(new Set(items.map((item) => item.windowIndex))).sort(
+        (a, b) => a - b
+    )
+    const seedWindow = sortedWindowIndexes.find((windowIndex) => {
+        return (
+            new Set(
+                items
+                    .filter((item) => item.windowIndex === windowIndex)
+                    .map((item) => item.localSpeaker)
+            ).size >= speakerCount
+        )
+    })
+
+    let centroids: number[][] = []
+    if (seedWindow !== undefined) {
+        const localSpeakers = Array.from(
+            new Set(
+                items
+                    .filter((item) => item.windowIndex === seedWindow)
+                    .map((item) => item.localSpeaker)
+            )
+        )
+            .sort()
+            .slice(0, speakerCount)
+        centroids = localSpeakers.map((speaker) =>
+            meanNormalized(
+                items
+                    .filter(
+                        (item) =>
+                            item.windowIndex === seedWindow &&
+                            item.localSpeaker === speaker
+                    )
+                    .map((item) => item.embedding)
+            )
+        )
+    }
+
+    while (centroids.length < speakerCount) {
+        if (!centroids.length) {
+            centroids.push(items[0].embedding)
+            continue
+        }
+        let bestItem = items[0]
+        let bestDistance = Number.NEGATIVE_INFINITY
+        for (const item of items) {
+            const nearest = Math.max(
+                ...centroids.map((centroid) => dotProduct(item.embedding, centroid))
+            )
+            const distance = 1 - nearest
+            if (distance > bestDistance) {
+                bestDistance = distance
+                bestItem = item
+            }
+        }
+        centroids.push(bestItem.embedding)
+    }
+
+    let assignments = items.map((item) => classifyWithCentroids(item.embedding, centroids))
+    for (let iteration = 0; iteration < iterations; iteration += 1) {
+        centroids = centroids.map((centroid, speakerIndex) => {
+            const assignedIndexes = assignments
+                .map((assignment, index) => ({ assignment, index }))
+                .filter(({ assignment }) => assignment.index === speakerIndex)
+                .sort((a, b) => b.assignment.margin - a.assignment.margin)
+            if (!assignedIndexes.length) {
+                return centroid
+            }
+            const keepCount = Math.max(3, Math.ceil(assignedIndexes.length * 0.6))
+            const vectors = assignedIndexes
+                .slice(0, keepCount)
+                .map(({ index }) => items[index].embedding)
+            return meanNormalized(vectors)
+        })
+        assignments = items.map((item) => classifyWithCentroids(item.embedding, centroids))
+    }
+
+    return items.map((item, index) => ({
+        ...item,
+        globalSpeaker: assignments[index]?.index ?? 0,
+    }))
+}
+
+async function applyGlobalSpeakerReid(params: {
+    audioUri: string
+    segments: DiarizationSegment[]
+    windows: DiarizationWindowMetadata[]
+    embeddingModelId: string
+    embeddingModelDir: string
+    embeddingModelFileName: string
+    numThreads: number
+    expectedSpeakerCount: number
+    minSegmentDurationMs: number
+    maxSegmentDurationMs: number
+    iterations: number
+    label: string
+}) {
+    const {
+        audioUri,
+        segments,
+        windows,
+        embeddingModelId,
+        embeddingModelDir,
+        embeddingModelFileName,
+        numThreads,
+        expectedSpeakerCount,
+        minSegmentDurationMs,
+        maxSegmentDurationMs,
+        iterations,
+        label,
+    } = params
+    const timing: Record<string, number> = {}
+    const initStartedAt = Date.now()
+    await SpeakerId.release().catch(() => {})
+    const init = await SpeakerId.init({
+        modelDir: embeddingModelDir,
+        modelFile: embeddingModelFileName,
+        numThreads,
+    })
+    timing.initMs = Date.now() - initStartedAt
+    if (!init.success) {
+        await SpeakerId.release().catch(() => {})
+        throw new Error(init.error || 'Speaker re-ID init failed')
+    }
+
+    try {
+        const embeddingStartedAt = Date.now()
+        const items: SpeakerReidItem[] = []
+        for (let index = 0; index < segments.length; index += 1) {
+            const segment = segments[index]
+            const durationMs = Math.max(0, (segment.end - segment.start) * 1000)
+            if (durationMs < minSegmentDurationMs) {
+                continue
+            }
+            const takeMs = Math.min(durationMs, maxSegmentDurationMs)
+            const midpointMs = ((segment.start + segment.end) / 2) * 1000
+            const startTimeMs = Math.max(0, midpointMs - takeMs / 2)
+            const embeddingResult = await SpeakerId.processFileWindow(
+                audioUri,
+                startTimeMs,
+                takeMs
+            )
+            if (!embeddingResult.success) {
+                throw new Error(
+                    embeddingResult.error ||
+                        `Speaker re-ID embedding failed for segment ${index}`
+                )
+            }
+            if (!embeddingResult.embedding.length) {
+                continue
+            }
+            items.push({
+                segmentIndex: index,
+                windowIndex: windowIndexForSegment(segment, windows),
+                localSpeaker: String(segment.speaker),
+                durationSeconds: durationMs / 1000,
+                embedding: normalizeVector(embeddingResult.embedding),
+            })
+            if (items.length % 25 === 0) {
+                _lastAsyncResult = {
+                    op: 'benchmarkNativeDiarizationWindowedFile',
+                    status: 'pending',
+                    result: {
+                        label,
+                        progress: {
+                            phase: 'global-speaker-reid',
+                            embeddedSegments: items.length,
+                            candidateSegments: segments.length,
+                        },
+                    },
+                }
+            }
+        }
+        timing.embeddingMs = Date.now() - embeddingStartedAt
+
+        const classifyStartedAt = Date.now()
+        const assignedItems = computeGlobalSpeakerAssignments(
+            items,
+            expectedSpeakerCount,
+            iterations
+        )
+        const itemBySegment = new Map(
+            assignedItems.map((item) => [item.segmentIndex, item.globalSpeaker ?? 0])
+        )
+        const majorityByWindowSpeaker = new Map<string, number[]>()
+        for (const item of assignedItems) {
+            const key = `${item.windowIndex}:${item.localSpeaker}`
+            const votes =
+                majorityByWindowSpeaker.get(key) ??
+                new Array(expectedSpeakerCount).fill(0)
+            const globalSpeaker = item.globalSpeaker ?? 0
+            if (globalSpeaker >= 0 && globalSpeaker < votes.length) {
+                votes[globalSpeaker] += item.durationSeconds
+            }
+            majorityByWindowSpeaker.set(key, votes)
+        }
+
+        const remappedSegments = segments.map((segment, index) => {
+            let speaker = itemBySegment.get(index)
+            if (speaker === undefined) {
+                const windowIndex = windowIndexForSegment(segment, windows)
+                const votes = majorityByWindowSpeaker.get(
+                    `${windowIndex}:${String(segment.speaker)}`
+                )
+                if (votes) {
+                    speaker = votes.reduce(
+                        (bestIndex, value, currentIndex) =>
+                            value > votes[bestIndex] ? currentIndex : bestIndex,
+                        0
+                    )
+                }
+            }
+            return {
+                ...segment,
+                speaker: speaker ?? segment.speaker,
+            }
+        })
+        timing.classifyMs = Date.now() - classifyStartedAt
+
+        return {
+            segments: remappedSegments,
+            timing,
+            metadata: {
+                embeddingModelId,
+                embeddingModelFile: embeddingModelFileName,
+                expectedSpeakerCount,
+                embeddedSegmentCount: assignedItems.length,
+                candidateSegmentCount: segments.length,
+                minSegmentDurationMs,
+                maxSegmentDurationMs,
+                iterations,
+                assignments: assignedItems.map((item) => ({
+                    segmentIndex: item.segmentIndex,
+                    windowIndex: item.windowIndex,
+                    localSpeaker: item.localSpeaker,
+                    globalSpeaker: item.globalSpeaker,
+                    durationSeconds: item.durationSeconds,
+                })),
+            },
+        }
+    } finally {
+        const releaseStartedAt = Date.now()
+        await SpeakerId.release().catch(() => {})
+        timing.releaseMs = Date.now() - releaseStartedAt
+    }
+}
+
+function getDownloadedModelStatuses() {
+    return (
+        (_modelState.statuses as
+            | Record<string, DownloadedModelStatus>
+            | undefined) ?? {}
+    )
+}
+
+function normalizeNativeAudioPath(filePath: string) {
+    if (
+        filePath.startsWith('file://') ||
+        filePath.startsWith('http://') ||
+        filePath.startsWith('https://')
+    ) {
+        return filePath
+    }
+    return `file://${filePath}`
+}
+
+async function runNativeDiarizationBenchmarkCase(
+    filePath: string,
+    benchmarkCase: NativeDiarizationBenchmarkCase = {}
+) {
+    if (Platform.OS === 'web') {
+        throw new Error('Native diarization benchmark requires iOS or Android')
+    }
+    if (!filePath) {
+        throw new Error('Native diarization benchmark requires a filePath')
+    }
+
+    const segmentationModelId =
+        benchmarkCase.segmentationModelId ?? 'pyannote-segmentation-3-0'
+    const embeddingModelId =
+        benchmarkCase.embeddingModelId ?? 'speaker-id-en-voxceleb'
+    const segmentationModelFile = benchmarkCase.segmentationModelFile ?? 'model.onnx'
+    const numClusters = benchmarkCase.numClusters ?? -1
+    const threshold = benchmarkCase.threshold ?? 0.5
+    const numThreads = benchmarkCase.numThreads ?? 2
+
+    const statuses = getDownloadedModelStatuses()
+    const segStatus = statuses[segmentationModelId]
+    const embStatus = statuses[embeddingModelId]
+    if (!segStatus?.localPath) {
+        throw new Error(`Model ${segmentationModelId} is not downloaded`)
+    }
+    if (!embStatus?.localPath) {
+        throw new Error(`Model ${embeddingModelId} is not downloaded`)
+    }
+
+    const segModelDir = await resolveModelDir(segStatus.localPath)
+    const cleanEmbPath = embStatus.localPath.replace(/^file:\/\//, '')
+    const speakerIdConfig = getModelConfigById(embeddingModelId)?.speakerIdConfig
+    const embeddingModelFile = `${cleanEmbPath}/${speakerIdConfig?.modelFile ?? 'model.onnx'}`
+    const audioUri = normalizeNativeAudioPath(filePath)
+    const timing: Record<string, number> = {}
+
+    await Diarization.release().catch(() => {})
+    const initStartedAt = Date.now()
+    const initResult = await Diarization.init({
+        segmentationModelDir: segModelDir,
+        segmentationModelFile,
+        embeddingModelFile,
+        numThreads,
+        numClusters,
+        threshold,
+    })
+    timing.initMs = Date.now() - initStartedAt
+    if (!initResult.success) {
+        throw new Error(initResult.error || 'Diarization init failed')
+    }
+
+    const processStartedAt = Date.now()
+    const result = await Diarization.processFile(audioUri, numClusters, threshold)
+    timing.processMs = Date.now() - processStartedAt
+    if (!result.success) {
+        throw new Error(result.error || 'Diarization processing failed')
+    }
+
+    const releaseStartedAt = Date.now()
+    await Diarization.release()
+    timing.releaseMs = Date.now() - releaseStartedAt
+
+    const speakerDurations: Record<string, number> = {}
+    for (const segment of result.segments) {
+        const key = String(segment.speaker)
+        speakerDurations[key] =
+            (speakerDurations[key] ?? 0) + Math.max(0, segment.end - segment.start)
+    }
+
+    return {
+        label: benchmarkCase.label ?? `${embeddingModelId}/k${numClusters}/t${threshold}`,
+        platform: Platform.OS,
+        filePath: audioUri,
+        segmentationModelId,
+        embeddingModelId,
+        segmentationModelDir: segModelDir,
+        segmentationModelFile,
+        embeddingModelFile,
+        numClusters,
+        threshold,
+        numThreads,
+        initSampleRate: initResult.sampleRate,
+        timing,
+        numSpeakers: result.numSpeakers,
+        segmentCount: result.segments.length,
+        durationMs: result.durationMs,
+        speakerDurations,
+        segments: result.segments,
+        firstSegments: result.segments.slice(0, 8),
+        lastSegments: result.segments.slice(-8),
+    }
+}
+
+async function runNativeDiarizationWindowedBenchmarkCase(
+    filePath: string,
+    benchmarkCase: NativeDiarizationBenchmarkCase = {},
+    options: NativeDiarizationWindowedOptions
+) {
+    if (Platform.OS === 'web') {
+        throw new Error('Native windowed diarization benchmark requires iOS or Android')
+    }
+    if (!options?.totalDurationMs || options.totalDurationMs <= 0) {
+        throw new Error('Windowed diarization benchmark requires totalDurationMs')
+    }
+
+    const segmentationModelId =
+        benchmarkCase.segmentationModelId ?? 'pyannote-segmentation-3-0'
+    const embeddingModelId =
+        benchmarkCase.embeddingModelId ?? 'speaker-id-en-voxceleb'
+    const segmentationModelFile = benchmarkCase.segmentationModelFile ?? 'model.onnx'
+    const numClusters = benchmarkCase.numClusters ?? -1
+    const threshold = benchmarkCase.threshold ?? 0.5
+    const numThreads = benchmarkCase.numThreads ?? 2
+    const windowDurationMs = options.windowDurationMs ?? 5 * 60 * 1000
+    const overlapDurationMs = options.overlapDurationMs ?? 0
+    const stitchSpeakers = options.stitchSpeakers ?? (overlapDurationMs > 0)
+    if (stitchSpeakers && overlapDurationMs <= 0) {
+        throw new Error('stitchSpeakers requires overlapDurationMs > 0')
+    }
+    if (overlapDurationMs < 0 || overlapDurationMs >= windowDurationMs) {
+        throw new Error(
+            `overlapDurationMs must be >= 0 and < windowDurationMs (got overlapDurationMs=${overlapDurationMs}, windowDurationMs=${windowDurationMs})`
+        )
+    }
+    const strideMs = windowDurationMs - overlapDurationMs
+
+    const statuses = getDownloadedModelStatuses()
+    const segStatus = statuses[segmentationModelId]
+    const embStatus = statuses[embeddingModelId]
+    if (!segStatus?.localPath) {
+        throw new Error(`Model ${segmentationModelId} is not downloaded`)
+    }
+    if (!embStatus?.localPath) {
+        throw new Error(`Model ${embeddingModelId} is not downloaded`)
+    }
+
+    const segModelDir = await resolveModelDir(segStatus.localPath)
+    const cleanEmbPath = embStatus.localPath.replace(/^file:\/\//, '')
+    const speakerIdConfig = getModelConfigById(embeddingModelId)?.speakerIdConfig
+    const embeddingModelFile = `${cleanEmbPath}/${speakerIdConfig?.modelFile ?? 'model.onnx'}`
+    const audioUri = normalizeNativeAudioPath(filePath)
+    const timing: Record<string, number> = {}
+
+    await Diarization.release().catch(() => {})
+    const initStartedAt = Date.now()
+    const initResult = await Diarization.init({
+        segmentationModelDir: segModelDir,
+        segmentationModelFile,
+        embeddingModelFile,
+        numThreads,
+        numClusters,
+        threshold,
+    })
+    timing.initMs = Date.now() - initStartedAt
+    if (!initResult.success) {
+        throw new Error(initResult.error || 'Diarization init failed')
+    }
+
+    const processStartedAt = Date.now()
+    const windows: DiarizationWindowMetadata[] = []
+    const segments: DiarizationSegment[] = []
+    const plannedWindowCount = Math.ceil(options.totalDurationMs / strideMs)
+    for (
+        let startTimeMs = 0;
+        startTimeMs < options.totalDurationMs;
+        startTimeMs += strideMs
+    ) {
+        const currentWindowMs = Math.min(
+            windowDurationMs,
+            options.totalDurationMs - startTimeMs
+        )
+        const windowStartedAt = Date.now()
+        const result = await Diarization.processFileWindow(
+            audioUri,
+            startTimeMs,
+            currentWindowMs,
+            numClusters,
+            threshold
+        )
+        const elapsedMs = Date.now() - windowStartedAt
+        if (!result.success) {
+            throw new Error(
+                result.error ||
+                    `Diarization window failed at ${startTimeMs}ms for ${currentWindowMs}ms`
+            )
+        }
+        const rawSegments = result.segments as DiarizationSegment[]
+        const overlapStartSeconds = startTimeMs / 1000
+        const overlapEndSeconds = (startTimeMs + overlapDurationMs) / 1000
+        const speakerMap =
+            stitchSpeakers && startTimeMs > 0 && overlapDurationMs > 0
+                ? buildSpeakerStitchMap(
+                      segments,
+                      rawSegments,
+                      overlapStartSeconds,
+                      overlapEndSeconds
+                  )
+                : new Map(
+                      Array.from(
+                          new Set(rawSegments.map((segment) => String(segment.speaker)))
+                      ).map((speaker) => [speaker, speaker])
+                  )
+        const outputStartSeconds =
+            startTimeMs === 0 ? 0 : (startTimeMs + overlapDurationMs) / 1000
+        const outputEndSeconds = Math.min(
+            options.totalDurationMs,
+            startTimeMs + currentWindowMs
+        ) / 1000
+        const stitchedSegments = rawSegments
+            .map((segment) => applySpeakerMap(segment, speakerMap))
+            .map((segment) =>
+                cropSegmentToRange(segment, outputStartSeconds, outputEndSeconds)
+            )
+            .filter((segment): segment is DiarizationSegment => Boolean(segment))
+        windows.push({
+            startTimeMs,
+            durationMs: currentWindowMs,
+            elapsedMs,
+            segmentCount: stitchedSegments.length,
+            rawSegmentCount: result.segments.length,
+            numSpeakers: result.numSpeakers,
+            samples: result.samples,
+            outputStartMs: outputStartSeconds * 1000,
+            outputEndMs: outputEndSeconds * 1000,
+            speakerMap: Object.fromEntries(speakerMap),
+        })
+        segments.push(...stitchedSegments)
+        _lastAsyncResult = {
+            op: 'benchmarkNativeDiarizationWindowedFile',
+            status: 'pending',
+            result: {
+                label:
+                    benchmarkCase.label ??
+                    `${embeddingModelId}/windowed/k${numClusters}/t${threshold}`,
+                progress: {
+                    completedWindows: windows.length,
+                    plannedWindowCount,
+                    lastWindowElapsedMs: elapsedMs,
+                    segmentCount: segments.length,
+                    startTimeMs,
+                    durationMs: currentWindowMs,
+                },
+                windows,
+            },
+        }
+    }
+    timing.processMs = Date.now() - processStartedAt
+
+    const releaseStartedAt = Date.now()
+    await Diarization.release()
+    timing.releaseMs = Date.now() - releaseStartedAt
+
+    const expectedSpeakerCount =
+        numClusters > 0
+            ? numClusters
+            : new Set(segments.map((segment) => segment.speaker)).size
+    let finalSegments = segments
+    let globalSpeakerReid:
+        | Awaited<ReturnType<typeof applyGlobalSpeakerReid>>['metadata']
+        | undefined
+    let globalSpeakerReidTiming: Record<string, number> | undefined
+    if (options.globalSpeakerReid) {
+        if (numClusters <= 0) {
+            throw new Error('globalSpeakerReid requires a fixed positive numClusters')
+        }
+        const reid = await applyGlobalSpeakerReid({
+            audioUri,
+            segments,
+            windows,
+            embeddingModelId,
+            embeddingModelDir: cleanEmbPath,
+            embeddingModelFileName: speakerIdConfig?.modelFile ?? 'model.onnx',
+            numThreads,
+            expectedSpeakerCount,
+            minSegmentDurationMs: options.minReidSegmentDurationMs ?? 1200,
+            maxSegmentDurationMs: options.maxReidSegmentDurationMs ?? 8000,
+            iterations: options.reidSelfTrainingIterations ?? 5,
+            label:
+                benchmarkCase.label ??
+                `${embeddingModelId}/windowed/k${numClusters}/t${threshold}`,
+        })
+        finalSegments = reid.segments
+        globalSpeakerReid = reid.metadata
+        globalSpeakerReidTiming = reid.timing
+    }
+
+    const speakerDurations: Record<string, number> = {}
+    for (const segment of finalSegments) {
+        const key = String(segment.speaker)
+        speakerDurations[key] =
+            (speakerDurations[key] ?? 0) + Math.max(0, segment.end - segment.start)
+    }
+
+    return {
+        label:
+            benchmarkCase.label ??
+            `${embeddingModelId}/windowed/k${numClusters}/t${threshold}`,
+        platform: Platform.OS,
+        filePath: audioUri,
+        segmentationModelId,
+        embeddingModelId,
+        segmentationModelDir: segModelDir,
+        segmentationModelFile,
+        embeddingModelFile,
+        numClusters,
+        threshold,
+        numThreads,
+        initSampleRate: initResult.sampleRate,
+        timing,
+        totalDurationMs: options.totalDurationMs,
+        windowDurationMs,
+        overlapDurationMs,
+        strideMs,
+        stitchSpeakers,
+        globalSpeakerReid,
+        globalSpeakerReidTiming,
+        windows,
+        numSpeakers: new Set(finalSegments.map((segment) => segment.speaker)).size,
+        segmentCount: finalSegments.length,
+        durationMs: timing.processMs,
+        speakerDurations,
+        segments: finalSegments,
+        firstSegments: finalSegments.slice(0, 8),
+        lastSegments: finalSegments.slice(-8),
+    }
+}
+
 if (__DEV__) {
     ; (globalThis as Record<string, unknown>).__AGENTIC__ = {
         platform: Platform.OS,
@@ -153,7 +977,81 @@ if (__DEV__) {
                 segments: _routeInfo.segments,
                 pageState: _pageState,
                 models: _modelState,
+                documentDirectory: FileSystem.documentDirectory,
             }
+        },
+
+        getDocumentDirectory: () => {
+            return {
+                platform: Platform.OS,
+                documentDirectory: FileSystem.documentDirectory,
+            }
+        },
+
+        downloadValidationFileFromUrl: (url: string, fileName: string) => {
+            const op = 'downloadValidationFileFromUrl'
+            _lastAsyncResult = { op, status: 'pending' }
+            void (async () => {
+                try {
+                    if (!FileSystem.documentDirectory) {
+                        throw new Error(
+                            'downloadValidationFileFromUrl requires FileSystem.documentDirectory'
+                        )
+                    }
+                    const dir = `${FileSystem.documentDirectory}validation/`
+                    await FileSystem.makeDirectoryAsync(dir, {
+                        intermediates: true,
+                    }).catch(() => {})
+                    const targetUri = `${dir}${fileName}`
+                    const info = await FileSystem.getInfoAsync(targetUri)
+                    if (info.exists && info.size && info.size > 0) {
+                        _lastAsyncResult = {
+                            op,
+                            status: 'success',
+                            result: {
+                                url,
+                                fileName,
+                                uri: targetUri,
+                                path: targetUri.replace('file://', ''),
+                                size: info.size,
+                                reused: true,
+                            },
+                        }
+                        return
+                    }
+
+                    const downloaded = await FileSystem.downloadAsync(
+                        url,
+                        targetUri
+                    )
+                    const downloadedInfo = await FileSystem.getInfoAsync(
+                        downloaded.uri
+                    )
+                    _lastAsyncResult = {
+                        op,
+                        status: 'success',
+                        result: {
+                            url,
+                            fileName,
+                            uri: downloaded.uri,
+                            path: downloaded.uri.replace('file://', ''),
+                            status: downloaded.status,
+                            size: downloadedInfo.exists
+                                ? downloadedInfo.size
+                                : undefined,
+                            reused: false,
+                        },
+                    }
+                } catch (e) {
+                    _lastAsyncResult = {
+                        op,
+                        status: 'error',
+                        error: String(e),
+                        result: { url, fileName },
+                    }
+                }
+            })()
+            return { op, status: 'pending' }
         },
 
         getStepHud: () => {
@@ -603,6 +1501,180 @@ if (__DEV__) {
                         status: 'error',
                         error: String(e),
                         result: { timing, filePath, numClusters },
+                    }
+                }
+            })()
+            return { op, status: 'pending' }
+        },
+
+        benchmarkNativeDiarizationFile: (
+            filePath: string,
+            benchmarkCase?: NativeDiarizationBenchmarkCase
+        ) => {
+            const op = 'benchmarkNativeDiarizationFile'
+            _lastAsyncResult = { op, status: 'pending' }
+            void (async () => {
+                try {
+                    const result = await runNativeDiarizationBenchmarkCase(
+                        filePath,
+                        benchmarkCase
+                    )
+                    _lastAsyncResult = { op, status: 'success', result }
+                } catch (e) {
+                    await Diarization.release().catch(() => {})
+                    _lastAsyncResult = {
+                        op,
+                        status: 'error',
+                        error: String(e),
+                        result: { filePath, benchmarkCase },
+                    }
+                }
+            })()
+            return { op, status: 'pending' }
+        },
+
+        benchmarkNativeDiarizationWindowedFile: (
+            filePath: string,
+            benchmarkCase: NativeDiarizationBenchmarkCase = {},
+            options: NativeDiarizationWindowedOptions
+        ) => {
+            const op = 'benchmarkNativeDiarizationWindowedFile'
+            _lastAsyncResult = { op, status: 'pending' }
+            void (async () => {
+                try {
+                    const result =
+                        await runNativeDiarizationWindowedBenchmarkCase(
+                            filePath,
+                            benchmarkCase,
+                            options
+                        )
+                    _lastAsyncResult = { op, status: 'success', result }
+                } catch (e) {
+                    await Diarization.release().catch(() => {})
+                    _lastAsyncResult = {
+                        op,
+                        status: 'error',
+                        error: String(e),
+                        result: { filePath, benchmarkCase, options },
+                    }
+                }
+            })()
+            return { op, status: 'pending' }
+        },
+
+        benchmarkNativeDiarizationSweep: (
+            filePath: string,
+            cases: NativeDiarizationBenchmarkCase[] = []
+        ) => {
+            const op = 'benchmarkNativeDiarizationSweep'
+            _lastAsyncResult = { op, status: 'pending' }
+            void (async () => {
+                const startedAt = Date.now()
+                const defaultCases: NativeDiarizationBenchmarkCase[] = [
+                    {
+                        label: 'auto-en-voxceleb-threshold-0.5',
+                        embeddingModelId: 'speaker-id-en-voxceleb',
+                        numClusters: -1,
+                        threshold: 0.5,
+                    },
+                    {
+                        label: 'fixed-2-en-eres2net-fullseg',
+                        embeddingModelId: 'speaker-id-3dspeaker-eres2net-en',
+                        segmentationModelFile: 'model.onnx',
+                        numClusters: 2,
+                        threshold: 0.5,
+                    },
+                    {
+                        label: 'fixed-2-en-voxceleb',
+                        embeddingModelId: 'speaker-id-en-voxceleb',
+                        segmentationModelFile: 'model.int8.onnx',
+                        numClusters: 2,
+                        threshold: 0.5,
+                    },
+                    {
+                        label: 'fixed-3-en-voxceleb',
+                        embeddingModelId: 'speaker-id-en-voxceleb',
+                        numClusters: 3,
+                        threshold: 0.5,
+                    },
+                    {
+                        label: 'auto-zh-en-advanced-threshold-0.5',
+                        embeddingModelId: 'speaker-id-zh-en-advanced',
+                        numClusters: -1,
+                        threshold: 0.5,
+                    },
+                    {
+                        label: 'fixed-2-zh-en-advanced',
+                        embeddingModelId: 'speaker-id-zh-en-advanced',
+                        numClusters: 2,
+                        threshold: 0.5,
+                    },
+                    {
+                        label: 'fixed-3-zh-en-advanced',
+                        embeddingModelId: 'speaker-id-zh-en-advanced',
+                        numClusters: 3,
+                        threshold: 0.5,
+                    },
+                ]
+                const requestedCases = cases.length > 0 ? cases : defaultCases
+                const results: {
+                    case: NativeDiarizationBenchmarkCase
+                    status: 'success' | 'error'
+                    result?: Awaited<
+                        ReturnType<typeof runNativeDiarizationBenchmarkCase>
+                    >
+                    error?: string
+                }[] = []
+                try {
+                    for (const benchmarkCase of requestedCases) {
+                        try {
+                            const result =
+                                await runNativeDiarizationBenchmarkCase(
+                                    filePath,
+                                    benchmarkCase
+                                )
+                            results.push({
+                                case: benchmarkCase,
+                                status: 'success',
+                                result,
+                            })
+                        } catch (e) {
+                            await Diarization.release().catch(() => {})
+                            results.push({
+                                case: benchmarkCase,
+                                status: 'error',
+                                error: String(e),
+                            })
+                        }
+                    }
+                    _lastAsyncResult = {
+                        op,
+                        status: results.some((entry) => entry.status === 'error')
+                            ? 'error'
+                            : 'success',
+                        result: {
+                            filePath,
+                            cases: requestedCases,
+                            elapsedMs: Date.now() - startedAt,
+                            results,
+                        },
+                        error: results
+                            .filter((entry) => entry.status === 'error')
+                            .map((entry) => entry.error)
+                            .join('\n') || undefined,
+                    }
+                } catch (e) {
+                    await Diarization.release().catch(() => {})
+                    _lastAsyncResult = {
+                        op,
+                        status: 'error',
+                        error: String(e),
+                        result: {
+                            filePath,
+                            cases: requestedCases,
+                            elapsedMs: Date.now() - startedAt,
+                            results,
+                        },
                     }
                 }
             })()
@@ -2117,7 +3189,6 @@ if (__DEV__) {
                     const arrayBuffer = bytes.buffer
 
                     // Parse WAV header
-                    const dataView = new DataView(arrayBuffer)
                     const headerSize = 44
                     const pcmData = new Int16Array(
                         arrayBuffer.slice(headerSize)

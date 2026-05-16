@@ -457,6 +457,36 @@ const MODEL_CONFIGS: Record<string, PredefinedModelConfig> = {
             provider: 'cpu',
         },
     },
+    'speaker-id-nemo-titanet-small': {
+        id: 'speaker-id-nemo-titanet-small',
+        modelType: 'speaker-id',
+        speakerIdConfig: {
+            modelFile: 'nemo_en_titanet_small.onnx',
+            numThreads: DEFAULT_NUM_THREADS,
+            debug: false,
+            provider: 'cpu',
+        },
+    },
+    'speaker-id-3dspeaker-eres2net-en': {
+        id: 'speaker-id-3dspeaker-eres2net-en',
+        modelType: 'speaker-id',
+        speakerIdConfig: {
+            modelFile: '3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx',
+            numThreads: DEFAULT_NUM_THREADS,
+            debug: false,
+            provider: 'cpu',
+        },
+    },
+    'speaker-id-nemo-titanet-large': {
+        id: 'speaker-id-nemo-titanet-large',
+        modelType: 'speaker-id',
+        speakerIdConfig: {
+            modelFile: 'nemo_en_titanet_large.onnx',
+            numThreads: DEFAULT_NUM_THREADS,
+            debug: false,
+            provider: 'cpu',
+        },
+    },
     // KWS model configurations (IDs must match models.ts catalog)
     'kws-zipformer-gigaspeech': {
         id: 'kws-zipformer-gigaspeech',

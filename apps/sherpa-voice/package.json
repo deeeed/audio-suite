@@ -72,7 +72,15 @@
         "android:headless": "APP_VARIANT=development PLATFORM=android HEADLESS=1 REBUILD=1 bash scripts/agentic/preflight.sh",
         "ios:headless": "APP_VARIANT=development PLATFORM=ios HEADLESS=1 REBUILD=1 bash scripts/agentic/preflight.sh",
         "android:device": "APP_VARIANT=development PLATFORM=android ANDROID_DEVICE= EMULATOR_PORT= REBUILD=1 bash scripts/agentic/preflight.sh",
-        "android:device:launch": "APP_VARIANT=development PLATFORM=android ANDROID_DEVICE= EMULATOR_PORT= SKIP_BUILD=1 bash scripts/agentic/preflight.sh"
+        "android:device:launch": "APP_VARIANT=development PLATFORM=android ANDROID_DEVICE= EMULATOR_PORT= SKIP_BUILD=1 bash scripts/agentic/preflight.sh",
+        "diarization:ios:physical": "node scripts/agentic/run-ios-physical-diarization-global-reid.mjs",
+        "diarization:ios:physical:dry-run": "DRY_RUN=1 node scripts/agentic/run-ios-physical-diarization-global-reid.mjs",
+        "ios:device:launch": "APP_VARIANT=development IOS_SIMULATOR= PLATFORM=ios HEADLESS=0 SKIP_BUILD=1 bash scripts/agentic/preflight.sh",
+        "ios:device:eas-build-install": "node scripts/agentic/eas-ios-dev-client-build-install.mjs",
+        "ios:device:eas-build-install:dry-run": "DRY_RUN=1 node scripts/agentic/eas-ios-dev-client-build-install.mjs",
+        "ios:credentials": "APP_VARIANT=development APPLE_TEAM_ID=${APPLE_TEAM_ID:-G5DZE7G2V4} yarn dlx eas-cli credentials -p ios",
+        "diarization:verify-long-goal": "node scripts/agentic/verify-long-diarization-goal.mjs",
+        "ios:signing:doctor": "node scripts/agentic/ios-physical-signing-doctor.mjs"
     },
     "jest": {
         "preset": "jest-expo"

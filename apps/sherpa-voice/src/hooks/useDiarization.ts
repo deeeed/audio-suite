@@ -11,18 +11,31 @@ import {
 } from './useModelWithConfig'
 import { DEFAULT_NUM_THREADS } from '../utils/constants'
 import { baseLogger } from '../config'
+import { setAgenticPageState } from '../agentic-bridge'
 
 const logger = baseLogger.extend('Diarization')
 
 const SAMPLE_AUDIO_FILES = [
     {
+        id: 'turns-jfk-en',
+        name: 'Multi-speaker turns: JFK + English sample',
+        description:
+            'Bundled validation sample with alternating speakers; use this before single-speaker clips.',
+        expectedSpeakers: 2,
+        module: require('@assets/audio/diarization-jfk-en-turns.wav'),
+    },
+    {
         id: '1',
         name: 'JFK Speech Extract',
+        description: 'Single-speaker sample; useful as a one-speaker control.',
+        expectedSpeakers: 1,
         module: require('@assets/audio/jfk.wav'),
     },
     {
         id: '2',
         name: 'Random English Voice',
+        description: 'Single-speaker sample; useful as a one-speaker control.',
+        expectedSpeakers: 1,
         module: require('@assets/audio/en.wav'),
     },
 ]
@@ -30,7 +43,9 @@ const SAMPLE_AUDIO_FILES = [
 export type DiarizationAudioFile = {
     id: string
     name: string
-    module: number
+    description?: string
+    expectedSpeakers?: number
+    module?: number
     localUri: string
 }
 
@@ -135,7 +150,7 @@ export function useDiarization() {
                     }
                 }
             }
-        } catch (_) {
+        } catch {
             /* use original path */
         }
         return cleanPath
@@ -180,6 +195,10 @@ export function useDiarization() {
             setStatusMessage(`Loading models...`)
             const result = await Diarization.init({
                 segmentationModelDir: segModelDir,
+                // The validation profile intentionally selects the full
+                // pyannote model for quality. Int8 is available only as an
+                // explicit size/speed tradeoff.
+                segmentationModelFile: 'model.onnx',
                 embeddingModelFile,
                 numThreads,
                 numClusters,
@@ -283,6 +302,52 @@ export function useDiarization() {
         setProcessingDurationMs(0)
         setError(null)
     }
+
+    useEffect(() => {
+        setAgenticPageState({
+            feature: 'diarization',
+            selectedSegModelId,
+            selectedEmbModelId,
+            initialized,
+            loading,
+            processing,
+            error,
+            statusMessage,
+            selectedAudio: selectedAudio
+                ? {
+                      id: selectedAudio.id,
+                      name: selectedAudio.name,
+                      description: selectedAudio.description,
+                      expectedSpeakers: selectedAudio.expectedSpeakers,
+                      localUri: selectedAudio.localUri,
+                  }
+                : null,
+            loadedAudioFileIds: loadedAudioFiles.map((audio) => audio.id),
+            numClusters,
+            threshold,
+            numThreads,
+            numSpeakers,
+            processingDurationMs,
+            segmentsCount: segments.length,
+            segmentPreview: segments.slice(0, 20),
+        })
+    }, [
+        selectedSegModelId,
+        selectedEmbModelId,
+        initialized,
+        loading,
+        processing,
+        error,
+        statusMessage,
+        selectedAudio,
+        loadedAudioFiles,
+        numClusters,
+        threshold,
+        numThreads,
+        numSpeakers,
+        processingDurationMs,
+        segments,
+    ])
 
     return {
         // State

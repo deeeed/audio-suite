@@ -53,11 +53,22 @@ class DiarizationHandler(private val reactContext: ReactApplicationContext) {
                 val numClusters = if (config.hasKey("numClusters")) config.getInt("numClusters") else -1
                 val threshold = if (config.hasKey("threshold")) config.getDouble("threshold").toFloat() else 0.5f
 
-                // Prefer int8 quantized model if present
-                val int8Path = File(segmentationModelDir, "model.int8.onnx")
-                val segmentationModelPath = if (int8Path.exists()) {
-                    int8Path.absolutePath
+                val requestedSegmentationModelFile = if (config.hasKey("segmentationModelFile") && !config.isNull("segmentationModelFile")) {
+                    AssetUtils.cleanFilePath(config.getString("segmentationModelFile") ?: "")
                 } else {
+                    ""
+                }
+                val segmentationModelPath = if (requestedSegmentationModelFile.isNotEmpty()) {
+                    val requestedFile = File(requestedSegmentationModelFile)
+                    if (requestedFile.isAbsolute) {
+                        requestedFile.absolutePath
+                    } else {
+                        File(segmentationModelDir, requestedSegmentationModelFile).absolutePath
+                    }
+                } else {
+                    // Quality default: use the full precision pyannote model.
+                    // model.int8.onnx remains available by explicitly passing
+                    // segmentationModelFile for size/speed tradeoff cases.
                     File(segmentationModelDir, "model.onnx").absolutePath
                 }
 
@@ -199,6 +210,105 @@ class DiarizationHandler(private val reactContext: ReactApplicationContext) {
                 e.printStackTrace()
                 reactContext.runOnUiQueueThread {
                     promise.reject("ERR_DIARIZATION_PROCESS", "Failed to process diarization file: ${e.message}")
+                }
+            }
+        }
+    }
+
+    fun processDiarizationFileWindow(
+        filePath: String,
+        startTimeMs: Double,
+        durationMs: Double,
+        numClusters: Int,
+        threshold: Float,
+        promise: Promise
+    ) {
+        executor.execute {
+            try {
+                if (sd == null) throw Exception("Diarization is not initialized")
+                if (startTimeMs < 0.0) throw Exception("startTimeMs must be >= 0")
+                if (durationMs <= 0.0) throw Exception("durationMs must be > 0")
+
+                val cleanedFilePath = AssetUtils.cleanFilePath(filePath)
+                val startTimeUs = (startTimeMs * 1000.0).toLong()
+                val durationUs = (durationMs * 1000.0).toLong()
+                val expectedSampleRate = sd!!.sampleRate()
+
+                Log.i(
+                    TAG,
+                    "Processing diarization window: file=$cleanedFilePath startMs=$startTimeMs durationMs=$durationMs",
+                )
+                logMemorySnapshot("window-before-audio-extract")
+
+                val audioData = AudioExtractor.extractAudioWindowFromFile(
+                    file = File(cleanedFilePath),
+                    startTimeUs = startTimeUs,
+                    maxDurationUs = durationUs,
+                    targetSampleRate = expectedSampleRate,
+                )
+                    ?: throw Exception("Failed to extract audio window from file")
+
+                Log.i(
+                    TAG,
+                    "Audio window extracted: ${audioData.samples.size} samples at ${audioData.sampleRate}Hz",
+                )
+                logMemorySnapshot("window-after-audio-extract")
+
+                val shouldOverrideClustering = numClusters != -1 || threshold != 0.5f
+                val previousConfig = sd!!.config
+                if (shouldOverrideClustering) {
+                    val updatedConfig = previousConfig.copy(
+                        clustering = FastClusteringConfig(numClusters = numClusters, threshold = threshold)
+                    )
+                    sd!!.setConfig(updatedConfig)
+                }
+
+                val startedAt = System.currentTimeMillis()
+                val segments = try {
+                    sd!!.processWithCallback(
+                        samples = audioData.samples,
+                        callback = OfflineSpeakerDiarizationCallback { _, _, _ -> Integer.valueOf(0) },
+                    )
+                } finally {
+                    if (shouldOverrideClustering) {
+                        sd!!.setConfig(previousConfig)
+                    }
+                }
+                val processDurationMs = System.currentTimeMillis() - startedAt
+                val offsetSeconds = startTimeMs / 1000.0
+
+                Log.i(TAG, "Diarization window complete: ${segments.size} segments in ${processDurationMs}ms")
+                logMemorySnapshot("window-after-diarization")
+
+                val segmentsArray = Arguments.createArray()
+                val speakerSet = mutableSetOf<Int>()
+                for (seg in segments) {
+                    val segMap = Arguments.createMap()
+                    segMap.putDouble("start", seg.start.toDouble() + offsetSeconds)
+                    segMap.putDouble("end", seg.end.toDouble() + offsetSeconds)
+                    segMap.putInt("speaker", seg.speaker)
+                    segmentsArray.pushMap(segMap)
+                    speakerSet.add(seg.speaker)
+                }
+
+                val resultMap = Arguments.createMap()
+                resultMap.putBoolean("success", true)
+                resultMap.putArray("segments", segmentsArray)
+                resultMap.putInt("numSpeakers", speakerSet.size)
+                resultMap.putInt("durationMs", processDurationMs.toInt())
+                resultMap.putDouble("startTimeMs", startTimeMs)
+                resultMap.putDouble("windowDurationMs", durationMs)
+                resultMap.putInt("sampleRate", audioData.sampleRate)
+                resultMap.putInt("samples", audioData.samples.size)
+
+                reactContext.runOnUiQueueThread {
+                    promise.resolve(resultMap)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error processing diarization file window: ${e.message}")
+                e.printStackTrace()
+                reactContext.runOnUiQueueThread {
+                    promise.reject("ERR_DIARIZATION_PROCESS_WINDOW", "Failed to process diarization file window: ${e.message}")
                 }
             }
         }

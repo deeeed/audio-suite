@@ -393,11 +393,9 @@ async function discoverAllTargets(port, WebSocketImpl, deviceFilter) {
   const results = [];
   const seen = new Set();
   for (const candidate of candidates) {
-    const resolvedCandidate =
-      candidate.appId?.includes('net.siteed.audioplayground') ||
-      candidate.appId?.includes('net.siteed.')
-        ? annotateIOSTarget(candidate)
-        : candidate;
+    const resolvedCandidate = shouldAnnotateIOSTarget(candidate)
+      ? annotateIOSTarget(candidate)
+      : candidate;
     const name = resolvedCandidate.deviceName || '';
     if (seen.has(name)) continue; // already found agentic target for this device
     const hasAgentic = await probeTarget(resolvedCandidate.webSocketDebuggerUrl, WebSocketImpl);
@@ -434,11 +432,9 @@ async function discoverAllTargets(port, WebSocketImpl, deviceFilter) {
       });
 
       for (const candidate of retryCandidates) {
-        const resolvedCandidate =
-          candidate.appId?.includes('net.siteed.audioplayground') ||
-          candidate.appId?.includes('net.siteed.')
-            ? annotateIOSTarget(candidate)
-            : candidate;
+        const resolvedCandidate = shouldAnnotateIOSTarget(candidate)
+          ? annotateIOSTarget(candidate)
+          : candidate;
         const name = resolvedCandidate.deviceName || '';
         if (seen.has(name)) continue;
         const hasAgentic = await probeTarget(resolvedCandidate.webSocketDebuggerUrl, WebSocketImpl);
@@ -458,11 +454,9 @@ async function discoverAllTargets(port, WebSocketImpl, deviceFilter) {
 
   // Final fallback: if still no agentic target, use highest page number candidate
   if (results.length === 0) {
-    const fallbackTarget =
-      candidates[0].appId?.includes('net.siteed.audioplayground') ||
-      candidates[0].appId?.includes('net.siteed.')
-        ? annotateIOSTarget(candidates[0])
-        : candidates[0];
+    const fallbackTarget = shouldAnnotateIOSTarget(candidates[0])
+      ? annotateIOSTarget(candidates[0])
+      : candidates[0];
     const fallbackName = fallbackTarget.deviceName || '(unnamed)';
     process.stderr.write(
       `[cdp-bridge] Warning: No __AGENTIC__ target found after ${DISCOVERY_RETRIES} retries ` +
@@ -1157,6 +1151,40 @@ function normalizeIOSDeviceFilterName(deviceName) {
     .replace(/^sim:/i, '')
     .replace(/^device:/i, '')
     .replace(/^ios:/i, '');
+}
+
+function shouldAnnotateIOSTarget(target) {
+  const appId = target.appId || '';
+  const metroDeviceName = target.deviceName || '';
+  const title = target.title || '';
+  const searchable = `${metroDeviceName} ${title}`;
+
+  if (!appId.startsWith('net.siteed.')) {
+    return false;
+  }
+
+  // Metro reports Android physical/emulator device names in the same target
+  // list as iOS. Do not rewrite Android targets just because their bundle ID
+  // uses our net.siteed.* namespace.
+  if (/\b(Android|Pixel|API\s+\d+|emulator|sdk_gphone)\b/i.test(searchable)) {
+    return false;
+  }
+
+  if (/\b(iPhone|iPad|iPod)\b/i.test(searchable)) {
+    return true;
+  }
+
+  const normalizedName = normalizeIOSDeviceFilterName(metroDeviceName).toLowerCase();
+  const matchingSimulator = getBootedIOSSimulators().some(
+    (device) => device.name.toLowerCase() === normalizedName
+  );
+  if (matchingSimulator) {
+    return true;
+  }
+
+  // The sherpa-voice iOS simulator/dev-client target uses the production
+  // bundle ID in Metro, while Android dev builds use net.siteed.sherpavoice.development.
+  return appId === 'net.siteed.sherpavoice';
 }
 
 function annotateIOSTarget(target) {

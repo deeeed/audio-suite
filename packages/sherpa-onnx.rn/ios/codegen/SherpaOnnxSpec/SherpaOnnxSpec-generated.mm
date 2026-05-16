@@ -96,7 +96,7 @@
 }
 @end
 namespace facebook::react {
-  
+
     static facebook::jsi::Value __hostFunction_NativeSherpaOnnxSpecSpecJSI_validateLibraryLoaded(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
       return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, PromiseKind, "validateLibraryLoaded", @selector(validateLibraryLoaded:reject:), args, count);
     }
@@ -217,6 +217,10 @@ namespace facebook::react {
       return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, PromiseKind, "processSpeakerIdFile", @selector(processSpeakerIdFile:resolve:reject:), args, count);
     }
 
+    static facebook::jsi::Value __hostFunction_NativeSherpaOnnxSpecSpecJSI_processSpeakerIdFileWindow(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, PromiseKind, "processSpeakerIdFileWindow", @selector(processSpeakerIdFileWindow:startTimeMs:durationMs:resolve:reject:), args, count);
+    }
+
     static facebook::jsi::Value __hostFunction_NativeSherpaOnnxSpecSpecJSI_releaseSpeakerId(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
       return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, PromiseKind, "releaseSpeakerId", @selector(releaseSpeakerId:reject:), args, count);
     }
@@ -227,6 +231,10 @@ namespace facebook::react {
 
     static facebook::jsi::Value __hostFunction_NativeSherpaOnnxSpecSpecJSI_processDiarizationFile(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
       return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, PromiseKind, "processDiarizationFile", @selector(processDiarizationFile:numClusters:threshold:resolve:reject:), args, count);
+    }
+
+    static facebook::jsi::Value __hostFunction_NativeSherpaOnnxSpecSpecJSI_processDiarizationFileWindow(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, PromiseKind, "processDiarizationFileWindow", @selector(processDiarizationFileWindow:startTimeMs:durationMs:numClusters:threshold:resolve:reject:), args, count);
     }
 
     static facebook::jsi::Value __hostFunction_NativeSherpaOnnxSpecSpecJSI_releaseDiarization(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
@@ -323,173 +331,179 @@ namespace facebook::react {
 
   NativeSherpaOnnxSpecSpecJSI::NativeSherpaOnnxSpecSpecJSI(const ObjCTurboModule::InitParams &params)
     : ObjCTurboModule(params) {
-      
+
         methodMap_["validateLibraryLoaded"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_validateLibraryLoaded};
-        
-        
+
+
         methodMap_["testOnnxIntegration"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_testOnnxIntegration};
-        
-        
+
+
         methodMap_["getArchitectureInfo"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_getArchitectureInfo};
-        
-        
+
+
         methodMap_["getSystemInfo"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_getSystemInfo};
-        
-        
+
+
         methodMap_["initTts"] = MethodMetadata {1, __hostFunction_NativeSherpaOnnxSpecSpecJSI_initTts};
         setMethodArgConversionSelector(@"initTts", 0, @"JS_NativeSherpaOnnxSpec_SpecInitTtsConfig:");
-        
+
         methodMap_["generateTts"] = MethodMetadata {1, __hostFunction_NativeSherpaOnnxSpecSpecJSI_generateTts};
         setMethodArgConversionSelector(@"generateTts", 0, @"JS_NativeSherpaOnnxSpec_SpecGenerateTtsConfig:");
-        
+
         methodMap_["stopTts"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_stopTts};
-        
-        
+
+
         methodMap_["releaseTts"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_releaseTts};
-        
-        
+
+
         methodMap_["initAsr"] = MethodMetadata {1, __hostFunction_NativeSherpaOnnxSpecSpecJSI_initAsr};
         setMethodArgConversionSelector(@"initAsr", 0, @"JS_NativeSherpaOnnxSpec_SpecInitAsrConfig:");
-        
+
         methodMap_["recognizeFromSamples"] = MethodMetadata {2, __hostFunction_NativeSherpaOnnxSpecSpecJSI_recognizeFromSamples};
-        
-        
+
+
         methodMap_["recognizeFromFile"] = MethodMetadata {1, __hostFunction_NativeSherpaOnnxSpecSpecJSI_recognizeFromFile};
-        
-        
+
+
         methodMap_["releaseAsr"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_releaseAsr};
-        
-        
+
+
         methodMap_["createAsrOnlineStream"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_createAsrOnlineStream};
-        
-        
+
+
         methodMap_["acceptAsrOnlineWaveform"] = MethodMetadata {2, __hostFunction_NativeSherpaOnnxSpecSpecJSI_acceptAsrOnlineWaveform};
-        
-        
+
+
         methodMap_["isAsrOnlineEndpoint"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_isAsrOnlineEndpoint};
-        
-        
+
+
         methodMap_["getAsrOnlineResult"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_getAsrOnlineResult};
-        
-        
+
+
         methodMap_["resetAsrOnlineStream"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_resetAsrOnlineStream};
-        
-        
+
+
         methodMap_["initAudioTagging"] = MethodMetadata {1, __hostFunction_NativeSherpaOnnxSpecSpecJSI_initAudioTagging};
         setMethodArgConversionSelector(@"initAudioTagging", 0, @"JS_NativeSherpaOnnxSpec_SpecInitAudioTaggingConfig:");
-        
+
         methodMap_["processAndComputeAudioTagging"] = MethodMetadata {1, __hostFunction_NativeSherpaOnnxSpecSpecJSI_processAndComputeAudioTagging};
-        
-        
+
+
         methodMap_["processAndComputeAudioSamples"] = MethodMetadata {2, __hostFunction_NativeSherpaOnnxSpecSpecJSI_processAndComputeAudioSamples};
-        
-        
+
+
         methodMap_["releaseAudioTagging"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_releaseAudioTagging};
-        
-        
+
+
         methodMap_["initSpeakerId"] = MethodMetadata {1, __hostFunction_NativeSherpaOnnxSpecSpecJSI_initSpeakerId};
         setMethodArgConversionSelector(@"initSpeakerId", 0, @"JS_NativeSherpaOnnxSpec_SpecInitSpeakerIdConfig:");
-        
+
         methodMap_["processSpeakerIdSamples"] = MethodMetadata {2, __hostFunction_NativeSherpaOnnxSpecSpecJSI_processSpeakerIdSamples};
-        
-        
+
+
         methodMap_["computeSpeakerEmbedding"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_computeSpeakerEmbedding};
-        
-        
+
+
         methodMap_["registerSpeaker"] = MethodMetadata {2, __hostFunction_NativeSherpaOnnxSpecSpecJSI_registerSpeaker};
-        
-        
+
+
         methodMap_["removeSpeaker"] = MethodMetadata {1, __hostFunction_NativeSherpaOnnxSpecSpecJSI_removeSpeaker};
-        
-        
+
+
         methodMap_["getSpeakers"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_getSpeakers};
-        
-        
+
+
         methodMap_["identifySpeaker"] = MethodMetadata {2, __hostFunction_NativeSherpaOnnxSpecSpecJSI_identifySpeaker};
-        
-        
+
+
         methodMap_["verifySpeaker"] = MethodMetadata {3, __hostFunction_NativeSherpaOnnxSpecSpecJSI_verifySpeaker};
-        
-        
+
+
         methodMap_["processSpeakerIdFile"] = MethodMetadata {1, __hostFunction_NativeSherpaOnnxSpecSpecJSI_processSpeakerIdFile};
-        
-        
+
+
+        methodMap_["processSpeakerIdFileWindow"] = MethodMetadata {3, __hostFunction_NativeSherpaOnnxSpecSpecJSI_processSpeakerIdFileWindow};
+
+
         methodMap_["releaseSpeakerId"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_releaseSpeakerId};
-        
-        
+
+
         methodMap_["initDiarization"] = MethodMetadata {1, __hostFunction_NativeSherpaOnnxSpecSpecJSI_initDiarization};
         setMethodArgConversionSelector(@"initDiarization", 0, @"JS_NativeSherpaOnnxSpec_SpecInitDiarizationConfig:");
-        
+
         methodMap_["processDiarizationFile"] = MethodMetadata {3, __hostFunction_NativeSherpaOnnxSpecSpecJSI_processDiarizationFile};
-        
-        
+
+
+        methodMap_["processDiarizationFileWindow"] = MethodMetadata {5, __hostFunction_NativeSherpaOnnxSpecSpecJSI_processDiarizationFileWindow};
+
+
         methodMap_["releaseDiarization"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_releaseDiarization};
-        
-        
+
+
         methodMap_["initKws"] = MethodMetadata {1, __hostFunction_NativeSherpaOnnxSpecSpecJSI_initKws};
         setMethodArgConversionSelector(@"initKws", 0, @"JS_NativeSherpaOnnxSpec_SpecInitKwsConfig:");
-        
+
         methodMap_["acceptKwsWaveform"] = MethodMetadata {2, __hostFunction_NativeSherpaOnnxSpecSpecJSI_acceptKwsWaveform};
-        
-        
+
+
         methodMap_["resetKwsStream"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_resetKwsStream};
-        
-        
+
+
         methodMap_["releaseKws"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_releaseKws};
-        
-        
+
+
         methodMap_["initVad"] = MethodMetadata {1, __hostFunction_NativeSherpaOnnxSpecSpecJSI_initVad};
         setMethodArgConversionSelector(@"initVad", 0, @"JS_NativeSherpaOnnxSpec_SpecInitVadConfig:");
-        
+
         methodMap_["acceptVadWaveform"] = MethodMetadata {2, __hostFunction_NativeSherpaOnnxSpecSpecJSI_acceptVadWaveform};
-        
-        
+
+
         methodMap_["resetVad"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_resetVad};
-        
-        
+
+
         methodMap_["releaseVad"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_releaseVad};
-        
-        
+
+
         methodMap_["initLanguageId"] = MethodMetadata {1, __hostFunction_NativeSherpaOnnxSpecSpecJSI_initLanguageId};
         setMethodArgConversionSelector(@"initLanguageId", 0, @"JS_NativeSherpaOnnxSpec_SpecInitLanguageIdConfig:");
-        
+
         methodMap_["detectLanguage"] = MethodMetadata {2, __hostFunction_NativeSherpaOnnxSpecSpecJSI_detectLanguage};
-        
-        
+
+
         methodMap_["detectLanguageFromFile"] = MethodMetadata {1, __hostFunction_NativeSherpaOnnxSpecSpecJSI_detectLanguageFromFile};
-        
-        
+
+
         methodMap_["releaseLanguageId"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_releaseLanguageId};
-        
-        
+
+
         methodMap_["initPunctuation"] = MethodMetadata {1, __hostFunction_NativeSherpaOnnxSpecSpecJSI_initPunctuation};
         setMethodArgConversionSelector(@"initPunctuation", 0, @"JS_NativeSherpaOnnxSpec_SpecInitPunctuationConfig:");
-        
+
         methodMap_["addPunctuation"] = MethodMetadata {1, __hostFunction_NativeSherpaOnnxSpecSpecJSI_addPunctuation};
-        
-        
+
+
         methodMap_["releasePunctuation"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_releasePunctuation};
-        
-        
+
+
         methodMap_["initDenoiser"] = MethodMetadata {1, __hostFunction_NativeSherpaOnnxSpecSpecJSI_initDenoiser};
         setMethodArgConversionSelector(@"initDenoiser", 0, @"JS_NativeSherpaOnnxSpec_SpecInitDenoiserConfig:");
-        
+
         methodMap_["denoiseFile"] = MethodMetadata {1, __hostFunction_NativeSherpaOnnxSpecSpecJSI_denoiseFile};
-        
-        
+
+
         methodMap_["releaseDenoiser"] = MethodMetadata {0, __hostFunction_NativeSherpaOnnxSpecSpecJSI_releaseDenoiser};
-        
-        
+
+
         methodMap_["createOnnxSession"] = MethodMetadata {1, __hostFunction_NativeSherpaOnnxSpecSpecJSI_createOnnxSession};
         setMethodArgConversionSelector(@"createOnnxSession", 0, @"JS_NativeSherpaOnnxSpec_SpecCreateOnnxSessionConfig:");
-        
+
         methodMap_["runOnnxSession"] = MethodMetadata {5, __hostFunction_NativeSherpaOnnxSpecSpecJSI_runOnnxSession};
-        
-        
+
+
         methodMap_["releaseOnnxSession"] = MethodMetadata {1, __hostFunction_NativeSherpaOnnxSpecSpecJSI_releaseOnnxSession};
-        
-        
+
+
         methodMap_["extractTarBz2"] = MethodMetadata {2, __hostFunction_NativeSherpaOnnxSpecSpecJSI_extractTarBz2};
-        
+
   }
 } // namespace facebook::react

@@ -860,6 +860,24 @@ RCT_EXPORT_METHOD(processSpeakerIdFile:(NSString *)filePath
     }
 }
 
+RCT_EXPORT_METHOD(processSpeakerIdFileWindow:(NSString *)filePath
+                  startTimeMs:(double)startTimeMs
+                   durationMs:(double)durationMs
+                      resolve:(RCTPromiseResolveBlock)resolve
+                       reject:(RCTPromiseRejectBlock)reject)
+{
+    @try {
+        NSDictionary *result = [self.speakerIdHandler processFileWindow:filePath startTimeMs:startTimeMs durationMs:durationMs];
+        if ([result[@"success"] boolValue]) {
+            resolve(result);
+        } else {
+            reject(@"ERR_SPEAKER_ID_PROCESS_FILE_WINDOW", result[@"error"], nil);
+        }
+    } @catch (NSException *exception) {
+        reject(@"ERR_SPEAKER_ID_PROCESS_FILE_WINDOW", exception.reason, nil);
+    }
+}
+
 RCT_EXPORT_METHOD(releaseSpeakerId:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 {
@@ -1203,6 +1221,7 @@ RCT_EXPORT_METHOD(initDiarization:(JS::NativeSherpaOnnxSpec::SpecInitDiarization
 {
     NSMutableDictionary *configDict = [NSMutableDictionary dictionary];
     if (config.segmentationModelDir()) configDict[@"segmentationModelDir"] = config.segmentationModelDir();
+    if (config.segmentationModelFile()) configDict[@"segmentationModelFile"] = config.segmentationModelFile();
     if (config.embeddingModelFile()) configDict[@"embeddingModelFile"] = config.embeddingModelFile();
     if (config.numThreads()) configDict[@"numThreads"] = @((int)*config.numThreads());
     if (config.debug()) configDict[@"debug"] = @(*config.debug());
@@ -1244,6 +1263,32 @@ RCT_EXPORT_METHOD(processDiarizationFile:(NSString *)filePath
             }
         } @catch (NSException *exception) {
             reject(@"ERR_DIARIZATION_PROCESS", exception.reason, nil);
+        }
+    });
+}
+
+RCT_EXPORT_METHOD(processDiarizationFileWindow:(NSString *)filePath
+                  startTimeMs:(double)startTimeMs
+                  durationMs:(double)durationMs
+                  numClusters:(double)numClusters
+                  threshold:(double)threshold
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+{
+    dispatch_async(diarizationSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.diarizationHandler processDiarizationFileWindow:filePath
+                                                                            startTimeMs:startTimeMs
+                                                                             durationMs:durationMs
+                                                                            numClusters:(int)numClusters
+                                                                              threshold:(float)threshold];
+            if ([result[@"success"] boolValue]) {
+                resolve(result);
+            } else {
+                reject(@"ERR_DIARIZATION_PROCESS_WINDOW", result[@"error"], nil);
+            }
+        } @catch (NSException *exception) {
+            reject(@"ERR_DIARIZATION_PROCESS_WINDOW", exception.reason, nil);
         }
     });
 }

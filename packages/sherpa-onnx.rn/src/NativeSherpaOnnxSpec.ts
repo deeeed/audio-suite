@@ -350,11 +350,28 @@ export interface Spec extends TurboModule {
     error?: string;
   }>;
 
+  processSpeakerIdFileWindow(
+    filePath: string,
+    startTimeMs: number,
+    durationMs: number
+  ): Promise<{
+    success: boolean;
+    durationMs: number;
+    embedding: number[];
+    embeddingDim: number;
+    sampleRate: number;
+    samples: number;
+    startTimeMs?: number;
+    windowDurationMs?: number;
+    error?: string;
+  }>;
+
   releaseSpeakerId(): Promise<{ released: boolean }>;
 
   // Diarization methods
   initDiarization(config: {
     segmentationModelDir: string;
+    segmentationModelFile?: string;
     embeddingModelFile: string;
     numThreads?: number;
     debug?: boolean;
@@ -378,6 +395,23 @@ export interface Spec extends TurboModule {
     segments: Array<{ start: number; end: number; speaker: number }>;
     numSpeakers: number;
     durationMs: number;
+    error?: string;
+  }>;
+  processDiarizationFileWindow(
+    filePath: string,
+    startTimeMs: number,
+    durationMs: number,
+    numClusters: number,
+    threshold: number,
+  ): Promise<{
+    success: boolean;
+    segments: Array<{ start: number; end: number; speaker: number }>;
+    numSpeakers: number;
+    durationMs: number;
+    startTimeMs?: number;
+    windowDurationMs?: number;
+    sampleRate?: number;
+    samples?: number;
     error?: string;
   }>;
 

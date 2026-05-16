@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 import CSherpaOnnx
 
 /// SherpaOnnxSpeakerIdHandler - Speaker Identification Handler
@@ -10,6 +11,7 @@ import CSherpaOnnx
     private var manager: OpaquePointer?    // const SherpaOnnxSpeakerEmbeddingManager *
     private var stream: OpaquePointer?     // const SherpaOnnxOnlineStream *
     private var embeddingDim: Int = 0
+    private var expectedSampleRate: Int = 16_000
 
     private static let TAG = "[SherpaOnnxSpeakerId]"
 
@@ -32,6 +34,7 @@ import CSherpaOnnx
 
         let modelFile = config["modelFile"] as? String ?? "model.onnx"
         let numThreads = config["numThreads"] as? Int ?? 1
+        let sampleRate = (config["sampleRate"] as? NSNumber)?.intValue ?? 16_000
         let debug = config["debug"] as? Bool ?? false
         let provider = config["provider"] as? String ?? "cpu"
 
@@ -61,6 +64,7 @@ import CSherpaOnnx
 
         // Get embedding dimension
         embeddingDim = Int(SherpaOnnxSpeakerEmbeddingExtractorDim(extractor))
+        expectedSampleRate = sampleRate
 
         // Create manager
         let managerPtr = SherpaOnnxCreateSpeakerEmbeddingManager(Int32(embeddingDim))
@@ -336,6 +340,185 @@ import CSherpaOnnx
             "sampleRate": sampleRate,
             "samples": numSamples
         ]
+    }
+
+    @objc public func processFileWindow(_ filePath: String, startTimeMs: Double, durationMs: Double) -> NSDictionary {
+        guard let extractorPtr = extractor else {
+            return [
+                "success": false,
+                "durationMs": 0,
+                "embedding": [],
+                "embeddingDim": 0,
+                "sampleRate": 0,
+                "samples": 0,
+                "startTimeMs": startTimeMs,
+                "windowDurationMs": durationMs,
+                "error": "Speaker ID not initialized"
+            ]
+        }
+
+        do {
+            let audioFile = try AVAudioFile(forReading: URL(fileURLWithPath: filePath))
+            let format = audioFile.processingFormat
+            let sampleRate = Int(format.sampleRate)
+            guard sampleRate == expectedSampleRate else {
+                return [
+                    "success": false,
+                    "durationMs": 0,
+                    "embedding": [],
+                    "embeddingDim": 0,
+                    "sampleRate": sampleRate,
+                    "samples": 0,
+                    "startTimeMs": startTimeMs,
+                    "windowDurationMs": durationMs,
+                    "error": "Unsupported sample rate for iOS windowed speaker embedding: got \(sampleRate), expected \(expectedSampleRate). Resample before calling."
+                ]
+            }
+            let channelCount = Int(format.channelCount)
+            let requestedStartFrame = AVAudioFramePosition(max(0.0, startTimeMs) / 1000.0 * format.sampleRate)
+            let startFrame = max(0, min(requestedStartFrame, audioFile.length))
+            let requestedFrameCount = AVAudioFrameCount(max(0.0, durationMs) / 1000.0 * format.sampleRate)
+            let availableFrames = AVAudioFrameCount(max(0, audioFile.length - startFrame))
+            let frameCount = min(requestedFrameCount, availableFrames)
+
+            guard frameCount > 0 else {
+                return [
+                    "success": false,
+                    "durationMs": 0,
+                    "embedding": [],
+                    "embeddingDim": 0,
+                    "sampleRate": sampleRate,
+                    "samples": 0,
+                    "startTimeMs": startTimeMs,
+                    "windowDurationMs": durationMs,
+                    "error": "Empty audio window"
+                ]
+            }
+
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
+                return [
+                    "success": false,
+                    "durationMs": 0,
+                    "embedding": [],
+                    "embeddingDim": 0,
+                    "sampleRate": sampleRate,
+                    "samples": 0,
+                    "startTimeMs": startTimeMs,
+                    "windowDurationMs": durationMs,
+                    "error": "Failed to allocate audio buffer"
+                ]
+            }
+
+            audioFile.framePosition = startFrame
+            try audioFile.read(into: buffer, frameCount: frameCount)
+
+            let actualFrames = Int(buffer.frameLength)
+            var samples = [Float](repeating: 0, count: actualFrames)
+            if let channelData = buffer.floatChannelData {
+                for frame in 0..<actualFrames {
+                    var sum: Float = 0
+                    for channel in 0..<max(1, channelCount) {
+                        sum += channelData[channel][frame]
+                    }
+                    samples[frame] = sum / Float(max(1, channelCount))
+                }
+            } else {
+                return [
+                    "success": false,
+                    "durationMs": 0,
+                    "embedding": [],
+                    "embeddingDim": 0,
+                    "sampleRate": sampleRate,
+                    "samples": 0,
+                    "startTimeMs": startTimeMs,
+                    "windowDurationMs": durationMs,
+                    "error": "Unsupported audio buffer format"
+                ]
+            }
+
+            let streamPtr = SherpaOnnxSpeakerEmbeddingExtractorCreateStream(extractorPtr)
+            guard let opaqueStream = streamPtr else {
+                return [
+                    "success": false,
+                    "durationMs": 0,
+                    "embedding": [],
+                    "embeddingDim": 0,
+                    "sampleRate": sampleRate,
+                    "samples": samples.count,
+                    "startTimeMs": startTimeMs,
+                    "windowDurationMs": durationMs,
+                    "error": "Failed to create stream"
+                ]
+            }
+
+            SherpaOnnxOnlineStreamAcceptWaveform(opaqueStream, Int32(sampleRate), samples, Int32(samples.count))
+            SherpaOnnxOnlineStreamInputFinished(opaqueStream)
+
+            let isReady = SherpaOnnxSpeakerEmbeddingExtractorIsReady(extractorPtr, opaqueStream)
+            if isReady == 0 {
+                SherpaOnnxDestroyOnlineStream(opaqueStream)
+                return [
+                    "success": false,
+                    "durationMs": 0,
+                    "embedding": [],
+                    "embeddingDim": 0,
+                    "sampleRate": sampleRate,
+                    "samples": samples.count,
+                    "startTimeMs": startTimeMs,
+                    "windowDurationMs": durationMs,
+                    "error": "Not enough audio data to compute embedding"
+                ]
+            }
+
+            let startedAt = CFAbsoluteTimeGetCurrent()
+            let embeddingPtr = SherpaOnnxSpeakerEmbeddingExtractorComputeEmbedding(extractorPtr, opaqueStream)
+            let elapsedMs = (CFAbsoluteTimeGetCurrent() - startedAt) * 1000.0
+            SherpaOnnxDestroyOnlineStream(opaqueStream)
+
+            guard let embPtr = embeddingPtr else {
+                return [
+                    "success": false,
+                    "durationMs": 0,
+                    "embedding": [],
+                    "embeddingDim": 0,
+                    "sampleRate": sampleRate,
+                    "samples": samples.count,
+                    "startTimeMs": startTimeMs,
+                    "windowDurationMs": durationMs,
+                    "error": "Failed to compute embedding"
+                ]
+            }
+
+            var embedding = [Double]()
+            embedding.reserveCapacity(embeddingDim)
+            for i in 0..<embeddingDim {
+                embedding.append(Double(embPtr[i]))
+            }
+            SherpaOnnxSpeakerEmbeddingExtractorDestroyEmbedding(embeddingPtr)
+
+            return [
+                "success": true,
+                "durationMs": Int(elapsedMs),
+                "embedding": embedding,
+                "embeddingDim": embeddingDim,
+                "sampleRate": sampleRate,
+                "samples": samples.count,
+                "startTimeMs": startTimeMs,
+                "windowDurationMs": durationMs
+            ]
+        } catch {
+            return [
+                "success": false,
+                "durationMs": 0,
+                "embedding": [],
+                "embeddingDim": 0,
+                "sampleRate": 0,
+                "samples": 0,
+                "startTimeMs": startTimeMs,
+                "windowDurationMs": durationMs,
+                "error": "Failed to read audio window: \(error.localizedDescription)"
+            ]
+        }
     }
 
     // MARK: - Release
