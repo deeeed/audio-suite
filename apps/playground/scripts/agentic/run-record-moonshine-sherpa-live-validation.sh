@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 
-DEVICE_NAME="${DEVICE_NAME:-Pixel 6a}"
+DEVICE_NAME="${DEVICE_NAME:-}"
 ADB_SERIAL="${ADB_SERIAL:-}"
 SAY_VOICE_1="${SAY_VOICE_1:-Daniel}"
 SAY_VOICE_2="${SAY_VOICE_2:-Karen}"
@@ -32,6 +32,10 @@ if ! voice_available "$SAY_VOICE_2"; then
 fi
 if [ "$SAY_VOICE_1" = "$SAY_VOICE_2" ]; then
   echo "ERROR: SAY_VOICE_1 and SAY_VOICE_2 must be different for speaker-turn validation." >&2
+  exit 1
+fi
+if [ -z "$DEVICE_NAME" ]; then
+  echo "ERROR: DEVICE_NAME is required. Use: yarn status, then set DEVICE_NAME to the agentic device name." >&2
   exit 1
 fi
 

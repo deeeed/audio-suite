@@ -19,15 +19,16 @@ yarn workspace audio-playground recipe:schema \
   scripts/agentic/teams/playground/flows/moonshine-live-screen-ready.json \
   scripts/agentic/teams/playground/recipes/moonshine-sherpa-live-validation.json
 
-ADB_SERIAL=29071JEGR20638 yarn workspace audio-playground android:device:launch
-ADB_SERIAL=29071JEGR20638 yarn workspace audio-playground recipe:run \
+ADB_SERIAL=<adb-serial> yarn workspace audio-playground android:device:launch
+ADB_SERIAL=<adb-serial> yarn workspace audio-playground recipe:run \
   scripts/agentic/teams/playground/recipes/moonshine-sherpa-live-validation.json \
-  --device "Pixel 6a"
+  --device "<agentic-device-name>"
 
 # Preferred Record-tab validation: readiness-gated controlled speech.
 # The runner starts desktop TTS only after the app reports recording=true and Sherpa ready=true.
 cd apps/playground
-ADB_SERIAL=29071JEGR20638 ./scripts/agentic/run-record-moonshine-sherpa-live-validation.sh
+ADB_SERIAL=<adb-serial> DEVICE_NAME="<agentic-device-name>" \
+  ./scripts/agentic/run-record-moonshine-sherpa-live-validation.sh
 ```
 
 For speaker-turn quality evidence, use the readiness-gated runner rather than starting speech manually. It uses two distinct macOS TTS voices (`Daniel` and `Karen` by default), waits for the live pipeline to be ready before speaking, keeps recording through a fixed speech window, then verifies clean stop state and that the transcript/speaker output remains visible on the result screen for visual validation. Override voices with `SAY_VOICE_1` / `SAY_VOICE_2` if needed.
@@ -35,8 +36,8 @@ For speaker-turn quality evidence, use the readiness-gated runner rather than st
 If a freshly installed Android dev build has not been granted microphone/notification permissions yet, grant them once or accept the native prompts before running the recipe:
 
 ```bash
-adb -s 29071JEGR20638 shell pm grant net.siteed.audioplayground.development android.permission.RECORD_AUDIO
-adb -s 29071JEGR20638 shell pm grant net.siteed.audioplayground.development android.permission.POST_NOTIFICATIONS
+adb -s <adb-serial> shell pm grant net.siteed.audioplayground.development android.permission.RECORD_AUDIO
+adb -s <adb-serial> shell pm grant net.siteed.audioplayground.development android.permission.POST_NOTIFICATIONS
 ```
 
 ## Pixel 6a validation snapshot
@@ -81,8 +82,8 @@ For transcript quality, do not use speaker/microphone loopback. Use the direct A
 
 ```bash
 cd apps/playground
-ADB_SERIAL=29071JEGR20638 \
-BENCHMARK_DEVICE="Pixel 6a - 16 - API 36" \
+ADB_SERIAL=<adb-serial> \
+BENCHMARK_DEVICE="<agentic-device-name>" \
 BENCHMARK_PRESET=moonshine-sherpa-echobridge-perps-5m \
 node scripts/agentic/direct-asr-benchmark.mjs
 ```
