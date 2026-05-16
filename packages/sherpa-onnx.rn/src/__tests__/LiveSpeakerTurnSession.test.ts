@@ -184,16 +184,243 @@ describe('LiveSpeakerTurnSession', () => {
     await expect(runReplay()).resolves.toEqual(await runReplay());
   });
 
-  it('rejects non-monotonic sample clocks', async () => {
+  it('caps retained event history while keeping total event count', async () => {
+    const observed: LiveSpeakerTurnEvent[] = [];
+    const session = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([true, false, true, false]),
+      speakerId: createSpeakerIdAdapter([[1, 0]]),
+      minTurnDurationMs: 10,
+      maxStoredEvents: 2,
+      onEvent: (event) => observed.push(event),
+    });
+
+    for (const value of [1, 0, 1, 0]) {
+      await session.acceptChunk({ samples: createChunk(value) });
+    }
+
+    expect(observed.length).toBeGreaterThan(2);
+    expect(session.getState().events).toHaveLength(2);
+    expect(session.getSummary().eventCount).toBe(observed.length);
+    expect(session.getSummary().turnCount).toBe(2);
+  });
+
+  it('rolls back sample cursor when VAD throws so callers can retry', async () => {
+    let attempts = 0;
+    const session = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: {
+        async acceptWaveform() {
+          attempts += 1;
+          if (attempts === 1) {
+            throw new Error('vad exploded');
+          }
+          return { success: true, isSpeechDetected: false, segments: [] };
+        },
+      },
+      speakerId: createSpeakerIdAdapter([[1, 0]]),
+    });
+
+    await expect(session.acceptChunk({ samples: createChunk(1) })).rejects.toThrow(
+      'vad exploded'
+    );
+    expect(session.getState().nextSample).toBe(0);
+    await expect(session.acceptChunk({ samples: createChunk(1) })).resolves.not.toThrow();
+    expect(session.getState().nextSample).toBe(160);
+  });
+
+  it('does not append later turns to a failed speaker embedding stream', async () => {
+    const events: LiveSpeakerTurnEvent[] = [];
+    let processCalls = 0;
+    const session = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([true, false, true, false]),
+      speakerId: {
+        async processSamples() {
+          processCalls += 1;
+          return { success: true, samplesProcessed: 160 };
+        },
+        async computeEmbedding() {
+          return {
+            success: false,
+            durationMs: 0,
+            embedding: [],
+            embeddingDim: 0,
+            error: 'not enough audio',
+          };
+        },
+      },
+      minTurnDurationMs: 10,
+      onEvent: (event) => events.push(event),
+    });
+
+    for (const value of [1, 0, 2, 0]) {
+      await session.acceptChunk({ samples: createChunk(value) });
+    }
+
+    expect(processCalls).toBe(1);
+    expect(events.filter((event) => event.type === 'turn_final')).toHaveLength(2);
+    expect(events).toContainEqual({
+      type: 'speaker_id_unavailable',
+      turnId: 'turn_2',
+      error:
+        'Speaker ID stream is unavailable until the live speaker-turn session is reset',
+      recoverable: false,
+    });
+  });
+
+  it('resets a failed speaker embedding stream so later turns can recover', async () => {
+    const events: LiveSpeakerTurnEvent[] = [];
+    let computeCalls = 0;
+    let resetCalls = 0;
+    const processLengths: number[] = [];
+    const session = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([true, false, true, false]),
+      speakerId: {
+        async processSamples(_sampleRate, samples) {
+          processLengths.push(samples.length);
+          return { success: true, samplesProcessed: samples.length };
+        },
+        async computeEmbedding() {
+          computeCalls += 1;
+          if (computeCalls === 1) {
+            return {
+              success: false,
+              durationMs: 0,
+              embedding: [],
+              embeddingDim: 0,
+              error: 'not enough audio',
+            };
+          }
+          return {
+            success: true,
+            durationMs: 1,
+            embedding: [1, 0],
+            embeddingDim: 2,
+          };
+        },
+        async resetStream() {
+          resetCalls += 1;
+          return { success: true };
+        },
+      },
+      minTurnDurationMs: 10,
+      onEvent: (event) => events.push(event),
+    });
+
+    for (const value of [1, 0, 2, 0]) {
+      await session.acceptChunk({ samples: createChunk(value) });
+    }
+
+    expect(resetCalls).toBe(1);
+    expect(processLengths).toEqual([320, 320]);
+    expect(events).toContainEqual({
+      type: 'speaker_id_unavailable',
+      turnId: 'turn_1',
+      error: 'not enough audio',
+      recoverable: true,
+    });
+    expect(
+      events.filter((event) => event.type === 'speaker_resolved')
+    ).toHaveLength(1);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'turn_final',
+        turnId: 'turn_2',
+        speakerId: 'speaker_1',
+      })
+    );
+  });
+
+  it('marks capped sub-threshold speaker assignments as forced fallback', async () => {
+    const events: LiveSpeakerTurnEvent[] = [];
+    const session = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([true, false, true, false]),
+      speakerId: createSpeakerIdAdapter([
+        [1, 0],
+        [0, 1],
+      ]),
+      minTurnDurationMs: 10,
+      maxSpeakers: 1,
+      speakerThreshold: 0.95,
+      onEvent: (event) => events.push(event),
+    });
+
+    for (const value of [1, 0, 2, 0]) {
+      await session.acceptChunk({ samples: createChunk(value) });
+    }
+
+    const resolved = events.filter((event) => event.type === 'speaker_resolved');
+    expect(resolved).toHaveLength(2);
+    expect(resolved[1]).toMatchObject({
+      speakerId: 'speaker_1',
+      provenance: 'forced_fallback',
+    });
+  });
+
+  it('restores an evicted ring buffer when VAD throws', async () => {
+    const processedSamples: number[][] = [];
+    let calls = 0;
+    const session = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: {
+        async acceptWaveform() {
+          calls += 1;
+          if (calls === 3) {
+            throw new Error('vad exploded after eviction');
+          }
+          return {
+            success: true,
+            isSpeechDetected: calls < 4,
+            segments: [],
+          };
+        },
+      },
+      speakerId: {
+        async processSamples(_sampleRate, samples) {
+          processedSamples.push(samples);
+          return { success: true, samplesProcessed: samples.length };
+        },
+        async computeEmbedding() {
+          return {
+            success: true,
+            durationMs: 1,
+            embedding: [1, 0],
+            embeddingDim: 2,
+          };
+        },
+      },
+      minTurnDurationMs: 10,
+      maxRingBufferDurationMs: 19,
+    });
+
+    await session.acceptChunk({ samples: createChunk(1) });
+    await session.acceptChunk({ samples: createChunk(2) });
+    await expect(session.acceptChunk({ samples: createChunk(3) })).rejects.toThrow(
+      'vad exploded after eviction'
+    );
+    await session.acceptChunk({ samples: createChunk(3) });
+
+    expect(processedSamples).toHaveLength(1);
+    expect(processedSamples[0]?.[0]).toBe(2);
+    expect(processedSamples[0]?.[processedSamples[0].length - 1]).toBe(3);
+  });
+
+  it('rejects non-contiguous sample clocks', async () => {
     const session = new LiveSpeakerTurnSession({
       sampleRate: 16_000,
       vad: createVadAdapter([false]),
       speakerId: createSpeakerIdAdapter([[1, 0]]),
     });
 
-    await session.acceptChunk({ samples: createChunk(0), startSample: 160 });
+    await expect(
+      session.acceptChunk({ samples: createChunk(0), startSample: 160 })
+    ).rejects.toThrow('non-contiguous startSample');
+    await session.acceptChunk({ samples: createChunk(0) });
     await expect(
       session.acceptChunk({ samples: createChunk(0), startSample: 0 })
-    ).rejects.toThrow('non-monotonic startSample');
+    ).rejects.toThrow('non-contiguous startSample');
   });
 });

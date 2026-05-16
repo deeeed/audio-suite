@@ -625,6 +625,18 @@ import AVFoundation
         return ["text": text, "tokens": tokens, "timestamps": timestamps]
     }
 
+    @objc public func finishAsrOnlineInput() -> NSDictionary {
+        guard let recognizer = onlineRecognizer, recognizer.recognizer != nil,
+              let stream = primitiveStream else {
+            return ["success": false, "error": "Online stream not created"]
+        }
+        SherpaOnnxOnlineStreamInputFinished(stream)
+        while SherpaOnnxIsOnlineStreamReady(recognizer.recognizer, stream) == 1 {
+            SherpaOnnxDecodeOnlineStream(recognizer.recognizer, stream)
+        }
+        return ["success": true]
+    }
+
     @objc public func resetAsrOnlineStream() -> NSDictionary {
         guard let recognizer = onlineRecognizer, recognizer.recognizer != nil,
               let stream = primitiveStream else {

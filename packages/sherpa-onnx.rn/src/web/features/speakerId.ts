@@ -113,6 +113,11 @@ export function SpeakerIdMixin<TBase extends Constructor>(Base: TBase) {
           samplesProcessed: this.speakerIdSamplesProcessed,
         };
       } catch (error) {
+        if (this.speakerExtractor && this.speakerIdStream) {
+          this.speakerExtractor.destroyStream(this.speakerIdStream);
+          this.speakerIdStream = null;
+          this.speakerIdSamplesProcessed = 0;
+        }
         return {
           success: false,
           samplesProcessed: 0,
@@ -162,6 +167,11 @@ export function SpeakerIdMixin<TBase extends Constructor>(Base: TBase) {
           embeddingDim: embedding.length,
         };
       } catch (error) {
+        if (this.speakerExtractor && this.speakerIdStream) {
+          this.speakerExtractor.destroyStream(this.speakerIdStream);
+          this.speakerIdStream = null;
+          this.speakerIdSamplesProcessed = 0;
+        }
         return {
           success: false,
           embedding: [],
@@ -389,6 +399,28 @@ export function SpeakerIdMixin<TBase extends Constructor>(Base: TBase) {
           error: (error as Error).message,
         };
       }
+    }
+
+    async resetSpeakerIdStream(): Promise<{ success: boolean }> {
+      if (!this.speakerExtractor) {
+        return { success: false };
+      }
+      if (this.speakerIdStream) {
+        try {
+          this.speakerExtractor.destroyStream(this.speakerIdStream);
+        } catch (_) {
+          console.error('[SpeakerId] resetSpeakerIdStream failed:', _);
+          this.speakerIdStream = null;
+          this.speakerIdSamplesProcessed = 0;
+          return { success: false };
+        }
+      }
+      this.speakerIdStream = this.speakerExtractor.createStream();
+      this.speakerIdSamplesProcessed = 0;
+      if (!this.speakerIdStream) {
+        return { success: false };
+      }
+      return { success: true };
     }
 
     async releaseSpeakerId(): Promise<{ released: boolean }> {

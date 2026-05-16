@@ -127,6 +127,7 @@ import CSherpaOnnx
         let durationMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000.0
 
         guard let embPtr = embeddingPtr else {
+            resetEmbeddingStream(extractorPtr)
             return ["success": false, "durationMs": 0, "embedding": [], "embeddingDim": 0, "error": "Failed to compute embedding"]
         }
 
@@ -139,14 +140,7 @@ import CSherpaOnnx
         SherpaOnnxSpeakerEmbeddingExtractorDestroyEmbedding(embeddingPtr)
 
         // Reset stream for next use
-        if let s = stream {
-            SherpaOnnxDestroyOnlineStream(s)
-            stream = nil
-        }
-        let newStream = SherpaOnnxSpeakerEmbeddingExtractorCreateStream(extractorPtr)
-        if newStream != nil {
-            stream = newStream
-        }
+        resetEmbeddingStream(extractorPtr)
 
         return [
             "success": true,
@@ -521,11 +515,33 @@ import CSherpaOnnx
         }
     }
 
+    @objc public func resetStream() -> NSDictionary {
+        guard let extractorPtr = extractor else {
+            return ["success": false, "error": "Speaker ID not initialized"]
+        }
+        resetEmbeddingStream(extractorPtr)
+        guard stream != nil else {
+            return ["success": false, "error": "Failed to create speaker ID stream"]
+        }
+        return ["success": true]
+    }
+
     // MARK: - Release
 
     @objc public func releaseResources() -> NSDictionary {
         cleanupResources()
         return ["released": true]
+    }
+
+    private func resetEmbeddingStream(_ extractorPtr: OpaquePointer) {
+        if let s = stream {
+            SherpaOnnxDestroyOnlineStream(s)
+            stream = nil
+        }
+        let newStream = SherpaOnnxSpeakerEmbeddingExtractorCreateStream(extractorPtr)
+        if newStream != nil {
+            stream = newStream
+        }
     }
 
     private func cleanupResources() {

@@ -4,8 +4,12 @@ import type {
   LiveSpeakerTurnEvent,
   LiveSpeakerTurnEventListener,
   LiveSpeakerTurnSessionState,
+  LiveSpeakerTurnProvenance,
   LiveSpeakerTurnSpeakerCentroid,
   LiveSpeakerTurnSummary,
+  SpeakerEmbeddingResult,
+  SpeakerIdProcessResult,
+  VadAcceptWaveformResult,
 } from '../types/interfaces';
 
 interface BufferedChunk {
@@ -17,6 +21,7 @@ const DEFAULT_MIN_TURN_DURATION_MS = 250;
 const DEFAULT_SPEAKER_THRESHOLD = 0.5;
 const DEFAULT_MAX_RING_BUFFER_DURATION_MS = 60_000;
 const DEFAULT_CENTROID_UPDATE_ALPHA = 0.25;
+const DEFAULT_MAX_STORED_EVENTS = 1000;
 
 function samplesToMs(samples: number, sampleRate: number): number {
   return (samples / sampleRate) * 1000;
@@ -43,6 +48,10 @@ function cosineSimilarity(a: number[], b: number[]): number {
     score += (a[index] ?? 0) * (b[index] ?? 0);
   }
   return score;
+}
+
+function cloneEvent(event: LiveSpeakerTurnEvent): LiveSpeakerTurnEvent {
+  return { ...event };
 }
 
 function movingAverageCentroid(
@@ -72,6 +81,9 @@ export class LiveSpeakerTurnSession {
   private readonly listeners = new Set<LiveSpeakerTurnEventListener>();
   private readonly emittedEvents: LiveSpeakerTurnEvent[] = [];
   private readonly ringBuffer: BufferedChunk[] = [];
+  private eventCount = 0;
+  private finalizedTurnCount = 0;
+  private readonly finalizedSpeakerIds = new Set<string>();
   private readonly centroids: LiveSpeakerTurnSpeakerCentroid[] = [];
   private nextSample = 0;
   private nextTurnIndex = 1;
@@ -79,6 +91,7 @@ export class LiveSpeakerTurnSession {
   private activeTurnId: string | null = null;
   private activeTurnStartSample: number | null = null;
   private speechActive = false;
+  private speakerIdUsable = true;
   private released = false;
 
   constructor(config: LiveSpeakerTurnConfig) {
@@ -108,7 +121,7 @@ export class LiveSpeakerTurnSession {
         ...centroid,
         embedding: [...centroid.embedding],
       })),
-      events: [...this.emittedEvents],
+      events: this.emittedEvents.map(cloneEvent),
     };
   }
 
@@ -123,23 +136,37 @@ export class LiveSpeakerTurnSession {
     }
 
     const startSample = chunk.startSample ?? this.nextSample;
-    if (startSample < this.nextSample) {
+    if (startSample !== this.nextSample) {
       throw new Error(
-        `LiveSpeakerTurnSession received non-monotonic startSample ${startSample}; next expected sample is ${this.nextSample}`
+        `LiveSpeakerTurnSession received non-contiguous startSample ${startSample}; next expected sample is ${this.nextSample}`
       );
     }
 
     const samples = Array.from(chunk.samples);
+    const previousNextSample = this.nextSample;
+    // Shallow copy is sufficient because BufferedChunk entries and sample arrays
+    // are append-only after insertion; rollback only restores membership/order.
+    const previousRingBuffer = this.ringBuffer.slice();
     this.appendToRingBuffer(startSample, samples);
     this.nextSample = startSample + samples.length;
 
-    const vadResult = await this.config.vad.acceptWaveform(sampleRate, samples);
+    let vadResult: VadAcceptWaveformResult;
+    try {
+      vadResult = await this.config.vad.acceptWaveform(sampleRate, samples);
+    } catch (error) {
+      this.ringBuffer.splice(0, this.ringBuffer.length, ...previousRingBuffer);
+      this.nextSample = previousNextSample;
+      throw error;
+    }
     if (!vadResult.success) {
+      const error = vadResult.error ?? 'VAD failed while processing live chunk';
+      this.ringBuffer.splice(0, this.ringBuffer.length, ...previousRingBuffer);
+      this.nextSample = previousNextSample;
       this.emit({
         type: 'error',
-        error: vadResult.error ?? 'VAD failed while processing live chunk',
+        error,
       });
-      return;
+      throw new Error(error);
     }
 
     if (vadResult.isSpeechDetected && !this.speechActive) {
@@ -163,12 +190,16 @@ export class LiveSpeakerTurnSession {
     this.ringBuffer.splice(0, this.ringBuffer.length);
     this.centroids.splice(0, this.centroids.length);
     this.emittedEvents.splice(0, this.emittedEvents.length);
+    this.eventCount = 0;
+    this.finalizedTurnCount = 0;
+    this.finalizedSpeakerIds.clear();
     this.nextSample = 0;
     this.nextTurnIndex = 1;
     this.nextSpeakerIndex = 1;
     this.activeTurnId = null;
     this.activeTurnStartSample = null;
     this.speechActive = false;
+    this.speakerIdUsable = true;
   }
 
   public release(): void {
@@ -182,19 +213,10 @@ export class LiveSpeakerTurnSession {
   }
 
   public getSummary(): LiveSpeakerTurnSummary {
-    const turnFinalEvents = this.emittedEvents.filter(
-      (event) => event.type === 'turn_final'
-    );
-    const speakerIds = new Set(
-      turnFinalEvents
-        .map((event) => event.speakerId)
-        .filter((speakerId): speakerId is string => Boolean(speakerId))
-    );
-
     return {
-      eventCount: this.emittedEvents.length,
-      turnCount: turnFinalEvents.length,
-      speakerCount: speakerIds.size,
+      eventCount: this.eventCount,
+      turnCount: this.finalizedTurnCount,
+      speakerCount: this.finalizedSpeakerIds.size,
       durationMs: samplesToMs(this.nextSample, this.config.sampleRate),
     };
   }
@@ -255,36 +277,68 @@ export class LiveSpeakerTurnSession {
       return;
     }
 
-    this.emit({ type: 'speaker_pending', turnId });
-    const turnSamples = this.samplesForRange(
-      paddedStartSample,
-      paddedEndSample
-    );
-    const processResult = await this.config.speakerId.processSamples(
-      this.config.sampleRate,
-      turnSamples
-    );
-    if (!processResult.success) {
+    if (!this.speakerIdUsable) {
+      const error =
+        'Speaker ID stream is unavailable until the live speaker-turn session is reset';
+      this.emit({ type: 'error', turnId, error });
       this.emit({
-        type: 'error',
+        type: 'speaker_id_unavailable',
         turnId,
-        error:
-          processResult.error ??
-          'Speaker ID failed while processing turn audio',
+        error,
+        recoverable: false,
       });
       this.emitFinalTurn(turnId, startSample, endSample);
       return;
     }
 
-    const embeddingResult = await this.config.speakerId.computeEmbedding();
-    if (!embeddingResult.success) {
-      this.emit({
-        type: 'error',
+    this.emit({ type: 'speaker_pending', turnId });
+    const turnSamples = this.samplesForRange(
+      paddedStartSample,
+      paddedEndSample
+    );
+    let processResult: SpeakerIdProcessResult;
+    try {
+      processResult = await this.config.speakerId.processSamples(
+        this.config.sampleRate,
+        turnSamples
+      );
+    } catch (error) {
+      await this.handleSpeakerIdFailure(
         turnId,
-        error:
-          embeddingResult.error ??
-          'Speaker ID failed while computing embedding',
-      });
+        error instanceof Error
+          ? error.message
+          : 'Speaker ID failed while processing turn audio'
+      );
+      this.emitFinalTurn(turnId, startSample, endSample);
+      return;
+    }
+    if (!processResult.success) {
+      await this.handleSpeakerIdFailure(
+        turnId,
+        processResult.error ?? 'Speaker ID failed while processing turn audio'
+      );
+      this.emitFinalTurn(turnId, startSample, endSample);
+      return;
+    }
+
+    let embeddingResult: SpeakerEmbeddingResult;
+    try {
+      embeddingResult = await this.config.speakerId.computeEmbedding();
+    } catch (error) {
+      await this.handleSpeakerIdFailure(
+        turnId,
+        error instanceof Error
+          ? error.message
+          : 'Speaker ID failed while computing embedding'
+      );
+      this.emitFinalTurn(turnId, startSample, endSample);
+      return;
+    }
+    if (!embeddingResult.success) {
+      await this.handleSpeakerIdFailure(
+        turnId,
+        embeddingResult.error ?? 'Speaker ID failed while computing embedding'
+      );
       this.emitFinalTurn(turnId, startSample, endSample);
       return;
     }
@@ -298,6 +352,39 @@ export class LiveSpeakerTurnSession {
       provenance: assignment.provenance,
     });
     this.emitFinalTurn(turnId, startSample, endSample, assignment.speakerId);
+  }
+
+  private async handleSpeakerIdFailure(
+    turnId: string,
+    error: string
+  ): Promise<void> {
+    let recoverable = false;
+    let composedError = error;
+    if (this.config.speakerId.resetStream) {
+      try {
+        const reset = await this.config.speakerId.resetStream();
+        recoverable = reset.success;
+        if (!reset.success && reset.error) {
+          composedError = `${composedError}; speaker stream reset failed: ${reset.error}`;
+        }
+      } catch (resetError) {
+        const resetMessage =
+          resetError instanceof Error ? resetError.message : String(resetError);
+        composedError = `${composedError}; speaker stream reset failed: ${resetMessage}`;
+      }
+    }
+
+    if (!recoverable) {
+      this.speakerIdUsable = false;
+    }
+
+    this.emit({ type: 'error', turnId, error: composedError });
+    this.emit({
+      type: 'speaker_id_unavailable',
+      turnId,
+      error: composedError,
+      recoverable,
+    });
   }
 
   private emitFinalTurn(
@@ -320,7 +407,7 @@ export class LiveSpeakerTurnSession {
   private assignSpeaker(embedding: number[]): {
     speakerId: string;
     confidence: number;
-    provenance: 'centroid_match' | 'new_speaker';
+    provenance: LiveSpeakerTurnProvenance;
   } {
     const normalizedEmbedding = normalizeEmbedding(embedding);
     let bestMatch: LiveSpeakerTurnSpeakerCentroid | null = null;
@@ -356,13 +443,14 @@ export class LiveSpeakerTurnSession {
     const maxSpeakers = this.config.maxSpeakers;
     if (
       typeof maxSpeakers === 'number' &&
+      maxSpeakers > 0 &&
       this.centroids.length >= maxSpeakers &&
       bestMatch
     ) {
       return {
         speakerId: bestMatch.speakerId,
         confidence: bestScore,
-        provenance: 'centroid_match',
+        provenance: 'forced_fallback',
       };
     }
 
@@ -426,9 +514,23 @@ export class LiveSpeakerTurnSession {
   }
 
   private emit(event: LiveSpeakerTurnEvent): void {
-    this.emittedEvents.push(event);
+    this.eventCount += 1;
+    if (event.type === 'turn_final') {
+      this.finalizedTurnCount += 1;
+      if (event.speakerId) {
+        this.finalizedSpeakerIds.add(event.speakerId);
+      }
+    }
+    this.emittedEvents.push(cloneEvent(event));
+    const maxStoredEvents = Math.max(
+      0,
+      Math.floor(this.config.maxStoredEvents ?? DEFAULT_MAX_STORED_EVENTS)
+    );
+    if (this.emittedEvents.length > maxStoredEvents) {
+      this.emittedEvents.splice(0, this.emittedEvents.length - maxStoredEvents);
+    }
     for (const listener of this.listeners) {
-      listener(event);
+      listener(cloneEvent(event));
     }
   }
 

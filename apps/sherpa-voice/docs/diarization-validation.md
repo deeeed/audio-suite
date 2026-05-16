@@ -418,7 +418,7 @@ This gives local evidence that Sherpa ONNX can stay stable for 1-hour / 4-speake
 
 - For this fixture, use fixed speaker count: `numClusters=2`. Auto-clustering is not reliable on this audio.
 - For long recordings, use 5-minute native file windows plus global speaker re-ID. Do not use full-file PCM diarization for 60-minute mobile inputs.
-- Prefer `pyannote-segmentation-3-0/model.onnx + 3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx` for the mobile quality profile. It reached **6.41% DER / 8.86% JER** on 5 minutes in Python, **5.29% DER / 6.64% JER** on a real 1-hour recording in Python, **6.15% DER / 7.80% JER** on Pixel 6a native, and **5.89% DER / 7.35% JER** on iOS simulator native, and **5.89% DER / 7.35% JER** on iPhone 12 physical native.
+- Prefer `pyannote-segmentation-3-0/model.onnx + 3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx` for the mobile quality profile. It reached **6.41% DER / 8.86% JER** on 5 minutes in Python, **5.29% DER / 6.64% JER** on a real 1-hour recording in Python, **6.15% DER / 7.80% JER** on Pixel 6a native, and **5.89% DER / 7.35% JER** on both iOS simulator and iPhone 12 physical native validation.
 - The best 5-minute Python quality was `pyannote-segmentation-3-0/model.onnx + nemo_en_titanet_large.onnx` at **5.68% DER / 7.85% JER**, but the embedding is 97 MiB.
 - 4-speaker validation is also good locally with fixed count: **6.33% DER** on the short Sherpa 4-speaker sample and **7.75% DER** on a repeated 1-hour/4-speaker stress fixture.
 - The Python/iOS simulator/iPhone 12 parity check shows the RN bridge can be trusted when it uses the same model files/settings. The remaining iOS gap is normal `net.siteed.sherpavoice.development` provisioning, not diarization/native bridge parity.
@@ -430,3 +430,65 @@ This gives local evidence that Sherpa ONNX can stay stable for 1-hour / 4-speake
 3. Add a human spot-check view for long diarization turns and speaker-label consistency.
 4. Optionally add `speaker-id-nemo-titanet-large` as a high-quality/large-model benchmark profile.
 5. Upstream Sherpa ONNX follow-up: share the model-sweep evidence that `model.onnx` is the appropriate quality default while `model.int8.onnx` should be documented as an opt-in size/speed tradeoff.
+
+## Live transcription + speaker-turn replay validation
+
+This follow-up adds a live validation path that replays a 16 kHz mono WAV as fixed-duration chunks through streaming ASR, VAD, and Speaker ID. It validates low-latency live UX behavior separately from the offline/windowed diarization quality baseline above.
+
+### Android physical result
+
+| Device | Audio window | Chunk | ASR | VAD | Speaker ID | Replay time | Realtime factor | Result | Transcript segments | Speaker-attributed segments |
+| --- | ---: | ---: | --- | --- | --- | ---: | ---: | --- | ---: | ---: |
+| Pixel 6a physical (`29071JEGR20638`) | 60 s | 100 ms | `streaming-zipformer-en-20m-mobile` | `silero-vad-v5` | `speaker-id-en-voxceleb` | 15.568 s | **0.26x** | Keeps up | 12 | 12 |
+
+Event summary from the recipe run:
+
+| Event | Count |
+| --- | ---: |
+| `speaker_event` | 88 |
+| `transcript_speaker_update` | 14 |
+| `turn_finalized` | 17 |
+| `partial_transcript` | 56 |
+| `final_transcript` | 8 |
+
+Validation command:
+
+```bash
+cd apps/sherpa-voice
+ADB_SERIAL=29071JEGR20638 yarn recipe:run scripts/agentic/teams/sherpa/recipes/live-transcription-diarization-replay.json --device 'Pixel 6a'
+```
+
+The recipe passed on device. This proves the composed live event contract can keep up on a mid-range Android device for fixture replay. It is not a formal diarization-quality/DER result; offline/windowed diarization remains the quality baseline.
+
+### Live microphone keep-up result
+
+A second Android recipe validates the real microphone streaming path using `AudioStudioModule.startRecording({ streamFormat: 'float32' })` and feeding live mic chunks into the same ASR + VAD + Speaker ID session.
+
+| Device | Capture | Chunk target | Chunks | Captured audio | Avg processing/chunk | Max queue depth | Drops | Result |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Pixel 6a physical (`29071JEGR20638`) | 10 s mic | 100 ms | 89 | 9.94 s | 67.8 ms | 2 | 0 | Keeps up |
+
+Validation command:
+
+```bash
+cd apps/sherpa-voice
+ADB_SERIAL=29071JEGR20638 yarn recipe:run scripts/agentic/teams/sherpa/recipes/live-mic-transcription-diarization.json --device 'Pixel 6a'
+```
+
+This run did not include controlled speech in the room, so it proves the live microphone/backpressure path rather than transcription quality. The fixture replay above proves transcript and speaker-attribution events on known audio.
+
+### Controlled live microphone speech result
+
+A controlled follow-up played a known spoken sentence from the Mac speaker while the Pixel 6a recorded with the same live mic path. This validates that real microphone audio can produce transcript + speaker attribution events, not only silent/backpressure metrics.
+
+| Device | Capture | Prompt source | Transcript | Final segments | Speaker-attributed segments | Avg processing/chunk | Max queue depth | Peak / RMS | Result |
+| --- | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Pixel 6a physical (`29071JEGR20638`) | 18 s mic | macOS `say` controlled speech | `SHOULD HEAR THIS` | 1 | 1 | 68.2 ms | 2 | 0.977 / 0.0085 | Keeps up + attributed |
+
+Representative command:
+
+```bash
+cd apps/sherpa-voice
+(sleep 2; say -r 180 'This is a controlled live microphone validation. Speaker one is talking now. The live transcription should hear this sentence and keep up with the audio stream.') &
+node scripts/agentic/cdp-bridge.mjs --device 'Pixel 6a' eval "JSON.stringify(globalThis.__AGENTIC__?.testLiveMicTranscriptionDiarization?.({durationMs:18000,chunkDurationMs:100,asrModelId:'streaming-zipformer-en-20m-mobile',vadModelId:'silero-vad-v5',speakerIdModelId:'speaker-id-en-voxceleb'}))"
+```

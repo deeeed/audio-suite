@@ -52,6 +52,30 @@ class SherpaOnnxTurboModuleImpl(
         implementation.releaseAsr(promise)
     }
 
+    override fun createAsrOnlineStream(promise: Promise) {
+        implementation.createAsrOnlineStream(promise)
+    }
+
+    override fun acceptAsrOnlineWaveform(sampleRate: Int, audioBuffer: ReadableArray, promise: Promise) {
+        implementation.acceptAsrOnlineWaveform(sampleRate, audioBuffer, promise)
+    }
+
+    override fun isAsrOnlineEndpoint(promise: Promise) {
+        implementation.isAsrOnlineEndpoint(promise)
+    }
+
+    override fun getAsrOnlineResult(promise: Promise) {
+        implementation.getAsrOnlineResult(promise)
+    }
+
+    override fun finishAsrOnlineInput(promise: Promise) {
+        implementation.finishAsrOnlineInput(promise)
+    }
+
+    override fun resetAsrOnlineStream(promise: Promise) {
+        implementation.resetAsrOnlineStream(promise)
+    }
+
     override fun initAudioTagging(config: ReadableMap, promise: Promise) {
         implementation.initAudioTagging(config, promise)
     }
@@ -86,6 +110,10 @@ class SherpaOnnxTurboModuleImpl(
 
     override fun computeSpeakerEmbedding(promise: Promise) {
         implementation.computeSpeakerEmbedding(promise)
+    }
+
+    override fun resetSpeakerIdStream(promise: Promise) {
+        implementation.resetSpeakerIdStream(promise)
     }
 
     override fun registerSpeaker(name: String, embedding: ReadableArray, promise: Promise) {

@@ -143,6 +143,7 @@ class SpeakerIdHandler(private val reactContext: ReactApplicationContext) {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing audio samples: ${e.message}")
+                resetEmbeddingStream()
 
                 reactContext.runOnUiQueueThread {
                     promise.reject("ERR_SPEAKER_ID_PROCESS", "Failed to process audio samples: ${e.message}")
@@ -184,8 +185,7 @@ class SpeakerIdHandler(private val reactContext: ReactApplicationContext) {
                 }
 
                 // Create new stream for next compute operation
-                stream?.release()
-                stream = speakerExtractor?.createStream()
+                resetEmbeddingStream()
 
                 // Return results
                 val resultMap = Arguments.createMap()
@@ -199,6 +199,7 @@ class SpeakerIdHandler(private val reactContext: ReactApplicationContext) {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error computing speaker embedding: ${e.message}")
+                resetEmbeddingStream()
 
                 reactContext.runOnUiQueueThread {
                     promise.reject("ERR_SPEAKER_ID_COMPUTE", "Failed to compute speaker embedding: ${e.message}")
@@ -640,6 +641,44 @@ class SpeakerIdHandler(private val reactContext: ReactApplicationContext) {
 
                 reactContext.runOnUiQueueThread {
                     promise.reject("ERR_SPEAKER_ID_RELEASE", "Failed to release Speaker ID resources: ${e.message}")
+                }
+            }
+        }
+    }
+
+    /**
+     * Reset the streaming buffer used by processSamples/computeEmbedding.
+     */
+    private fun resetEmbeddingStream() {
+        try {
+            stream?.release()
+            stream = speakerExtractor?.createStream()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error resetting speaker ID stream: ${e.message}")
+            stream = null
+        }
+    }
+
+    /**
+     * Reset the incremental embedding stream exposed to JS live sessions.
+     */
+    fun resetStream(promise: Promise) {
+        executor.execute {
+            try {
+                if (speakerExtractor == null) {
+                    throw Exception("Speaker ID is not initialized")
+                }
+                resetEmbeddingStream()
+                if (stream == null) {
+                    throw Exception("Failed to create speaker ID stream")
+                }
+                val resultMap = Arguments.createMap()
+                resultMap.putBoolean("success", true)
+                reactContext.runOnUiQueueThread { promise.resolve(resultMap) }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error resetting speaker ID stream: ${e.message}")
+                reactContext.runOnUiQueueThread {
+                    promise.reject("ERR_SPEAKER_ID_RESET", "Failed to reset speaker ID stream: ${e.message}")
                 }
             }
         }

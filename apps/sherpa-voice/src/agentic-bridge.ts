@@ -19,10 +19,12 @@ import SherpaOnnx, {
     Punctuation,
     SpeakerId,
     VAD,
+    LiveSpeakerTurnSession,
+    LiveAttributedTranscriptionSession,
 } from '@siteed/sherpa-onnx.rn'
 import * as FileSystem from 'expo-file-system/legacy'
 import { router, type Href } from 'expo-router'
-import { AudioStudioModule } from '@siteed/audio-studio'
+import { AudioStudioModule, type AudioDataEvent } from '@siteed/audio-studio'
 import { LegacyEventEmitter } from 'expo-modules-core'
 import { Platform } from 'react-native'
 import {
@@ -42,6 +44,7 @@ import {
 import { resolveModelDir } from './utils/fileUtils'
 import { getAsrModelConfigById, getModelConfigById } from './hooks/useModelConfig'
 import { readMonoPcm16Wav } from './utils/wav'
+import { initializeLiveTranscriptionDiarizationModels } from './utils/liveTranscriptionDiarization'
 
 // App-variant-aware model base directory.
 // Native: matches the running build's sandbox (e.g.
@@ -953,6 +956,439 @@ async function runNativeDiarizationWindowedBenchmarkCase(
     }
 }
 
+type LiveTranscriptionDiarizationOptions = {
+    asrModelId?: string
+    vadModelId?: string
+    speakerIdModelId?: string
+    chunkDurationMs?: number
+    maxDurationMs?: number
+    speakerThreshold?: number
+    minTurnDurationMs?: number
+    speechPadMs?: number
+    numThreads?: number
+}
+
+async function resolveDownloadedModelDir(modelId: string) {
+    const status = getDownloadedModelStatuses()[modelId]
+    if (!status?.localPath) {
+        throw new Error(`Model ${modelId} is not downloaded`)
+    }
+    return resolveModelDir(status.localPath)
+}
+
+async function runLiveTranscriptionDiarizationReplay(
+    filePath: string,
+    options: LiveTranscriptionDiarizationOptions = {}
+) {
+    if (Platform.OS === 'web') {
+        throw new Error('Live transcription+diarization replay requires iOS or Android')
+    }
+    if (!filePath) {
+        throw new Error('Live transcription+diarization replay requires a WAV filePath')
+    }
+
+    const chunkDurationMs = options.chunkDurationMs ?? 100
+    const maxDurationMs = options.maxDurationMs
+    const speakerThreshold = options.speakerThreshold ?? 0.55
+    const minTurnDurationMs = options.minTurnDurationMs ?? 1000
+    const speechPadMs = options.speechPadMs ?? 120
+
+    const timing: Record<string, number> = {}
+    const eventCounts: Record<string, number> = {}
+    const chunkStats = {
+        chunks: 0,
+        slowChunks: 0,
+        maxChunkMs: 0,
+        totalChunkMs: 0,
+    }
+
+    let session: InstanceType<typeof LiveAttributedTranscriptionSession> | null = null
+
+    try {
+        const audioUri = normalizeNativeAudioPath(filePath)
+        const readStartedAt = Date.now()
+        const wav = await readMonoPcm16Wav(audioUri)
+        timing.readWavMs = Date.now() - readStartedAt
+        if (wav.sampleRate !== DEFAULT_LIVE_SAMPLE_RATE) {
+            throw new Error(
+                `Expected ${DEFAULT_LIVE_SAMPLE_RATE} Hz mono PCM WAV, got ${wav.sampleRate} Hz. Convert fixture before live replay.`
+            )
+        }
+
+        const samples =
+            typeof maxDurationMs === 'number' && maxDurationMs > 0
+                ? wav.samples.slice(
+                      0,
+                      Math.floor((maxDurationMs / 1000) * wav.sampleRate)
+                  )
+                : wav.samples
+        const audioDurationMs = (samples.length / wav.sampleRate) * 1000
+        const chunkSize = Math.max(1, Math.round((chunkDurationMs / 1000) * wav.sampleRate))
+
+        const initStartedAt = Date.now()
+        const initialized = await initializeLiveTranscriptionDiarizationServices(options)
+        timing.initMs = Date.now() - initStartedAt
+
+        const events: unknown[] = []
+        session = new LiveAttributedTranscriptionSession({
+            sampleRate: wav.sampleRate,
+            speakerTurns: new LiveSpeakerTurnSession({
+                sampleRate: wav.sampleRate,
+                vad: VAD,
+                speakerId: SpeakerId,
+                minTurnDurationMs,
+                speechPadMs,
+                speakerThreshold,
+                maxRingBufferDurationMs: 90_000,
+            }),
+            asr: ASR,
+            onEvent: (event) => {
+                eventCounts[event.type] = (eventCounts[event.type] ?? 0) + 1
+                if (events.length < 80) {
+                    events.push(event)
+                }
+            },
+        })
+
+        const replayStartedAt = Date.now()
+        for (let offset = 0; offset < samples.length; offset += chunkSize) {
+            const end = Math.min(offset + chunkSize, samples.length)
+            const chunk = samples.slice(offset, end)
+            const chunkStartedAt = Date.now()
+            await session.acceptChunk({
+                samples: chunk,
+                sampleRate: wav.sampleRate,
+                startSample: offset,
+            })
+            const chunkElapsedMs = Date.now() - chunkStartedAt
+            chunkStats.chunks += 1
+            chunkStats.totalChunkMs += chunkElapsedMs
+            chunkStats.maxChunkMs = Math.max(chunkStats.maxChunkMs, chunkElapsedMs)
+            if (chunkElapsedMs > chunkDurationMs) {
+                chunkStats.slowChunks += 1
+            }
+        }
+        await session.flush()
+        timing.replayMs = Date.now() - replayStartedAt
+        const summary = session.getSummary()
+        const state = session.getState()
+        if ((eventCounts.error ?? 0) > 0) {
+            throw new Error(`Live replay emitted ${eventCounts.error} pipeline error event(s)`)
+        }
+        const realtimeFactor = timing.replayMs / Math.max(audioDurationMs, 1)
+
+        return {
+            platform: Platform.OS,
+            filePath: audioUri,
+            models: {
+                asrModelId: initialized.asrModelId,
+                vadModelId: initialized.vadModelId,
+                speakerIdModelId: initialized.speakerIdModelId,
+            },
+            config: {
+                chunkDurationMs,
+                chunkSize,
+                sampleRate: wav.sampleRate,
+                audioDurationMs,
+                speakerThreshold,
+                minTurnDurationMs,
+                speechPadMs,
+                numThreads: initialized.requestedThreads,
+            },
+            timing,
+            realtimeFactor,
+            keepsUpWithReplay: realtimeFactor <= 1,
+            chunkStats: {
+                ...chunkStats,
+                averageChunkMs:
+                    chunkStats.chunks > 0
+                        ? chunkStats.totalChunkMs / chunkStats.chunks
+                        : 0,
+            },
+            eventCounts,
+            summary,
+            segmentCount: state.segments.length,
+            finalSegmentCount: state.segments.filter((segment) => segment.final).length,
+            speakerAttributedSegmentCount: state.segments.filter((segment) => Boolean(segment.speakerId)).length,
+            transcriptPreview: state.segments.slice(0, 20),
+            eventPreview: events,
+        }
+    } finally {
+        session?.release()
+        await Promise.all([
+            ASR.release().catch(() => {}),
+            VAD.release().catch(() => {}),
+            SpeakerId.release().catch(() => {}),
+        ])
+    }
+}
+
+type LiveMicTranscriptionDiarizationOptions = LiveTranscriptionDiarizationOptions & {
+    durationMs?: number
+}
+
+type RawAudioDataEvent = Partial<AudioDataEvent> & {
+    pcmFloat32?: Float32Array | number[]
+    data?: Float32Array | number[] | { pcmFloat32?: Float32Array | number[] }
+}
+
+function getFloat32SamplesFromAudioEvent(eventData: RawAudioDataEvent) {
+    const data = eventData.data
+    const raw = eventData.pcmFloat32 ??
+        (data instanceof Float32Array || Array.isArray(data) ? data : data?.pcmFloat32)
+    if (raw instanceof Float32Array) {
+        return Array.from(raw)
+    }
+    if (Array.isArray(raw)) {
+        return raw.map((value) => Number(value))
+    }
+    return null
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    return Promise.race([
+        promise,
+        new Promise<never>((_, reject) => {
+            timeout = setTimeout(() => reject(new Error(message)), timeoutMs)
+        }),
+    ]).finally(() => {
+        if (timeout) {
+            clearTimeout(timeout)
+        }
+    })
+}
+
+async function initializeLiveTranscriptionDiarizationServices(
+    options: LiveTranscriptionDiarizationOptions
+) {
+    const asrModelId = options.asrModelId ?? 'streaming-zipformer-en-20m-mobile'
+    const vadModelId = options.vadModelId ?? 'silero-vad-v5'
+    const speakerIdModelId = options.speakerIdModelId ?? 'speaker-id-en-voxceleb'
+
+    const [asrModelDir, vadModelDir, speakerModelDir] = await Promise.all([
+        resolveDownloadedModelDir(asrModelId),
+        resolveDownloadedModelDir(vadModelId),
+        resolveDownloadedModelDir(speakerIdModelId),
+    ])
+
+    return initializeLiveTranscriptionDiarizationModels({
+        asrModelId,
+        vadModelId,
+        speakerIdModelId,
+        asrModelDir,
+        vadModelDir,
+        speakerModelDir,
+        numThreads: options.numThreads,
+    })
+}
+
+
+async function runLiveMicTranscriptionDiarization(
+    options: LiveMicTranscriptionDiarizationOptions = {}
+) {
+    if (Platform.OS === 'web') {
+        throw new Error('Live mic transcription+diarization requires iOS or Android')
+    }
+
+    const durationMs = options.durationMs ?? 10_000
+    const chunkDurationMs = options.chunkDurationMs ?? 100
+    const speakerThreshold = options.speakerThreshold ?? 0.55
+    const minTurnDurationMs = options.minTurnDurationMs ?? 1000
+    const speechPadMs = options.speechPadMs ?? 120
+    const timing: Record<string, number> = {}
+    const eventCounts: Record<string, number> = {}
+    const stats = {
+        chunks: 0,
+        samples: 0,
+        emptyChunks: 0,
+        slowChunks: 0,
+        droppedChunks: 0,
+        maxChunkMs: 0,
+        totalChunkMs: 0,
+        maxQueueDepth: 0,
+        peakAbs: 0,
+        sumSquares: 0,
+    }
+    const events: unknown[] = []
+    let session: InstanceType<typeof LiveAttributedTranscriptionSession> | null = null
+    let subscription: { remove: () => void } | null = null
+    let nextSample = 0
+    let queueDepth = 0
+    let chain = Promise.resolve()
+    let fatalError: Error | null = null
+    let stopped = false
+
+    try {
+        const permission = await AudioStudioModule.requestPermissionsAsync()
+        if (permission?.status !== 'granted') {
+            throw new Error('Microphone permission denied')
+        }
+
+        const initStartedAt = Date.now()
+        const initialized = await initializeLiveTranscriptionDiarizationServices(options)
+        timing.initMs = Date.now() - initStartedAt
+
+        session = new LiveAttributedTranscriptionSession({
+            sampleRate: DEFAULT_LIVE_SAMPLE_RATE,
+            speakerTurns: new LiveSpeakerTurnSession({
+                sampleRate: DEFAULT_LIVE_SAMPLE_RATE,
+                vad: VAD,
+                speakerId: SpeakerId,
+                minTurnDurationMs,
+                speechPadMs,
+                speakerThreshold,
+                maxRingBufferDurationMs: 90_000,
+            }),
+            asr: ASR,
+            onEvent: (event) => {
+                eventCounts[event.type] = (eventCounts[event.type] ?? 0) + 1
+                if (events.length < 80) {
+                    events.push(event)
+                }
+            },
+        })
+
+        const emitter = new LegacyEventEmitter(AudioStudioModule)
+        subscription = emitter.addListener('AudioData', (eventData: AudioDataEvent) => {
+            if (stopped || fatalError) {
+                stats.droppedChunks += 1
+                return
+            }
+            const samples = getFloat32SamplesFromAudioEvent(eventData)
+            if (!samples) {
+                stats.droppedChunks += 1
+                return
+            }
+            const startSample = nextSample
+            nextSample += samples.length
+            stats.samples += samples.length
+            for (const sample of samples) {
+                const abs = Math.abs(sample)
+                stats.peakAbs = Math.max(stats.peakAbs, abs)
+                stats.sumSquares += sample * sample
+            }
+            if (samples.length === 0) {
+                stats.emptyChunks += 1
+                return
+            }
+            queueDepth += 1
+            stats.maxQueueDepth = Math.max(stats.maxQueueDepth, queueDepth)
+            chain = chain
+                .then(async () => {
+                    const chunkStartedAt = Date.now()
+                    try {
+                        await session?.acceptChunk({
+                            samples,
+                            sampleRate: DEFAULT_LIVE_SAMPLE_RATE,
+                            startSample,
+                        })
+                        stats.chunks += 1
+                        const elapsedMs = Date.now() - chunkStartedAt
+                        stats.totalChunkMs += elapsedMs
+                        stats.maxChunkMs = Math.max(stats.maxChunkMs, elapsedMs)
+                        if (elapsedMs > chunkDurationMs) {
+                            stats.slowChunks += 1
+                        }
+                    } finally {
+                        queueDepth -= 1
+                    }
+                })
+                .catch((error: unknown) => {
+                    fatalError ??= error instanceof Error ? error : new Error(String(error))
+                    stopped = true
+                })
+        })
+
+        const recordStartedAt = Date.now()
+        await AudioStudioModule.startRecording({
+            sampleRate: DEFAULT_LIVE_SAMPLE_RATE,
+            channels: 1,
+            encoding: 'pcm_16bit',
+            interval: chunkDurationMs,
+            bufferDurationSeconds: chunkDurationMs / 1000,
+            streamFormat: 'float32',
+            output: { primary: { enabled: false } },
+        })
+        await new Promise((resolve) => setTimeout(resolve, durationMs))
+        await AudioStudioModule.stopRecording().catch(() => null)
+        stopped = true
+        subscription.remove()
+        subscription = null
+        await withTimeout(chain, 5_000, 'Timed out while draining live mic audio chunks')
+        await session.flush().catch((error: unknown) => {
+            fatalError ??= error instanceof Error ? error : new Error(String(error))
+            stopped = true
+        })
+        if (fatalError) {
+            throw fatalError
+        }
+        timing.recordMs = Date.now() - recordStartedAt
+
+        const summary = session.getSummary()
+        const state = session.getState()
+        if ((eventCounts.error ?? 0) > 0) {
+            throw new Error(`Live mic emitted ${eventCounts.error} pipeline error event(s)`)
+        }
+        const audioDurationMs = (stats.samples / DEFAULT_LIVE_SAMPLE_RATE) * 1000
+        const averageChunkMs = stats.chunks > 0 ? stats.totalChunkMs / stats.chunks : 0
+        const rms = stats.samples > 0 ? Math.sqrt(stats.sumSquares / stats.samples) : 0
+        const publicStats = {
+            chunks: stats.chunks,
+            samples: stats.samples,
+            emptyChunks: stats.emptyChunks,
+            slowChunks: stats.slowChunks,
+            droppedChunks: stats.droppedChunks,
+            maxChunkMs: stats.maxChunkMs,
+            totalChunkMs: stats.totalChunkMs,
+            maxQueueDepth: stats.maxQueueDepth,
+            peakAbs: stats.peakAbs,
+        }
+
+        return {
+            platform: Platform.OS,
+            mode: 'mic',
+            models: {
+                asrModelId: initialized.asrModelId,
+                vadModelId: initialized.vadModelId,
+                speakerIdModelId: initialized.speakerIdModelId,
+            },
+            config: {
+                durationMs,
+                chunkDurationMs,
+                sampleRate: DEFAULT_LIVE_SAMPLE_RATE,
+                speakerThreshold,
+                minTurnDurationMs,
+                speechPadMs,
+                numThreads: initialized.requestedThreads,
+            },
+            timing,
+            audioDurationMs,
+            keepsUpWithLiveAudio: stats.maxQueueDepth <= 2 && averageChunkMs < chunkDurationMs,
+            eventCounts,
+            summary,
+            stats: {
+                ...publicStats,
+                averageChunkMs,
+                rms,
+            },
+            transcriptPreview: state.segments.slice(0, 20),
+            eventPreview: events,
+        }
+    } finally {
+        stopped = true
+        subscription?.remove()
+        subscription = null
+        await AudioStudioModule.stopRecording().catch(() => null)
+        session?.release()
+        await Promise.all([
+            ASR.release().catch(() => {}),
+            VAD.release().catch(() => {}),
+            SpeakerId.release().catch(() => {}),
+        ])
+    }
+}
+
 if (__DEV__) {
     ; (globalThis as Record<string, unknown>).__AGENTIC__ = {
         platform: Platform.OS,
@@ -986,6 +1422,41 @@ if (__DEV__) {
                 platform: Platform.OS,
                 documentDirectory: FileSystem.documentDirectory,
             }
+        },
+
+        checkFileExists: (filePath: string) => {
+            const op = 'checkFileExists'
+            _lastAsyncResult = { op, status: 'pending' }
+            void (async () => {
+                try {
+                    if (!filePath) {
+                        throw new Error('checkFileExists requires filePath')
+                    }
+                    const uri = filePath.startsWith('file://')
+                        ? filePath
+                        : `file://${filePath}`
+                    const info = await FileSystem.getInfoAsync(uri)
+                    if (!info.exists) {
+                        throw new Error(`Validation file missing: ${uri}`)
+                    }
+                    _lastAsyncResult = {
+                        op,
+                        status: 'success',
+                        result: {
+                            uri,
+                            path: uri.replace('file://', ''),
+                            size: info.size,
+                        },
+                    }
+                } catch (e) {
+                    _lastAsyncResult = {
+                        op,
+                        status: 'error',
+                        error: e instanceof Error ? e.message : String(e),
+                    }
+                }
+            })()
+            return _lastAsyncResult
         },
 
         downloadValidationFileFromUrl: (url: string, fileName: string) => {
@@ -1501,6 +1972,52 @@ if (__DEV__) {
                         status: 'error',
                         error: String(e),
                         result: { timing, filePath, numClusters },
+                    }
+                }
+            })()
+            return { op, status: 'pending' }
+        },
+
+        testLiveMicTranscriptionDiarization: (
+            options?: LiveMicTranscriptionDiarizationOptions
+        ) => {
+            const op = 'liveMicTranscriptionDiarization'
+            _lastAsyncResult = { op, status: 'pending' }
+            void (async () => {
+                try {
+                    const result = await runLiveMicTranscriptionDiarization(options)
+                    _lastAsyncResult = { op, status: 'success', result }
+                } catch (e) {
+                    _lastAsyncResult = {
+                        op,
+                        status: 'error',
+                        error: String(e),
+                        result: { options },
+                    }
+                }
+            })()
+            return { op, status: 'pending' }
+        },
+
+        testLiveTranscriptionDiarizationReplay: (
+            filePath: string,
+            options?: LiveTranscriptionDiarizationOptions
+        ) => {
+            const op = 'liveTranscriptionDiarizationReplay'
+            _lastAsyncResult = { op, status: 'pending' }
+            void (async () => {
+                try {
+                    const result = await runLiveTranscriptionDiarizationReplay(
+                        filePath,
+                        options
+                    )
+                    _lastAsyncResult = { op, status: 'success', result }
+                } catch (e) {
+                    _lastAsyncResult = {
+                        op,
+                        status: 'error',
+                        error: String(e),
+                        result: { filePath, options },
                     }
                 }
             })()

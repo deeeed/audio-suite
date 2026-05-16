@@ -202,6 +202,10 @@ const nativeAdapter: ApiInterface = {
     return NativeSherpaOnnx.getAsrOnlineResult();
   },
 
+  finishAsrOnlineInput(): Promise<{ success: boolean; error?: string }> {
+    return NativeSherpaOnnx.finishAsrOnlineInput();
+  },
+
   resetAsrOnlineStream(): Promise<{ success: boolean }> {
     return NativeSherpaOnnx.resetAsrOnlineStream();
   },
@@ -236,6 +240,10 @@ const nativeAdapter: ApiInterface = {
 
   computeSpeakerEmbedding(): Promise<SpeakerEmbeddingResult> {
     return NativeSherpaOnnx.computeSpeakerEmbedding();
+  },
+
+  resetSpeakerIdStream(): Promise<{ success: boolean }> {
+    return NativeSherpaOnnx.resetSpeakerIdStream();
   },
 
   registerSpeaker({ name, embedding }: RegisterSpeakerInput): Promise<RegisterSpeakerResult> {

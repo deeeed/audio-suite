@@ -11,6 +11,7 @@ import { PunctuationService } from '../services/PunctuationService';
 import { DiarizationService } from '../services/DiarizationService';
 import { OnnxInferenceService } from '../services/OnnxInferenceService';
 import type { LiveSpeakerTurnSession } from '../services/LiveSpeakerTurnSession';
+import type { LiveAttributedTranscriptionSession } from '../services/LiveAttributedTranscriptionSession';
 
 /**
  * Provider type for model inference
@@ -1199,9 +1200,19 @@ export interface LiveSpeakerTurnSpeakerIdAdapter {
     samples: number[]
   ): Promise<SpeakerIdProcessResult>;
   computeEmbedding(): Promise<SpeakerEmbeddingResult>;
+  /**
+   * Discard the current incremental embedding stream after a failed live turn.
+   * Standalone SpeakerId callers keep their normal "not enough audio" behavior;
+   * live sessions use this optional hook to prevent the failed turn audio from
+   * contaminating the next finalized turn.
+   */
+  resetStream?(): Promise<{ success: boolean; error?: string }>;
 }
 
-export type LiveSpeakerTurnProvenance = 'centroid_match' | 'new_speaker';
+export type LiveSpeakerTurnProvenance =
+  | 'centroid_match'
+  | 'new_speaker'
+  | 'forced_fallback';
 
 export type LiveSpeakerTurnEvent =
   | {
@@ -1228,6 +1239,12 @@ export type LiveSpeakerTurnEvent =
       speakerId: string;
       confidence: number;
       provenance: LiveSpeakerTurnProvenance;
+    }
+  | {
+      type: 'speaker_id_unavailable';
+      turnId: string;
+      error: string;
+      recoverable: boolean;
     }
   | {
       type: 'turn_final';
@@ -1280,6 +1297,8 @@ export interface LiveSpeakerTurnConfig {
   centroidUpdateAlpha?: number;
   /** Bounded PCM buffer duration. Default: 60 seconds. */
   maxRingBufferDurationMs?: number;
+  /** Maximum number of emitted events retained in getState().events. Default: 1000. */
+  maxStoredEvents?: number;
 }
 
 export interface LiveSpeakerTurnSpeakerCentroid {
@@ -1301,6 +1320,163 @@ export interface LiveSpeakerTurnSummary {
   eventCount: number;
   turnCount: number;
   speakerCount: number;
+  durationMs: number;
+}
+
+
+export type LiveTranscriptionChunk = LiveSpeakerTurnChunk;
+
+export interface LiveTranscriptionAsrResult {
+  text: string;
+  tokens?: string[];
+  timestamps?: number[];
+}
+
+export interface LiveTranscriptionAsrAdapter {
+  acceptWaveform(
+    sampleRate: number,
+    samples: number[]
+  ): Promise<{ success: boolean; error?: string }>;
+  getResult(): Promise<LiveTranscriptionAsrResult>;
+  isEndpoint(): Promise<{ isEndpoint: boolean }>;
+  /**
+   * Signal end-of-input and drain ready frames before reading the final online
+   * result. Native Sherpa examples call inputFinished() after tail padding;
+   * custom tests/adapters may omit it, in which case flush falls back to getResult().
+   */
+  finishInput?(): Promise<{ success: boolean; error?: string }>;
+  resetStream(): Promise<{ success: boolean; error?: string }>;
+}
+
+export type LiveAttributedTranscriptionEvent =
+  | {
+      type: 'speaker_event';
+      event: LiveSpeakerTurnEvent;
+    }
+  | {
+      type: 'partial_transcript';
+      segmentId: string;
+      turnId?: string;
+      text: string;
+      startMs: number;
+      endMs: number;
+      startSample: number;
+      endSample: number;
+      speakerId?: string;
+    }
+  | {
+      type: 'final_transcript';
+      segmentId: string;
+      turnId?: string;
+      text: string;
+      startMs: number;
+      endMs: number;
+      startSample: number;
+      endSample: number;
+      speakerId?: string;
+    }
+  | {
+      type: 'transcript_speaker_update';
+      turnId: string;
+      speakerId: string;
+      confidence: number;
+      affectedSegmentIds: string[];
+    }
+  | {
+      type: 'turn_finalized';
+      turnId: string;
+      startMs: number;
+      endMs: number;
+      startSample: number;
+      endSample: number;
+      speakerId?: string;
+      segmentIds: string[];
+      text: string;
+    }
+  | {
+      type: 'transcript_segment_removed';
+      segmentId: string;
+      turnId?: string;
+      reason: 'turn_discarded';
+      text: string;
+      final: boolean;
+    }
+  | {
+      type: 'error';
+      error: string;
+      source: 'speaker_turn' | 'asr';
+    }
+  | {
+      type: 'released';
+    };
+
+export type LiveAttributedTranscriptionEventListener = (
+  event: LiveAttributedTranscriptionEvent
+) => void;
+
+export interface LiveSpeakerTurnSessionController {
+  onEvent(listener: LiveSpeakerTurnEventListener): () => void;
+  /** Rejects if VAD throws, VAD returns success:false, or the chunk clock is non-contiguous. */
+  acceptChunk(chunk: LiveSpeakerTurnChunk): Promise<void>;
+  flush(): Promise<void>;
+  /**
+   * Reset the JS turn controller state. Adapter/model state is intentionally
+   * owned by the supplied VAD and SpeakerId services; reset those services
+   * separately when swapping models or recovering native state.
+   */
+  reset(): void;
+  release(): void;
+}
+
+export interface LiveAttributedTranscriptionConfig {
+  sampleRate: number;
+  /**
+   * Speaker-turn session owned by this composer. `release()` also releases this
+   * instance; pass a dedicated session rather than sharing it across composers.
+   */
+  speakerTurns: LiveSpeakerTurnSessionController;
+  asr: LiveTranscriptionAsrAdapter;
+  onEvent?: LiveAttributedTranscriptionEventListener;
+  /** Emit duplicate partial text on every chunk. Default: false. */
+  emitUnchangedPartials?: boolean;
+  /**
+   * Silence appended to ASR on `flush()` so streaming recognizers can decode
+   * final right-context before the last segment is finalized. Default: 660ms.
+   */
+  flushTailPaddingMs?: number;
+  /**
+   * Maximum number of emitted events retained in `getState().events`.
+   * Event listeners still receive every event. Default: 1000.
+   */
+  maxStoredEvents?: number;
+}
+
+export interface LiveTranscriptSegment {
+  segmentId: string;
+  turnId?: string;
+  text: string;
+  final: boolean;
+  startSample: number;
+  endSample: number;
+  startMs: number;
+  endMs: number;
+  speakerId?: string;
+}
+
+export interface LiveAttributedTranscriptionState {
+  released: boolean;
+  nextSample: number;
+  activeTurnId?: string;
+  activeSegmentId?: string;
+  segments: LiveTranscriptSegment[];
+  events: LiveAttributedTranscriptionEvent[];
+}
+
+export interface LiveAttributedTranscriptionSummary {
+  eventCount: number;
+  segmentCount: number;
+  finalSegmentCount: number;
+  speakerAttributedSegmentCount: number;
   durationMs: number;
 }
 
@@ -1434,6 +1610,7 @@ export interface NativeSherpaOnnxInterface {
     tokens: string[];
     timestamps: number[];
   }>;
+  finishAsrOnlineInput(): Promise<{ success: boolean; error?: string }>;
   resetAsrOnlineStream(): Promise<{ success: boolean }>;
 
   // Audio tagging methods
@@ -1458,6 +1635,7 @@ export interface NativeSherpaOnnxInterface {
     samples: number[]
   ): Promise<SpeakerIdProcessResult>;
   computeSpeakerEmbedding(): Promise<SpeakerEmbeddingResult>;
+  resetSpeakerIdStream(): Promise<{ success: boolean }>;
   registerSpeaker(
     name: string,
     embedding: number[]
@@ -1582,6 +1760,7 @@ export interface SherpaOnnxInterface extends ApiInterface {
   Denoising: import('../services/DenoisingService').DenoisingService;
   OnnxInference: OnnxInferenceService;
   LiveSpeakerTurnSession: typeof LiveSpeakerTurnSession;
+  LiveAttributedTranscriptionSession: typeof LiveAttributedTranscriptionSession;
 }
 
 // ----------------------------------------------------------------------------------

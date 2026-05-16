@@ -110,6 +110,10 @@ class SherpaOnnxImpl(private val reactContext: ReactApplicationContext) {
         asrHandler.getAsrOnlineResult(promise)
     }
 
+    fun finishAsrOnlineInput(promise: Promise) {
+        asrHandler.finishAsrOnlineInput(promise)
+    }
+
     fun resetAsrOnlineStream(promise: Promise) {
         asrHandler.resetAsrOnlineStream(promise)
     }
@@ -150,6 +154,10 @@ class SherpaOnnxImpl(private val reactContext: ReactApplicationContext) {
 
     fun computeSpeakerEmbedding(promise: Promise) {
         speakerIdHandler.computeEmbedding(promise)
+    }
+
+    fun resetSpeakerIdStream(promise: Promise) {
+        speakerIdHandler.resetStream(promise)
     }
 
     fun registerSpeaker(name: String, embedding: ReadableArray, promise: Promise) {

@@ -669,6 +669,17 @@ export function AsrMixin<TBase extends Constructor>(Base: TBase) {
       return { text: result.text, tokens: result.tokens ?? [], timestamps: [] };
     }
 
+    async finishAsrOnlineInput(): Promise<{ success: boolean; error?: string }> {
+      if (!this.asrOnlineRecognizer || !this.asrOnlineStream) {
+        return { success: false, error: 'Online stream not created' };
+      }
+      this.asrOnlineStream.inputFinished();
+      while (this.asrOnlineRecognizer.isReady(this.asrOnlineStream)) {
+        this.asrOnlineRecognizer.decode(this.asrOnlineStream);
+      }
+      return { success: true };
+    }
+
     async resetAsrOnlineStream(): Promise<{ success: boolean }> {
       if (!this.asrOnlineRecognizer || !this.asrOnlineStream) {
         return { success: false };

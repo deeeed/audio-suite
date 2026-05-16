@@ -187,6 +187,7 @@ export interface ApiInterface {
     tokens: string[];
     timestamps: number[];
   }>;
+  finishAsrOnlineInput(): Promise<{ success: boolean; error?: string }>;
   resetAsrOnlineStream(): Promise<{ success: boolean }>;
 
   // Audio tagging methods
@@ -205,6 +206,7 @@ export interface ApiInterface {
   initSpeakerId(config: SpeakerIdModelConfig): Promise<SpeakerIdInitResult>;
   processSpeakerIdSamples(input: WaveformInput): Promise<SpeakerIdProcessResult>;
   computeSpeakerEmbedding(): Promise<SpeakerEmbeddingResult>;
+  resetSpeakerIdStream(): Promise<{ success: boolean }>;
   registerSpeaker(input: RegisterSpeakerInput): Promise<RegisterSpeakerResult>;
   removeSpeaker(name: string): Promise<RemoveSpeakerResult>;
   getSpeakers(): Promise<GetSpeakersResult>;
