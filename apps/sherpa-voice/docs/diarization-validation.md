@@ -459,3 +459,20 @@ ADB_SERIAL=29071JEGR20638 yarn recipe:run scripts/agentic/teams/sherpa/recipes/l
 ```
 
 The recipe passed on device. This proves the composed live event contract can keep up on a mid-range Android device for fixture replay. It is not a formal diarization-quality/DER result; offline/windowed diarization remains the quality baseline.
+
+### Live microphone keep-up result
+
+A second Android recipe validates the real microphone streaming path using `AudioStudioModule.startRecording({ streamFormat: 'float32' })` and feeding live mic chunks into the same ASR + VAD + Speaker ID session.
+
+| Device | Capture | Chunk target | Chunks | Captured audio | Avg processing/chunk | Max queue depth | Drops | Result |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Pixel 6a physical (`29071JEGR20638`) | 10 s mic | 100 ms | 89 | 9.94 s | 67.8 ms | 2 | 0 | Keeps up |
+
+Validation command:
+
+```bash
+cd apps/sherpa-voice
+ADB_SERIAL=29071JEGR20638 yarn recipe:run scripts/agentic/teams/sherpa/recipes/live-mic-transcription-diarization.json --device 'Pixel 6a'
+```
+
+This run did not include controlled speech in the room, so it proves the live microphone/backpressure path rather than transcription quality. The fixture replay above proves transcript and speaker-attribution events on known audio.

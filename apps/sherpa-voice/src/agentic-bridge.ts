@@ -1180,6 +1180,257 @@ async function runLiveTranscriptionDiarizationReplay(
     }
 }
 
+type LiveMicTranscriptionDiarizationOptions = LiveTranscriptionDiarizationOptions & {
+    durationMs?: number
+}
+
+function getFloat32SamplesFromAudioEvent(eventData: Record<string, unknown>) {
+    const raw = eventData.pcmFloat32
+    if (raw instanceof Float32Array) {
+        return Array.from(raw)
+    }
+    if (Array.isArray(raw)) {
+        return raw.map((value) => Number(value))
+    }
+    return null
+}
+
+async function initializeLiveTranscriptionDiarizationServices(
+    options: LiveTranscriptionDiarizationOptions
+) {
+    const asrModelId = options.asrModelId ?? 'streaming-zipformer-en-20m-mobile'
+    const vadModelId = options.vadModelId ?? 'silero-vad-v5'
+    const speakerIdModelId = options.speakerIdModelId ?? 'speaker-id-en-voxceleb'
+    const requestedThreads = options.numThreads ?? DEFAULT_NUM_THREADS
+
+    await Promise.all([
+        ASR.release().catch(() => {}),
+        VAD.release().catch(() => {}),
+        SpeakerId.release().catch(() => {}),
+    ])
+
+    const asrModelDir = await resolveDownloadedModelDir(asrModelId)
+    const vadModelDir = await resolveDownloadedModelDir(vadModelId)
+    const speakerModelDir = await resolveDownloadedModelDir(speakerIdModelId)
+    const asrConfig = getAsrModelConfigById(asrModelId) ?? getModelConfigById(asrModelId)?.asrConfig
+    const vadConfig = getModelConfigById(vadModelId)?.vadConfig
+    const speakerIdConfig = getModelConfigById(speakerIdModelId)?.speakerIdConfig
+    if (!asrConfig?.modelType) {
+        throw new Error(`ASR modelType missing for ${asrModelId}`)
+    }
+    if (!asrConfig.streaming) {
+        throw new Error(
+            `ASR model ${asrModelId} is not streaming; live validation needs a streaming ASR model.`
+        )
+    }
+    if (!vadConfig) {
+        throw new Error(`VAD config not found for ${vadModelId}`)
+    }
+    if (!speakerIdConfig) {
+        throw new Error(`Speaker ID config not found for ${speakerIdModelId}`)
+    }
+
+    const asrRuntimeConfig: Parameters<typeof ASR.initialize>[0] = {
+        ...asrConfig,
+        modelType: asrConfig.modelType,
+        modelDir: asrModelDir,
+        numThreads: requestedThreads,
+        streaming: true,
+    }
+    const asrInit = await ASR.initialize(asrRuntimeConfig)
+    if (!asrInit.success) {
+        throw new Error(asrInit.error || 'ASR init failed')
+    }
+    const stream = await ASR.createOnlineStream()
+    if (!stream.success) {
+        throw new Error('ASR createOnlineStream failed')
+    }
+    const vadInit = await VAD.init({
+        ...vadConfig,
+        modelDir: vadModelDir,
+        numThreads: 1,
+    })
+    if (!vadInit.success) {
+        throw new Error(vadInit.error || 'VAD init failed')
+    }
+    const speakerInit = await SpeakerId.init({
+        ...speakerIdConfig,
+        modelDir: speakerModelDir,
+        numThreads: requestedThreads,
+    })
+    if (!speakerInit.success) {
+        throw new Error(speakerInit.error || 'Speaker ID init failed')
+    }
+
+    return { asrModelId, vadModelId, speakerIdModelId, requestedThreads }
+}
+
+async function runLiveMicTranscriptionDiarization(
+    options: LiveMicTranscriptionDiarizationOptions = {}
+) {
+    if (Platform.OS === 'web') {
+        throw new Error('Live mic transcription+diarization requires iOS or Android')
+    }
+
+    const durationMs = options.durationMs ?? 10_000
+    const chunkDurationMs = options.chunkDurationMs ?? 100
+    const speakerThreshold = options.speakerThreshold ?? 0.55
+    const minTurnDurationMs = options.minTurnDurationMs ?? 250
+    const speechPadMs = options.speechPadMs ?? 120
+    const timing: Record<string, number> = {}
+    const eventCounts: Record<string, number> = {}
+    const stats = {
+        chunks: 0,
+        samples: 0,
+        emptyChunks: 0,
+        slowChunks: 0,
+        droppedChunks: 0,
+        maxChunkMs: 0,
+        totalChunkMs: 0,
+        maxQueueDepth: 0,
+    }
+    const events: unknown[] = []
+    let session: InstanceType<typeof LiveAttributedTranscriptionSession> | null = null
+    let subscription: { remove: () => void } | null = null
+    let nextSample = 0
+    let queueDepth = 0
+    let chain = Promise.resolve()
+    let fatalError: Error | null = null
+
+    try {
+        const initStartedAt = Date.now()
+        const initialized = await initializeLiveTranscriptionDiarizationServices(options)
+        timing.initMs = Date.now() - initStartedAt
+
+        session = new LiveAttributedTranscriptionSession({
+            sampleRate: DEFAULT_LIVE_SAMPLE_RATE,
+            speakerTurns: new LiveSpeakerTurnSession({
+                sampleRate: DEFAULT_LIVE_SAMPLE_RATE,
+                vad: VAD,
+                speakerId: SpeakerId,
+                minTurnDurationMs,
+                speechPadMs,
+                speakerThreshold,
+                maxRingBufferDurationMs: 90_000,
+            }),
+            asr: ASR,
+            onEvent: (event) => {
+                eventCounts[event.type] = (eventCounts[event.type] ?? 0) + 1
+                if (events.length < 80) {
+                    events.push(event)
+                }
+            },
+        })
+
+        const emitter = new LegacyEventEmitter(AudioStudioModule)
+        subscription = emitter.addListener('AudioData', (eventData: Record<string, unknown>) => {
+            const samples = getFloat32SamplesFromAudioEvent(eventData)
+            if (!samples) {
+                stats.droppedChunks += 1
+                return
+            }
+            const startSample = nextSample
+            nextSample += samples.length
+            stats.samples += samples.length
+            if (samples.length === 0) {
+                stats.emptyChunks += 1
+                return
+            }
+            queueDepth += 1
+            stats.maxQueueDepth = Math.max(stats.maxQueueDepth, queueDepth)
+            chain = chain
+                .then(async () => {
+                    const chunkStartedAt = Date.now()
+                    try {
+                        await session?.acceptChunk({
+                            samples,
+                            sampleRate: DEFAULT_LIVE_SAMPLE_RATE,
+                            startSample,
+                        })
+                        stats.chunks += 1
+                        const elapsedMs = Date.now() - chunkStartedAt
+                        stats.totalChunkMs += elapsedMs
+                        stats.maxChunkMs = Math.max(stats.maxChunkMs, elapsedMs)
+                        if (elapsedMs > chunkDurationMs) {
+                            stats.slowChunks += 1
+                        }
+                    } finally {
+                        queueDepth -= 1
+                    }
+                })
+                .catch((error: unknown) => {
+                    fatalError = error instanceof Error ? error : new Error(String(error))
+                    queueDepth = Math.max(0, queueDepth - 1)
+                })
+        })
+
+        const recordStartedAt = Date.now()
+        await AudioStudioModule.startRecording({
+            sampleRate: DEFAULT_LIVE_SAMPLE_RATE,
+            channels: 1,
+            encoding: 'pcm_16bit',
+            interval: chunkDurationMs,
+            bufferDurationSeconds: chunkDurationMs / 1000,
+            streamFormat: 'float32',
+            output: { primary: { enabled: false } },
+        })
+        await new Promise((resolve) => setTimeout(resolve, durationMs))
+        await AudioStudioModule.stopRecording().catch(() => null)
+        subscription.remove()
+        subscription = null
+        await chain
+        if (fatalError) {
+            throw fatalError
+        }
+        await session.flush()
+        timing.recordMs = Date.now() - recordStartedAt
+
+        const summary = session.getSummary()
+        const state = session.getState()
+        const audioDurationMs = (stats.samples / DEFAULT_LIVE_SAMPLE_RATE) * 1000
+        const averageChunkMs = stats.chunks > 0 ? stats.totalChunkMs / stats.chunks : 0
+
+        return {
+            platform: Platform.OS,
+            mode: 'mic',
+            models: {
+                asrModelId: initialized.asrModelId,
+                vadModelId: initialized.vadModelId,
+                speakerIdModelId: initialized.speakerIdModelId,
+            },
+            config: {
+                durationMs,
+                chunkDurationMs,
+                sampleRate: DEFAULT_LIVE_SAMPLE_RATE,
+                speakerThreshold,
+                minTurnDurationMs,
+                speechPadMs,
+                numThreads: initialized.requestedThreads,
+            },
+            timing,
+            audioDurationMs,
+            keepsUpWithLiveAudio: stats.maxQueueDepth <= 2 && averageChunkMs < chunkDurationMs,
+            eventCounts,
+            summary,
+            stats: {
+                ...stats,
+                averageChunkMs,
+            },
+            transcriptPreview: state.segments.slice(0, 20),
+            eventPreview: events,
+        }
+    } finally {
+        subscription?.remove()
+        await AudioStudioModule.stopRecording().catch(() => null)
+        session?.release()
+        await Promise.all([
+            ASR.release().catch(() => {}),
+            VAD.release().catch(() => {}),
+            SpeakerId.release().catch(() => {}),
+        ])
+    }
+}
+
 if (__DEV__) {
     ; (globalThis as Record<string, unknown>).__AGENTIC__ = {
         platform: Platform.OS,
@@ -1728,6 +1979,27 @@ if (__DEV__) {
                         status: 'error',
                         error: String(e),
                         result: { timing, filePath, numClusters },
+                    }
+                }
+            })()
+            return { op, status: 'pending' }
+        },
+
+        testLiveMicTranscriptionDiarization: (
+            options?: LiveMicTranscriptionDiarizationOptions
+        ) => {
+            const op = 'liveMicTranscriptionDiarization'
+            _lastAsyncResult = { op, status: 'pending' }
+            void (async () => {
+                try {
+                    const result = await runLiveMicTranscriptionDiarization(options)
+                    _lastAsyncResult = { op, status: 'success', result }
+                } catch (e) {
+                    _lastAsyncResult = {
+                        op,
+                        status: 'error',
+                        error: String(e),
+                        result: { options },
                     }
                 }
             })()
