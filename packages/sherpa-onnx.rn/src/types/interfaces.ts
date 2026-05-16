@@ -1394,6 +1394,11 @@ export interface LiveAttributedTranscriptionConfig {
   /** Emit duplicate partial text on every chunk. Default: false. */
   emitUnchangedPartials?: boolean;
   /**
+   * Silence appended to ASR on `flush()` so streaming recognizers can decode
+   * final right-context before the last segment is finalized. Default: 660ms.
+   */
+  flushTailPaddingMs?: number;
+  /**
    * Maximum number of emitted events retained in `getState().events`.
    * Event listeners still receive every event. Default: 1000.
    */

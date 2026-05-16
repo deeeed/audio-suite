@@ -1436,6 +1436,41 @@ if (__DEV__) {
             }
         },
 
+        checkFileExists: (filePath: string) => {
+            const op = 'checkFileExists'
+            _lastAsyncResult = { op, status: 'pending' }
+            void (async () => {
+                try {
+                    if (!filePath) {
+                        throw new Error('checkFileExists requires filePath')
+                    }
+                    const uri = filePath.startsWith('file://')
+                        ? filePath
+                        : `file://${filePath}`
+                    const info = await FileSystem.getInfoAsync(uri)
+                    if (!info.exists) {
+                        throw new Error(`Validation file missing: ${uri}`)
+                    }
+                    _lastAsyncResult = {
+                        op,
+                        status: 'success',
+                        result: {
+                            uri,
+                            path: uri.replace('file://', ''),
+                            size: info.size,
+                        },
+                    }
+                } catch (e) {
+                    _lastAsyncResult = {
+                        op,
+                        status: 'error',
+                        error: e instanceof Error ? e.message : String(e),
+                    }
+                }
+            })()
+            return _lastAsyncResult
+        },
+
         downloadValidationFileFromUrl: (url: string, fileName: string) => {
             const op = 'downloadValidationFileFromUrl'
             _lastAsyncResult = { op, status: 'pending' }

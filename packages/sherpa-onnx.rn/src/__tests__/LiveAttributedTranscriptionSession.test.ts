@@ -246,6 +246,101 @@ describe('LiveAttributedTranscriptionSession', () => {
     expect(session.getState().nextSample).toBe(0);
   });
 
+  it('emits one normalized speaker-turn error without wrapping it as speaker_event', async () => {
+    const events: LiveAttributedTranscriptionEvent[] = [];
+    const speakerTurns = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: {
+        async acceptWaveform() {
+          return {
+            success: false,
+            error: 'vad failed',
+            isSpeechDetected: false,
+            segments: [],
+          };
+        },
+      },
+      speakerId: createSpeakerIdAdapter([[1, 0]]),
+    });
+    const session = new LiveAttributedTranscriptionSession({
+      sampleRate: 16_000,
+      speakerTurns,
+      asr: createAsrAdapter([''], [false]),
+      onEvent: (event) => events.push(event),
+    });
+
+    await session.acceptChunk({ samples: createChunk(1) });
+
+    expect(events).toEqual([
+      {
+        type: 'error',
+        source: 'speaker_turn',
+        error: 'vad failed',
+      },
+    ]);
+  });
+
+  it('converts ASR result exceptions into error events after consumed audio advances', async () => {
+    const events: LiveAttributedTranscriptionEvent[] = [];
+    const speakerTurns = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([false]),
+      speakerId: createSpeakerIdAdapter([[1, 0]]),
+    });
+    const asr = {
+      async acceptWaveform() {
+        return { success: true };
+      },
+      async getResult() {
+        throw new Error('result failed');
+      },
+      async isEndpoint() {
+        return { isEndpoint: false };
+      },
+      async resetStream() {
+        return { success: true };
+      },
+    } satisfies LiveTranscriptionAsrAdapter;
+    const session = new LiveAttributedTranscriptionSession({
+      sampleRate: 16_000,
+      speakerTurns,
+      asr,
+      onEvent: (event) => events.push(event),
+    });
+
+    await session.acceptChunk({ samples: createChunk(1) });
+
+    expect(session.getState().nextSample).toBe(160);
+    expect(events).toContainEqual({
+      type: 'error',
+      source: 'asr',
+      error: 'result failed',
+    });
+  });
+
+  it('feeds tail padding on flush so ASR can expose final right-context text', async () => {
+    const speakerTurns = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([true]),
+      speakerId: createSpeakerIdAdapter([[1, 0]]),
+      minTurnDurationMs: 10,
+    });
+    const session = new LiveAttributedTranscriptionSession({
+      sampleRate: 16_000,
+      speakerTurns,
+      asr: createAsrAdapter(['hel', 'hello'], [false, false]),
+      flushTailPaddingMs: 10,
+    });
+
+    await session.acceptChunk({ samples: createChunk(1) });
+    await session.flush();
+
+    expect(session.getState().segments[0]).toMatchObject({
+      text: 'hello',
+      final: true,
+    });
+  });
+
   it('splits transcript attribution when ASR endpointing lags behind speaker turns', async () => {
     const speakerTurns = new LiveSpeakerTurnSession({
       sampleRate: 16_000,

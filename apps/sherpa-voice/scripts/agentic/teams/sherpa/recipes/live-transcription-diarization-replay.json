@@ -11,6 +11,35 @@
         "nav-diarization": {
           "action": "navigate",
           "target": "/features/diarization",
+          "next": "check-validation-file"
+        },
+        "check-validation-file": {
+          "action": "eval_sync",
+          "description": "Fail early with a clear error if the device-local replay WAV is missing.",
+          "expression": "JSON.stringify((function(){var A=globalThis.__AGENTIC__;if(!A||!A.checkFileExists||!A.getLastResult){return {status:'error',error:'agentic bridge missing checkFileExists/getLastResult'};}return A.checkFileExists('file:///data/user/0/net.siteed.sherpavoice.development/files/validation/perps_controller_refactor_5m_16k_mono.wav');})())",
+          "assert": {
+            "operator": "eq",
+            "field": "status",
+            "value": "pending"
+          },
+          "next": "wait-validation-file"
+        },
+        "wait-validation-file": {
+          "action": "wait_for",
+          "description": "Confirm the replay WAV exists before starting model validation.",
+          "expression": "JSON.stringify(globalThis.__AGENTIC__?.getLastResult?.() || {})",
+          "assert": {
+            "operator": "eq",
+            "field": "status",
+            "value": "success"
+          },
+          "fail_when": {
+            "operator": "eq",
+            "field": "status",
+            "value": "error"
+          },
+          "timeout_ms": 30000,
+          "poll_ms": 1000,
           "next": "run-live-replay"
         },
         "run-live-replay": {

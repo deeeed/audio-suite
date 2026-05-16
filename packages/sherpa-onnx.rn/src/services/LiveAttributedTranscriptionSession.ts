@@ -18,6 +18,7 @@ function cloneSegment(segment: LiveTranscriptSegment): LiveTranscriptSegment {
 }
 
 const DEFAULT_MAX_STORED_EVENTS = 1000;
+const DEFAULT_FLUSH_TAIL_PADDING_MS = 660;
 
 function cloneEvent(
   event: LiveAttributedTranscriptionEvent
@@ -168,24 +169,36 @@ export class LiveAttributedTranscriptionSession {
       return;
     }
 
-    const result = await this.config.asr.getResult();
-    const text = stripCommittedPrefix(result.text, this.committedAsrPrefix);
-    if (text.length > 0) {
-      this.emitPartial(text, startSample, endSample);
-    }
-
-    const endpoint = await this.config.asr.isEndpoint();
-    if (endpoint.isEndpoint) {
-      await this.finalizeCurrentSegment(endSample);
-      this.committedAsrPrefix = '';
-      const reset = await this.config.asr.resetStream();
-      if (!reset.success) {
-        this.emit({
-          type: 'error',
-          source: 'asr',
-          error: reset.error ?? 'ASR failed while resetting online stream',
-        });
+    try {
+      const result = await this.config.asr.getResult();
+      const text = stripCommittedPrefix(result.text, this.committedAsrPrefix);
+      if (text.length > 0) {
+        this.emitPartial(text, startSample, endSample);
       }
+
+      const endpoint = await this.config.asr.isEndpoint();
+      if (endpoint.isEndpoint) {
+        await this.finalizeCurrentSegment(endSample);
+        this.committedAsrPrefix = '';
+        const reset = await this.config.asr.resetStream();
+        if (!reset.success) {
+          this.emit({
+            type: 'error',
+            source: 'asr',
+            error: reset.error ?? 'ASR failed while resetting online stream',
+          });
+        }
+      }
+    } catch (error) {
+      this.emit({
+        type: 'error',
+        source: 'asr',
+        error:
+          error instanceof Error
+            ? error.message
+            : 'ASR failed while reading online stream state',
+      });
+      return;
     }
 
     this.emitPendingFinalTurns();
@@ -194,8 +207,54 @@ export class LiveAttributedTranscriptionSession {
   public async flush(): Promise<void> {
     this.ensureNotReleased();
     await this.config.speakerTurns.flush();
+    await this.drainAsrTailPadding();
     await this.finalizeCurrentSegment(this.nextSample);
     this.emitPendingFinalTurns();
+  }
+
+  private async drainAsrTailPadding(): Promise<void> {
+    if (!this.currentSegmentId) {
+      return;
+    }
+    const paddingMs =
+      this.config.flushTailPaddingMs ?? DEFAULT_FLUSH_TAIL_PADDING_MS;
+    if (paddingMs <= 0) {
+      return;
+    }
+    const tailSamples = Math.round((paddingMs / 1000) * this.config.sampleRate);
+    if (tailSamples <= 0) {
+      return;
+    }
+
+    const accepted = await this.config.asr.acceptWaveform(
+      this.config.sampleRate,
+      Array.from({ length: tailSamples }, () => 0)
+    );
+    if (!accepted.success) {
+      this.emit({
+        type: 'error',
+        source: 'asr',
+        error: accepted.error ?? 'ASR failed while flushing tail padding',
+      });
+      return;
+    }
+
+    try {
+      const result = await this.config.asr.getResult();
+      const text = stripCommittedPrefix(result.text, this.committedAsrPrefix);
+      if (text.length > 0) {
+        this.emitPartial(text, this.currentSegmentStartSample, this.nextSample);
+      }
+    } catch (error) {
+      this.emit({
+        type: 'error',
+        source: 'asr',
+        error:
+          error instanceof Error
+            ? error.message
+            : 'ASR failed while flushing online stream',
+      });
+    }
   }
 
   public async reset(): Promise<void> {
@@ -280,6 +339,7 @@ export class LiveAttributedTranscriptionSession {
         source: 'speaker_turn',
         error: event.error,
       });
+      return;
     }
 
     this.emit({ type: 'speaker_event', event });
@@ -523,7 +583,8 @@ export class LiveAttributedTranscriptionSession {
 
   private emit(event: LiveAttributedTranscriptionEvent): void {
     this.emittedEventCount += 1;
-    this.emittedEvents.push(event);
+    const storedEvent = cloneEvent(event);
+    this.emittedEvents.push(storedEvent);
     const maxStoredEvents =
       this.config.maxStoredEvents ?? DEFAULT_MAX_STORED_EVENTS;
     if (maxStoredEvents >= 0 && this.emittedEvents.length > maxStoredEvents) {
@@ -533,7 +594,7 @@ export class LiveAttributedTranscriptionSession {
       );
     }
     for (const listener of this.listeners) {
-      listener(event);
+      listener(cloneEvent(storedEvent));
     }
   }
 
