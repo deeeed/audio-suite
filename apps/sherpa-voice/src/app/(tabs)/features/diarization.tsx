@@ -68,7 +68,7 @@ function SpeakerTimeline({ segments, totalDuration }: { segments: DiarizationSeg
           const color = SPEAKER_COLORS[seg.speaker % SPEAKER_COLORS.length];
           return (
             <View
-              key={`${seg.speaker}-${seg.start}-${seg.end}`}
+              key={`${seg.speaker}-${seg.start}-${seg.end}-${i}`}
               style={{
                 position: 'absolute',
                 left: `${left}%`,
@@ -111,7 +111,7 @@ function SegmentList({ segments }: { segments: DiarizationSegment[] }) {
         const color = SPEAKER_COLORS[seg.speaker % SPEAKER_COLORS.length];
         return (
           <View
-            key={`${seg.speaker}-${seg.start}-${seg.end}`}
+            key={`${seg.speaker}-${seg.start}-${seg.end}-${i}`}
             style={{
               flexDirection: 'row',
               alignItems: 'center',

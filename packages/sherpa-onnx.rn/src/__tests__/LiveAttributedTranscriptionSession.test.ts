@@ -108,7 +108,6 @@ describe('LiveAttributedTranscriptionSession', () => {
       'speaker_event',
       'transcript_speaker_update',
       'speaker_event',
-      'speaker_event',
       'partial_transcript',
       'final_transcript',
       'turn_finalized',
@@ -161,7 +160,7 @@ describe('LiveAttributedTranscriptionSession', () => {
 
     expect(asr.resetCount).toBe(1);
     expect(session.getSummary()).toEqual({
-      eventCount: 10,
+      eventCount: 9,
       segmentCount: 1,
       finalSegmentCount: 1,
       speakerAttributedSegmentCount: 1,
@@ -319,6 +318,7 @@ describe('LiveAttributedTranscriptionSession', () => {
   });
 
   it('feeds tail padding on flush so ASR can expose final right-context text', async () => {
+    const asr = createAsrAdapter(['hel', 'hello'], [false, false]);
     const speakerTurns = new LiveSpeakerTurnSession({
       sampleRate: 16_000,
       vad: createVadAdapter([true]),
@@ -328,7 +328,7 @@ describe('LiveAttributedTranscriptionSession', () => {
     const session = new LiveAttributedTranscriptionSession({
       sampleRate: 16_000,
       speakerTurns,
-      asr: createAsrAdapter(['hel', 'hello'], [false, false]),
+      asr,
       flushTailPaddingMs: 10,
     });
 
@@ -339,6 +339,50 @@ describe('LiveAttributedTranscriptionSession', () => {
       text: 'hello',
       final: true,
     });
+    expect(asr.resetCount).toBe(1);
+  });
+
+  it('resets ASR stream on flush before accepting a new utterance', async () => {
+    let phase: 'first' | 'second' = 'first';
+    const asr = {
+      async acceptWaveform() {
+        return { success: true };
+      },
+      async getResult() {
+        return { text: phase === 'first' ? 'hello' : 'next' };
+      },
+      async isEndpoint() {
+        return { isEndpoint: false };
+      },
+      async resetStream() {
+        phase = 'second';
+        return { success: true };
+      },
+    } satisfies LiveTranscriptionAsrAdapter;
+    const speakerTurns = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([true, false, true]),
+      speakerId: createSpeakerIdAdapter([
+        [1, 0],
+        [0, 1],
+      ]),
+      minTurnDurationMs: 10,
+    });
+    const session = new LiveAttributedTranscriptionSession({
+      sampleRate: 16_000,
+      speakerTurns,
+      asr,
+      flushTailPaddingMs: 10,
+    });
+
+    await session.acceptChunk({ samples: createChunk(1) });
+    await session.flush();
+    await session.acceptChunk({ samples: createChunk(1) });
+
+    expect(session.getState().segments.map((segment) => segment.text)).toEqual([
+      'hello',
+      'next',
+    ]);
   });
 
   it('splits transcript attribution when ASR endpointing lags behind speaker turns', async () => {

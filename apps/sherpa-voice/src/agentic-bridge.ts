@@ -1135,6 +1135,20 @@ function getFloat32SamplesFromAudioEvent(eventData: AudioDataEvent | Record<stri
     return null
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    return Promise.race([
+        promise,
+        new Promise<never>((_, reject) => {
+            timeout = setTimeout(() => reject(new Error(message)), timeoutMs)
+        }),
+    ]).finally(() => {
+        if (timeout) {
+            clearTimeout(timeout)
+        }
+    })
+}
+
 async function initializeLiveTranscriptionDiarizationServices(
     options: LiveTranscriptionDiarizationOptions
 ) {
@@ -1334,7 +1348,7 @@ async function runLiveMicTranscriptionDiarization(
         stopped = true
         subscription.remove()
         subscription = null
-        await chain
+        await withTimeout(chain, 5_000, 'Timed out while draining live mic audio chunks')
         if (fatalError) {
             throw fatalError
         }
@@ -1391,6 +1405,7 @@ async function runLiveMicTranscriptionDiarization(
     } finally {
         stopped = true
         subscription?.remove()
+        subscription = null
         await AudioStudioModule.stopRecording().catch(() => null)
         session?.release()
         await Promise.all([

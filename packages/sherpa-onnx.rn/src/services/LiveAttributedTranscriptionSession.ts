@@ -18,6 +18,8 @@ function cloneSegment(segment: LiveTranscriptSegment): LiveTranscriptSegment {
 }
 
 const DEFAULT_MAX_STORED_EVENTS = 1000;
+// Sherpa ONNX streaming examples commonly add ~0.6s tail padding before
+// draining final results so transducer/paraformer models get right context.
 const DEFAULT_FLUSH_TAIL_PADDING_MS = 660;
 
 function cloneEvent(
@@ -149,7 +151,9 @@ export class LiveAttributedTranscriptionSession {
       );
     }
 
-    const samples = Array.from(chunk.samples);
+    const samples = Array.isArray(chunk.samples)
+      ? chunk.samples
+      : Array.from(chunk.samples);
     const endSample = startSample + samples.length;
 
     await this.config.speakerTurns.acceptChunk({
@@ -159,6 +163,9 @@ export class LiveAttributedTranscriptionSession {
     });
 
     const accepted = await this.config.asr.acceptWaveform(sampleRate, samples);
+    // Advance the session audio clock once both downstream streams accepted the
+    // chunk. Even an ASR success:false means speaker-turn state consumed it; the
+    // session reports the error but keeps future implicit startSample monotonic.
     this.nextSample = endSample;
     if (!accepted.success) {
       this.emit({
@@ -210,6 +217,15 @@ export class LiveAttributedTranscriptionSession {
     await this.drainAsrTailPadding();
     await this.finalizeCurrentSegment(this.nextSample);
     this.emitPendingFinalTurns();
+    const reset = await this.config.asr.resetStream();
+    if (!reset.success) {
+      this.emit({
+        type: 'error',
+        source: 'asr',
+        error: reset.error ?? 'ASR failed while resetting online stream',
+      });
+    }
+    this.committedAsrPrefix = '';
   }
 
   private async drainAsrTailPadding(): Promise<void> {
@@ -331,6 +347,7 @@ export class LiveAttributedTranscriptionSession {
       if (this.activeTurnId === event.turnId) {
         this.activeTurnId = undefined;
       }
+      return;
     }
 
     if (event.type === 'error') {
@@ -571,7 +588,11 @@ export class LiveAttributedTranscriptionSession {
         text,
       });
     }
-    this.pendingFinalTurns.splice(0, this.pendingFinalTurns.length, ...stillPending);
+    this.pendingFinalTurns.splice(
+      0,
+      this.pendingFinalTurns.length,
+      ...stillPending
+    );
   }
 
   private getOrderedSegments(): LiveTranscriptSegment[] {
