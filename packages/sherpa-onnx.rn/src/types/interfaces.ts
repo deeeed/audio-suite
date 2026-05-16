@@ -11,6 +11,7 @@ import { PunctuationService } from '../services/PunctuationService';
 import { DiarizationService } from '../services/DiarizationService';
 import { OnnxInferenceService } from '../services/OnnxInferenceService';
 import type { LiveSpeakerTurnSession } from '../services/LiveSpeakerTurnSession';
+import type { LiveAttributedTranscriptionSession } from '../services/LiveAttributedTranscriptionSession';
 
 /**
  * Provider type for model inference
@@ -1304,6 +1305,121 @@ export interface LiveSpeakerTurnSummary {
   durationMs: number;
 }
 
+
+export type LiveTranscriptionChunk = LiveSpeakerTurnChunk;
+
+export interface LiveTranscriptionAsrResult {
+  text: string;
+  tokens?: string[];
+  timestamps?: number[];
+}
+
+export interface LiveTranscriptionAsrAdapter {
+  acceptWaveform(
+    sampleRate: number,
+    samples: number[]
+  ): Promise<{ success: boolean; error?: string }>;
+  getResult(): Promise<LiveTranscriptionAsrResult>;
+  isEndpoint(): Promise<{ isEndpoint: boolean }>;
+  resetStream(): Promise<{ success: boolean; error?: string }>;
+}
+
+export type LiveAttributedTranscriptionEvent =
+  | {
+      type: 'speaker_event';
+      event: LiveSpeakerTurnEvent;
+    }
+  | {
+      type: 'partial_transcript';
+      segmentId: string;
+      turnId?: string;
+      text: string;
+      startMs: number;
+      endMs: number;
+      startSample: number;
+      endSample: number;
+      speakerId?: string;
+    }
+  | {
+      type: 'final_transcript';
+      segmentId: string;
+      turnId?: string;
+      text: string;
+      startMs: number;
+      endMs: number;
+      startSample: number;
+      endSample: number;
+      speakerId?: string;
+    }
+  | {
+      type: 'transcript_speaker_update';
+      turnId: string;
+      speakerId: string;
+      confidence: number;
+      affectedSegmentIds: string[];
+    }
+  | {
+      type: 'turn_finalized';
+      turnId: string;
+      startMs: number;
+      endMs: number;
+      startSample: number;
+      endSample: number;
+      speakerId?: string;
+      segmentIds: string[];
+      text: string;
+    }
+  | {
+      type: 'error';
+      error: string;
+      source: 'speaker_turn' | 'asr';
+    }
+  | {
+      type: 'released';
+    };
+
+export type LiveAttributedTranscriptionEventListener = (
+  event: LiveAttributedTranscriptionEvent
+) => void;
+
+export interface LiveAttributedTranscriptionConfig {
+  sampleRate: number;
+  speakerTurns: LiveSpeakerTurnSession;
+  asr: LiveTranscriptionAsrAdapter;
+  onEvent?: LiveAttributedTranscriptionEventListener;
+  /** Emit duplicate partial text on every chunk. Default: false. */
+  emitUnchangedPartials?: boolean;
+}
+
+export interface LiveTranscriptSegment {
+  segmentId: string;
+  turnId?: string;
+  text: string;
+  final: boolean;
+  startSample: number;
+  endSample: number;
+  startMs: number;
+  endMs: number;
+  speakerId?: string;
+}
+
+export interface LiveAttributedTranscriptionState {
+  released: boolean;
+  nextSample: number;
+  activeTurnId?: string;
+  activeSegmentId?: string;
+  segments: LiveTranscriptSegment[];
+  events: LiveAttributedTranscriptionEvent[];
+}
+
+export interface LiveAttributedTranscriptionSummary {
+  eventCount: number;
+  segmentCount: number;
+  finalSegmentCount: number;
+  speakerAttributedSegmentCount: number;
+  durationMs: number;
+}
+
 // ----------------------------------------------------------------------------------
 // Language ID (Spoken Language Identification) Interfaces
 // ----------------------------------------------------------------------------------
@@ -1582,6 +1698,7 @@ export interface SherpaOnnxInterface extends ApiInterface {
   Denoising: import('../services/DenoisingService').DenoisingService;
   OnnxInference: OnnxInferenceService;
   LiveSpeakerTurnSession: typeof LiveSpeakerTurnSession;
+  LiveAttributedTranscriptionSession: typeof LiveAttributedTranscriptionSession;
 }
 
 // ----------------------------------------------------------------------------------

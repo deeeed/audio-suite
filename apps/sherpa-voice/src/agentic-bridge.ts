@@ -19,6 +19,8 @@ import SherpaOnnx, {
     Punctuation,
     SpeakerId,
     VAD,
+    LiveSpeakerTurnSession,
+    LiveAttributedTranscriptionSession,
 } from '@siteed/sherpa-onnx.rn'
 import * as FileSystem from 'expo-file-system/legacy'
 import { router, type Href } from 'expo-router'
@@ -37,6 +39,7 @@ import { getWasmBasePath, getWebAsrBackend } from './config/webFeatures'
 import { getWebModelBaseUrl } from './utils/webModelUtils'
 import {
     DEFAULT_LIVE_SAMPLE_RATE,
+    DEFAULT_NUM_THREADS,
     MODEL_STATES_STORAGE_KEY,
 } from './utils/constants'
 import { resolveModelDir } from './utils/fileUtils'
@@ -953,6 +956,230 @@ async function runNativeDiarizationWindowedBenchmarkCase(
     }
 }
 
+type LiveTranscriptionDiarizationOptions = {
+    asrModelId?: string
+    vadModelId?: string
+    speakerIdModelId?: string
+    chunkDurationMs?: number
+    maxDurationMs?: number
+    speakerThreshold?: number
+    minTurnDurationMs?: number
+    speechPadMs?: number
+    numThreads?: number
+}
+
+async function resolveDownloadedModelDir(modelId: string) {
+    const status = getDownloadedModelStatuses()[modelId]
+    if (!status?.localPath) {
+        throw new Error(`Model ${modelId} is not downloaded`)
+    }
+    return resolveModelDir(status.localPath)
+}
+
+async function runLiveTranscriptionDiarizationReplay(
+    filePath: string,
+    options: LiveTranscriptionDiarizationOptions = {}
+) {
+    if (Platform.OS === 'web') {
+        throw new Error('Live transcription+diarization replay requires iOS or Android')
+    }
+    if (!filePath) {
+        throw new Error('Live transcription+diarization replay requires a WAV filePath')
+    }
+
+    const asrModelId = options.asrModelId ?? 'streaming-zipformer-en-20m-mobile'
+    const vadModelId = options.vadModelId ?? 'silero-vad-v5'
+    const speakerIdModelId = options.speakerIdModelId ?? 'speaker-id-en-voxceleb'
+    const chunkDurationMs = options.chunkDurationMs ?? 100
+    const maxDurationMs = options.maxDurationMs
+    const speakerThreshold = options.speakerThreshold ?? 0.55
+    const minTurnDurationMs = options.minTurnDurationMs ?? 250
+    const speechPadMs = options.speechPadMs ?? 120
+    const requestedThreads = options.numThreads ?? DEFAULT_NUM_THREADS
+
+    const timing: Record<string, number> = {}
+    const eventCounts: Record<string, number> = {}
+    const chunkStats = {
+        chunks: 0,
+        slowChunks: 0,
+        maxChunkMs: 0,
+        totalChunkMs: 0,
+    }
+
+    let session: InstanceType<typeof LiveAttributedTranscriptionSession> | null = null
+
+    try {
+        const audioUri = normalizeNativeAudioPath(filePath)
+        const readStartedAt = Date.now()
+        const wav = await readMonoPcm16Wav(audioUri)
+        timing.readWavMs = Date.now() - readStartedAt
+        if (wav.sampleRate !== DEFAULT_LIVE_SAMPLE_RATE) {
+            throw new Error(
+                `Expected ${DEFAULT_LIVE_SAMPLE_RATE} Hz mono PCM WAV, got ${wav.sampleRate} Hz. Convert fixture before live replay.`
+            )
+        }
+
+        const samples =
+            typeof maxDurationMs === 'number' && maxDurationMs > 0
+                ? wav.samples.slice(
+                      0,
+                      Math.floor((maxDurationMs / 1000) * wav.sampleRate)
+                  )
+                : wav.samples
+        const audioDurationMs = (samples.length / wav.sampleRate) * 1000
+        const chunkSize = Math.max(1, Math.round((chunkDurationMs / 1000) * wav.sampleRate))
+
+        await Promise.all([
+            ASR.release().catch(() => {}),
+            VAD.release().catch(() => {}),
+            SpeakerId.release().catch(() => {}),
+        ])
+
+        const asrModelDir = await resolveDownloadedModelDir(asrModelId)
+        const vadModelDir = await resolveDownloadedModelDir(vadModelId)
+        const speakerModelDir = await resolveDownloadedModelDir(speakerIdModelId)
+        const asrConfig = getAsrModelConfigById(asrModelId) ?? getModelConfigById(asrModelId)?.asrConfig
+        const vadConfig = getModelConfigById(vadModelId)?.vadConfig
+        const speakerIdConfig = getModelConfigById(speakerIdModelId)?.speakerIdConfig
+        if (!asrConfig) {
+            throw new Error(`ASR config not found for ${asrModelId}`)
+        }
+        if (!asrConfig.modelType) {
+            throw new Error(`ASR modelType missing for ${asrModelId}`)
+        }
+        if (!asrConfig.streaming) {
+            throw new Error(
+                `ASR model ${asrModelId} is not streaming; live validation needs a streaming ASR model.`
+            )
+        }
+        if (!vadConfig) {
+            throw new Error(`VAD config not found for ${vadModelId}`)
+        }
+        if (!speakerIdConfig) {
+            throw new Error(`Speaker ID config not found for ${speakerIdModelId}`)
+        }
+
+        const initStartedAt = Date.now()
+        const asrRuntimeConfig: Parameters<typeof ASR.initialize>[0] = {
+            ...asrConfig,
+            modelType: asrConfig.modelType,
+            modelDir: asrModelDir,
+            numThreads: requestedThreads,
+            streaming: true,
+        }
+        const asrInit = await ASR.initialize(asrRuntimeConfig)
+        if (!asrInit.success) {
+            throw new Error(asrInit.error || 'ASR init failed')
+        }
+        const stream = await ASR.createOnlineStream()
+        if (!stream.success) {
+            throw new Error('ASR createOnlineStream failed')
+        }
+        const vadInit = await VAD.init({
+            ...vadConfig,
+            modelDir: vadModelDir,
+            numThreads: 1,
+        })
+        if (!vadInit.success) {
+            throw new Error(vadInit.error || 'VAD init failed')
+        }
+        const speakerInit = await SpeakerId.init({
+            ...speakerIdConfig,
+            modelDir: speakerModelDir,
+            numThreads: requestedThreads,
+        })
+        if (!speakerInit.success) {
+            throw new Error(speakerInit.error || 'Speaker ID init failed')
+        }
+        timing.initMs = Date.now() - initStartedAt
+
+        const events: unknown[] = []
+        session = new LiveAttributedTranscriptionSession({
+            sampleRate: wav.sampleRate,
+            speakerTurns: new LiveSpeakerTurnSession({
+                sampleRate: wav.sampleRate,
+                vad: VAD,
+                speakerId: SpeakerId,
+                minTurnDurationMs,
+                speechPadMs,
+                speakerThreshold,
+                maxRingBufferDurationMs: 90_000,
+            }),
+            asr: ASR,
+            onEvent: (event) => {
+                eventCounts[event.type] = (eventCounts[event.type] ?? 0) + 1
+                if (events.length < 80) {
+                    events.push(event)
+                }
+            },
+        })
+
+        const replayStartedAt = Date.now()
+        for (let offset = 0; offset < samples.length; offset += chunkSize) {
+            const end = Math.min(offset + chunkSize, samples.length)
+            const chunk = samples.slice(offset, end)
+            const chunkStartedAt = Date.now()
+            await session.acceptChunk({
+                samples: chunk,
+                sampleRate: wav.sampleRate,
+                startSample: offset,
+            })
+            const chunkElapsedMs = Date.now() - chunkStartedAt
+            chunkStats.chunks += 1
+            chunkStats.totalChunkMs += chunkElapsedMs
+            chunkStats.maxChunkMs = Math.max(chunkStats.maxChunkMs, chunkElapsedMs)
+            if (chunkElapsedMs > chunkDurationMs) {
+                chunkStats.slowChunks += 1
+            }
+        }
+        await session.flush()
+        timing.replayMs = Date.now() - replayStartedAt
+        const summary = session.getSummary()
+        const state = session.getState()
+        const realtimeFactor = timing.replayMs / Math.max(audioDurationMs, 1)
+
+        return {
+            platform: Platform.OS,
+            filePath: audioUri,
+            models: { asrModelId, vadModelId, speakerIdModelId },
+            config: {
+                chunkDurationMs,
+                chunkSize,
+                sampleRate: wav.sampleRate,
+                audioDurationMs,
+                speakerThreshold,
+                minTurnDurationMs,
+                speechPadMs,
+                numThreads: requestedThreads,
+            },
+            timing,
+            realtimeFactor,
+            keepsUpWithReplay: realtimeFactor <= 1,
+            chunkStats: {
+                ...chunkStats,
+                averageChunkMs:
+                    chunkStats.chunks > 0
+                        ? chunkStats.totalChunkMs / chunkStats.chunks
+                        : 0,
+            },
+            eventCounts,
+            summary,
+            segmentCount: state.segments.length,
+            finalSegmentCount: state.segments.filter((segment) => segment.final).length,
+            speakerAttributedSegmentCount: state.segments.filter((segment) => Boolean(segment.speakerId)).length,
+            transcriptPreview: state.segments.slice(0, 20),
+            eventPreview: events,
+        }
+    } finally {
+        session?.release()
+        await Promise.all([
+            ASR.release().catch(() => {}),
+            VAD.release().catch(() => {}),
+            SpeakerId.release().catch(() => {}),
+        ])
+    }
+}
+
 if (__DEV__) {
     ; (globalThis as Record<string, unknown>).__AGENTIC__ = {
         platform: Platform.OS,
@@ -1501,6 +1728,31 @@ if (__DEV__) {
                         status: 'error',
                         error: String(e),
                         result: { timing, filePath, numClusters },
+                    }
+                }
+            })()
+            return { op, status: 'pending' }
+        },
+
+        testLiveTranscriptionDiarizationReplay: (
+            filePath: string,
+            options?: LiveTranscriptionDiarizationOptions
+        ) => {
+            const op = 'liveTranscriptionDiarizationReplay'
+            _lastAsyncResult = { op, status: 'pending' }
+            void (async () => {
+                try {
+                    const result = await runLiveTranscriptionDiarizationReplay(
+                        filePath,
+                        options
+                    )
+                    _lastAsyncResult = { op, status: 'success', result }
+                } catch (e) {
+                    _lastAsyncResult = {
+                        op,
+                        status: 'error',
+                        error: String(e),
+                        result: { filePath, options },
                     }
                 }
             })()

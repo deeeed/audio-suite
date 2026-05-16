@@ -430,3 +430,32 @@ This gives local evidence that Sherpa ONNX can stay stable for 1-hour / 4-speake
 3. Add a human spot-check view for long diarization turns and speaker-label consistency.
 4. Optionally add `speaker-id-nemo-titanet-large` as a high-quality/large-model benchmark profile.
 5. Upstream Sherpa ONNX follow-up: share the model-sweep evidence that `model.onnx` is the appropriate quality default while `model.int8.onnx` should be documented as an opt-in size/speed tradeoff.
+
+## Live transcription + speaker-turn replay validation
+
+This follow-up adds a live validation path that replays a 16 kHz mono WAV as fixed-duration chunks through streaming ASR, VAD, and Speaker ID. It validates low-latency live UX behavior separately from the offline/windowed diarization quality baseline above.
+
+### Android physical result
+
+| Device | Audio window | Chunk | ASR | VAD | Speaker ID | Replay time | Realtime factor | Result | Transcript segments | Speaker-attributed segments |
+| --- | ---: | ---: | --- | --- | --- | ---: | ---: | --- | ---: | ---: |
+| Pixel 6a physical (`29071JEGR20638`) | 60 s | 100 ms | `streaming-zipformer-en-20m-mobile` | `silero-vad-v5` | `speaker-id-en-voxceleb` | 15.568 s | **0.26x** | Keeps up | 12 | 12 |
+
+Event summary from the recipe run:
+
+| Event | Count |
+| --- | ---: |
+| `speaker_event` | 88 |
+| `transcript_speaker_update` | 14 |
+| `turn_finalized` | 17 |
+| `partial_transcript` | 56 |
+| `final_transcript` | 8 |
+
+Validation command:
+
+```bash
+cd apps/sherpa-voice
+ADB_SERIAL=29071JEGR20638 yarn recipe:run scripts/agentic/teams/sherpa/recipes/live-transcription-diarization-replay.json --device 'Pixel 6a'
+```
+
+The recipe passed on device. This proves the composed live event contract can keep up on a mid-range Android device for fixture replay. It is not a formal diarization-quality/DER result; offline/windowed diarization remains the quality baseline.

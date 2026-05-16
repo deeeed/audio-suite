@@ -12,6 +12,7 @@ import { TtsService } from './services/TtsService';
 import { OnnxInferenceService } from './services/OnnxInferenceService';
 import { VadService } from './services/VadService';
 import { LiveSpeakerTurnSession } from './services/LiveSpeakerTurnSession';
+import { LiveAttributedTranscriptionSession } from './services/LiveAttributedTranscriptionSession';
 import type { ApiInterface } from './types/api';
 import type { SherpaOnnxInterface } from './types/interfaces';
 
@@ -46,6 +47,7 @@ const SherpaOnnx: SherpaOnnxInterface = {
   Denoising: denoisingService,
   OnnxInference: onnxInferenceService,
   LiveSpeakerTurnSession,
+  LiveAttributedTranscriptionSession,
 };
 
 // Export the main interface
@@ -64,6 +66,7 @@ export const Diarization = diarizationService;
 export const Denoising = denoisingService;
 export const OnnxInference = onnxInferenceService;
 export { LiveSpeakerTurnSession };
+export { LiveAttributedTranscriptionSession };
 
 // Export types
 export * from './types/api';

@@ -1,5 +1,14 @@
-import type { DiarizationSegment } from '@siteed/sherpa-onnx.rn';
-import React, { useMemo, useState } from 'react';
+import {
+  ASR,
+  LiveAttributedTranscriptionSession,
+  LiveSpeakerTurnSession,
+  SpeakerId,
+  VAD,
+  type DiarizationSegment,
+  type LiveAttributedTranscriptionEvent,
+  type LiveTranscriptSegment,
+} from '@siteed/sherpa-onnx.rn';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -20,7 +29,13 @@ import {
   ThemedButton,
   useTheme,
 } from '../../../components/ui';
-import { useDiarization } from '../../../hooks/useDiarization';
+import { useDiarization, type DiarizationAudioFile } from '../../../hooks/useDiarization';
+import { useModels } from '../../../hooks/useModelWithConfig';
+import { getAsrModelConfigById, getModelConfigById } from '../../../hooks/useModelConfig';
+import { useModelManagement } from '../../../contexts/ModelManagement';
+import { DEFAULT_LIVE_SAMPLE_RATE, DEFAULT_NUM_THREADS } from '../../../utils/constants';
+import { resolveModelDir } from '../../../utils/fileUtils';
+import { readMonoPcm16Wav } from '../../../utils/wav';
 import { baseLogger } from '../../../config';
 
 const logger = baseLogger.extend('DiarizationScreen');
@@ -117,6 +132,274 @@ function SegmentList({ segments }: { segments: DiarizationSegment[] }) {
         );
       })}
     </View>
+  );
+}
+
+type LiveReplayResult = {
+  audioDurationMs: number;
+  replayMs: number;
+  realtimeFactor: number;
+  keepsUp: boolean;
+  summary: ReturnType<LiveAttributedTranscriptionSession['getSummary']>;
+  eventCounts: Record<string, number>;
+  segments: LiveTranscriptSegment[];
+};
+
+function LiveValidationSection({
+  selectedAudio,
+  selectedEmbModelId,
+  disabled,
+}: {
+  selectedAudio: DiarizationAudioFile | null;
+  selectedEmbModelId: string | null;
+  disabled: boolean;
+}) {
+  const theme = useTheme();
+  const { downloadedModels: asrModels } = useModels({ modelType: 'asr' });
+  const { downloadedModels: vadModels } = useModels({ modelType: 'vad' });
+  const { getModelState } = useModelManagement();
+  const [selectedAsrModelId, setSelectedAsrModelId] = useState<string | null>(null);
+  const [selectedVadModelId, setSelectedVadModelId] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+  const [status, setStatus] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<LiveReplayResult | null>(null);
+  const [liveAudioPath, setLiveAudioPath] = useState('');
+
+  const streamingAsrModels = useMemo(
+    () => asrModels.filter((model) => getAsrModelConfigById(model.metadata.id)?.streaming),
+    [asrModels]
+  );
+
+  useEffect(() => {
+    if (!selectedAsrModelId && streamingAsrModels.length > 0) {
+      const preferred = streamingAsrModels.find(
+        (model) => model.metadata.id === 'streaming-zipformer-en-20m-mobile'
+      );
+      setSelectedAsrModelId((preferred ?? streamingAsrModels[0]).metadata.id);
+    }
+  }, [selectedAsrModelId, streamingAsrModels]);
+
+  useEffect(() => {
+    if (!selectedVadModelId && vadModels.length > 0) {
+      const preferred = vadModels.find((model) => model.metadata.id === 'silero-vad-v5');
+      setSelectedVadModelId((preferred ?? vadModels[0]).metadata.id);
+    }
+  }, [selectedVadModelId, vadModels]);
+
+  const handleRunLiveReplay = async () => {
+    const effectiveAudioPath = selectedAudio?.localUri || liveAudioPath.trim();
+    if (!effectiveAudioPath) {
+      setError('Select an audio file or enter a WAV path first');
+      return;
+    }
+    if (!selectedAsrModelId || !selectedVadModelId || !selectedEmbModelId) {
+      setError('Download/select streaming ASR, VAD, and speaker-id models first');
+      return;
+    }
+
+    setRunning(true);
+    setError(null);
+    setResult(null);
+    setStatus('Preparing live replay...');
+    let session: LiveAttributedTranscriptionSession | null = null;
+
+    try {
+      const asrState = getModelState(selectedAsrModelId);
+      const vadState = getModelState(selectedVadModelId);
+      const speakerState = getModelState(selectedEmbModelId);
+      if (!asrState?.localPath) throw new Error(`ASR model ${selectedAsrModelId} is not downloaded`);
+      if (!vadState?.localPath) throw new Error(`VAD model ${selectedVadModelId} is not downloaded`);
+      if (!speakerState?.localPath) throw new Error(`Speaker model ${selectedEmbModelId} is not downloaded`);
+
+      const asrConfig = getAsrModelConfigById(selectedAsrModelId);
+      const vadConfig = getModelConfigById(selectedVadModelId)?.vadConfig;
+      const speakerConfig = getModelConfigById(selectedEmbModelId)?.speakerIdConfig;
+      if (!asrConfig?.modelType || !asrConfig.streaming) {
+        throw new Error(`${selectedAsrModelId} is not a streaming ASR model`);
+      }
+      if (!vadConfig) throw new Error(`VAD config missing for ${selectedVadModelId}`);
+      if (!speakerConfig) throw new Error(`Speaker config missing for ${selectedEmbModelId}`);
+
+      setStatus('Reading WAV fixture...');
+      const wav = await readMonoPcm16Wav(effectiveAudioPath);
+      if (wav.sampleRate !== DEFAULT_LIVE_SAMPLE_RATE) {
+        throw new Error(`Expected ${DEFAULT_LIVE_SAMPLE_RATE} Hz mono PCM WAV, got ${wav.sampleRate} Hz`);
+      }
+      const maxReplayMs = 60_000;
+      const samples = wav.samples.slice(0, Math.floor((maxReplayMs / 1000) * wav.sampleRate));
+      const audioDurationMs = (samples.length / wav.sampleRate) * 1000;
+      const chunkDurationMs = 100;
+      const chunkSize = Math.round((chunkDurationMs / 1000) * wav.sampleRate);
+
+      setStatus('Initializing ASR, VAD, and Speaker ID...');
+      await Promise.all([
+        ASR.release().catch(() => {}),
+        VAD.release().catch(() => {}),
+        SpeakerId.release().catch(() => {}),
+      ]);
+
+      const asrDir = await resolveModelDir(asrState.localPath);
+      const vadDir = await resolveModelDir(vadState.localPath);
+      const speakerDir = await resolveModelDir(speakerState.localPath);
+
+      const asrInit = await ASR.initialize({
+        ...asrConfig,
+        modelType: asrConfig.modelType,
+        modelDir: asrDir,
+        streaming: true,
+        numThreads: DEFAULT_NUM_THREADS,
+      });
+      if (!asrInit.success) throw new Error(asrInit.error || 'ASR init failed');
+      const stream = await ASR.createOnlineStream();
+      if (!stream.success) throw new Error('ASR stream init failed');
+
+      const vadInit = await VAD.init({
+        ...vadConfig,
+        modelDir: vadDir,
+        numThreads: 1,
+      });
+      if (!vadInit.success) throw new Error(vadInit.error || 'VAD init failed');
+
+      const speakerInit = await SpeakerId.init({
+        ...speakerConfig,
+        modelDir: speakerDir,
+        numThreads: DEFAULT_NUM_THREADS,
+      });
+      if (!speakerInit.success) throw new Error(speakerInit.error || 'Speaker ID init failed');
+
+      const eventCounts: Record<string, number> = {};
+      session = new LiveAttributedTranscriptionSession({
+        sampleRate: wav.sampleRate,
+        speakerTurns: new LiveSpeakerTurnSession({
+          sampleRate: wav.sampleRate,
+          vad: VAD,
+          speakerId: SpeakerId,
+          minTurnDurationMs: 250,
+          speechPadMs: 120,
+          speakerThreshold: 0.55,
+          maxRingBufferDurationMs: 90_000,
+        }),
+        asr: ASR,
+        onEvent: (event: LiveAttributedTranscriptionEvent) => {
+          eventCounts[event.type] = (eventCounts[event.type] ?? 0) + 1;
+        },
+      });
+
+      setStatus(`Replaying ${(audioDurationMs / 1000).toFixed(1)}s as ${chunkDurationMs}ms chunks...`);
+      const startedAt = Date.now();
+      for (let offset = 0; offset < samples.length; offset += chunkSize) {
+        const chunk = samples.slice(offset, Math.min(offset + chunkSize, samples.length));
+        await session.acceptChunk({ samples: chunk, sampleRate: wav.sampleRate, startSample: offset });
+        if (offset % (chunkSize * 10) === 0) {
+          setStatus(`Live replay ${(offset / wav.sampleRate).toFixed(1)}s / ${(audioDurationMs / 1000).toFixed(1)}s`);
+        }
+      }
+      await session.flush();
+      const replayMs = Date.now() - startedAt;
+      const realtimeFactor = replayMs / Math.max(audioDurationMs, 1);
+      const state = session.getState();
+      setResult({
+        audioDurationMs,
+        replayMs,
+        realtimeFactor,
+        keepsUp: realtimeFactor <= 1,
+        summary: session.getSummary(),
+        eventCounts,
+        segments: state.segments.slice(0, 20),
+      });
+      setStatus(`Live replay complete: ${realtimeFactor.toFixed(2)}x realtime`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus('');
+    } finally {
+      session?.release();
+      await Promise.all([
+        ASR.release().catch(() => {}),
+        VAD.release().catch(() => {}),
+        SpeakerId.release().catch(() => {}),
+      ]);
+      setRunning(false);
+    }
+  };
+
+  return (
+    <Section title="Live validation: transcription + speaker turns">
+      <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginBottom: 8 }}>
+        Replays the selected WAV as 100ms live chunks through streaming ASR, VAD, and Speaker ID. This validates whether processing keeps up with realtime on device.
+      </Text>
+      <ConfigRow label="Streaming ASR:">
+        {streamingAsrModels.length === 0 ? (
+          <InlineModelDownloader
+            modelType="asr"
+            emptyLabel="Download a streaming ASR model first."
+            onModelDownloaded={setSelectedAsrModelId}
+          />
+        ) : (
+          <ModelSelector
+            models={streamingAsrModels}
+            selectedId={selectedAsrModelId}
+            onSelect={setSelectedAsrModelId}
+          />
+        )}
+      </ConfigRow>
+      <ConfigRow label="VAD:">
+        {vadModels.length === 0 ? (
+          <InlineModelDownloader
+            modelType="vad"
+            emptyLabel="Download Silero VAD first."
+            onModelDownloaded={setSelectedVadModelId}
+          />
+        ) : (
+          <ModelSelector
+            models={vadModels}
+            selectedId={selectedVadModelId}
+            onSelect={setSelectedVadModelId}
+          />
+        )}
+      </ConfigRow>
+      <TextInput
+        testID="diar-live-audio-input"
+        style={{ marginBottom: 8, padding: 8, borderWidth: 1, borderColor: theme.colors.outlineVariant, borderRadius: theme.roundness, color: theme.colors.onSurface }}
+        placeholder="Optional file:///.../validation.wav (uses selected audio when blank)"
+        placeholderTextColor={theme.colors.onSurfaceVariant}
+        value={liveAudioPath}
+        onChangeText={setLiveAudioPath}
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+      <ThemedButton
+        testID="diar-live-replay-btn"
+        label={running ? 'Running live replay...' : 'Run Live Replay'}
+        variant="primary"
+        onPress={handleRunLiveReplay}
+        disabled={disabled || running || (!selectedAudio && liveAudioPath.trim().length === 0) || !selectedAsrModelId || !selectedVadModelId || !selectedEmbModelId}
+      />
+      {status ? (
+        <Text variant="bodySmall" style={{ marginTop: 8, color: theme.colors.primary }}>{status}</Text>
+      ) : null}
+      {error ? (
+        <Text variant="bodySmall" style={{ marginTop: 8, color: theme.colors.error }}>{error}</Text>
+      ) : null}
+      {result ? (
+        <View style={{ marginTop: 12, gap: 6 }}>
+          <Text variant="bodyMedium" style={{ color: result.keepsUp ? (theme.colors.success ?? '#4CAF50') : theme.colors.error }}>
+            {result.keepsUp ? 'Keeps up' : 'Too slow'}: {result.realtimeFactor.toFixed(2)}x realtime ({result.replayMs}ms for {(result.audioDurationMs / 1000).toFixed(1)}s audio)
+          </Text>
+          <Text variant="bodySmall" style={{ color: theme.colors.onSurface }}>
+            Segments: {result.summary.segmentCount} · Final: {result.summary.finalSegmentCount} · Speaker-attributed: {result.summary.speakerAttributedSegmentCount}
+          </Text>
+          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+            Events: {Object.entries(result.eventCounts).map(([key, value]) => `${key}=${value}`).join(', ')}
+          </Text>
+          {result.segments.slice(0, 5).map((segment) => (
+            <Text key={segment.segmentId} variant="bodySmall" style={{ color: theme.colors.onSurface }}>
+              {segment.speakerId ?? 'speaker_pending'} · {segment.text || '(empty)'}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+    </Section>
   );
 }
 
@@ -253,6 +536,12 @@ export default function DiarizationScreen() {
         )}
       </View>
 
+      <LiveValidationSection
+        selectedAudio={selectedAudio}
+        selectedEmbModelId={selectedEmbModelId}
+        disabled={processing || loading}
+      />
+
       {/* Audio Selection */}
       {initialized && (
         <>
@@ -341,6 +630,7 @@ export default function DiarizationScreen() {
               />
             </View>
           </Section>
+
 
           {/* Results */}
           {(processing || segments.length > 0) && (
