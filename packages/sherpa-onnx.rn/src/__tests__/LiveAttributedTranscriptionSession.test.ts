@@ -500,6 +500,73 @@ describe('LiveAttributedTranscriptionSession', () => {
     ]);
   });
 
+  it('keeps sample clock monotonic when boundary ASR reset fails', async () => {
+    let resetCount = 0;
+    const asr = {
+      async acceptWaveform() {
+        return { success: true };
+      },
+      async getResult() {
+        return { text: 'hello' };
+      },
+      async isEndpoint() {
+        return { isEndpoint: false };
+      },
+      async resetStream() {
+        resetCount += 1;
+        return resetCount === 1
+          ? { success: false, error: 'reset failed' }
+          : { success: true };
+      },
+    } satisfies LiveTranscriptionAsrAdapter;
+    const speakerTurns = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([true, false, true]),
+      speakerId: createSpeakerIdAdapter([
+        [1, 0],
+        [0, 1],
+      ]),
+      minTurnDurationMs: 10,
+    });
+    const session = new LiveAttributedTranscriptionSession({
+      sampleRate: 16_000,
+      speakerTurns,
+      asr,
+    });
+
+    for (const value of [1, 0, 2]) {
+      await session.acceptChunk({ samples: createChunk(value) });
+    }
+
+    expect(session.getState().nextSample).toBe(480);
+    await expect(session.acceptChunk({ samples: createChunk(2) })).resolves.toBeUndefined();
+  });
+
+  it('clears stale active attribution for discarded short turns', async () => {
+    const speakerTurns = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([true, false, true]),
+      speakerId: createSpeakerIdAdapter([[1, 0]]),
+      minTurnDurationMs: 1_000,
+    });
+    const session = new LiveAttributedTranscriptionSession({
+      sampleRate: 16_000,
+      speakerTurns,
+      asr: createAsrAdapter(['', '', 'real speech'], [false, false, false]),
+    });
+
+    for (const value of [1, 0, 2]) {
+      await session.acceptChunk({ samples: createChunk(value) });
+    }
+
+    expect(session.getState().segments).toEqual([
+      expect.objectContaining({
+        turnId: 'turn_2',
+        text: 'real speech',
+      }),
+    ]);
+  });
+
   it('flushes pending text, reset clears replay state, and release is idempotent', async () => {
     const speakerTurns = new LiveSpeakerTurnSession({
       sampleRate: 16_000,

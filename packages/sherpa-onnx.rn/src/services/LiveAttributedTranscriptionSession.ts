@@ -163,6 +163,10 @@ export class LiveAttributedTranscriptionSession {
       startSample,
     });
 
+    // Speaker-turn state has consumed this chunk from here onward. Keep the
+    // composer clock monotonic even if ASR reset/accept/result handling fails.
+    this.nextSample = endSample;
+
     if (this.resetAsrBeforeNextChunk) {
       this.resetAsrBeforeNextChunk = false;
       const reset = await this.config.asr.resetStream();
@@ -180,10 +184,6 @@ export class LiveAttributedTranscriptionSession {
     }
 
     const accepted = await this.config.asr.acceptWaveform(sampleRate, samples);
-    // Advance the session audio clock once both downstream streams accepted the
-    // chunk. Even an ASR success:false means speaker-turn state consumed it; the
-    // session reports the error but keeps future implicit startSample monotonic.
-    this.nextSample = endSample;
     if (!accepted.success) {
       this.emit({
         type: 'error',
@@ -369,6 +369,20 @@ export class LiveAttributedTranscriptionSession {
         this.activeTurnId = undefined;
       }
       return;
+    }
+
+    if (event.type === 'turn_discarded') {
+      if (this.activeTurnId === event.turnId) {
+        this.activeTurnId = undefined;
+      }
+      if (this.currentSegmentId) {
+        const segment = this.segments.get(this.currentSegmentId);
+        if (segment?.turnId === event.turnId && !segment.final) {
+          this.removeSegment(segment.segmentId);
+          this.currentSegmentId = null;
+          this.currentSegmentStartSample = this.nextSample;
+        }
+      }
     }
 
     if (event.type === 'error') {

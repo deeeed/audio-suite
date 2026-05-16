@@ -47,37 +47,47 @@ export async function initializeLiveTranscriptionDiarizationModels(
         throw new Error(`Speaker ID config not found for ${options.speakerIdModelId}`)
     }
 
-    const asrInit = await ASR.initialize({
-        ...asrConfig,
-        modelType: asrConfig.modelType,
-        modelDir: options.asrModelDir,
-        numThreads: requestedThreads,
-        streaming: true,
-    })
-    if (!asrInit.success) {
-        throw new Error(asrInit.error || 'ASR init failed')
-    }
-    const stream = await ASR.createOnlineStream()
-    if (!stream.success) {
-        throw new Error('ASR createOnlineStream failed')
-    }
+    try {
+        const asrInit = await ASR.initialize({
+            ...asrConfig,
+            modelType: asrConfig.modelType,
+            modelDir: options.asrModelDir,
+            numThreads: requestedThreads,
+            streaming: true,
+        })
+        if (!asrInit.success) {
+            throw new Error(asrInit.error || 'ASR init failed')
+        }
+        const stream = await ASR.createOnlineStream()
+        if (!stream.success) {
+            throw new Error('ASR createOnlineStream failed')
+        }
 
-    const vadInit = await VAD.init({
-        ...vadConfig,
-        modelDir: options.vadModelDir,
-        numThreads: 1,
-    })
-    if (!vadInit.success) {
-        throw new Error(vadInit.error || 'VAD init failed')
-    }
+        const vadInit = await VAD.init({
+            ...vadConfig,
+            modelDir: options.vadModelDir,
+            // Silero VAD is stateful and processed serially in the live pipeline.
+            numThreads: 1,
+        })
+        if (!vadInit.success) {
+            throw new Error(vadInit.error || 'VAD init failed')
+        }
 
-    const speakerInit = await SpeakerId.init({
-        ...speakerIdConfig,
-        modelDir: options.speakerModelDir,
-        numThreads: requestedThreads,
-    })
-    if (!speakerInit.success) {
-        throw new Error(speakerInit.error || 'Speaker ID init failed')
+        const speakerInit = await SpeakerId.init({
+            ...speakerIdConfig,
+            modelDir: options.speakerModelDir,
+            numThreads: requestedThreads,
+        })
+        if (!speakerInit.success) {
+            throw new Error(speakerInit.error || 'Speaker ID init failed')
+        }
+    } catch (error) {
+        await Promise.all([
+            ASR.release().catch(() => {}),
+            VAD.release().catch(() => {}),
+            SpeakerId.release().catch(() => {}),
+        ])
+        throw error
     }
 
     return {
