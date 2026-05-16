@@ -233,11 +233,35 @@ export class LiveAttributedTranscriptionSession {
 
   public async flush(): Promise<void> {
     this.ensureNotReleased();
-    await this.config.speakerTurns.flush();
+    try {
+      await this.config.speakerTurns.flush();
+    } catch (error) {
+      this.emit({
+        type: 'error',
+        source: 'speaker_turn',
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Speaker turn flush failed',
+      });
+    }
     await this.drainAsrTailPadding();
     await this.finalizeCurrentSegment(this.nextSample);
     this.emitPendingFinalTurns();
-    const reset = await this.config.asr.resetStream();
+    let reset: { success: boolean; error?: string };
+    try {
+      reset = await this.config.asr.resetStream();
+    } catch (error) {
+      this.emit({
+        type: 'error',
+        source: 'asr',
+        error:
+          error instanceof Error
+            ? error.message
+            : 'ASR failed while resetting online stream',
+      });
+      return;
+    }
     if (!reset.success) {
       this.emit({
         type: 'error',
@@ -261,10 +285,23 @@ export class LiveAttributedTranscriptionSession {
       return;
     }
 
-    const accepted = await this.config.asr.acceptWaveform(
-      this.config.sampleRate,
-      Array.from({ length: tailSamples }, () => 0)
-    );
+    let accepted: { success: boolean; error?: string };
+    try {
+      accepted = await this.config.asr.acceptWaveform(
+        this.config.sampleRate,
+        Array.from({ length: tailSamples }, () => 0)
+      );
+    } catch (error) {
+      this.emit({
+        type: 'error',
+        source: 'asr',
+        error:
+          error instanceof Error
+            ? error.message
+            : 'ASR failed while flushing tail padding',
+      });
+      return;
+    }
     if (!accepted.success) {
       this.emit({
         type: 'error',
@@ -298,14 +335,6 @@ export class LiveAttributedTranscriptionSession {
   public async reset(): Promise<void> {
     this.ensureNotReleased();
     this.config.speakerTurns.reset();
-    const reset = await this.config.asr.resetStream();
-    if (!reset.success) {
-      this.emit({
-        type: 'error',
-        source: 'asr',
-        error: reset.error ?? 'ASR failed while resetting online stream',
-      });
-    }
     this.emittedEvents.splice(0, this.emittedEvents.length);
     this.emittedEventCount = 0;
     this.segments.clear();
@@ -319,6 +348,27 @@ export class LiveAttributedTranscriptionSession {
     this.currentSegmentStartSample = 0;
     this.resetAsrBeforeNextChunk = false;
     this.activeTurnId = undefined;
+    let reset: { success: boolean; error?: string };
+    try {
+      reset = await this.config.asr.resetStream();
+    } catch (error) {
+      this.emit({
+        type: 'error',
+        source: 'asr',
+        error:
+          error instanceof Error
+            ? error.message
+            : 'ASR failed while resetting online stream',
+      });
+      return;
+    }
+    if (!reset.success) {
+      this.emit({
+        type: 'error',
+        source: 'asr',
+        error: reset.error ?? 'ASR failed while resetting online stream',
+      });
+    }
   }
 
   public release(): void {

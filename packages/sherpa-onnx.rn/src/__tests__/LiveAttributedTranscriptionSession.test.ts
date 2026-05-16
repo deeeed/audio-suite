@@ -409,6 +409,136 @@ describe('LiveAttributedTranscriptionSession', () => {
     });
   });
 
+  it('converts ASR tail-padding accept rejections into error events during flush', async () => {
+    const events: LiveAttributedTranscriptionEvent[] = [];
+    let acceptCount = 0;
+    const speakerTurns = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([true]),
+      speakerId: createSpeakerIdAdapter([[1, 0]]),
+      minTurnDurationMs: 1,
+    });
+    const asr = {
+      async acceptWaveform() {
+        acceptCount += 1;
+        if (acceptCount === 2) {
+          throw new Error('tail accept rejected');
+        }
+        return { success: true };
+      },
+      async getResult() {
+        return { text: 'hello' };
+      },
+      async isEndpoint() {
+        return { isEndpoint: false };
+      },
+      async resetStream() {
+        return { success: true };
+      },
+    } satisfies LiveTranscriptionAsrAdapter;
+    const session = new LiveAttributedTranscriptionSession({
+      sampleRate: 16_000,
+      speakerTurns,
+      asr,
+      onEvent: (event) => events.push(event),
+    });
+
+    await session.acceptChunk({ samples: createChunk(1) });
+    await session.flush();
+
+    expect(events).toContainEqual({
+      type: 'error',
+      source: 'asr',
+      error: 'tail accept rejected',
+    });
+    expect(session.getState().segments[0]).toMatchObject({
+      text: 'hello',
+      final: true,
+    });
+  });
+
+  it('converts ASR reset rejections during flush into error events', async () => {
+    const events: LiveAttributedTranscriptionEvent[] = [];
+    const speakerTurns = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([true]),
+      speakerId: createSpeakerIdAdapter([[1, 0]]),
+      minTurnDurationMs: 1,
+    });
+    const asr = {
+      async acceptWaveform() {
+        return { success: true };
+      },
+      async getResult() {
+        return { text: 'hello' };
+      },
+      async isEndpoint() {
+        return { isEndpoint: false };
+      },
+      async resetStream() {
+        throw new Error('flush reset rejected');
+      },
+    } satisfies LiveTranscriptionAsrAdapter;
+    const session = new LiveAttributedTranscriptionSession({
+      sampleRate: 16_000,
+      speakerTurns,
+      asr,
+      onEvent: (event) => events.push(event),
+    });
+
+    await session.acceptChunk({ samples: createChunk(1) });
+    await session.flush();
+
+    expect(events).toContainEqual({
+      type: 'error',
+      source: 'asr',
+      error: 'flush reset rejected',
+    });
+    expect(session.getState().segments[0]).toMatchObject({ final: true });
+  });
+
+  it('converts ASR reset rejections during reset into retained error events', async () => {
+    const speakerTurns = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([false]),
+      speakerId: createSpeakerIdAdapter([[1, 0]]),
+    });
+    const asr = {
+      async acceptWaveform() {
+        return { success: true };
+      },
+      async getResult() {
+        return { text: '' };
+      },
+      async isEndpoint() {
+        return { isEndpoint: false };
+      },
+      async resetStream() {
+        throw new Error('reset rejected');
+      },
+    } satisfies LiveTranscriptionAsrAdapter;
+    const session = new LiveAttributedTranscriptionSession({
+      sampleRate: 16_000,
+      speakerTurns,
+      asr,
+    });
+
+    await session.acceptChunk({ samples: createChunk(0) });
+    await session.reset();
+
+    expect(session.getState()).toMatchObject({
+      nextSample: 0,
+      segments: [],
+      events: [
+        {
+          type: 'error',
+          source: 'asr',
+          error: 'reset rejected',
+        },
+      ],
+    });
+  });
+
   it('feeds tail padding on flush so ASR can expose final right-context text', async () => {
     const asr = createAsrAdapter(['hel', 'hello'], [false, false]);
     const speakerTurns = new LiveSpeakerTurnSession({
