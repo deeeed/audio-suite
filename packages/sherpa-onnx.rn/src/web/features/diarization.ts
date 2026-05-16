@@ -1,7 +1,10 @@
 import { loadCombinedWasm, detectWasmBasePath } from '../wasmLoader';
 import { fetchAndDecodeAudio } from '../audioUtils';
 import type { OfflineSpeakerDiarizationInstance } from '../wasmTypes';
-import type { DiarizationFileInput, DiarizationFileWindowInput } from '../../types/api';
+import type {
+  DiarizationFileInput,
+  DiarizationFileWindowInput,
+} from '../../types/api';
 import { type Constructor, withDownloadProgress } from './mixinUtils';
 import { WasmWorkerManager } from '../workers/WasmWorkerManager';
 
@@ -9,7 +12,7 @@ export function DiarizationMixin<TBase extends Constructor>(Base: TBase) {
   return class extends Base {
     public diarization: OfflineSpeakerDiarizationInstance | null = null;
     public diarizationWorker: WasmWorkerManager | null = null;
-    private diarizationClustering = { numClusters: -1, threshold: 0.5 };
+    public diarizationClustering = { numClusters: -1, threshold: 0.5 };
 
     async initDiarization(config: any): Promise<{
       success: boolean;
@@ -18,7 +21,8 @@ export function DiarizationMixin<TBase extends Constructor>(Base: TBase) {
     }> {
       try {
         const debug = config?.debug ? 1 : 0;
-        const modelDir = config?.modelDir || config?.segmentationModelDir || '/wasm/speakers';
+        const modelDir =
+          config?.modelDir || config?.segmentationModelDir || '/wasm/speakers';
         const fetchBase = config?.modelBaseUrl || modelDir;
 
         // Try worker path first for non-blocking inference
@@ -37,10 +41,15 @@ export function DiarizationMixin<TBase extends Constructor>(Base: TBase) {
               minDurationOff: config?.minDurationOff,
             });
             this.diarizationWorker = mgr;
-            console.log(`[Diarization] Worker initialized: sampleRate=${result.sampleRate}`);
+            console.log(
+              `[Diarization] Worker initialized: sampleRate=${result.sampleRate}`
+            );
             return { success: true, sampleRate: result.sampleRate };
           } catch (e) {
-            console.warn('[Diarization] Worker init failed, falling back to main thread:', e);
+            console.warn(
+              '[Diarization] Worker init failed, falling back to main thread:',
+              e
+            );
           }
         }
 
@@ -208,9 +217,18 @@ export function DiarizationMixin<TBase extends Constructor>(Base: TBase) {
         const startedAt = performance.now();
         const decoded = await fetchAndDecodeAudio(filePath);
         const sampleRate = this.diarization?.sampleRate ?? 16000;
-        const startSample = Math.max(0, Math.floor((startTimeMs / 1000) * sampleRate));
-        const sampleCount = Math.max(0, Math.floor((durationMs / 1000) * sampleRate));
-        const samples = decoded.samples.subarray(startSample, startSample + sampleCount);
+        const startSample = Math.max(
+          0,
+          Math.floor((startTimeMs / 1000) * sampleRate)
+        );
+        const sampleCount = Math.max(
+          0,
+          Math.floor((durationMs / 1000) * sampleRate)
+        );
+        const samples = decoded.samples.subarray(
+          startSample,
+          startSample + sampleCount
+        );
         const offsetSeconds = startTimeMs / 1000;
 
         let segments: Array<{ start: number; end: number; speaker: number }>;
@@ -222,7 +240,8 @@ export function DiarizationMixin<TBase extends Constructor>(Base: TBase) {
           segments = result.segments;
         } else {
           const previousClustering = this.diarizationClustering;
-          const shouldOverrideClustering = numClusters !== -1 || threshold !== 0.5;
+          const shouldOverrideClustering =
+            numClusters !== -1 || threshold !== 0.5;
           if (shouldOverrideClustering) {
             this.diarization!.setConfig({
               clustering: { numClusters, threshold },
@@ -255,7 +274,10 @@ export function DiarizationMixin<TBase extends Constructor>(Base: TBase) {
           samples: samples.length,
         };
       } catch (error) {
-        console.error('[Diarization] processDiarizationFileWindow failed:', error);
+        console.error(
+          '[Diarization] processDiarizationFileWindow failed:',
+          error
+        );
         return {
           success: false,
           segments: [],

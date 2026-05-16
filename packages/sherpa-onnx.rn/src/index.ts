@@ -11,6 +11,7 @@ import { SpeakerIdService } from './services/SpeakerIdService';
 import { TtsService } from './services/TtsService';
 import { OnnxInferenceService } from './services/OnnxInferenceService';
 import { VadService } from './services/VadService';
+import { LiveSpeakerTurnSession } from './services/LiveSpeakerTurnSession';
 import type { ApiInterface } from './types/api';
 import type { SherpaOnnxInterface } from './types/interfaces';
 
@@ -44,6 +45,7 @@ const SherpaOnnx: SherpaOnnxInterface = {
   Diarization: diarizationService,
   Denoising: denoisingService,
   OnnxInference: onnxInferenceService,
+  LiveSpeakerTurnSession,
 };
 
 // Export the main interface
@@ -61,6 +63,7 @@ export const Punctuation = punctuationService;
 export const Diarization = diarizationService;
 export const Denoising = denoisingService;
 export const OnnxInference = onnxInferenceService;
+export { LiveSpeakerTurnSession };
 
 // Export types
 export * from './types/api';
@@ -77,8 +80,20 @@ export type { TypedTensorData } from './utils/tensorUtils';
 
 // Export OnnxSession class
 export { OnnxSession } from './services/OnnxInferenceService';
-export type { OnnxSessionRunFeeds, OnnxSessionRunOutputs } from './services/OnnxInferenceService';
+export type {
+  OnnxSessionRunFeeds,
+  OnnxSessionRunOutputs,
+} from './services/OnnxInferenceService';
 
 // Export web utilities
-export { loadWasmModule, configureSherpaOnnx, isSherpaOnnxReady, waitForReady } from './web/wasmLoader';
-export type { SherpaOnnxConfig, WasmLoadOptions, WasmLoadProgressEvent } from './web/wasmLoader';
+export {
+  loadWasmModule,
+  configureSherpaOnnx,
+  isSherpaOnnxReady,
+  waitForReady,
+} from './web/wasmLoader';
+export type {
+  SherpaOnnxConfig,
+  WasmLoadOptions,
+  WasmLoadProgressEvent,
+} from './web/wasmLoader';
