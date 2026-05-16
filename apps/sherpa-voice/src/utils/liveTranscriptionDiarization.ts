@@ -18,9 +18,16 @@ export type LiveTranscriptionDiarizationModelInitOptions = {
     releaseExisting?: boolean
 }
 
+export type LiveTranscriptionDiarizationModelInitResult = {
+    asrModelId: string
+    vadModelId: string
+    speakerIdModelId: string
+    requestedThreads: number
+}
+
 export async function initializeLiveTranscriptionDiarizationModels(
     options: LiveTranscriptionDiarizationModelInitOptions
-) {
+): Promise<LiveTranscriptionDiarizationModelInitResult> {
     const requestedThreads = options.numThreads ?? DEFAULT_NUM_THREADS
 
     const asrConfig =

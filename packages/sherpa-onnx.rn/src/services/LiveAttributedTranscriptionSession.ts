@@ -511,6 +511,9 @@ export class LiveAttributedTranscriptionSession {
       }
       this.turnSegments.delete(event.turnId);
       this.turnSpeakers.delete(event.turnId);
+      // LiveSpeakerTurnSession emits turn_discarded synchronously inside
+      // acceptChunk; use that invariant to prevent this same chunk from
+      // recreating a stale ASR segment for audio we already discarded.
       this.skipAsrForCurrentChunk = true;
       this.resetAsrBeforeNextChunk = true;
       return;

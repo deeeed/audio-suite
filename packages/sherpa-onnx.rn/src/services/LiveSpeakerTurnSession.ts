@@ -144,6 +144,8 @@ export class LiveSpeakerTurnSession {
 
     const samples = Array.from(chunk.samples);
     const previousNextSample = this.nextSample;
+    // Shallow copy is sufficient because BufferedChunk entries and sample arrays
+    // are append-only after insertion; rollback only restores membership/order.
     const previousRingBuffer = this.ringBuffer.slice();
     this.appendToRingBuffer(startSample, samples);
     this.nextSample = startSample + samples.length;
@@ -357,17 +359,18 @@ export class LiveSpeakerTurnSession {
     error: string
   ): Promise<void> {
     let recoverable = false;
+    let composedError = error;
     if (this.config.speakerId.resetStream) {
       try {
         const reset = await this.config.speakerId.resetStream();
         recoverable = reset.success;
         if (!reset.success && reset.error) {
-          error = `${error}; speaker stream reset failed: ${reset.error}`;
+          composedError = `${composedError}; speaker stream reset failed: ${reset.error}`;
         }
       } catch (resetError) {
         const resetMessage =
           resetError instanceof Error ? resetError.message : String(resetError);
-        error = `${error}; speaker stream reset failed: ${resetMessage}`;
+        composedError = `${composedError}; speaker stream reset failed: ${resetMessage}`;
       }
     }
 
@@ -375,11 +378,11 @@ export class LiveSpeakerTurnSession {
       this.speakerIdUsable = false;
     }
 
-    this.emit({ type: 'error', turnId, error });
+    this.emit({ type: 'error', turnId, error: composedError });
     this.emit({
       type: 'speaker_id_unavailable',
       turnId,
-      error,
+      error: composedError,
       recoverable,
     });
   }
