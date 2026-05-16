@@ -280,6 +280,8 @@ export function useMoonshineSherpaLiveDiarization(
     }, [releaseSherpa])
 
     const prepareSherpa = useCallback(async () => {
+        // Keep the native-only web guard before preparation state mutations so
+        // web never gets stuck in a "preparing" state.
         if (Platform.OS === 'web') {
             setSherpaStatusMessage('Sherpa speaker turns are disabled in this native-only live demo on web.')
             return

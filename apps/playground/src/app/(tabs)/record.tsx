@@ -1009,6 +1009,9 @@ export default function RecordScreen() {
                     const recording = await stopRecording()
                     setResult(recording)
                 }
+                // This dev validation mode intentionally keeps the finalized
+                // transcript/speaker turns inline instead of navigating through
+                // the normal persisted-file post-recording flow.
                 moonshineSherpaLiveActiveRef.current = false
                 preparedConfigRef.current = null
                 show({

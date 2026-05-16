@@ -2265,7 +2265,9 @@ if (__DEV__) {
                 if (typeof onPress === 'function') {
                     onPress()
                 } else if (typeof onValueChange === 'function') {
-                    onValueChange(props?.value !== true)
+                    const currentValue = props?.value
+                    const nextValue = typeof currentValue === 'boolean' ? !currentValue : true
+                    onValueChange(nextValue)
                 } else {
                     click?.()
                 }

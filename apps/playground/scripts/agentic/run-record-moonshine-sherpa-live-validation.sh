@@ -4,6 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 DEVICE_NAME="${DEVICE_NAME:-Pixel 6a}"
+# Local developer fallback; override ADB_SERIAL when validating with another device.
 ADB_SERIAL="${ADB_SERIAL:-29071JEGR20638}"
 SAY_VOICE_1="${SAY_VOICE_1:-Daniel}"
 SAY_VOICE_2="${SAY_VOICE_2:-Karen}"

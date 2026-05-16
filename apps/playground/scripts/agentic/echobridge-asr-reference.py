@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--server-dir",
         default="/Users/deeeed/dev/echobridge/echobridge_monorepo/services/server",
-        help="EchoBridge services/server directory",
+        help="EchoBridge services/server directory (default is Arthur's local dev-machine path)",
     )
     parser.add_argument(
         "--model",
