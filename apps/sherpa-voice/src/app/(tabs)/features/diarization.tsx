@@ -63,7 +63,7 @@ function SpeakerTimeline({ segments, totalDuration }: { segments: DiarizationSeg
         Speaker Timeline
       </Text>
       <View style={{ height: 48, backgroundColor: theme.colors.surfaceVariant, borderRadius: 6, overflow: 'hidden', position: 'relative' }}>
-        {segments.map((seg, i) => {
+        {segments.map((seg) => {
           const left = (seg.start / duration) * 100;
           const width = Math.max(((seg.end - seg.start) / duration) * 100, 0.5);
           const color = SPEAKER_COLORS[seg.speaker % SPEAKER_COLORS.length];
@@ -108,7 +108,7 @@ function SegmentList({ segments }: { segments: DiarizationSegment[] }) {
   return (
     <View style={{ marginTop: 12 }}>
       <Text variant="labelMedium" style={{ marginBottom: 8, color: theme.colors.onSurface }}>Segments</Text>
-      {segments.map((seg, i) => {
+      {segments.map((seg) => {
         const color = SPEAKER_COLORS[seg.speaker % SPEAKER_COLORS.length];
         return (
           <View

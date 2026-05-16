@@ -1129,10 +1129,11 @@ type LiveMicTranscriptionDiarizationOptions = LiveTranscriptionDiarizationOption
 
 type RawAudioDataEvent = Partial<AudioDataEvent> & {
     pcmFloat32?: Float32Array | number[]
+    data?: { pcmFloat32?: Float32Array | number[] }
 }
 
 function getFloat32SamplesFromAudioEvent(eventData: RawAudioDataEvent) {
-    const raw = 'pcmFloat32' in eventData ? eventData.pcmFloat32 : undefined
+    const raw = eventData.pcmFloat32 ?? eventData.data?.pcmFloat32
     if (raw instanceof Float32Array) {
         return Array.from(raw)
     }

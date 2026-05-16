@@ -205,6 +205,57 @@ describe('LiveSpeakerTurnSession', () => {
     expect(session.getSummary().turnCount).toBe(2);
   });
 
+  it('rolls back sample cursor when VAD throws so callers can retry', async () => {
+    let attempts = 0;
+    const session = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: {
+        async acceptWaveform() {
+          attempts += 1;
+          if (attempts === 1) {
+            throw new Error('vad exploded');
+          }
+          return { success: true, isSpeechDetected: false, segments: [] };
+        },
+      },
+      speakerId: createSpeakerIdAdapter([[1, 0]]),
+    });
+
+    await expect(session.acceptChunk({ samples: createChunk(1) })).rejects.toThrow(
+      'vad exploded'
+    );
+    expect(session.getState().nextSample).toBe(0);
+    await expect(session.acceptChunk({ samples: createChunk(1) })).resolves.not.toThrow();
+    expect(session.getState().nextSample).toBe(160);
+  });
+
+  it('marks capped sub-threshold speaker assignments as forced fallback', async () => {
+    const events: LiveSpeakerTurnEvent[] = [];
+    const session = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([true, false, true, false]),
+      speakerId: createSpeakerIdAdapter([
+        [1, 0],
+        [0, 1],
+      ]),
+      minTurnDurationMs: 10,
+      maxSpeakers: 1,
+      speakerThreshold: 0.95,
+      onEvent: (event) => events.push(event),
+    });
+
+    for (const value of [1, 0, 2, 0]) {
+      await session.acceptChunk({ samples: createChunk(value) });
+    }
+
+    const resolved = events.filter((event) => event.type === 'speaker_resolved');
+    expect(resolved).toHaveLength(2);
+    expect(resolved[1]).toMatchObject({
+      speakerId: 'speaker_1',
+      provenance: 'forced_fallback',
+    });
+  });
+
   it('rejects non-monotonic sample clocks', async () => {
     const session = new LiveSpeakerTurnSession({
       sampleRate: 16_000,

@@ -1202,7 +1202,10 @@ export interface LiveSpeakerTurnSpeakerIdAdapter {
   computeEmbedding(): Promise<SpeakerEmbeddingResult>;
 }
 
-export type LiveSpeakerTurnProvenance = 'centroid_match' | 'new_speaker';
+export type LiveSpeakerTurnProvenance =
+  | 'centroid_match'
+  | 'new_speaker'
+  | 'forced_fallback';
 
 export type LiveSpeakerTurnEvent =
   | {

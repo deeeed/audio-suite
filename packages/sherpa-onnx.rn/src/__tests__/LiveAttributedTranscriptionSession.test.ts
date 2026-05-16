@@ -243,6 +243,39 @@ describe('LiveAttributedTranscriptionSession', () => {
       session.acceptChunk({ samples: createChunk(1) })
     ).rejects.toThrow('vad exploded');
     expect(session.getState().nextSample).toBe(0);
+    expect(speakerTurns.getState().nextSample).toBe(0);
+  });
+
+  it('can retry a chunk after speaker turn ingestion throws', async () => {
+    let attempts = 0;
+    const speakerTurns = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: {
+        async acceptWaveform() {
+          attempts += 1;
+          if (attempts === 1) {
+            throw new Error('vad exploded');
+          }
+          return { success: true, isSpeechDetected: true, segments: [] };
+        },
+      },
+      speakerId: createSpeakerIdAdapter([[1, 0]]),
+    });
+    const session = new LiveAttributedTranscriptionSession({
+      sampleRate: 16_000,
+      speakerTurns,
+      asr: createAsrAdapter(['retry ok'], [false]),
+    });
+
+    await expect(session.acceptChunk({ samples: createChunk(1) })).rejects.toThrow(
+      'vad exploded'
+    );
+    await expect(session.acceptChunk({ samples: createChunk(1) })).resolves.not.toThrow();
+
+    expect(session.getState()).toMatchObject({
+      nextSample: 160,
+      segments: [expect.objectContaining({ text: 'retry ok' })],
+    });
   });
 
   it('emits one normalized speaker-turn error without wrapping it as speaker_event', async () => {

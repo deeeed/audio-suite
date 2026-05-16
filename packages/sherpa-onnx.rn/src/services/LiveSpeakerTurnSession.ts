@@ -4,8 +4,10 @@ import type {
   LiveSpeakerTurnEvent,
   LiveSpeakerTurnEventListener,
   LiveSpeakerTurnSessionState,
+  LiveSpeakerTurnProvenance,
   LiveSpeakerTurnSpeakerCentroid,
   LiveSpeakerTurnSummary,
+  VadAcceptWaveformResult,
 } from '../types/interfaces';
 
 interface BufferedChunk {
@@ -44,6 +46,10 @@ function cosineSimilarity(a: number[], b: number[]): number {
     score += (a[index] ?? 0) * (b[index] ?? 0);
   }
   return score;
+}
+
+function cloneEvent(event: LiveSpeakerTurnEvent): LiveSpeakerTurnEvent {
+  return { ...event };
 }
 
 function movingAverageCentroid(
@@ -112,7 +118,7 @@ export class LiveSpeakerTurnSession {
         ...centroid,
         embedding: [...centroid.embedding],
       })),
-      events: [...this.emittedEvents],
+      events: this.emittedEvents.map(cloneEvent),
     };
   }
 
@@ -134,10 +140,19 @@ export class LiveSpeakerTurnSession {
     }
 
     const samples = Array.from(chunk.samples);
+    const previousNextSample = this.nextSample;
+    const previousRingBufferLength = this.ringBuffer.length;
     this.appendToRingBuffer(startSample, samples);
     this.nextSample = startSample + samples.length;
 
-    const vadResult = await this.config.vad.acceptWaveform(sampleRate, samples);
+    let vadResult: VadAcceptWaveformResult;
+    try {
+      vadResult = await this.config.vad.acceptWaveform(sampleRate, samples);
+    } catch (error) {
+      this.ringBuffer.splice(previousRingBufferLength);
+      this.nextSample = previousNextSample;
+      throw error;
+    }
     if (!vadResult.success) {
       this.emit({
         type: 'error',
@@ -318,7 +333,7 @@ export class LiveSpeakerTurnSession {
   private assignSpeaker(embedding: number[]): {
     speakerId: string;
     confidence: number;
-    provenance: 'centroid_match' | 'new_speaker';
+    provenance: LiveSpeakerTurnProvenance;
   } {
     const normalizedEmbedding = normalizeEmbedding(embedding);
     let bestMatch: LiveSpeakerTurnSpeakerCentroid | null = null;
@@ -360,7 +375,7 @@ export class LiveSpeakerTurnSession {
       return {
         speakerId: bestMatch.speakerId,
         confidence: bestScore,
-        provenance: 'centroid_match',
+        provenance: 'forced_fallback',
       };
     }
 
@@ -432,13 +447,15 @@ export class LiveSpeakerTurnSession {
       }
     }
     this.emittedEvents.push(event);
-    const maxStoredEvents =
-      this.config.maxStoredEvents ?? DEFAULT_MAX_STORED_EVENTS;
+    const maxStoredEvents = Math.max(
+      0,
+      Math.floor(this.config.maxStoredEvents ?? DEFAULT_MAX_STORED_EVENTS)
+    );
     if (this.emittedEvents.length > maxStoredEvents) {
       this.emittedEvents.splice(0, this.emittedEvents.length - maxStoredEvents);
     }
     for (const listener of this.listeners) {
-      listener(event);
+      listener(cloneEvent(event));
     }
   }
 

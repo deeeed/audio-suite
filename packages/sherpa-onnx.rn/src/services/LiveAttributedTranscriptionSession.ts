@@ -175,7 +175,7 @@ export class LiveAttributedTranscriptionSession {
 
     try {
       const result = await this.config.asr.getResult();
-      const text = result.text.trim();
+      const text = (result.text ?? '').trim();
       if (text.length > 0) {
         this.emitPartial(text, startSample, endSample);
       }
@@ -252,7 +252,7 @@ export class LiveAttributedTranscriptionSession {
 
     try {
       const result = await this.config.asr.getResult();
-      const text = result.text.trim();
+      const text = (result.text ?? '').trim();
       if (text.length > 0) {
         this.emitPartial(text, this.currentSegmentStartSample, this.nextSample);
       }
