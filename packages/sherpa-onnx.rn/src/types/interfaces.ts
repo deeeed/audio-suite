@@ -1384,6 +1384,10 @@ export type LiveAttributedTranscriptionEventListener = (
 
 export interface LiveAttributedTranscriptionConfig {
   sampleRate: number;
+  /**
+   * Speaker-turn session owned by this composer. `release()` also releases this
+   * instance; pass a dedicated session rather than sharing it across composers.
+   */
   speakerTurns: LiveSpeakerTurnSession;
   asr: LiveTranscriptionAsrAdapter;
   onEvent?: LiveAttributedTranscriptionEventListener;

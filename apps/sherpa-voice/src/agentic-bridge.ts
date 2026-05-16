@@ -1238,8 +1238,14 @@ async function runLiveMicTranscriptionDiarization(
     let queueDepth = 0
     let chain = Promise.resolve()
     let fatalError: Error | null = null
+    let stopped = false
 
     try {
+        const permission = await AudioStudioModule.requestPermissionsAsync()
+        if (permission?.status !== 'granted') {
+            throw new Error('Microphone permission denied')
+        }
+
         const initStartedAt = Date.now()
         const initialized = await initializeLiveTranscriptionDiarizationServices(options)
         timing.initMs = Date.now() - initStartedAt
@@ -1266,6 +1272,9 @@ async function runLiveMicTranscriptionDiarization(
 
         const emitter = new LegacyEventEmitter(AudioStudioModule)
         subscription = emitter.addListener('AudioData', (eventData: AudioDataEvent) => {
+            if (stopped) {
+                return
+            }
             const samples = getFloat32SamplesFromAudioEvent(eventData)
             if (!samples) {
                 stats.droppedChunks += 1
@@ -1306,8 +1315,7 @@ async function runLiveMicTranscriptionDiarization(
                     }
                 })
                 .catch((error: unknown) => {
-                    fatalError = error instanceof Error ? error : new Error(String(error))
-                    queueDepth = Math.max(0, queueDepth - 1)
+                    fatalError ??= error instanceof Error ? error : new Error(String(error))
                 })
         })
 
@@ -1323,6 +1331,7 @@ async function runLiveMicTranscriptionDiarization(
         })
         await new Promise((resolve) => setTimeout(resolve, durationMs))
         await AudioStudioModule.stopRecording().catch(() => null)
+        stopped = true
         subscription.remove()
         subscription = null
         await chain
@@ -1380,6 +1389,7 @@ async function runLiveMicTranscriptionDiarization(
             eventPreview: events,
         }
     } finally {
+        stopped = true
         subscription?.remove()
         await AudioStudioModule.stopRecording().catch(() => null)
         session?.release()

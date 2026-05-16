@@ -188,7 +188,7 @@ function LiveValidationSection({
   }, [selectedVadModelId, vadModels]);
 
   const handleRunLiveReplay = async () => {
-    const effectiveAudioPath = selectedAudio?.localUri || liveAudioPath.trim();
+    const effectiveAudioPath = liveAudioPath.trim() || selectedAudio?.localUri;
     if (!effectiveAudioPath) {
       setError('Select an audio file or enter a WAV path first');
       return;

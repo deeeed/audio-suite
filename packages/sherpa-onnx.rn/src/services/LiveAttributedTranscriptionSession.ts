@@ -19,6 +19,21 @@ function cloneSegment(segment: LiveTranscriptSegment): LiveTranscriptSegment {
 
 const DEFAULT_MAX_STORED_EVENTS = 1000;
 
+function cloneEvent(
+  event: LiveAttributedTranscriptionEvent
+): LiveAttributedTranscriptionEvent {
+  switch (event.type) {
+    case 'speaker_event':
+      return { ...event, event: { ...event.event } };
+    case 'transcript_speaker_update':
+      return { ...event, affectedSegmentIds: [...event.affectedSegmentIds] };
+    case 'turn_finalized':
+      return { ...event, segmentIds: [...event.segmentIds] };
+    default:
+      return { ...event };
+  }
+}
+
 function stripCommittedPrefix(text: string, prefix: string): string {
   const trimmedText = text.trim();
   const trimmedPrefix = prefix.trim();
@@ -31,6 +46,9 @@ function stripCommittedPrefix(text: string, prefix: string): string {
   if (trimmedText.startsWith(trimmedPrefix)) {
     return trimmedText.slice(trimmedPrefix.length).trimStart();
   }
+  // Streaming ASR models normally return text that grows monotonically until
+  // endpoint reset. If a model rewrites earlier tokens, keep the full text
+  // rather than dropping content while the caller tunes model/chunk settings.
   return trimmedText;
 }
 
@@ -96,7 +114,7 @@ export class LiveAttributedTranscriptionSession {
       activeTurnId: this.activeTurnId,
       activeSegmentId: this.currentSegmentId ?? undefined,
       segments: this.getOrderedSegments(),
-      events: [...this.emittedEvents],
+      events: this.emittedEvents.map(cloneEvent),
     };
   }
 
@@ -182,7 +200,7 @@ export class LiveAttributedTranscriptionSession {
 
   public async reset(): Promise<void> {
     this.ensureNotReleased();
-    await this.config.speakerTurns.reset();
+    this.config.speakerTurns.reset();
     const reset = await this.config.asr.resetStream();
     if (!reset.success) {
       this.emit({
@@ -322,6 +340,8 @@ export class LiveAttributedTranscriptionSession {
       ]
         .filter(Boolean)
         .join(' ');
+    } else {
+      this.removeSegment(segment.segmentId);
     }
     this.currentSegmentId = null;
     this.currentSegmentStartSample = boundarySample;
@@ -333,7 +353,13 @@ export class LiveAttributedTranscriptionSession {
       return;
     }
     const segment = this.segments.get(segmentId);
-    if (!segment || segment.text.trim().length === 0 || segment.final) {
+    if (!segment || segment.final) {
+      this.currentSegmentId = null;
+      this.currentSegmentStartSample = endSample;
+      return;
+    }
+    if (segment.text.trim().length === 0) {
+      this.removeSegment(segmentId);
       this.currentSegmentId = null;
       this.currentSegmentStartSample = endSample;
       return;
@@ -409,6 +435,17 @@ export class LiveAttributedTranscriptionSession {
     return segment;
   }
 
+  private removeSegment(segmentId: string): void {
+    this.segments.delete(segmentId);
+    const index = this.segmentOrder.indexOf(segmentId);
+    if (index >= 0) {
+      this.segmentOrder.splice(index, 1);
+    }
+    for (const segmentIds of this.turnSegments.values()) {
+      segmentIds.delete(segmentId);
+    }
+  }
+
   private attachSegmentToTurn(
     segmentId: string | null,
     turnId: string | undefined
@@ -445,14 +482,19 @@ export class LiveAttributedTranscriptionSession {
   }
 
   private emitPendingFinalTurns(): void {
-    while (this.pendingFinalTurns.length > 0) {
-      const event = this.pendingFinalTurns.shift();
-      if (!event) {
-        continue;
-      }
+    const stillPending: typeof this.pendingFinalTurns = [];
+    for (const event of this.pendingFinalTurns) {
       const segmentIds = Array.from(
         this.turnSegments.get(event.turnId) ?? new Set<string>()
       );
+      const hasUnfinalizedSegments = segmentIds.some((segmentId) => {
+        const segment = this.segments.get(segmentId);
+        return segment ? !segment.final : false;
+      });
+      if (hasUnfinalizedSegments) {
+        stillPending.push(event);
+        continue;
+      }
       const text = segmentIds
         .map((segmentId) => this.segments.get(segmentId)?.text ?? '')
         .join(' ')
@@ -469,6 +511,7 @@ export class LiveAttributedTranscriptionSession {
         text,
       });
     }
+    this.pendingFinalTurns.splice(0, this.pendingFinalTurns.length, ...stillPending);
   }
 
   private getOrderedSegments(): LiveTranscriptSegment[] {
