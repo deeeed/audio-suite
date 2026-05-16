@@ -671,7 +671,7 @@ export async function validateLongAudioStream(
             if (!result.cancelled) {
                 await sherpaOfflineSession?.flush(true)
             }
-            sherpaResult = { text: sherpaOfflineSession?.getState()?.transcript ?? '' }
+            sherpaResult = { text: sherpaOfflineSession?.getState().transcript ?? '' }
         }
 
         const cancelled = result.cancelled

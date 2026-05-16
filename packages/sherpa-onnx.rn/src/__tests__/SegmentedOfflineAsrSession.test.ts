@@ -257,4 +257,49 @@ describe('SegmentedOfflineAsrSession', () => {
       session.acceptChunk({ samples: createSamples(3, 1) })
     ).rejects.toThrow('has been released');
   });
+
+  it('supports zero-length final chunks without creating synthetic segments', async () => {
+    const asr = createAsrAdapter();
+    const session = new SegmentedOfflineAsrSession({
+      sampleRate: 16_000,
+      asr,
+      segmentDurationMs: 1_000,
+    });
+
+    await session.acceptChunk({ samples: [], isFinal: true });
+
+    expect(asr.calls).toHaveLength(0);
+    expect(session.getSummary()).toMatchObject({
+      bufferedMs: 0,
+      durationMs: 0,
+      processedMs: 0,
+      segmentCount: 0,
+    });
+  });
+
+  it('can reset after a completed run and accept a new replay', async () => {
+    const asr = createAsrAdapter();
+    const session = new SegmentedOfflineAsrSession({
+      sampleRate: 16_000,
+      asr,
+      segmentDurationMs: 1_000,
+    });
+
+    await session.acceptChunk({ samples: createSamples(1, 16_000), isFinal: true });
+    expect(session.getState().segments).toHaveLength(1);
+
+    session.reset();
+    expect(session.getState()).toMatchObject({
+      bufferedSamples: 0,
+      nextSample: 0,
+      processedSamples: 0,
+      segmentCount: 0,
+      transcript: '',
+    });
+
+    await session.acceptChunk({ samples: createSamples(2, 16_000), isFinal: true });
+    expect(session.getState().segments).toMatchObject([
+      { segmentIndex: 1, text: 'segment 2' },
+    ]);
+  });
 });
