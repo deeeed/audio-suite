@@ -476,3 +476,19 @@ ADB_SERIAL=29071JEGR20638 yarn recipe:run scripts/agentic/teams/sherpa/recipes/l
 ```
 
 This run did not include controlled speech in the room, so it proves the live microphone/backpressure path rather than transcription quality. The fixture replay above proves transcript and speaker-attribution events on known audio.
+
+### Controlled live microphone speech result
+
+A controlled follow-up played a known spoken sentence from the Mac speaker while the Pixel 6a recorded with the same live mic path. This validates that real microphone audio can produce transcript + speaker attribution events, not only silent/backpressure metrics.
+
+| Device | Capture | Prompt source | Transcript | Final segments | Speaker-attributed segments | Avg processing/chunk | Max queue depth | Peak / RMS | Result |
+| --- | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Pixel 6a physical (`29071JEGR20638`) | 18 s mic | macOS `say` controlled speech | `SHOULD HEAR THIS` | 1 | 1 | 68.2 ms | 2 | 0.977 / 0.0085 | Keeps up + attributed |
+
+Representative command:
+
+```bash
+cd apps/sherpa-voice
+(sleep 2; say -r 180 'This is a controlled live microphone validation. Speaker one is talking now. The live transcription should hear this sentence and keep up with the audio stream.') &
+node scripts/agentic/cdp-bridge.mjs --device 'Pixel 6a' eval "JSON.stringify(globalThis.__AGENTIC__?.testLiveMicTranscriptionDiarization?.({durationMs:18000,chunkDurationMs:100,asrModelId:'streaming-zipformer-en-20m-mobile',vadModelId:'silero-vad-v5',speakerIdModelId:'speaker-id-en-voxceleb'}))"
+```

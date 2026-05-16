@@ -1288,6 +1288,8 @@ async function runLiveMicTranscriptionDiarization(
         maxChunkMs: 0,
         totalChunkMs: 0,
         maxQueueDepth: 0,
+        peakAbs: 0,
+        sumSquares: 0,
     }
     const events: unknown[] = []
     let session: InstanceType<typeof LiveAttributedTranscriptionSession> | null = null
@@ -1332,6 +1334,11 @@ async function runLiveMicTranscriptionDiarization(
             const startSample = nextSample
             nextSample += samples.length
             stats.samples += samples.length
+            for (const sample of samples) {
+                const abs = Math.abs(sample)
+                stats.peakAbs = Math.max(stats.peakAbs, abs)
+                stats.sumSquares += sample * sample
+            }
             if (samples.length === 0) {
                 stats.emptyChunks += 1
                 return
@@ -1389,6 +1396,9 @@ async function runLiveMicTranscriptionDiarization(
         const state = session.getState()
         const audioDurationMs = (stats.samples / DEFAULT_LIVE_SAMPLE_RATE) * 1000
         const averageChunkMs = stats.chunks > 0 ? stats.totalChunkMs / stats.chunks : 0
+        const rms = stats.samples > 0 ? Math.sqrt(stats.sumSquares / stats.samples) : 0
+        const { sumSquares: _sumSquares, ...publicStats } = stats
+        void _sumSquares
 
         return {
             platform: Platform.OS,
@@ -1413,8 +1423,9 @@ async function runLiveMicTranscriptionDiarization(
             eventCounts,
             summary,
             stats: {
-                ...stats,
+                ...publicStats,
                 averageChunkMs,
+                rms,
             },
             transcriptPreview: state.segments.slice(0, 20),
             eventPreview: events,
