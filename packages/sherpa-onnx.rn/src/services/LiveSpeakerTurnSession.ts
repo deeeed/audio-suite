@@ -104,7 +104,10 @@ export class LiveSpeakerTurnSession {
       speechActive: this.speechActive,
       activeTurnId: this.activeTurnId,
       nextSample: this.nextSample,
-      speakers: this.centroids.map((centroid) => ({ ...centroid })),
+      speakers: this.centroids.map((centroid) => ({
+        ...centroid,
+        embedding: [...centroid.embedding],
+      })),
       events: [...this.emittedEvents],
     };
   }

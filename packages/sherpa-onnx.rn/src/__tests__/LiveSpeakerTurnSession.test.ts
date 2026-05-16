@@ -128,6 +128,38 @@ describe('LiveSpeakerTurnSession', () => {
     ]);
   });
 
+  it('does not expose mutable speaker centroid embeddings through getState', async () => {
+    const events: LiveSpeakerTurnEvent[] = [];
+    const session = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([true, false, false, true, false]),
+      speakerId: createSpeakerIdAdapter([
+        [1, 0],
+        [0.99, 0.01],
+      ]),
+      minTurnDurationMs: 10,
+      speakerThreshold: 0.95,
+      onEvent: (event) => events.push(event),
+    });
+
+    await session.acceptChunk({ samples: createChunk(1) });
+    await session.acceptChunk({ samples: createChunk(0) });
+
+    const state = session.getState();
+    state.speakers[0]!.embedding[0] = 0;
+    state.speakers[0]!.embedding[1] = 1;
+
+    await session.acceptChunk({ samples: createChunk(0) });
+    await session.acceptChunk({ samples: createChunk(1) });
+    await session.acceptChunk({ samples: createChunk(0) });
+
+    const finals = events.filter((event) => event.type === 'turn_final');
+    expect(finals.map((event) => event.speakerId)).toEqual([
+      'speaker_1',
+      'speaker_1',
+    ]);
+  });
+
   it('produces repeatable event streams for fixed replay input', async () => {
     async function runReplay(): Promise<LiveSpeakerTurnEvent[]> {
       const events: LiveSpeakerTurnEvent[] = [];
