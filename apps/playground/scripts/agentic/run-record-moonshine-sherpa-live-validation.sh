@@ -4,8 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 DEVICE_NAME="${DEVICE_NAME:-Pixel 6a}"
-# Local developer fallback; override ADB_SERIAL when validating with another device.
-ADB_SERIAL="${ADB_SERIAL:-29071JEGR20638}"
+ADB_SERIAL="${ADB_SERIAL:-}"
 SAY_VOICE_1="${SAY_VOICE_1:-Daniel}"
 SAY_VOICE_2="${SAY_VOICE_2:-Karen}"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -90,7 +89,11 @@ print("1" if ready else "0")
 ) &
 SPEECH_WATCHER_PID=$!
 
-ADB_SERIAL="$ADB_SERIAL" yarn recipe:run "$RECIPE" --device "$DEVICE_NAME" --artifacts-dir "$ARTIFACTS_DIR"
+if [ -n "$ADB_SERIAL" ]; then
+  ADB_SERIAL="$ADB_SERIAL" yarn recipe:run "$RECIPE" --device "$DEVICE_NAME" --artifacts-dir "$ARTIFACTS_DIR"
+else
+  yarn recipe:run "$RECIPE" --device "$DEVICE_NAME" --artifacts-dir "$ARTIFACTS_DIR"
+fi
 STATUS=$?
 cleanup
 trap - EXIT

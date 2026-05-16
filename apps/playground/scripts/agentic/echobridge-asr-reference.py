@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -22,8 +23,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-prefix", required=True, help="Output prefix without extension")
     parser.add_argument(
         "--server-dir",
-        default="/Users/deeeed/dev/echobridge/echobridge_monorepo/services/server",
-        help="EchoBridge services/server directory (default is Arthur's local dev-machine path)",
+        default=os.environ.get("ECHOBRIDGE_SERVER_DIR"),
+        help="EchoBridge services/server directory (or ECHOBRIDGE_SERVER_DIR)",
     )
     parser.add_argument(
         "--model",
@@ -57,6 +58,8 @@ def main() -> None:
     audio = Path(args.audio).resolve()
     out_prefix = Path(args.out_prefix).resolve()
     out_prefix.parent.mkdir(parents=True, exist_ok=True)
+    if not args.server_dir:
+        raise SystemExit("Pass --server-dir or set ECHOBRIDGE_SERVER_DIR")
     server = Path(args.server_dir).resolve()
     if not audio.exists():
         raise SystemExit(f"Missing audio: {audio}")
