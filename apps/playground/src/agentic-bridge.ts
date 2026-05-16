@@ -669,7 +669,7 @@ export async function validateLongAudioStream(
         }
         if (mode === 'sherpa-offline-segments' && sherpaAsrInitialized) {
             await sherpaOfflineSession?.flush(true)
-            sherpaResult = { text: sherpaOfflineSession?.getState().transcript ?? '' }
+            sherpaResult = { text: sherpaOfflineSession?.getState()?.transcript ?? '' }
         }
 
         const cancelled = result.cancelled

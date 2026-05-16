@@ -148,9 +148,11 @@ export class SegmentedOfflineAsrSession {
     }
 
     try {
-      await this.flushReadySegments(false);
       if (chunk.isFinal) {
+        await this.flushReadySegmentsForFinalInput();
         await this.flush(true);
+      } else {
+        await this.flushReadySegments();
       }
       this.emitProgress();
     } catch (error) {
@@ -217,9 +219,15 @@ export class SegmentedOfflineAsrSession {
     );
   }
 
-  private async flushReadySegments(final: boolean): Promise<void> {
+  private async flushReadySegments(): Promise<void> {
     while (this.bufferedSamples >= this.segmentSamples) {
-      await this.recognizeBufferedSegment(this.segmentSamples, final);
+      await this.recognizeBufferedSegment(this.segmentSamples, false);
+    }
+  }
+
+  private async flushReadySegmentsForFinalInput(): Promise<void> {
+    while (this.bufferedSamples > this.segmentSamples) {
+      await this.recognizeBufferedSegment(this.segmentSamples, false);
     }
   }
 

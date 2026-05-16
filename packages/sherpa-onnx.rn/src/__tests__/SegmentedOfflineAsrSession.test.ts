@@ -109,6 +109,65 @@ describe('SegmentedOfflineAsrSession', () => {
     ]);
   });
 
+  it('marks the exact final segment final and skips afterSegment for it', async () => {
+    const events: SegmentedOfflineAsrEvent[] = [];
+    const asr = createAsrAdapter();
+    const cleanupSegments: number[] = [];
+    const session = new SegmentedOfflineAsrSession({
+      sampleRate: 16_000,
+      asr,
+      segmentDurationMs: 1_000,
+      afterSegment: async (segment) => {
+        cleanupSegments.push(segment.segmentIndex);
+      },
+      onEvent: (event) => events.push(event),
+    });
+
+    await session.acceptChunk({ samples: createSamples(1, 32_000), isFinal: true });
+
+    expect(cleanupSegments).toEqual([1]);
+    expect(session.getState().segments).toMatchObject([
+      { segmentIndex: 1, final: false, sampleCount: 16_000 },
+      { segmentIndex: 2, final: true, sampleCount: 16_000 },
+    ]);
+    expect(
+      events
+        .filter((event) => event.type === 'segment_completed')
+        .map((event) => event.segment.final)
+    ).toEqual([false, true]);
+  });
+
+  it('emits and throws when offline recognition fails', async () => {
+    const events: SegmentedOfflineAsrEvent[] = [];
+    const session = new SegmentedOfflineAsrSession({
+      sampleRate: 16_000,
+      segmentDurationMs: 1_000,
+      asr: {
+        async recognizeFromSamples() {
+          return {
+            success: false,
+            error: 'recognizer failed',
+          };
+        },
+      },
+      onEvent: (event) => events.push(event),
+    });
+
+    await expect(
+      session.acceptChunk({ samples: createSamples(1, 16_000), isFinal: true })
+    ).rejects.toThrow('recognizer failed');
+
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'error',
+          error: 'recognizer failed',
+          segmentIndex: 1,
+        }),
+      ])
+    );
+  });
+
   it('keeps overlap context while advancing output with bounded windows', async () => {
     const asr = createAsrAdapter();
     const session = new SegmentedOfflineAsrSession({

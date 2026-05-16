@@ -534,19 +534,22 @@ export async function transcribeSherpaFile(
                     }
                 },
             })
-            await session.acceptChunk({
-                samples: Float32Array.from(wav.samples),
-                isFinal: true,
-            })
-            const state = session.getState()
-            const recognizeMs = Date.now() - recognizeStartedAt
-            session.release()
-            return {
-                initMs,
-                recognizeMs,
-                segmentCount: state.segmentCount,
-                segments: state.segments,
-                transcript: state.transcript.trim(),
+            try {
+                await session.acceptChunk({
+                    samples: wav.samples,
+                    isFinal: true,
+                })
+                const state = session.getState()
+                const recognizeMs = Date.now() - recognizeStartedAt
+                return {
+                    initMs,
+                    recognizeMs,
+                    segmentCount: state.segmentCount,
+                    segments: state.segments,
+                    transcript: state.transcript.trim(),
+                }
+            } finally {
+                session.release()
             }
         }
 
