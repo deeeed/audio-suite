@@ -19,7 +19,11 @@ const BUNDLE_BASE = 'net.siteed.audioplayground';
 const SCHEME_BASE = 'audioplayground';
 const PKG =
   APP_VARIANT === 'production' ? BUNDLE_BASE : `${BUNDLE_BASE}.${APP_VARIANT}`;
-const DEV_CLIENT_SCHEME = `exp+${SCHEME_BASE}`;
+const DEV_CLIENT_SCHEME =
+  process.env.DEV_CLIENT_SCHEME ||
+  (APP_VARIANT === 'production'
+    ? `exp+${SCHEME_BASE}`
+    : `exp+${SCHEME_BASE}-${APP_VARIANT}`);
 const ROUTE = '/asr-benchmark';
 const OFFLINE_TIMEOUT_MS = 10 * 60 * 1000;
 const SIMULATED_TIMEOUT_MS = 10 * 60 * 1000;
