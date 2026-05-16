@@ -539,10 +539,36 @@ describe('LiveAttributedTranscriptionSession', () => {
     }
 
     expect(session.getState().nextSample).toBe(480);
-    await expect(session.acceptChunk({ samples: createChunk(2) })).resolves.toBeUndefined();
+    await expect(session.acceptChunk({ samples: createChunk(2) })).resolves.not.toThrow();
+  });
+
+  it('removes registered event listeners with unsubscribe', async () => {
+    const observed: LiveAttributedTranscriptionEvent[] = [];
+    const speakerTurns = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([true, true]),
+      speakerId: createSpeakerIdAdapter([[1, 0]]),
+    });
+    const session = new LiveAttributedTranscriptionSession({
+      sampleRate: 16_000,
+      speakerTurns,
+      asr: createAsrAdapter(['first', 'second'], [false, false]),
+    });
+
+    const unsubscribe = session.onEvent((event) => observed.push(event));
+    await session.acceptChunk({ samples: createChunk(1) });
+    expect(observed.length).toBeGreaterThan(0);
+
+    unsubscribe();
+    const observedCount = observed.length;
+    await session.acceptChunk({ samples: createChunk(1) });
+
+    expect(observed).toHaveLength(observedCount);
+    expect(session.getSummary().eventCount).toBeGreaterThan(observedCount);
   });
 
   it('clears stale active attribution for discarded short turns', async () => {
+    const events: LiveAttributedTranscriptionEvent[] = [];
     const speakerTurns = new LiveSpeakerTurnSession({
       sampleRate: 16_000,
       vad: createVadAdapter([true, false, true]),
@@ -553,12 +579,20 @@ describe('LiveAttributedTranscriptionSession', () => {
       sampleRate: 16_000,
       speakerTurns,
       asr: createAsrAdapter(['', '', 'real speech'], [false, false, false]),
+      onEvent: (event) => events.push(event),
     });
 
     for (const value of [1, 0, 2]) {
       await session.acceptChunk({ samples: createChunk(value) });
     }
 
+    expect(
+      events.some(
+        (event) =>
+          event.type === 'speaker_event' &&
+          event.event.type === 'turn_discarded'
+      )
+    ).toBe(false);
     expect(session.getState().segments).toEqual([
       expect.objectContaining({
         turnId: 'turn_2',

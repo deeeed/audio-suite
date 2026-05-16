@@ -266,7 +266,7 @@ function LiveValidationSection({
       for (let offset = 0; offset < samples.length; offset += chunkSize) {
         const chunk = samples.slice(offset, Math.min(offset + chunkSize, samples.length));
         await session.acceptChunk({ samples: chunk, sampleRate: wav.sampleRate, startSample: offset });
-        if (offset % (chunkSize * 10) === 0) {
+        if (offset > 0 && offset % (chunkSize * 10) === 0) {
           setStatus(`Live replay ${(offset / wav.sampleRate).toFixed(1)}s / ${(audioDurationMs / 1000).toFixed(1)}s`);
         }
       }

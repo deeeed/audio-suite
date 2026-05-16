@@ -10,6 +10,11 @@ export type LiveTranscriptionDiarizationModelInitOptions = {
     vadModelDir: string
     speakerModelDir: string
     numThreads?: number
+    /**
+     * Release process-global Sherpa ASR/VAD/SpeakerId instances before initialization.
+     * Defaults to true for validation screens so stale native sessions do not conflict
+     * with the selected live transcription/diarization models.
+     */
     releaseExisting?: boolean
 }
 

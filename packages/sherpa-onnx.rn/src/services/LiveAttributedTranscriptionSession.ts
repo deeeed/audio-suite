@@ -149,7 +149,6 @@ export class LiveAttributedTranscriptionSession {
     this.nextSample = endSample;
 
     if (this.resetAsrBeforeNextChunk) {
-      this.resetAsrBeforeNextChunk = false;
       const reset = await this.config.asr.resetStream();
       if (!reset.success) {
         this.emit({
@@ -161,6 +160,7 @@ export class LiveAttributedTranscriptionSession {
         });
         return;
       }
+      this.resetAsrBeforeNextChunk = false;
     }
 
     const accepted = await this.config.asr.acceptWaveform(sampleRate, samples);
@@ -256,6 +256,8 @@ export class LiveAttributedTranscriptionSession {
       if (text.length > 0) {
         this.emitPartial(text, this.currentSegmentStartSample, this.nextSample);
       }
+      // Querying endpoint advances/clears ASR endpoint state after synthetic tail padding;
+      // finalization remains driven by the explicit flush boundary below.
       await this.config.asr.isEndpoint();
     } catch (error) {
       this.emit({
@@ -341,6 +343,8 @@ export class LiveAttributedTranscriptionSession {
     }
 
     if (event.type === 'turn_final') {
+      // Convert raw speaker-turn completion into transcript-aware turn_finalized events
+      // once every attached ASR segment has been finalized.
       this.pendingFinalTurns.push(event);
       if (this.activeTurnId === event.turnId) {
         this.activeTurnId = undefined;
@@ -360,6 +364,7 @@ export class LiveAttributedTranscriptionSession {
           this.currentSegmentStartSample = this.nextSample;
         }
       }
+      return;
     }
 
     if (event.type === 'error') {
@@ -566,6 +571,9 @@ export class LiveAttributedTranscriptionSession {
   }
 
   private emitPendingFinalTurns(): void {
+    if (this.pendingFinalTurns.length === 0) {
+      return;
+    }
     const stillPending: typeof this.pendingFinalTurns = [];
     for (const event of this.pendingFinalTurns) {
       const segmentIds = Array.from(
