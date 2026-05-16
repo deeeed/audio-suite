@@ -670,13 +670,16 @@ export async function validateLongAudioStream(
             sherpaResult = await SherpaASR.getResult().catch(() => null)
         }
         if (mode === 'sherpa-offline-segments' && sherpaAsrInitialized) {
+            if (!sherpaOfflineSession) {
+                throw new Error('Sherpa offline segment session unavailable')
+            }
             if (!result.cancelled) {
                 // Safety net for streams that finish without an isFinal chunk.
                 // Normal streamAudioData completion has already flushed from
                 // the final chunk, so this is usually a no-op.
-                await sherpaOfflineSession?.flush(true)
+                await sherpaOfflineSession.flush(true)
             }
-            sherpaResult = { text: sherpaOfflineSession?.getState().transcript ?? '' }
+            sherpaResult = { text: sherpaOfflineSession.getState().transcript }
         }
 
         const cancelled = result.cancelled

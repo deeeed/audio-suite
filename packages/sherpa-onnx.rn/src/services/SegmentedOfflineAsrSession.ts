@@ -92,6 +92,9 @@ export class SegmentedOfflineAsrSession {
       overlapMs,
     };
     this.maxStoredEvents = config.maxStoredEvents ?? DEFAULT_MAX_STORED_EVENTS;
+    if (!Number.isInteger(this.maxStoredEvents) || this.maxStoredEvents < 0) {
+      throw new Error('SegmentedOfflineAsrSession requires maxStoredEvents >= 0');
+    }
     if (config.onEvent) {
       this.listeners.add(config.onEvent);
     }
@@ -330,7 +333,7 @@ export class SegmentedOfflineAsrSession {
     for (const chunk of this.chunks) {
       const copyCount = Math.min(chunk.length, sampleCount - written);
       for (let index = 0; index < copyCount; index += 1) {
-        output[written + index] = chunk[index] ?? 0;
+        output[written + index] = chunk[index] as number;
       }
       written += copyCount;
       if (written >= sampleCount) break;
@@ -368,7 +371,9 @@ export class SegmentedOfflineAsrSession {
 
   private emit(event: SegmentedOfflineAsrEvent): void {
     this.emittedEvents.push(cloneEvent(event));
-    if (this.emittedEvents.length > this.maxStoredEvents) {
+    if (this.maxStoredEvents === 0) {
+      this.emittedEvents.length = 0;
+    } else if (this.emittedEvents.length > this.maxStoredEvents) {
       this.emittedEvents.splice(
         0,
         this.emittedEvents.length - this.maxStoredEvents

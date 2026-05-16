@@ -291,6 +291,28 @@ describe('SegmentedOfflineAsrSession', () => {
     ).rejects.toThrow('has been released');
   });
 
+  it('validates maxStoredEvents and supports zero retained event history', async () => {
+    const asr = createAsrAdapter();
+
+    expect(
+      () =>
+        new SegmentedOfflineAsrSession({
+          sampleRate: 16_000,
+          asr,
+          maxStoredEvents: -1,
+        })
+    ).toThrow('maxStoredEvents');
+
+    const session = new SegmentedOfflineAsrSession({
+      sampleRate: 16_000,
+      asr,
+      segmentDurationMs: 1_000,
+      maxStoredEvents: 0,
+    });
+    await session.acceptChunk({ samples: createSamples(1, 16_000), isFinal: true });
+    expect(session.getState().events).toHaveLength(0);
+  });
+
   it('supports zero-length final chunks without creating synthetic segments', async () => {
     const asr = createAsrAdapter();
     const session = new SegmentedOfflineAsrSession({
