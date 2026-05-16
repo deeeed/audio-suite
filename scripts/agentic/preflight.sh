@@ -507,7 +507,7 @@ elif [ "$PLATFORM" = "android" ]; then
     sleep 2
     adb -s "${SERIAL}" shell am start -a android.intent.action.VIEW -d "${DEV_CLIENT_URL}" 2>/dev/null || true
   fi
-  pass "App launched on ${SERIAL} → localhost:${PORT}"
+  pass "App launched on ${SERIAL} → ${METRO_HOST}:${PORT}"
 fi
 
 # ── 5. Wait for CDP / health ──────────────────────────────────

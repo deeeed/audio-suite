@@ -83,5 +83,10 @@
     "description": "Show the silence ribbon track.",
     "expression": "JSON.stringify(globalThis.__AGENTIC__?.audioPlayer?.setShowSilenceTrack(true) || null)",
     "async": false
+  },
+  "moonshine-live-state": {
+    "description": "Current state of the Moonshine + Sherpa live demo page",
+    "expression": "JSON.stringify(globalThis.__AGENTIC__?.getPageState?.() || null)",
+    "async": false
   }
 }

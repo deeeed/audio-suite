@@ -12,10 +12,12 @@ import {
 } from '@siteed/design-system'
 
 import { setAgenticPageState } from '../agentic-bridge'
+import { type MoonshineLiveStrategy } from '../hooks/useMoonshineLiveSession'
 import {
-    type MoonshineLiveStrategy,
-    useMoonshineLiveSession,
-} from '../hooks/useMoonshineLiveSession'
+    type AttributedMoonshineLine,
+    type SherpaLiveTurn,
+    useMoonshineSherpaLiveDiarization,
+} from '../hooks/useMoonshineSherpaLiveDiarization'
 
 const getStyles = (theme: AppTheme) =>
     StyleSheet.create({
@@ -128,14 +130,14 @@ function formatMs(value?: number | null): string {
     return `${Math.round(value)} ms`
 }
 
-function getSpeakerLabel(line: MoonshineTranscriptLine): string {
+function getSpeakerLabel(line: MoonshineTranscriptLine | AttributedMoonshineLine): string {
     if (line.hasSpeakerId && typeof line.speakerIndex === 'number') {
-        return `Cluster ${line.speakerIndex + 1}`
+        return `Speaker ${line.speakerIndex + 1}`
     }
     if (line.hasSpeakerId && line.speakerId) {
-        return `Cluster ${line.speakerId}`
+        return `Speaker ${line.speakerId}`
     }
-    return 'Unclustered turn'
+    return 'Unattributed turn'
 }
 
 function StatusRow({
@@ -168,7 +170,7 @@ function SpeakerLineList({
     lines,
 }: {
     emptyText: string
-    lines: MoonshineTranscriptLine[]
+    lines: (MoonshineTranscriptLine | AttributedMoonshineLine)[]
 }) {
     const theme = useTheme()
     const styles = useMemo(() => getStyles(theme), [theme])
@@ -203,22 +205,54 @@ function SpeakerLineList({
     )
 }
 
-export default function MoonshineLiveScreen() {
-    if (!__DEV__) {
-        return <Redirect href="/(tabs)/more" />
+function SpeakerTurnList({ turns }: { turns: SherpaLiveTurn[] }) {
+    const theme = useTheme()
+    const styles = useMemo(() => getStyles(theme), [theme])
+
+    if (turns.length === 0) {
+        return (
+            <View style={styles.transcriptCard} testID="moonshine-sherpa-turn-count">
+                <Text style={styles.transcriptText}>No Sherpa speaker turns yet.</Text>
+            </View>
+        )
     }
 
+    return (
+        <View style={styles.section} testID="moonshine-sherpa-turn-count">
+            {turns.slice(-8).map((turn) => (
+                <View key={turn.turnId} style={styles.speakerLineCard}>
+                    <Text style={styles.speakerLineHeader}>
+                        {turn.speakerId ?? 'Pending speaker'} •{' '}
+                        {formatMs(turn.startMs)} → {formatMs(turn.endMs)}
+                    </Text>
+                    <Text style={styles.speakerLineText}>{turn.turnId}</Text>
+                </View>
+            ))}
+        </View>
+    )
+}
+
+function averageMs(totalMs: number, count: number): string {
+    if (count <= 0) return 'n/a'
+    return `${Math.round(totalMs / count)} ms`
+}
+
+export default function MoonshineLiveScreen() {
     const platformStatus = Moonshine.getPlatformStatus()
     const theme = useTheme()
     const styles = useMemo(() => getStyles(theme), [theme])
     const [strategy, setStrategy] = useState<MoonshineLiveStrategy>('small-only')
     const {
+        attributedCommittedLines,
+        attributedInterimLines,
         clear,
         error,
         finalTranscript,
         isBusy,
         isPreparingModels,
+        isPreparingSherpa,
         isRecording,
+        isSherpaReady,
         isStarting,
         isStopping,
         liveCommittedLines,
@@ -228,12 +262,18 @@ export default function MoonshineLiveScreen() {
         liveInterimText,
         lastRecording,
         mediumModelStatus,
+        moonshineStats,
         prepareModels,
+        sherpaError,
+        sherpaStats,
+        sherpaStatusMessage,
+        sherpaTurns,
         smallModelStatus,
+        speakerEventCounts,
         startSession,
         statusMessage,
         stopSession,
-    } = useMoonshineLiveSession({ strategy })
+    } = useMoonshineSherpaLiveDiarization({ strategy })
 
     useEffect(() => {
         setAgenticPageState({
@@ -260,16 +300,33 @@ export default function MoonshineLiveScreen() {
             liveInterimLineCount: liveInterimLines.length,
             liveInterimText: liveInterimText || null,
             finalTranscript: finalTranscript || null,
+            attributedCommittedLineCount: attributedCommittedLines.length,
+            attributedInterimLineCount: attributedInterimLines.length,
+            isPreparingSherpa,
+            isSherpaReady,
+            moonshineStats,
+            sherpaError: sherpaError || null,
+            sherpaFinalTurnCount: speakerEventCounts.turn_final ?? 0,
+            sherpaReady: isSherpaReady,
+            sherpaStats,
+            sherpaStatusMessage: sherpaStatusMessage || null,
+            sherpaTurnCount: sherpaTurns.length,
+            speakerEventCounts,
+            speakerResolvedCount: speakerEventCounts.speaker_resolved ?? 0,
             statusMessage: statusMessage || null,
-            error: error || null,
+            error: error || sherpaError || null,
             recordingFileUri: lastRecording?.fileUri ?? null,
             recordingDurationMs: lastRecording?.durationMs ?? null,
         })
     }, [
         error,
         finalTranscript,
+        attributedCommittedLines.length,
+        attributedInterimLines.length,
         isBusy,
         isPreparingModels,
+        isPreparingSherpa,
+        isSherpaReady,
         isRecording,
         isStarting,
         isStopping,
@@ -284,9 +341,19 @@ export default function MoonshineLiveScreen() {
         platformStatus.available,
         platformStatus.reason,
         smallModelStatus.downloaded,
+        moonshineStats,
+        sherpaError,
+        sherpaStats,
+        sherpaStatusMessage,
+        sherpaTurns.length,
+        speakerEventCounts,
         statusMessage,
         strategy,
     ])
+
+    if (!__DEV__) {
+        return <Redirect href="/(tabs)/more" />
+    }
 
     if (!platformStatus.available) {
         return (
@@ -314,19 +381,24 @@ export default function MoonshineLiveScreen() {
             contentContainerStyle={styles.container}
         >
             <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Moonshine Live Demo</Text>
+                <Text style={styles.sectionTitle}>Moonshine + Sherpa Live Demo</Text>
                 <Text style={styles.body}>
                     {strategy === 'medium-only'
-                        ? 'This page uses Moonshine medium directly for both live transcription and final text.'
-                        : 'This page uses Moonshine small directly for both live transcription and final text.'}
+                        ? 'This page uses Moonshine medium for live transcription and Sherpa ONNX for speaker turns.'
+                        : 'This page uses Moonshine small for live transcription and Sherpa ONNX for speaker turns.'}
                 </Text>
             </View>
 
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Strategy</Text>
                 <Text style={styles.body}>
-                    Use small-only to check whether the device can sustain live transcription comfortably. Use medium-only to see the quality and latency tradeoff of the heavier model.
+                    Use small-only for speed; use medium-only to compare quality and latency. Both modes feed the same 16 kHz chunks to Sherpa VAD + Speaker ID.
                 </Text>
+                <StatusRow
+                    label="Speaker turns • Sherpa Silero VAD + Speaker ID English"
+                    downloaded={isSherpaReady}
+                    localPath={isSherpaReady ? 'Native Sherpa session initialized at recording start.' : null}
+                />
                 <View style={styles.row}>
                     <Pressable
                         testID="moonshine-live-strategy-small-only"
@@ -494,18 +566,24 @@ export default function MoonshineLiveScreen() {
                 </View>
             </View>
 
-            {(statusMessage || error) && (
+            {(statusMessage || sherpaStatusMessage || error || sherpaError) && (
                 <View style={styles.statusCard}>
                     {statusMessage ? (
                         <Text style={styles.statusText}>{statusMessage}</Text>
                     ) : null}
+                    {sherpaStatusMessage ? (
+                        <Text style={styles.statusText}>{sherpaStatusMessage}</Text>
+                    ) : null}
                     {error ? (
-                        <Text style={styles.statusText}>Error: {error}</Text>
+                        <Text style={styles.statusText}>Moonshine error: {error}</Text>
+                    ) : null}
+                    {sherpaError ? (
+                        <Text style={styles.statusText}>Sherpa error: {sherpaError}</Text>
                     ) : null}
                 </View>
             )}
 
-            <View style={styles.section}>
+            <View style={styles.section} testID="moonshine-sherpa-metrics">
                 <Text style={styles.sectionTitle}>Metrics</Text>
                 <View style={styles.row}>
                     <View style={styles.metricCard}>
@@ -513,19 +591,27 @@ export default function MoonshineLiveScreen() {
                         <Text style={styles.metricValue}>{formatMs(liveInitMs)}</Text>
                     </View>
                     <View style={styles.metricCard}>
-                        <Text style={styles.metricLabel}>
-                            Finalization
-                        </Text>
+                        <Text style={styles.metricLabel}>Moonshine avg chunk</Text>
                         <Text style={styles.metricValue}>
-                            Live only
+                            {averageMs(moonshineStats.totalProcessingMs, moonshineStats.chunks)}
                         </Text>
                     </View>
                     <View style={styles.metricCard}>
-                        <Text style={styles.metricLabel}>
-                            Final transcript
-                        </Text>
+                        <Text style={styles.metricLabel}>Sherpa avg chunk</Text>
                         <Text style={styles.metricValue}>
-                            From live
+                            {averageMs(sherpaStats.totalProcessingMs, sherpaStats.chunks)}
+                        </Text>
+                    </View>
+                    <View style={styles.metricCard}>
+                        <Text style={styles.metricLabel}>Sherpa turns</Text>
+                        <Text style={styles.metricValue}>
+                            {sherpaTurns.length}
+                        </Text>
+                    </View>
+                    <View style={styles.metricCard}>
+                        <Text style={styles.metricLabel}>Sherpa queue max</Text>
+                        <Text style={styles.metricValue}>
+                            {sherpaStats.maxQueueDepth}
                         </Text>
                     </View>
                 </View>
@@ -548,19 +634,33 @@ export default function MoonshineLiveScreen() {
             </View>
 
             <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Speaker-Turn Hints</Text>
+                <Text style={styles.sectionTitle}>Sherpa Speaker Turns</Text>
                 <Text style={styles.body}>
-                    Moonshine speaker identification is still experimental. Treat these as tentative turn clusters, not trusted speaker identities or final diarization.
+                    Sherpa ONNX detects speech turns with Silero VAD and assigns speaker clusters with the English Speaker ID model. Attribution is tentative while recording.
+
                 </Text>
-                <Text style={styles.metricLabel}>Committed turn hints</Text>
+                <SpeakerTurnList turns={sherpaTurns} />
+                <Text style={styles.metricLabel} testID="moonshine-sherpa-speaker-events">
+                    Events: start {speakerEventCounts.speech_start ?? 0} • final{' '}
+                    {speakerEventCounts.turn_final ?? 0} • resolved{' '}
+                    {speakerEventCounts.speaker_resolved ?? 0}
+                </Text>
+            </View>
+
+            <View style={styles.section} testID="moonshine-sherpa-attributed-transcript">
+                <Text style={styles.sectionTitle}>Sherpa Attributed Transcript</Text>
+                <Text style={styles.body}>
+                    Moonshine transcript lines are aligned against the nearest Sherpa speaker turn by timestamp overlap.
+                </Text>
+                <Text style={styles.metricLabel}>Committed attributed lines</Text>
                 <SpeakerLineList
-                    emptyText="No committed speaker-turn hints yet."
-                    lines={liveCommittedLines}
+                    emptyText="No committed attributed transcript yet."
+                    lines={attributedCommittedLines}
                 />
-                <Text style={styles.metricLabel}>Current live turn hints</Text>
+                <Text style={styles.metricLabel}>Current attributed lines</Text>
                 <SpeakerLineList
-                    emptyText="No active speaker-turn hint yet."
-                    lines={liveInterimLines}
+                    emptyText="No active attributed transcript yet."
+                    lines={attributedInterimLines}
                 />
             </View>
 

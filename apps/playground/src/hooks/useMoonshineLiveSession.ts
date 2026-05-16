@@ -6,7 +6,7 @@ import type {
     AudioRecording,
     RecordingConfig,
 } from '@siteed/audio-studio'
-import { useSharedAudioRecorder } from '@siteed/audio-studio'
+import { AudioStudioModule, useSharedAudioRecorder } from '@siteed/audio-studio'
 import Moonshine, {
     type MoonshineTranscriptLine,
     type MoonshineTranscriber,
@@ -32,7 +32,23 @@ const STOP_SETTLE_MS = 500
 
 export type MoonshineLiveStrategy = 'small-only' | 'medium-only'
 
+export interface MoonshineLiveAudioSamplesEvent {
+    atMs: number
+    endSample: number
+    sampleRate: number
+    samples: number[]
+    startSample: number
+}
+
+export interface MoonshineLiveChunkProcessedEvent {
+    durationMs: number
+    queueDepth: number
+    sampleCount: number
+}
+
 interface UseMoonshineLiveSessionOptions {
+    onAudioSamples?: (event: MoonshineLiveAudioSamplesEvent) => void
+    onMoonshineChunkProcessed?: (event: MoonshineLiveChunkProcessedEvent) => void
     strategy?: MoonshineLiveStrategy
 }
 
@@ -148,6 +164,8 @@ export function useMoonshineLiveSession(
     const liveTranscriberRef = useRef<MoonshineTranscriber | null>(null)
     const mountedRef = useRef(true)
     const sessionOwnedRef = useRef(false)
+    const nextSampleRef = useRef(0)
+    const { onAudioSamples, onMoonshineChunkProcessed } = options
     const strategy = options.strategy ?? 'medium-only'
     const liveModelId =
         strategy === 'medium-only' ? MEDIUM_MODEL_ID : SMALL_MODEL_ID
@@ -158,6 +176,7 @@ export function useMoonshineLiveSession(
             logger.warn(`Moonshine listener error: ${message}`)
             setError(message)
         },
+        onChunkProcessed: onMoonshineChunkProcessed,
     })
 
     const liveCommittedRef = useRef(liveTranscription.committedText)
@@ -252,7 +271,18 @@ export function useMoonshineLiveSession(
             try {
                 // The recorder keeps the callback from the config used at start time,
                 // so this path must not depend on a render-time isListening snapshot.
-                liveTranscription.feedAudio(eventToSamples(event), SAMPLE_RATE)
+                const samples = eventToSamples(event)
+                const startSample = nextSampleRef.current
+                const endSample = startSample + samples.length
+                nextSampleRef.current = endSample
+                onAudioSamples?.({
+                    atMs: Date.now(),
+                    endSample,
+                    sampleRate: SAMPLE_RATE,
+                    samples,
+                    startSample,
+                })
+                liveTranscription.feedAudio(samples, SAMPLE_RATE)
             } catch (streamError) {
                 const message =
                     streamError instanceof Error
@@ -262,7 +292,7 @@ export function useMoonshineLiveSession(
                 setError(message)
             }
         },
-        [liveTranscription]
+        [liveTranscription, onAudioSamples]
     )
 
     const recordingConfig = useMemo<RecordingConfig>(
@@ -280,9 +310,22 @@ export function useMoonshineLiveSession(
         setFinalTranscript('')
         setLastRecording(null)
         setLiveInitMs(null)
+        nextSampleRef.current = 0
         setIsStarting(true)
 
         try {
+            const microphonePermission = await AudioStudioModule.requestPermissionsAsync()
+            if (microphonePermission.status !== 'granted') {
+                throw new Error('Recording permission has not been granted')
+            }
+            if (Platform.OS === 'android' && Number(Platform.Version) >= 33) {
+                const notificationPermission =
+                    await AudioStudioModule.requestNotificationPermissionsAsync()
+                if (notificationPermission.status !== 'granted') {
+                    throw new Error('Notification permission has not been granted')
+                }
+            }
+
             const missingRequiredModel =
                 strategy === 'medium-only'
                     ? !mediumModelStatus.downloaded
@@ -330,11 +373,7 @@ export function useMoonshineLiveSession(
                     strategy === 'medium-only'
                         ? 'Listening with Moonshine medium.'
                         : 'Listening with Moonshine small.'
-                const platformSuffix =
-                    Platform.OS === 'ios'
-                        ? ' Speaker-turn hints are currently disabled on iOS.'
-                        : ''
-                setStatusMessage(`${baseStatusMessage}${platformSuffix}`)
+                setStatusMessage(baseStatusMessage)
             }
         } catch (startError) {
             const message =
@@ -379,8 +418,8 @@ export function useMoonshineLiveSession(
         setStatusMessage('Stopping live Moonshine stream...')
 
         try {
-            const recording = await stopRecording()
             sessionOwnedRef.current = false
+            const recording = await stopRecording()
             setLastRecording(recording)
 
             await liveTranscriberRef.current?.stop().catch((stopError) => {
