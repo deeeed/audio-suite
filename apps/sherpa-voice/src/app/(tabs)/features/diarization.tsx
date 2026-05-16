@@ -16,6 +16,8 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import { AudioStudioModule, type AudioDataEvent } from '@siteed/audio-studio';
+import { LegacyEventEmitter } from 'expo-modules-core';
 import { InlineModelDownloader } from '../../../components/InlineModelDownloader';
 import {
   AudioPlayButton,
@@ -136,15 +138,143 @@ function SegmentList({ segments }: { segments: DiarizationSegment[] }) {
   );
 }
 
+type LiveMode = 'replay' | 'microphone';
+
+type LiveTurnPreview = {
+  turnId: string;
+  startMs: number;
+  endMs: number;
+  speakerId?: string;
+  text: string;
+};
+
+type LiveMicStats = {
+  chunks: number;
+  samples: number;
+  droppedChunks: number;
+  slowChunks: number;
+  maxQueueDepth: number;
+  maxChunkMs: number;
+  averageChunkMs: number;
+  peakAbs: number;
+  rms: number;
+};
+
 type LiveReplayResult = {
+  mode: LiveMode;
   audioDurationMs: number;
-  replayMs: number;
+  elapsedMs: number;
   realtimeFactor: number;
   keepsUp: boolean;
   summary: ReturnType<LiveAttributedTranscriptionSession['getSummary']>;
   eventCounts: Record<string, number>;
   segments: LiveTranscriptSegment[];
+  turns: LiveTurnPreview[];
+  stats?: LiveMicStats;
 };
+
+type RawAudioDataEvent = Partial<AudioDataEvent> & {
+  pcmFloat32?: Float32Array | number[];
+  buffer?: Float32Array | number[];
+  data?: Float32Array | number[] | { pcmFloat32?: Float32Array | number[] };
+};
+
+function extractFloat32Samples(eventData: RawAudioDataEvent): number[] | null {
+  const data = eventData.data;
+  const raw = eventData.pcmFloat32 ??
+    eventData.buffer ??
+    (data instanceof Float32Array || Array.isArray(data) ? data : data?.pcmFloat32);
+  if (raw instanceof Float32Array) return Array.from(raw);
+  if (Array.isArray(raw)) return raw.map((value) => Number(value));
+  return null;
+}
+
+function liveTurnsFromEvents(events: LiveAttributedTranscriptionEvent[]): LiveTurnPreview[] {
+  return events
+    .filter((event): event is Extract<LiveAttributedTranscriptionEvent, { type: 'turn_finalized' }> => event.type === 'turn_finalized')
+    .map((event) => ({
+      turnId: event.turnId,
+      startMs: event.startMs,
+      endMs: event.endMs,
+      speakerId: event.speakerId,
+      text: event.text,
+    }));
+}
+
+function shortSpeakerLabel(speakerId?: string): string {
+  return speakerId ?? 'speaker pending';
+}
+
+function LiveTranscriptPreview({ segments }: { segments: readonly LiveTranscriptSegment[] }) {
+  const theme = useTheme();
+  if (segments.length === 0) {
+    return (
+      <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+        No transcript segments yet. Use speech in the selected file or live microphone probe.
+      </Text>
+    );
+  }
+
+  return (
+    <View style={{ gap: 6 }}>
+      {segments.map((segment) => (
+        <View
+          key={segment.segmentId}
+          style={{
+            padding: 8,
+            borderRadius: theme.roundness,
+            backgroundColor: theme.colors.surfaceVariant,
+          }}
+        >
+          <Text variant="labelSmall" style={{ color: theme.colors.primary }}>
+            {shortSpeakerLabel(segment.speakerId)} · {formatTime(segment.startMs / 1000)} – {formatTime(segment.endMs / 1000)} · {segment.final ? 'final' : 'partial'}
+          </Text>
+          <Text variant="bodySmall" style={{ color: theme.colors.onSurface }}>
+            {segment.text || '(empty transcript)'}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function LiveTurnPreviewList({ turns }: { turns: readonly LiveTurnPreview[] }) {
+  const theme = useTheme();
+  if (turns.length === 0) {
+    return (
+      <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+        No finalized speaker turns yet.
+      </Text>
+    );
+  }
+
+  return (
+    <View style={{ gap: 6 }}>
+      {turns.slice(0, 8).map((turn) => (
+        <View key={turn.turnId} style={{ flexDirection: 'row', gap: 8 }}>
+          <Text variant="bodySmall" style={{ minWidth: 90, color: theme.colors.onSurfaceVariant, fontVariant: ['tabular-nums'] }}>
+            {formatTime(turn.startMs / 1000)} – {formatTime(turn.endMs / 1000)}
+          </Text>
+          <Text variant="bodySmall" style={{ flex: 1, color: theme.colors.onSurface }}>
+            {shortSpeakerLabel(turn.speakerId)} · {turn.text || '(no transcript text)'}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+    }),
+  ]).finally(() => {
+    if (timeout) clearTimeout(timeout);
+  });
+}
 
 function LiveValidationSection({
   selectedAudio,
@@ -196,6 +326,53 @@ function LiveValidationSection({
     );
   }
 
+  const ensureLiveModelsReady = async () => {
+    if (!selectedAsrModelId || !selectedVadModelId || !selectedEmbModelId) {
+      throw new Error('Download/select streaming ASR, VAD, and speaker-id models first');
+    }
+    const asrState = getModelState(selectedAsrModelId);
+    const vadState = getModelState(selectedVadModelId);
+    const speakerState = getModelState(selectedEmbModelId);
+    if (!asrState?.localPath) throw new Error(`ASR model ${selectedAsrModelId} is not downloaded`);
+    if (!vadState?.localPath) throw new Error(`VAD model ${selectedVadModelId} is not downloaded`);
+    if (!speakerState?.localPath) throw new Error(`Speaker model ${selectedEmbModelId} is not downloaded`);
+
+    await initializeLiveTranscriptionDiarizationModels({
+      asrModelId: selectedAsrModelId,
+      vadModelId: selectedVadModelId,
+      speakerIdModelId: selectedEmbModelId,
+      asrModelDir: await resolveModelDir(asrState.localPath),
+      vadModelDir: await resolveModelDir(vadState.localPath),
+      speakerModelDir: await resolveModelDir(speakerState.localPath),
+      numThreads: DEFAULT_NUM_THREADS,
+    });
+  };
+
+  const createLiveSession = (
+    sampleRate: number,
+    eventCounts: Record<string, number>,
+    eventPreview: LiveAttributedTranscriptionEvent[]
+  ) =>
+    new LiveAttributedTranscriptionSession({
+      sampleRate,
+      speakerTurns: new LiveSpeakerTurnSession({
+        sampleRate,
+        vad: VAD,
+        speakerId: SpeakerId,
+        minTurnDurationMs: 1000,
+        speechPadMs: 120,
+        speakerThreshold: 0.55,
+        maxRingBufferDurationMs: 90_000,
+      }),
+      asr: ASR,
+      onEvent: (event: LiveAttributedTranscriptionEvent) => {
+        eventCounts[event.type] = (eventCounts[event.type] ?? 0) + 1;
+        if (event.type === 'turn_finalized' || eventPreview.length < 120) {
+          eventPreview.push(event);
+        }
+      },
+    });
+
   const handleRunLiveReplay = async () => {
     const effectiveAudioPath = liveAudioPath.trim() || selectedAudio?.localUri;
     if (!effectiveAudioPath) {
@@ -214,13 +391,6 @@ function LiveValidationSection({
     let session: LiveAttributedTranscriptionSession | null = null;
 
     try {
-      const asrState = getModelState(selectedAsrModelId);
-      const vadState = getModelState(selectedVadModelId);
-      const speakerState = getModelState(selectedEmbModelId);
-      if (!asrState?.localPath) throw new Error(`ASR model ${selectedAsrModelId} is not downloaded`);
-      if (!vadState?.localPath) throw new Error(`VAD model ${selectedVadModelId} is not downloaded`);
-      if (!speakerState?.localPath) throw new Error(`Speaker model ${selectedEmbModelId} is not downloaded`);
-
       setStatus('Reading WAV fixture...');
       const wav = await readMonoPcm16Wav(effectiveAudioPath);
       if (wav.sampleRate !== DEFAULT_LIVE_SAMPLE_RATE) {
@@ -233,33 +403,11 @@ function LiveValidationSection({
       const chunkSize = Math.round((chunkDurationMs / 1000) * wav.sampleRate);
 
       setStatus('Initializing ASR, VAD, and Speaker ID...');
-      await initializeLiveTranscriptionDiarizationModels({
-        asrModelId: selectedAsrModelId,
-        vadModelId: selectedVadModelId,
-        speakerIdModelId: selectedEmbModelId,
-        asrModelDir: await resolveModelDir(asrState.localPath),
-        vadModelDir: await resolveModelDir(vadState.localPath),
-        speakerModelDir: await resolveModelDir(speakerState.localPath),
-        numThreads: DEFAULT_NUM_THREADS,
-      });
+      await ensureLiveModelsReady();
 
       const eventCounts: Record<string, number> = {};
-      session = new LiveAttributedTranscriptionSession({
-        sampleRate: wav.sampleRate,
-        speakerTurns: new LiveSpeakerTurnSession({
-          sampleRate: wav.sampleRate,
-          vad: VAD,
-          speakerId: SpeakerId,
-          minTurnDurationMs: 1000,
-          speechPadMs: 120,
-          speakerThreshold: 0.55,
-          maxRingBufferDurationMs: 90_000,
-        }),
-        asr: ASR,
-        onEvent: (event: LiveAttributedTranscriptionEvent) => {
-          eventCounts[event.type] = (eventCounts[event.type] ?? 0) + 1;
-        },
-      });
+      const eventPreview: LiveAttributedTranscriptionEvent[] = [];
+      session = createLiveSession(wav.sampleRate, eventCounts, eventPreview);
 
       setStatus(`Replaying ${(audioDurationMs / 1000).toFixed(1)}s as ${chunkDurationMs}ms chunks...`);
       const startedAt = Date.now();
@@ -278,19 +426,193 @@ function LiveValidationSection({
         throw new Error(`Live replay emitted ${eventCounts.error} pipeline error event(s)`);
       }
       setResult({
+        mode: 'replay',
         audioDurationMs,
-        replayMs,
+        elapsedMs: replayMs,
         realtimeFactor,
         keepsUp: realtimeFactor <= 1,
         summary: session.getSummary(),
         eventCounts,
-        segments: state.segments.slice(0, 20), // UI preview only; summary keeps full counts.
+        segments: state.segments.slice(0, 8), // UI preview only; summary keeps full counts.
+        turns: liveTurnsFromEvents(eventPreview),
       });
       setStatus(`Live replay complete: ${realtimeFactor.toFixed(2)}x realtime`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setStatus('');
     } finally {
+      session?.release();
+      await Promise.all([
+        ASR.release().catch(() => {}),
+        VAD.release().catch(() => {}),
+        SpeakerId.release().catch(() => {}),
+      ]);
+      setRunning(false);
+    }
+  };
+
+  const handleRunLiveMic = async () => {
+    if (!selectedAsrModelId || !selectedVadModelId || !selectedEmbModelId) {
+      setError('Download/select streaming ASR, VAD, and speaker-id models first');
+      return;
+    }
+
+    const durationMs = 10_000;
+    const chunkDurationMs = 100;
+    const eventCounts: Record<string, number> = {};
+    const eventPreview: LiveAttributedTranscriptionEvent[] = [];
+    const stats = {
+      chunks: 0,
+      samples: 0,
+      droppedChunks: 0,
+      slowChunks: 0,
+      maxQueueDepth: 0,
+      maxChunkMs: 0,
+      totalChunkMs: 0,
+      peakAbs: 0,
+      sumSquares: 0,
+    };
+    let session: LiveAttributedTranscriptionSession | null = null;
+    let subscription: { remove: () => void } | null = null;
+    let chain = Promise.resolve();
+    let queueDepth = 0;
+    let nextSample = 0;
+    let stopped = false;
+    let abortQueuedChunks = false;
+    let fatalError: Error | null = null;
+
+    setRunning(true);
+    setError(null);
+    setResult(null);
+    setStatus('Requesting microphone permission...');
+
+    try {
+      const permission = await AudioStudioModule.requestPermissionsAsync();
+      if (permission?.status !== 'granted') {
+        throw new Error('Microphone permission denied');
+      }
+
+      setStatus('Initializing ASR, VAD, and Speaker ID...');
+      await ensureLiveModelsReady();
+      session = createLiveSession(DEFAULT_LIVE_SAMPLE_RATE, eventCounts, eventPreview);
+
+      // AudioStudio uses the codebase-standard LegacyEventEmitter pattern; on
+      // new Expo modules this constructor returns the module event emitter.
+      const emitter = new LegacyEventEmitter(AudioStudioModule);
+      subscription = emitter.addListener('AudioData', (eventData: RawAudioDataEvent) => {
+        if (stopped || fatalError) {
+          stats.droppedChunks += 1;
+          return;
+        }
+        const samples = extractFloat32Samples(eventData);
+        if (!samples || samples.length === 0) {
+          stats.droppedChunks += 1;
+          return;
+        }
+        const startSample = nextSample;
+        nextSample += samples.length;
+        stats.samples += samples.length;
+        for (const sample of samples) {
+          const abs = Math.abs(sample);
+          stats.peakAbs = Math.max(stats.peakAbs, abs);
+          stats.sumSquares += sample * sample;
+        }
+        queueDepth += 1;
+        stats.maxQueueDepth = Math.max(stats.maxQueueDepth, queueDepth);
+        chain = chain
+          .then(async () => {
+            if (abortQueuedChunks) {
+              queueDepth -= 1;
+              return;
+            }
+            const chunkStartedAt = Date.now();
+            try {
+              await session?.acceptChunk({
+                samples,
+                sampleRate: DEFAULT_LIVE_SAMPLE_RATE,
+                startSample,
+              });
+              const elapsedMs = Date.now() - chunkStartedAt;
+              stats.chunks += 1;
+              stats.totalChunkMs += elapsedMs;
+              stats.maxChunkMs = Math.max(stats.maxChunkMs, elapsedMs);
+              if (elapsedMs > chunkDurationMs) {
+                stats.slowChunks += 1;
+              }
+            } finally {
+              queueDepth -= 1;
+            }
+          })
+          .catch((err: unknown) => {
+            fatalError ??= err instanceof Error ? err : new Error(String(err));
+            stopped = true;
+          });
+      });
+
+      setStatus(`Recording ${durationMs / 1000}s live microphone probe...`);
+      const startedAt = Date.now();
+      await AudioStudioModule.startRecording({
+        sampleRate: DEFAULT_LIVE_SAMPLE_RATE,
+        channels: 1,
+        encoding: 'pcm_16bit',
+        interval: chunkDurationMs,
+        // Request native buffers aligned with UI chunk cadence; native layers may
+        // clamp upward on devices that require a larger AudioRecord buffer.
+        bufferDurationSeconds: chunkDurationMs / 1000,
+        streamFormat: 'float32',
+        output: { primary: { enabled: false } },
+      });
+      await new Promise((resolve) => setTimeout(resolve, durationMs));
+      await AudioStudioModule.stopRecording().catch(() => null);
+      stopped = true;
+      subscription.remove();
+      subscription = null;
+      await withTimeout(chain, 5_000, 'Timed out while draining live mic chunks');
+      await session.flush();
+      if (fatalError) throw fatalError;
+      if ((eventCounts.error ?? 0) > 0) {
+        throw new Error(`Live microphone probe emitted ${eventCounts.error} pipeline error event(s)`);
+      }
+
+      const elapsedMs = Date.now() - startedAt;
+      const state = session.getState();
+      const audioDurationMs = (stats.samples / DEFAULT_LIVE_SAMPLE_RATE) * 1000;
+      const averageChunkMs = stats.chunks > 0 ? stats.totalChunkMs / stats.chunks : 0;
+      const rms = stats.samples > 0 ? Math.sqrt(stats.sumSquares / stats.samples) : 0;
+      const realtimeFactor = stats.totalChunkMs / Math.max(audioDurationMs, 1);
+      const keepsUp = stats.maxQueueDepth <= 2 && averageChunkMs < chunkDurationMs;
+
+      setResult({
+        mode: 'microphone',
+        audioDurationMs,
+        elapsedMs,
+        realtimeFactor,
+        keepsUp,
+        summary: session.getSummary(),
+        eventCounts,
+        segments: state.segments.slice(0, 8),
+        turns: liveTurnsFromEvents(eventPreview),
+        stats: {
+          chunks: stats.chunks,
+          samples: stats.samples,
+          droppedChunks: stats.droppedChunks,
+          slowChunks: stats.slowChunks,
+          maxQueueDepth: stats.maxQueueDepth,
+          maxChunkMs: stats.maxChunkMs,
+          averageChunkMs,
+          peakAbs: stats.peakAbs,
+          rms,
+        },
+      });
+      setStatus(`Live microphone probe complete: avg ${averageChunkMs.toFixed(1)}ms/chunk`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus('');
+    } finally {
+      stopped = true;
+      abortQueuedChunks = true;
+      subscription?.remove();
+      await AudioStudioModule.stopRecording().catch(() => null);
       session?.release();
       await Promise.all([
         ASR.release().catch(() => {}),
@@ -346,13 +668,24 @@ function LiveValidationSection({
         autoCapitalize="none"
         autoCorrect={false}
       />
-      <ThemedButton
-        testID="diar-live-replay-btn"
-        label={running ? 'Running live replay...' : 'Run Live Replay'}
-        variant="primary"
-        onPress={handleRunLiveReplay}
-        disabled={disabled || running || (!selectedAudio && liveAudioPath.trim().length === 0) || !selectedAsrModelId || !selectedVadModelId || !selectedEmbModelId}
-      />
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <ThemedButton
+          testID="diar-live-replay-btn"
+          label={running ? 'Running...' : 'Run Live Replay'}
+          variant="primary"
+          onPress={handleRunLiveReplay}
+          disabled={disabled || running || (!selectedAudio && liveAudioPath.trim().length === 0) || !selectedAsrModelId || !selectedVadModelId || !selectedEmbModelId}
+          style={{ flex: 1 }}
+        />
+        <ThemedButton
+          testID="diar-live-mic-btn"
+          label="Record 10s Mic"
+          variant="secondary"
+          onPress={handleRunLiveMic}
+          disabled={disabled || running || !selectedAsrModelId || !selectedVadModelId || !selectedEmbModelId}
+          style={{ flex: 1 }}
+        />
+      </View>
       {status ? (
         <Text variant="bodySmall" style={{ marginTop: 8, color: theme.colors.primary }}>{status}</Text>
       ) : null}
@@ -360,21 +693,38 @@ function LiveValidationSection({
         <Text variant="bodySmall" style={{ marginTop: 8, color: theme.colors.error }}>{error}</Text>
       ) : null}
       {result ? (
-        <View style={{ marginTop: 12, gap: 6 }}>
-          <Text variant="bodyMedium" style={{ color: result.keepsUp ? theme.colors.primary : theme.colors.error }}>
-            {result.keepsUp ? 'Keeps up' : 'Too slow'}: {result.realtimeFactor.toFixed(2)}x realtime ({result.replayMs}ms for {(result.audioDurationMs / 1000).toFixed(1)}s audio)
+        <View testID="diar-live-result" style={{ marginTop: 12, gap: 8 }}>
+          <Text variant="labelMedium" style={{ color: theme.colors.onSurface }}>
+            {result.mode === 'replay' ? 'Replay result' : 'Live microphone result'}
           </Text>
+          {result.mode === 'microphone' && result.stats ? (
+            <Text variant="bodyMedium" style={{ color: result.keepsUp ? theme.colors.primary : theme.colors.error }}>
+              {result.keepsUp ? 'Keeps up' : 'Too slow'}: avg {result.stats.averageChunkMs.toFixed(1)}ms/chunk, queue {result.stats.maxQueueDepth}, drops {result.stats.droppedChunks}
+            </Text>
+          ) : (
+            <Text variant="bodyMedium" style={{ color: result.keepsUp ? theme.colors.primary : theme.colors.error }}>
+              {result.keepsUp ? 'Keeps up' : 'Too slow'}: {result.realtimeFactor.toFixed(2)}x realtime ({(result.elapsedMs / 1000).toFixed(1)}s for {(result.audioDurationMs / 1000).toFixed(1)}s audio)
+            </Text>
+          )}
           <Text variant="bodySmall" style={{ color: theme.colors.onSurface }}>
             Segments: {result.summary.segmentCount} · Final: {result.summary.finalSegmentCount} · Speaker-attributed: {result.summary.speakerAttributedSegmentCount}
           </Text>
+          {result.stats ? (
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              Mic: chunks={result.stats.chunks}, avg={result.stats.averageChunkMs.toFixed(1)}ms, max={result.stats.maxChunkMs}ms, queue={result.stats.maxQueueDepth}, drops={result.stats.droppedChunks}, peak={result.stats.peakAbs.toFixed(3)}, rms={result.stats.rms.toFixed(4)}
+            </Text>
+          ) : null}
           <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
             Events: {Object.entries(result.eventCounts).map(([key, value]) => `${key}=${value}`).join(', ')}
           </Text>
-          {result.segments.slice(0, 5).map((segment) => (
-            <Text key={segment.segmentId} variant="bodySmall" style={{ color: theme.colors.onSurface }}>
-              {segment.speakerId ?? 'speaker_pending'} · {segment.text || '(empty)'}
-            </Text>
-          ))}
+          <Text variant="labelSmall" style={{ color: theme.colors.onSurface }}>
+            Speaker turns
+          </Text>
+          <LiveTurnPreviewList turns={result.turns} />
+          <Text variant="labelSmall" style={{ color: theme.colors.onSurface }}>
+            Transcript preview
+          </Text>
+          <LiveTranscriptPreview segments={result.segments} />
         </View>
       ) : null}
     </Section>

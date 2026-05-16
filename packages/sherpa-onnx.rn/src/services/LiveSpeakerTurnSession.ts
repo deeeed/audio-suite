@@ -36,6 +36,9 @@ function normalizeEmbedding(embedding: number[]): number[] {
     embedding.reduce((sum, value) => sum + value * value, 0)
   );
   if (magnitude === 0) {
+    // Keep a zero-vector embedding inert instead of inventing a direction.
+    // It will never be a confident centroid match, and a maxSpeakers fallback
+    // can still assign the turn to the nearest known speaker when requested.
     return embedding.map(() => 0);
   }
   return embedding.map((value) => value / magnitude);
@@ -363,8 +366,9 @@ export class LiveSpeakerTurnSession {
     if (this.config.speakerId.resetStream) {
       try {
         const reset = await this.config.speakerId.resetStream();
-        recoverable = reset.success;
-        if (!reset.success && reset.error) {
+        if (reset.success) {
+          recoverable = true;
+        } else if (reset.error) {
           composedError = `${composedError}; speaker stream reset failed: ${reset.error}`;
         }
       } catch (resetError) {
