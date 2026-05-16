@@ -232,7 +232,16 @@ elif [ "$PLATFORM" = "android" ]; then
   fi
 
   if [ "$USE_PHYSICAL" = true ]; then
-    SERIAL=$(adb devices 2>/dev/null | grep -E '^\S+\s+device$' | grep -v '^emulator-' | grep -v ':[0-9]*\s' | head -1 | awk '{print $1}')
+    SERIAL="${ADB_SERIAL:-${ANDROID_SERIAL:-}}"
+    if [ -n "$SERIAL" ]; then
+      if ! adb devices 2>/dev/null | awk '$2 == "device" { print $1 }' | grep -qx "$SERIAL"; then
+        fail "Requested physical Android device ${SERIAL} not found"
+        adb devices || true
+        exit 1
+      fi
+    else
+      SERIAL=$(adb devices 2>/dev/null | grep -E '^\S+\s+device$' | grep -v '^emulator-' | grep -v ':[0-9]*\s' | head -1 | awk '{print $1}')
+    fi
     if [ -z "$SERIAL" ]; then
       info "No physical Android device found — falling back to emulator"
       USE_PHYSICAL=false
@@ -436,19 +445,35 @@ fi
 DEV_CLIENT_URL="${DEV_CLIENT_SCHEME}://expo-development-client/?url=${ENCODED_URL}"
 
 if [ "$PLATFORM" = "ios" ] && [ "${IOS_DEVICE_MODE:-simulator}" = "physical" ]; then
+  IOS_PHYSICAL_LAUNCH_LOG=".agent/ios-physical-launch-$(date -u +%Y%m%dT%H%M%SZ).log"
+  mkdir -p .agent
+  set +e
   xcrun devicectl device process launch \
     --timeout 30 \
     --device "${IOS_DEVICE_UDID}" \
     --terminate-existing \
     --payload-url "${DEV_CLIENT_URL}" \
-    "${BUNDLE_ID_IOS}" 2>/dev/null || true
+    "${BUNDLE_ID_IOS}" >"${IOS_PHYSICAL_LAUNCH_LOG}" 2>&1
+  IOS_PHYSICAL_LAUNCH_STATUS=$?
+  set -e
 
   sleep 5
-  xcrun devicectl device process launch \
-    --timeout 30 \
-    --device "${IOS_DEVICE_UDID}" \
-    --payload-url "${DEV_CLIENT_URL}" \
-    "${BUNDLE_ID_IOS}" 2>/dev/null || true
+  if [ "$IOS_PHYSICAL_LAUNCH_STATUS" -ne 0 ]; then
+    set +e
+    xcrun devicectl device process launch \
+      --timeout 30 \
+      --device "${IOS_DEVICE_UDID}" \
+      --payload-url "${DEV_CLIENT_URL}" \
+      "${BUNDLE_ID_IOS}" >>"${IOS_PHYSICAL_LAUNCH_LOG}" 2>&1
+    IOS_PHYSICAL_LAUNCH_STATUS=$?
+    set -e
+  fi
+
+  if [ "$IOS_PHYSICAL_LAUNCH_STATUS" -ne 0 ] && [ "${AGENTIC_STRICT_IOS_PHYSICAL_LAUNCH:-false}" = "true" ]; then
+    fail "Physical iOS launch failed; full log: ${APP_ROOT}/${IOS_PHYSICAL_LAUNCH_LOG}"
+    tail -40 "${IOS_PHYSICAL_LAUNCH_LOG}" || true
+    exit "$IOS_PHYSICAL_LAUNCH_STATUS"
+  fi
   pass "App launched on physical device ${IOS_DEVICE_UDID} → ${METRO_HOST}:${PORT}"
 
 elif [ "$PLATFORM" = "ios" ]; then

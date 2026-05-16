@@ -84,6 +84,9 @@ module.exports = function withMetroPortIOS(config, { port = 7365 } = {}) {
     #else
     RCTBundleURLProvider.sharedSettings().jsLocation = "${lanIP}:${port}"
     #endif
+    // Allow devicectl/agentic physical-device validation to honor LAN
+    // initialUrl launches before Expo Dev Launcher has shown its UI.
+    UserDefaults.standard.set(true, forKey: "expo.devlauncher.hasGrantedNetworkPermission")
     #endif
 `;
         contents =

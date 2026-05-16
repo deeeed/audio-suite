@@ -11,6 +11,7 @@ import type {
   RemoveSpeakerResult,
   SpeakerEmbeddingResult,
   SpeakerIdFileProcessResult,
+  SpeakerIdFileWindowProcessResult,
   SpeakerIdInitResult,
   SpeakerIdModelConfig,
   SpeakerIdProcessResult,
@@ -304,6 +305,87 @@ export function SpeakerIdMixin<TBase extends Constructor>(Base: TBase) {
           embeddingDim: 0,
           sampleRate: 0,
           samples: 0,
+          error: (error as Error).message,
+        };
+      }
+    }
+
+    async processSpeakerIdFileWindow({
+      filePath,
+      startTimeMs,
+      durationMs,
+    }: {
+      filePath: string;
+      startTimeMs: number;
+      durationMs: number;
+    }): Promise<SpeakerIdFileWindowProcessResult> {
+      if (!this.speakerExtractor) {
+        return {
+          success: false,
+          durationMs: 0,
+          embedding: [],
+          embeddingDim: 0,
+          sampleRate: 0,
+          samples: 0,
+          startTimeMs,
+          windowDurationMs: durationMs,
+          error: 'Speaker ID not initialized',
+        };
+      }
+      try {
+        const startMs = performance.now();
+        const decoded = await fetchAndDecodeAudio(filePath);
+        const startSample = Math.max(
+          0,
+          Math.floor((startTimeMs / 1000) * decoded.sampleRate)
+        );
+        const endSample = Math.min(
+          decoded.samples.length,
+          Math.ceil(((startTimeMs + durationMs) / 1000) * decoded.sampleRate)
+        );
+        const samples = decoded.samples.slice(startSample, endSample);
+
+        const stream = this.speakerExtractor.createStream();
+        this.speakerExtractor.acceptWaveform(stream, decoded.sampleRate, samples);
+        this.speakerExtractor.inputFinished(stream);
+
+        if (!this.speakerExtractor.isReady(stream)) {
+          this.speakerExtractor.destroyStream(stream);
+          return {
+            success: false,
+            durationMs: 0,
+            embedding: [],
+            embeddingDim: 0,
+            sampleRate: decoded.sampleRate,
+            samples: samples.length,
+            startTimeMs,
+            windowDurationMs: durationMs,
+            error: 'Not enough audio for embedding',
+          };
+        }
+
+        const embedding = this.speakerExtractor.computeEmbedding(stream);
+        this.speakerExtractor.destroyStream(stream);
+        return {
+          success: true,
+          durationMs: performance.now() - startMs,
+          embedding: Array.from(embedding),
+          embeddingDim: embedding.length,
+          sampleRate: decoded.sampleRate,
+          samples: samples.length,
+          startTimeMs,
+          windowDurationMs: durationMs,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          durationMs: 0,
+          embedding: [],
+          embeddingDim: 0,
+          sampleRate: 0,
+          samples: 0,
+          startTimeMs,
+          windowDurationMs: durationMs,
           error: (error as Error).message,
         };
       }

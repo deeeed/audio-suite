@@ -9,7 +9,7 @@ import com.facebook.react.turbomodule.core.interfaces.TurboModule
 class SherpaOnnxTurboModuleImpl(
     private val reactContext: ReactApplicationContext
 ) : SherpaOnnxTurboModule {
-    
+
     private val implementation = SherpaOnnxImpl(reactContext)
 
     override fun initialize() {
@@ -112,6 +112,10 @@ class SherpaOnnxTurboModuleImpl(
         implementation.processSpeakerIdFile(filePath, promise)
     }
 
+    override fun processSpeakerIdFileWindow(filePath: String, startTimeMs: Double, durationMs: Double, promise: Promise) {
+        implementation.processSpeakerIdFileWindow(filePath, startTimeMs, durationMs, promise)
+    }
+
     override fun releaseSpeakerId(promise: Promise) {
         implementation.releaseSpeakerId(promise)
     }
@@ -122,6 +126,10 @@ class SherpaOnnxTurboModuleImpl(
 
     override fun processDiarizationFile(filePath: String, numClusters: Int, threshold: Float, promise: Promise) {
         implementation.processDiarizationFile(filePath, numClusters, threshold, promise)
+    }
+
+    override fun processDiarizationFileWindow(filePath: String, startTimeMs: Double, durationMs: Double, numClusters: Int, threshold: Float, promise: Promise) {
+        implementation.processDiarizationFileWindow(filePath, startTimeMs, durationMs, numClusters, threshold, promise)
     }
 
     override fun releaseDiarization(promise: Promise) {
@@ -155,8 +163,8 @@ class SherpaOnnxTurboModuleImpl(
     override fun getArchitectureInfo(promise: Promise) {
         implementation.getArchitectureInfo(promise)
     }
-    
+
     override fun getSystemInfo(promise: Promise) {
         implementation.getSystemInfo(promise)
     }
-} 
+}

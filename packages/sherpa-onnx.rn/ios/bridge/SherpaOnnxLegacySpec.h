@@ -129,6 +129,12 @@
                    resolver:(RCTPromiseResolveBlock)resolve
                    rejecter:(RCTPromiseRejectBlock)reject;
 
+- (void)processSpeakerIdFileWindow:(NSString *)filePath
+                        startTimeMs:(double)startTimeMs
+                         durationMs:(double)durationMs
+                           resolver:(RCTPromiseResolveBlock)resolve
+                           rejecter:(RCTPromiseRejectBlock)reject;
+
 - (void)releaseSpeakerId:(RCTPromiseResolveBlock)resolve
                rejecter:(RCTPromiseRejectBlock)reject;
 

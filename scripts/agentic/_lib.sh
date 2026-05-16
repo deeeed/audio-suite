@@ -52,11 +52,19 @@ else
 fi
 
 # Expo dev client deep-link schemes are not the same on every platform.
-# Android reliably uses the Expo slug-based exp+<slug> scheme from Expo's
-# generated manifest, while iOS also registers the variant-specific
-# exp+<scheme> alias via withVariantExpoScheme.
-DEV_CLIENT_SCHEME_ANDROID="exp+${AGENTIC_SCHEME}"
-DEV_CLIENT_SCHEME_IOS="exp+${SCHEME}"
+# Most Android apps use Expo's slug-based exp+<slug> scheme. Some variant-aware
+# apps also register only exp+<scheme>-<variant>; allow app configs to opt in
+# without changing the default behavior for older apps.
+if [ "${AGENTIC_ANDROID_DEV_CLIENT_SCHEME_MODE:-slug}" = "variant" ]; then
+  DEV_CLIENT_SCHEME_ANDROID="exp+${SCHEME}"
+else
+  DEV_CLIENT_SCHEME_ANDROID="exp+${AGENTIC_SCHEME}"
+fi
+if [ "${AGENTIC_IOS_DEV_CLIENT_SCHEME_MODE:-variant}" = "slug" ]; then
+  DEV_CLIENT_SCHEME_IOS="exp+${AGENTIC_SCHEME}"
+else
+  DEV_CLIENT_SCHEME_IOS="exp+${SCHEME}"
+fi
 
 # Default bundle ID (for scripts that use a single BUNDLE_ID)
 BUNDLE_ID="${BUNDLE_ID_IOS}"

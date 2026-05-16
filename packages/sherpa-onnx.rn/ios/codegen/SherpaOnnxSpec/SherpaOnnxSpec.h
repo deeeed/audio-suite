@@ -181,6 +181,7 @@ namespace JS {
   namespace NativeSherpaOnnxSpec {
     struct SpecInitDiarizationConfig {
       NSString *segmentationModelDir() const;
+      NSString *segmentationModelFile() const;
       NSString *embeddingModelFile() const;
       std::optional<double> numThreads() const;
       std::optional<bool> debug() const;
@@ -413,6 +414,11 @@ namespace JS {
 - (void)processSpeakerIdFile:(NSString *)filePath
                      resolve:(RCTPromiseResolveBlock)resolve
                       reject:(RCTPromiseRejectBlock)reject;
+- (void)processSpeakerIdFileWindow:(NSString *)filePath
+                       startTimeMs:(double)startTimeMs
+                        durationMs:(double)durationMs
+                           resolve:(RCTPromiseResolveBlock)resolve
+                            reject:(RCTPromiseRejectBlock)reject;
 - (void)releaseSpeakerId:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject;
 - (void)initDiarization:(JS::NativeSherpaOnnxSpec::SpecInitDiarizationConfig &)config
@@ -423,6 +429,13 @@ namespace JS {
                      threshold:(double)threshold
                        resolve:(RCTPromiseResolveBlock)resolve
                         reject:(RCTPromiseRejectBlock)reject;
+- (void)processDiarizationFileWindow:(NSString *)filePath
+                         startTimeMs:(double)startTimeMs
+                          durationMs:(double)durationMs
+                         numClusters:(double)numClusters
+                           threshold:(double)threshold
+                             resolve:(RCTPromiseResolveBlock)resolve
+                              reject:(RCTPromiseRejectBlock)reject;
 - (void)releaseDiarization:(RCTPromiseResolveBlock)resolve
                     reject:(RCTPromiseRejectBlock)reject;
 - (void)initKws:(JS::NativeSherpaOnnxSpec::SpecInitKwsConfig &)config
@@ -892,6 +905,11 @@ inline NSString *JS::NativeSherpaOnnxSpec::SpecInitDiarizationConfig::segmentati
 {
   id const p = _v[@"segmentationModelDir"];
   return RCTBridgingToString(p);
+}
+inline NSString *JS::NativeSherpaOnnxSpec::SpecInitDiarizationConfig::segmentationModelFile() const
+{
+  id const p = _v[@"segmentationModelFile"];
+  return RCTBridgingToOptionalString(p);
 }
 inline NSString *JS::NativeSherpaOnnxSpec::SpecInitDiarizationConfig::embeddingModelFile() const
 {

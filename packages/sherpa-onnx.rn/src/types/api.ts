@@ -21,6 +21,7 @@ import type {
   IdentifySpeakerResult,
   VerifySpeakerResult,
   SpeakerIdFileProcessResult,
+  SpeakerIdFileWindowProcessResult,
   KWSModelConfig,
   KWSInitResult,
   KWSAcceptWaveformResult,
@@ -125,6 +126,21 @@ export interface DiarizationFileInput {
   numClusters: number;
   threshold: number;
 }
+
+export interface SpeakerIdFileWindowInput {
+  filePath: string;
+  startTimeMs: number;
+  durationMs: number;
+}
+/**
+ * Windowed diarization input. iOS currently requires pre-resampled audio
+ * matching the diarization model sample rate (16 kHz for the validated pyannote
+ * profile). Android resamples during extraction.
+ */
+export interface DiarizationFileWindowInput extends DiarizationFileInput {
+  startTimeMs: number;
+  durationMs: number;
+}
 export interface RegisterSpeakerInput {
   name: string;
   embedding: number[];
@@ -195,11 +211,13 @@ export interface ApiInterface {
   identifySpeaker(input: IdentifySpeakerInput): Promise<IdentifySpeakerResult>;
   verifySpeaker(input: VerifySpeakerInput): Promise<VerifySpeakerResult>;
   processSpeakerIdFile(filePath: string): Promise<SpeakerIdFileProcessResult>;
+  processSpeakerIdFileWindow(input: SpeakerIdFileWindowInput): Promise<SpeakerIdFileWindowProcessResult>;
   releaseSpeakerId(): Promise<{ released: boolean }>;
 
   // Diarization methods
   initDiarization(config: DiarizationModelConfig): Promise<DiarizationInitResult>;
   processDiarizationFile(input: DiarizationFileInput): Promise<DiarizationResult>;
+  processDiarizationFileWindow(input: DiarizationFileWindowInput): Promise<DiarizationResult>;
   releaseDiarization(): Promise<{ released: boolean }>;
 
   // KWS methods

@@ -784,6 +784,12 @@ export interface SpeakerIdModelConfig {
   modelFile?: string;
 
   /**
+   * Expected sample rate for speaker embedding audio.
+   * Default: 16000
+   */
+  sampleRate?: number;
+
+  /**
    * Number of threads for processing
    * Default: 1
    */
@@ -1029,11 +1035,25 @@ export interface SpeakerIdFileProcessResult {
   error?: string;
 }
 
+export interface SpeakerIdFileWindowProcessResult extends SpeakerIdFileProcessResult {
+  /**
+   * Start offset of the processed window in milliseconds.
+   */
+  startTimeMs: number;
+
+  /**
+   * Requested processed window duration in milliseconds.
+   */
+  windowDurationMs: number;
+}
+
 // ─── Speaker Diarization ────────────────────────────────────────────────────
 
 export interface DiarizationModelConfig {
   /** Directory containing the segmentation model (pyannote) */
   segmentationModelDir: string;
+  /** Optional segmentation ONNX filename inside segmentationModelDir, e.g. model.onnx or model.int8.onnx. Defaults to model.onnx for quality. */
+  segmentationModelFile?: string;
   /** Absolute path to the embedding model .onnx file */
   embeddingModelFile: string;
   numThreads?: number;
@@ -1071,6 +1091,10 @@ export interface DiarizationResult {
   segments: DiarizationSegment[];
   numSpeakers: number;
   durationMs: number;
+  startTimeMs?: number;
+  windowDurationMs?: number;
+  sampleRate?: number;
+  samples?: number;
   error?: string;
 }
 
@@ -1317,12 +1341,24 @@ export interface NativeSherpaOnnxInterface {
     threshold: number
   ): Promise<VerifySpeakerResult>;
   processSpeakerIdFile(filePath: string): Promise<SpeakerIdFileProcessResult>;
+  processSpeakerIdFileWindow(
+    filePath: string,
+    startTimeMs: number,
+    durationMs: number
+  ): Promise<SpeakerIdFileWindowProcessResult>;
   releaseSpeakerId(): Promise<{ released: boolean }>;
 
   // Diarization methods
   initDiarization(config: DiarizationModelConfig): Promise<DiarizationInitResult>;
   processDiarizationFile(
     filePath: string,
+    numClusters: number,
+    threshold: number
+  ): Promise<DiarizationResult>;
+  processDiarizationFileWindow(
+    filePath: string,
+    startTimeMs: number,
+    durationMs: number,
     numClusters: number,
     threshold: number
   ): Promise<DiarizationResult>;

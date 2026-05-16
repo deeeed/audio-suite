@@ -1,5 +1,5 @@
 import type { DiarizationSegment } from '@siteed/sherpa-onnx.rn';
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -122,6 +122,7 @@ function SegmentList({ segments }: { segments: DiarizationSegment[] }) {
 
 export default function DiarizationScreen() {
   const theme = useTheme();
+  const [customAudioPath, setCustomAudioPath] = useState('');
   const {
     initialized,
     loading,
@@ -248,7 +249,7 @@ export default function DiarizationScreen() {
           />
         )}
         {initialized && (
-          <ThemedButton label="Release" variant="secondary" onPress={handleRelease} compact />
+          <ThemedButton testID="diar-release-btn" label="Release" variant="secondary" onPress={handleRelease} compact />
         )}
       </View>
 
@@ -278,6 +279,15 @@ export default function DiarizationScreen() {
                   >
                     {item.name}
                   </Text>
+                  {item.description && (
+                    <Text
+                      variant="bodySmall"
+                      style={{ marginTop: 4, color: selectedAudio?.id === item.id ? theme.colors.onPrimary : theme.colors.onSurfaceVariant }}
+                    >
+                      {item.description}
+                      {item.expectedSpeakers ? ` Expected speakers: ${item.expectedSpeakers}.` : ''}
+                    </Text>
+                  )}
                 </TouchableOpacity>
               ))}
             </View>
@@ -295,6 +305,41 @@ export default function DiarizationScreen() {
                 />
               </View>
             )}
+
+            <View style={{ marginTop: 16, gap: 8 }}>
+              <Text variant="labelMedium" style={{ color: theme.colors.onSurface }}>
+                Custom validation file
+              </Text>
+              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                Use this for copied device files, such as the 5-minute WAV fixture generated from the long Opus recording.
+              </Text>
+              <TextInput
+                testID="diar-custom-audio-input"
+                style={{ padding: 8, borderWidth: 1, borderColor: theme.colors.outlineVariant, borderRadius: theme.roundness, color: theme.colors.onSurface }}
+                placeholder="file:///.../perps_controller_refactor_5m_16k_mono.wav"
+                placeholderTextColor={theme.colors.onSurfaceVariant}
+                value={customAudioPath}
+                onChangeText={setCustomAudioPath}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <ThemedButton
+                testID="diar-use-custom-audio-btn"
+                label="Use Custom File"
+                variant="secondary"
+                onPress={() => {
+                  const trimmedPath = customAudioPath.trim();
+                  if (!trimmedPath) return;
+                  handleSelectAudio({
+                    id: 'custom-validation-file',
+                    name: 'Custom validation file',
+                    description: trimmedPath,
+                    localUri: trimmedPath,
+                  });
+                }}
+                disabled={processing || customAudioPath.trim().length === 0}
+              />
+            </View>
           </Section>
 
           {/* Results */}

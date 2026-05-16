@@ -29,9 +29,11 @@ interface SherpaOnnxTurboModule : TurboModule {
     fun identifySpeaker(embedding: ReadableArray, threshold: Float, promise: Promise)
     fun verifySpeaker(name: String, embedding: ReadableArray, threshold: Float, promise: Promise)
     fun processSpeakerIdFile(filePath: String, promise: Promise)
+    fun processSpeakerIdFileWindow(filePath: String, startTimeMs: Double, durationMs: Double, promise: Promise)
     fun releaseSpeakerId(promise: Promise)
     fun initDiarization(config: ReadableMap, promise: Promise)
     fun processDiarizationFile(filePath: String, numClusters: Int, threshold: Float, promise: Promise)
+    fun processDiarizationFileWindow(filePath: String, startTimeMs: Double, durationMs: Double, numClusters: Int, threshold: Float, promise: Promise)
     fun releaseDiarization(promise: Promise)
     fun initDenoiser(config: ReadableMap, promise: Promise)
     fun denoiseFile(filePath: String, promise: Promise)
@@ -41,4 +43,4 @@ interface SherpaOnnxTurboModule : TurboModule {
     fun testOnnxIntegration(promise: Promise)
     fun getArchitectureInfo(promise: Promise)
     fun getSystemInfo(promise: Promise)
-} 
+}

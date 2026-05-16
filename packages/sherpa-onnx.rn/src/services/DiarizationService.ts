@@ -38,6 +38,9 @@ export class DiarizationService {
       const cleanedConfig = {
         ...config,
         segmentationModelDir: cleanFilePath(config.segmentationModelDir),
+        segmentationModelFile: config.segmentationModelFile
+          ? cleanFilePath(config.segmentationModelFile)
+          : undefined,
         embeddingModelFile: cleanFilePath(config.embeddingModelFile),
       };
 
@@ -73,6 +76,41 @@ export class DiarizationService {
       }
       return await this.api.processDiarizationFile({
         filePath: cleanFilePath(filePath),
+        numClusters,
+        threshold,
+      });
+    } catch (error) {
+      return {
+        success: false,
+        segments: [],
+        numSpeakers: 0,
+        durationMs: 0,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  public async processFileWindow(
+    filePath: string,
+    startTimeMs: number,
+    durationMs: number,
+    numClusters: number = -1,
+    threshold: number = 0.5
+  ): Promise<DiarizationResult> {
+    try {
+      if (!this.initialized) {
+        return {
+          success: false,
+          segments: [],
+          numSpeakers: 0,
+          durationMs: 0,
+          error: 'Diarization is not initialized',
+        };
+      }
+      return await this.api.processDiarizationFileWindow({
+        filePath: cleanFilePath(filePath),
+        startTimeMs,
+        durationMs,
         numClusters,
         threshold,
       });

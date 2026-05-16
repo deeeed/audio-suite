@@ -6,6 +6,8 @@ import type {
   AudioTaggingFileInput,
   AudioTaggingSamplesInput,
   DiarizationFileInput,
+  DiarizationFileWindowInput,
+  SpeakerIdFileWindowInput,
   RegisterSpeakerInput,
   IdentifySpeakerInput,
   VerifySpeakerInput,
@@ -24,6 +26,7 @@ import type {
   RemoveSpeakerResult,
   SpeakerEmbeddingResult,
   SpeakerIdFileProcessResult,
+  SpeakerIdFileWindowProcessResult,
   SpeakerIdInitResult,
   SpeakerIdModelConfig,
   SpeakerIdProcessResult,
@@ -259,6 +262,14 @@ const nativeAdapter: ApiInterface = {
     return NativeSherpaOnnx.processSpeakerIdFile(filePath);
   },
 
+  processSpeakerIdFileWindow({
+    filePath,
+    startTimeMs,
+    durationMs,
+  }: SpeakerIdFileWindowInput): Promise<SpeakerIdFileWindowProcessResult> {
+    return NativeSherpaOnnx.processSpeakerIdFileWindow(filePath, startTimeMs, durationMs);
+  },
+
   releaseSpeakerId(): Promise<{ released: boolean }> {
     return NativeSherpaOnnx.releaseSpeakerId();
   },
@@ -270,6 +281,22 @@ const nativeAdapter: ApiInterface = {
 
   processDiarizationFile({ filePath, numClusters, threshold }: DiarizationFileInput): Promise<DiarizationResult> {
     return NativeSherpaOnnx.processDiarizationFile(filePath, numClusters, threshold);
+  },
+
+  processDiarizationFileWindow({
+    filePath,
+    startTimeMs,
+    durationMs,
+    numClusters,
+    threshold,
+  }: DiarizationFileWindowInput): Promise<DiarizationResult> {
+    return NativeSherpaOnnx.processDiarizationFileWindow(
+      filePath,
+      startTimeMs,
+      durationMs,
+      numClusters,
+      threshold
+    );
   },
 
   releaseDiarization(): Promise<{ released: boolean }> {

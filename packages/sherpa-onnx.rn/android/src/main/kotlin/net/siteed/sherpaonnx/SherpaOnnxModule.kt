@@ -44,9 +44,12 @@ class SherpaOnnxModule(reactContext: ReactApplicationContext) :
     @ReactMethod fun identifySpeaker(embedding: ReadableArray, threshold: Float, promise: Promise) = implementation.identifySpeaker(embedding, threshold, promise)
     @ReactMethod fun verifySpeaker(name: String, embedding: ReadableArray, threshold: Float, promise: Promise) = implementation.verifySpeaker(name, embedding, threshold, promise)
     @ReactMethod fun processSpeakerIdFile(filePath: String, promise: Promise) = implementation.processSpeakerIdFile(filePath, promise)
+    @ReactMethod fun processSpeakerIdFileWindow(filePath: String, startTimeMs: Double, durationMs: Double, promise: Promise) =
+        implementation.processSpeakerIdFileWindow(filePath, startTimeMs, durationMs, promise)
     @ReactMethod fun releaseSpeakerId(promise: Promise) = implementation.releaseSpeakerId(promise)
     @ReactMethod fun initDiarization(config: ReadableMap, promise: Promise) = implementation.initDiarization(config, promise)
     @ReactMethod fun processDiarizationFile(filePath: String, numClusters: Int, threshold: Float, promise: Promise) = implementation.processDiarizationFile(filePath, numClusters, threshold, promise)
+    @ReactMethod fun processDiarizationFileWindow(filePath: String, startTimeMs: Double, durationMs: Double, numClusters: Int, threshold: Float, promise: Promise) = implementation.processDiarizationFileWindow(filePath, startTimeMs, durationMs, numClusters, threshold, promise)
     @ReactMethod fun releaseDiarization(promise: Promise) = implementation.releaseDiarization(promise)
     @ReactMethod fun initKws(config: ReadableMap, promise: Promise) = implementation.initKws(config, promise)
     @ReactMethod fun acceptKwsWaveform(sampleRate: Int, audioBuffer: ReadableArray, promise: Promise) = implementation.acceptKwsWaveform(sampleRate, audioBuffer, promise)

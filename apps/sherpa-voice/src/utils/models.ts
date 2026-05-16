@@ -372,13 +372,51 @@ export const AVAILABLE_MODELS: ModelMetadata[] = [
     language: 'multilingual',
   },
 
+  {
+    id: 'speaker-id-nemo-titanet-small',
+    name: 'Speaker ID (NeMo TitaNet Small)',
+    description:
+      'NVIDIA NeMo TitaNet speaker embedding model exported for Sherpa ONNX; useful for diarization quality comparison.',
+    type: 'speaker-id',
+    size: 40_257_283, // 38.4 MiB
+    url: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/nemo_en_titanet_small.onnx',
+    version: '1.0',
+    language: 'en',
+  },
+
+  {
+    id: 'speaker-id-3dspeaker-eres2net-en',
+    name: 'Speaker ID (English ERes2Net)',
+    description:
+      '3D-Speaker ERes2Net English speaker embedding model; best mobile-sized diarization candidate in local validation.',
+    type: 'speaker-id',
+    size: 26_459_605, // 25.2 MiB
+    url: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx',
+    version: '1.0',
+    language: 'en',
+    recommended: true,
+  },
+
+  {
+    id: 'speaker-id-nemo-titanet-large',
+    name: 'Speaker ID (NeMo TitaNet Large)',
+    description:
+      'Large NeMo TitaNet speaker embedding model; best quality in local validation but much larger than mobile candidates.',
+    type: 'speaker-id',
+    size: 101_440_803, // 96.7 MiB
+    url: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/nemo_en_titanet_large.onnx',
+    version: '1.0',
+    language: 'en',
+  },
+
   // Diarization Segmentation Models
   {
     id: 'pyannote-segmentation-3-0',
     name: 'Pyannote Segmentation 3.0',
-    description: 'Speaker segmentation model for offline diarization (int8 quantized, ~1.5 MB).',
+    description:
+      'Speaker segmentation model for offline diarization. Use full precision model.onnx by default for quality; model.int8.onnx is an explicit size/speed tradeoff.',
     type: 'diarization-segmentation',
-    size: 1_500_000,
+    size: 6_958_444,
     url: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2',
     version: '3.0',
     language: 'multilingual',

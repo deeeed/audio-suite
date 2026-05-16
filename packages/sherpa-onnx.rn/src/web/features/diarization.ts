@@ -1,7 +1,7 @@
 import { loadCombinedWasm, detectWasmBasePath } from '../wasmLoader';
 import { fetchAndDecodeAudio } from '../audioUtils';
 import type { OfflineSpeakerDiarizationInstance } from '../wasmTypes';
-import type { DiarizationFileInput } from '../../types/api';
+import type { DiarizationFileInput, DiarizationFileWindowInput } from '../../types/api';
 import { type Constructor, withDownloadProgress } from './mixinUtils';
 import { WasmWorkerManager } from '../workers/WasmWorkerManager';
 
@@ -9,6 +9,7 @@ export function DiarizationMixin<TBase extends Constructor>(Base: TBase) {
   return class extends Base {
     public diarization: OfflineSpeakerDiarizationInstance | null = null;
     public diarizationWorker: WasmWorkerManager | null = null;
+    private diarizationClustering = { numClusters: -1, threshold: 0.5 };
 
     async initDiarization(config: any): Promise<{
       success: boolean;
@@ -68,10 +69,14 @@ export function DiarizationMixin<TBase extends Constructor>(Base: TBase) {
           })
         );
 
+        this.diarizationClustering = {
+          numClusters: config?.numClusters ?? -1,
+          threshold: config?.threshold ?? 0.5,
+        };
         this.diarization =
           window.SherpaOnnx.SpeakerDiarization.createDiarization(loadedModel, {
-            numClusters: config?.numClusters ?? -1,
-            threshold: config?.threshold ?? 0.5,
+            numClusters: this.diarizationClustering.numClusters,
+            threshold: this.diarizationClustering.threshold,
             minDurationOn: config?.minDurationOn,
             minDurationOff: config?.minDurationOff,
             numThreads,
@@ -146,6 +151,7 @@ export function DiarizationMixin<TBase extends Constructor>(Base: TBase) {
           this.diarization!.setConfig({
             clustering: { numClusters, threshold },
           });
+          this.diarizationClustering = { numClusters, threshold };
         }
 
         const segments = this.diarization!.process(samples);
@@ -162,6 +168,94 @@ export function DiarizationMixin<TBase extends Constructor>(Base: TBase) {
         };
       } catch (error) {
         console.error('[Diarization] processDiarizationFile failed:', error);
+        return {
+          success: false,
+          segments: [],
+          numSpeakers: 0,
+          durationMs: 0,
+          error: (error as Error).message,
+        };
+      }
+    }
+
+    async processDiarizationFileWindow({
+      filePath,
+      startTimeMs,
+      durationMs,
+      numClusters,
+      threshold,
+    }: DiarizationFileWindowInput): Promise<{
+      success: boolean;
+      segments: Array<{ start: number; end: number; speaker: number }>;
+      numSpeakers: number;
+      durationMs: number;
+      startTimeMs?: number;
+      windowDurationMs?: number;
+      sampleRate?: number;
+      samples?: number;
+      error?: string;
+    }> {
+      if (!this.diarization && !this.diarizationWorker) {
+        return {
+          success: false,
+          segments: [],
+          numSpeakers: 0,
+          durationMs: 0,
+          error: 'Diarization not initialized',
+        };
+      }
+      try {
+        const startedAt = performance.now();
+        const decoded = await fetchAndDecodeAudio(filePath);
+        const sampleRate = this.diarization?.sampleRate ?? 16000;
+        const startSample = Math.max(0, Math.floor((startTimeMs / 1000) * sampleRate));
+        const sampleCount = Math.max(0, Math.floor((durationMs / 1000) * sampleRate));
+        const samples = decoded.samples.subarray(startSample, startSample + sampleCount);
+        const offsetSeconds = startTimeMs / 1000;
+
+        let segments: Array<{ start: number; end: number; speaker: number }>;
+        if (this.diarizationWorker) {
+          const result = await this.diarizationWorker.process(
+            { samples, numClusters, threshold },
+            [samples.buffer]
+          );
+          segments = result.segments;
+        } else {
+          const previousClustering = this.diarizationClustering;
+          const shouldOverrideClustering = numClusters !== -1 || threshold !== 0.5;
+          if (shouldOverrideClustering) {
+            this.diarization!.setConfig({
+              clustering: { numClusters, threshold },
+            });
+          }
+          try {
+            segments = this.diarization!.process(samples);
+          } finally {
+            if (shouldOverrideClustering) {
+              this.diarization!.setConfig({ clustering: previousClustering });
+            }
+          }
+        }
+
+        const offsetSegments = segments.map((segment) => ({
+          ...segment,
+          start: segment.start + offsetSeconds,
+          end: segment.end + offsetSeconds,
+        }));
+        const speakerSet = new Set(offsetSegments.map((s) => s.speaker));
+
+        return {
+          success: true,
+          segments: offsetSegments,
+          numSpeakers: speakerSet.size,
+          durationMs: performance.now() - startedAt,
+          startTimeMs,
+          windowDurationMs: durationMs,
+          sampleRate,
+          samples: samples.length,
+        };
+      } catch (error) {
+        console.error('[Diarization] processDiarizationFileWindow failed:', error);
         return {
           success: false,
           segments: [],

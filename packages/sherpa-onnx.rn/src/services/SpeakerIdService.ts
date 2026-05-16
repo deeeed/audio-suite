@@ -10,6 +10,7 @@ import type {
   IdentifySpeakerResult,
   VerifySpeakerResult,
   SpeakerIdFileProcessResult,
+  SpeakerIdFileWindowProcessResult,
   ValidateResult,
 } from '../types/interfaces';
 import { cleanFilePath } from '../utils/fileUtils';
@@ -306,6 +307,46 @@ export class SpeakerIdService {
         embeddingDim: 0,
         sampleRate: 0,
         samples: 0,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  public async processFileWindow(
+    filePath: string,
+    startTimeMs: number,
+    durationMs: number
+  ): Promise<SpeakerIdFileWindowProcessResult> {
+    try {
+      if (!this.initialized) {
+        return {
+          success: false,
+          durationMs: 0,
+          embedding: [],
+          embeddingDim: 0,
+          sampleRate: 0,
+          samples: 0,
+          startTimeMs,
+          windowDurationMs: durationMs,
+          error: 'Speaker ID is not initialized',
+        };
+      }
+
+      return await this.api.processSpeakerIdFileWindow({
+        filePath: cleanFilePath(filePath),
+        startTimeMs,
+        durationMs,
+      });
+    } catch (error) {
+      return {
+        success: false,
+        durationMs: 0,
+        embedding: [],
+        embeddingDim: 0,
+        sampleRate: 0,
+        samples: 0,
+        startTimeMs,
+        windowDurationMs: durationMs,
         error: error instanceof Error ? error.message : String(error),
       };
     }
