@@ -250,6 +250,8 @@ export async function validateLongAudioStream(
     const sherpaSegmentDurationMs = options.sherpaSegmentDurationMs ?? 30_000
     const sherpaReleaseBetweenSegments =
         options.sherpaReleaseBetweenSegments ??
+        // Qwen3 has the highest retained native heap in this benchmark path;
+        // reset it between offline windows unless callers explicitly opt out.
         (mode === 'sherpa-offline-segments' &&
             options.sherpaAsrConfig?.modelType === 'qwen3')
     const startedAtMs = Date.now()
@@ -669,6 +671,9 @@ export async function validateLongAudioStream(
         }
         if (mode === 'sherpa-offline-segments' && sherpaAsrInitialized) {
             if (!result.cancelled) {
+                // Safety net for streams that finish without an isFinal chunk.
+                // Normal streamAudioData completion has already flushed from
+                // the final chunk, so this is usually a no-op.
                 await sherpaOfflineSession?.flush(true)
             }
             sherpaResult = { text: sherpaOfflineSession?.getState().transcript ?? '' }

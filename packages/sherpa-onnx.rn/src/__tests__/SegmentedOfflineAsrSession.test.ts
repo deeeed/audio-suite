@@ -162,6 +162,37 @@ describe('SegmentedOfflineAsrSession', () => {
           type: 'error',
           error: 'recognizer failed',
           segmentIndex: 1,
+          phase: 'recognize',
+        }),
+      ])
+    );
+  });
+
+  it('emits a distinct cleanup error when afterSegment rejects', async () => {
+    const events: SegmentedOfflineAsrEvent[] = [];
+    const asr = createAsrAdapter();
+    const session = new SegmentedOfflineAsrSession({
+      sampleRate: 16_000,
+      asr,
+      segmentDurationMs: 1_000,
+      afterSegment: async () => {
+        throw new Error('cleanup failed');
+      },
+      onEvent: (event) => events.push(event),
+    });
+
+    await expect(
+      session.acceptChunk({ samples: createSamples(1, 16_000) })
+    ).rejects.toThrow('cleanup failed');
+
+    expect(session.getState().segments).toHaveLength(1);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'error',
+          error: 'cleanup failed',
+          segmentIndex: 1,
+          phase: 'afterSegment',
         }),
       ])
     );
@@ -275,6 +306,11 @@ describe('SegmentedOfflineAsrSession', () => {
       processedMs: 0,
       segmentCount: 0,
     });
+    expect(session.getState().events.at(-1)).toMatchObject({
+      type: 'progress',
+      bufferedMs: 0,
+      processedMs: 0,
+    });
   });
 
   it('can reset after a completed run and accept a new replay', async () => {
@@ -301,5 +337,34 @@ describe('SegmentedOfflineAsrSession', () => {
     expect(session.getState().segments).toMatchObject([
       { segmentIndex: 1, text: 'segment 2' },
     ]);
+  });
+
+  it('does not mutate segment state when released while recognition is in flight', async () => {
+    let resolveRecognition:
+      | ((value: { success: boolean; text: string }) => void)
+      | undefined;
+    const session = new SegmentedOfflineAsrSession({
+      sampleRate: 16_000,
+      segmentDurationMs: 1_000,
+      asr: {
+        async recognizeFromSamples() {
+          return new Promise((resolve) => {
+            resolveRecognition = resolve;
+          });
+        },
+      },
+    });
+
+    const pending = session.acceptChunk({
+      samples: createSamples(1, 16_000),
+    });
+    await Promise.resolve();
+    expect(resolveRecognition).toBeDefined();
+    session.release();
+    resolveRecognition?.({ success: true, text: 'late result' });
+    await pending;
+
+    expect(session.getState().segments).toHaveLength(0);
+    expect(session.getState().transcript).toBe('');
   });
 });

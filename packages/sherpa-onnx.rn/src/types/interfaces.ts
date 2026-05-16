@@ -1517,9 +1517,13 @@ export interface SegmentedOfflineAsrChunk {
 
 export interface SegmentedOfflineAsrSegment {
   segmentIndex: number;
+  /** Input-window start. With overlap enabled, adjacent segment windows can overlap. */
   startSample: number;
+  /** Input-window end. With overlap enabled, adjacent segment windows can overlap. */
   endSample: number;
+  /** Input-window start in ms, not a guaranteed non-overlapping output timeline. */
   startMs: number;
+  /** Input-window end in ms, not a guaranteed non-overlapping output timeline. */
   endMs: number;
   sampleCount: number;
   final: boolean;
@@ -1558,6 +1562,7 @@ export type SegmentedOfflineAsrEvent =
       type: 'error';
       error: string;
       segmentIndex?: number;
+      phase?: 'recognize' | 'afterSegment';
     }
   | {
       type: 'released';

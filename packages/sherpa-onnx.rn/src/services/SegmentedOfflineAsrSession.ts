@@ -154,6 +154,9 @@ export class SegmentedOfflineAsrSession {
       if (chunk.isFinal) {
         await this.flushReadySegmentsForFinalInput();
         await this.flush(true);
+        if (samples.length === 0 && this.bufferedSamples === 0) {
+          this.emitProgress();
+        }
       } else {
         await this.flushReadySegments();
         this.emitProgress();
@@ -205,6 +208,7 @@ export class SegmentedOfflineAsrSession {
     if (this.released) return;
     this.released = true;
     this.chunks.length = 0;
+    this.bufferedSamples = 0;
     this.emit({ type: 'released' });
     this.listeners.clear();
   }
@@ -267,7 +271,7 @@ export class SegmentedOfflineAsrSession {
     if (!result.success) {
       const error =
         result.error ?? `Offline ASR failed for segment ${segmentIndex}`;
-      this.emit({ type: 'error', error, segmentIndex });
+      this.emit({ type: 'error', error, segmentIndex, phase: 'recognize' });
       throw new Error(error);
     }
 
@@ -310,7 +314,19 @@ export class SegmentedOfflineAsrSession {
     });
 
     if (!final && this.config.afterSegment) {
-      await this.config.afterSegment(cloneSegment(segment));
+      try {
+        await this.config.afterSegment(cloneSegment(segment));
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : String(error);
+        this.emit({
+          type: 'error',
+          error: message,
+          segmentIndex,
+          phase: 'afterSegment',
+        });
+        throw error;
+      }
     }
   }
 
