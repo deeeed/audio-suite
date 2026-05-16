@@ -139,9 +139,7 @@ export class LiveSpeakerTurnSession {
       );
     }
 
-    const samples = Array.isArray(chunk.samples)
-      ? chunk.samples
-      : Array.from(chunk.samples);
+    const samples = Array.from(chunk.samples);
     const previousNextSample = this.nextSample;
     const previousRingBuffer = this.ringBuffer.slice();
     this.appendToRingBuffer(startSample, samples);
@@ -451,7 +449,7 @@ export class LiveSpeakerTurnSession {
         this.finalizedSpeakerIds.add(event.speakerId);
       }
     }
-    this.emittedEvents.push(event);
+    this.emittedEvents.push(cloneEvent(event));
     const maxStoredEvents = Math.max(
       0,
       Math.floor(this.config.maxStoredEvents ?? DEFAULT_MAX_STORED_EVENTS)

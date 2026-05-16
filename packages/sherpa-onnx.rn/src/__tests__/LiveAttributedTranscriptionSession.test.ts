@@ -333,6 +333,44 @@ describe('LiveAttributedTranscriptionSession', () => {
     ]);
   });
 
+  it('converts ASR accept rejections into error events after consumed audio advances', async () => {
+    const events: LiveAttributedTranscriptionEvent[] = [];
+    const speakerTurns = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([false]),
+      speakerId: createSpeakerIdAdapter([[1, 0]]),
+    });
+    const asr = {
+      async acceptWaveform() {
+        throw new Error('accept failed');
+      },
+      async getResult() {
+        return { text: '' };
+      },
+      async isEndpoint() {
+        return { isEndpoint: false };
+      },
+      async resetStream() {
+        return { success: true };
+      },
+    } satisfies LiveTranscriptionAsrAdapter;
+    const session = new LiveAttributedTranscriptionSession({
+      sampleRate: 16_000,
+      speakerTurns,
+      asr,
+      onEvent: (event) => events.push(event),
+    });
+
+    await session.acceptChunk({ samples: createChunk(0) });
+
+    expect(session.getState().nextSample).toBe(160);
+    expect(events).toContainEqual({
+      type: 'error',
+      source: 'asr',
+      error: 'accept failed',
+    });
+  });
+
   it('converts ASR result exceptions into error events after consumed audio advances', async () => {
     const events: LiveAttributedTranscriptionEvent[] = [];
     const speakerTurns = new LiveSpeakerTurnSession({
@@ -552,6 +590,50 @@ describe('LiveAttributedTranscriptionSession', () => {
         text: 'second speaker',
       }),
     ]);
+  });
+
+  it('converts boundary ASR reset rejections into error events', async () => {
+    const events: LiveAttributedTranscriptionEvent[] = [];
+    const speakerTurns = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([true, false, true]),
+      speakerId: createSpeakerIdAdapter([
+        [1, 0],
+        [0, 1],
+      ]),
+      minTurnDurationMs: 10,
+    });
+    const asr = {
+      async acceptWaveform() {
+        return { success: true };
+      },
+      async getResult() {
+        return { text: 'hello' };
+      },
+      async isEndpoint() {
+        return { isEndpoint: false };
+      },
+      async resetStream() {
+        throw new Error('reset rejected');
+      },
+    } satisfies LiveTranscriptionAsrAdapter;
+    const session = new LiveAttributedTranscriptionSession({
+      sampleRate: 16_000,
+      speakerTurns,
+      asr,
+      onEvent: (event) => events.push(event),
+    });
+
+    for (const value of [1, 0, 2]) {
+      await session.acceptChunk({ samples: createChunk(value) });
+    }
+
+    expect(session.getState().nextSample).toBe(480);
+    expect(events).toContainEqual({
+      type: 'error',
+      source: 'asr',
+      error: 'reset rejected',
+    });
   });
 
   it('keeps sample clock monotonic when boundary ASR reset fails', async () => {

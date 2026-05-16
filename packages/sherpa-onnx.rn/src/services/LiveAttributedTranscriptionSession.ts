@@ -133,9 +133,7 @@ export class LiveAttributedTranscriptionSession {
       );
     }
 
-    const samples = Array.isArray(chunk.samples)
-      ? chunk.samples
-      : Array.from(chunk.samples);
+    const samples = Array.from(chunk.samples);
     const endSample = startSample + samples.length;
 
     await this.config.speakerTurns.acceptChunk({
@@ -149,7 +147,20 @@ export class LiveAttributedTranscriptionSession {
     this.nextSample = endSample;
 
     if (this.resetAsrBeforeNextChunk) {
-      const reset = await this.config.asr.resetStream();
+      let reset: { success: boolean; error?: string };
+      try {
+        reset = await this.config.asr.resetStream();
+      } catch (error) {
+        this.emit({
+          type: 'error',
+          source: 'asr',
+          error:
+            error instanceof Error
+              ? error.message
+              : 'ASR failed while resetting online stream at speaker boundary',
+        });
+        return;
+      }
       if (!reset.success) {
         this.emit({
           type: 'error',
@@ -163,7 +174,20 @@ export class LiveAttributedTranscriptionSession {
       this.resetAsrBeforeNextChunk = false;
     }
 
-    const accepted = await this.config.asr.acceptWaveform(sampleRate, samples);
+    let accepted: { success: boolean; error?: string };
+    try {
+      accepted = await this.config.asr.acceptWaveform(sampleRate, samples);
+    } catch (error) {
+      this.emit({
+        type: 'error',
+        source: 'asr',
+        error:
+          error instanceof Error
+            ? error.message
+            : 'ASR failed while accepting waveform',
+      });
+      return;
+    }
     if (!accepted.success) {
       this.emit({
         type: 'error',
@@ -628,7 +652,7 @@ export class LiveAttributedTranscriptionSession {
       0,
       Math.floor(this.config.maxStoredEvents ?? DEFAULT_MAX_STORED_EVENTS)
     );
-    if (maxStoredEvents >= 0 && this.emittedEvents.length > maxStoredEvents) {
+    if (this.emittedEvents.length > maxStoredEvents) {
       this.emittedEvents.splice(
         0,
         this.emittedEvents.length - maxStoredEvents
