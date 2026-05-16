@@ -36,6 +36,7 @@ export interface AsrBenchmarkResult {
     recognizeMs?: number
     runtime: 'streaming' | 'offline'
     sampleName?: string
+    segmentCount?: number
     sessionMs?: number
     lineCount?: number
     transcript: string
@@ -232,6 +233,7 @@ export function useAsrBenchmark() {
                 recognizeMs: result.recognizeMs,
                 runtime: selectedModel.engine === 'moonshine' ? 'streaming' : 'offline',
                 sampleName: selectedSample.name,
+                segmentCount: result.segmentCount,
                 sessionMs: nowMs() - startedAt,
                 transcript: result.transcript,
             })
@@ -286,6 +288,7 @@ export function useAsrBenchmark() {
                         recognizeMs: result.recognizeMs,
                         runtime: model.engine === 'moonshine' ? 'streaming' : 'offline',
                         sampleName: selectedSample.name,
+                        segmentCount: result.segmentCount,
                         sessionMs: nowMs() - startedAt,
                         transcript: result.transcript,
                     })

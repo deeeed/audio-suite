@@ -13,6 +13,7 @@ import { OnnxInferenceService } from './services/OnnxInferenceService';
 import { VadService } from './services/VadService';
 import { LiveSpeakerTurnSession } from './services/LiveSpeakerTurnSession';
 import { LiveAttributedTranscriptionSession } from './services/LiveAttributedTranscriptionSession';
+import { SegmentedOfflineAsrSession } from './services/SegmentedOfflineAsrSession';
 import type { ApiInterface } from './types/api';
 import type { SherpaOnnxInterface } from './types/interfaces';
 
@@ -48,6 +49,7 @@ const SherpaOnnx: SherpaOnnxInterface = {
   OnnxInference: onnxInferenceService,
   LiveSpeakerTurnSession,
   LiveAttributedTranscriptionSession,
+  SegmentedOfflineAsrSession,
 };
 
 // Export the main interface
@@ -67,6 +69,7 @@ export const Denoising = denoisingService;
 export const OnnxInference = onnxInferenceService;
 export { LiveSpeakerTurnSession };
 export { LiveAttributedTranscriptionSession };
+export { SegmentedOfflineAsrSession };
 
 // Export types
 export * from './types/api';

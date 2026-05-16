@@ -12,6 +12,7 @@ import { DiarizationService } from '../services/DiarizationService';
 import { OnnxInferenceService } from '../services/OnnxInferenceService';
 import type { LiveSpeakerTurnSession } from '../services/LiveSpeakerTurnSession';
 import type { LiveAttributedTranscriptionSession } from '../services/LiveAttributedTranscriptionSession';
+import type { SegmentedOfflineAsrSession } from '../services/SegmentedOfflineAsrSession';
 
 /**
  * Provider type for model inference
@@ -1481,6 +1482,121 @@ export interface LiveAttributedTranscriptionSummary {
 }
 
 // ----------------------------------------------------------------------------------
+// Segmented offline ASR Interfaces
+// ----------------------------------------------------------------------------------
+
+export interface SegmentedOfflineAsrRecognizeResult {
+  success: boolean;
+  text?: string;
+  tokens?: string[];
+  timestamps?: number[];
+  error?: string;
+}
+
+export interface SegmentedOfflineAsrAdapter {
+  recognizeFromSamples(
+    sampleRate: number,
+    samples: number[]
+  ): Promise<SegmentedOfflineAsrRecognizeResult>;
+}
+
+export interface SegmentedOfflineAsrChunk {
+  /** PCM samples for this chunk. Samples are expected to be mono float PCM. */
+  samples: number[] | Float32Array;
+  /** Optional per-chunk sample rate. Must match the session sampleRate when set. */
+  sampleRate?: number;
+  /** Optional absolute start sample. Defaults to the next expected sample. */
+  startSample?: number;
+  /** Flush any remaining buffered audio after this chunk. */
+  isFinal?: boolean;
+}
+
+export interface SegmentedOfflineAsrSegment {
+  segmentIndex: number;
+  startSample: number;
+  endSample: number;
+  startMs: number;
+  endMs: number;
+  sampleCount: number;
+  final: boolean;
+  text: string;
+  recognizeMs: number;
+  tokens?: string[];
+  timestamps?: number[];
+}
+
+export type SegmentedOfflineAsrEvent =
+  | {
+      type: 'segment_started';
+      segmentIndex: number;
+      startSample: number;
+      endSample: number;
+      startMs: number;
+      endMs: number;
+      sampleCount: number;
+      final: boolean;
+    }
+  | {
+      type: 'segment_completed';
+      segment: SegmentedOfflineAsrSegment;
+      transcript: string;
+      transcriptCharCount: number;
+      segmentCount: number;
+    }
+  | {
+      type: 'progress';
+      bufferedMs: number;
+      processedMs: number;
+      segmentCount: number;
+      transcriptCharCount: number;
+    }
+  | {
+      type: 'error';
+      error: string;
+      segmentIndex?: number;
+    }
+  | {
+      type: 'released';
+    };
+
+export type SegmentedOfflineAsrEventListener = (
+  event: SegmentedOfflineAsrEvent
+) => void;
+
+export interface SegmentedOfflineAsrConfig {
+  sampleRate: number;
+  asr: SegmentedOfflineAsrAdapter;
+  /** Target offline recognition window. Default: 30 seconds. */
+  segmentDurationMs?: number;
+  /** Retained audio context between adjacent segments. Default: 0. */
+  overlapMs?: number;
+  /** Called after each completed non-final segment, e.g. to release/reinitialize native ASR. */
+  afterSegment?: (segment: SegmentedOfflineAsrSegment) => Promise<void>;
+  onEvent?: SegmentedOfflineAsrEventListener;
+  /** Maximum number of emitted events retained in getState().events. Default: 1000. */
+  maxStoredEvents?: number;
+}
+
+export interface SegmentedOfflineAsrState {
+  released: boolean;
+  nextSample: number;
+  bufferedSamples: number;
+  processedSamples: number;
+  segmentCount: number;
+  transcript: string;
+  segments: SegmentedOfflineAsrSegment[];
+  events: SegmentedOfflineAsrEvent[];
+}
+
+export interface SegmentedOfflineAsrSummary {
+  durationMs: number;
+  bufferedMs: number;
+  processedMs: number;
+  segmentCount: number;
+  transcriptCharCount: number;
+}
+
+// ----------------------------------------------------------------------------------
 // Language ID (Spoken Language Identification) Interfaces
 // ----------------------------------------------------------------------------------
 
@@ -1761,6 +1877,7 @@ export interface SherpaOnnxInterface extends ApiInterface {
   OnnxInference: OnnxInferenceService;
   LiveSpeakerTurnSession: typeof LiveSpeakerTurnSession;
   LiveAttributedTranscriptionSession: typeof LiveAttributedTranscriptionSession;
+  SegmentedOfflineAsrSession: typeof SegmentedOfflineAsrSession;
 }
 
 // ----------------------------------------------------------------------------------

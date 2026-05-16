@@ -5,7 +5,12 @@ import Moonshine, {
     normalizeMoonshineWebModelArch,
     resolveMoonshineWebModelBasePath,
 } from '@siteed/moonshine.rn'
-import { ASR as SherpaASR, type AsrModelConfig } from '@siteed/sherpa-onnx.rn'
+import {
+    ASR as SherpaASR,
+    SegmentedOfflineAsrSession,
+    type AsrModelConfig,
+    type SegmentedOfflineAsrSegment,
+} from '@siteed/sherpa-onnx.rn'
 import * as FileSystem from 'expo-file-system/legacy'
 import { Platform } from 'react-native'
 import { initWhisper, type WhisperContext } from 'whisper.rn'
@@ -41,6 +46,8 @@ export interface BenchmarkDownloadState {
 export interface BenchmarkFileRunResult {
     initMs: number
     recognizeMs: number
+    segmentCount?: number
+    segments?: SegmentedOfflineAsrSegment[]
     transcript: string
 }
 
@@ -505,40 +512,41 @@ export async function transcribeSherpaFile(
         const segmentDurationMs = model.sherpa.segmentDurationMs
         if (segmentDurationMs && segmentDurationMs > 0) {
             const wav = await readMonoPcm16Wav(audioUri)
-            const segmentSampleCount = Math.max(
-                1,
-                Math.floor((wav.sampleRate * segmentDurationMs) / 1000),
-            )
-            const segmentCount = Math.max(1, Math.ceil(wav.samples.length / segmentSampleCount))
-            const transcripts: string[] = []
-            for (
-                let offset = 0, segmentIndex = 0;
-                offset < wav.samples.length;
-                offset += segmentSampleCount, segmentIndex += 1
-            ) {
-                const segment = wav.samples.slice(offset, offset + segmentSampleCount)
-                onStatus?.(`Recognizing Sherpa segment ${segmentIndex + 1}/${segmentCount}...`)
-                const result = await SherpaASR.recognizeFromSamples(wav.sampleRate, segment)
-                if (!result.success) {
-                    throw new Error(
-                        result.error ??
-                            `Sherpa recognition failed for ${modelId} segment ${segmentIndex + 1}`,
-                    )
-                }
-                const text = String(result.text || '').trim()
-                if (text) transcripts.push(text)
-                if (
-                    model.sherpa.releaseBetweenSegments &&
-                    offset + segmentSampleCount < wav.samples.length
-                ) {
-                    await initializeSherpaBenchmarkModel(modelId, onStatus)
-                }
-            }
+            const session = new SegmentedOfflineAsrSession({
+                sampleRate: wav.sampleRate,
+                segmentDurationMs,
+                asr: SherpaASR,
+                afterSegment: model.sherpa.releaseBetweenSegments
+                    ? async (segment) => {
+                          onStatus?.(
+                              `Resetting Sherpa after segment ${segment.segmentIndex}...`,
+                          )
+                          await initializeSherpaBenchmarkModel(modelId, onStatus)
+                      }
+                    : undefined,
+                onEvent: (event) => {
+                    if (event.type === 'segment_started') {
+                        onStatus?.(
+                            `Recognizing Sherpa segment ${event.segmentIndex} (${Math.round(
+                                event.startMs,
+                            )}-${Math.round(event.endMs)}ms)...`,
+                        )
+                    }
+                },
+            })
+            await session.acceptChunk({
+                samples: Float32Array.from(wav.samples),
+                isFinal: true,
+            })
+            const state = session.getState()
             const recognizeMs = Date.now() - recognizeStartedAt
+            session.release()
             return {
                 initMs,
                 recognizeMs,
-                transcript: transcripts.join(' ').trim(),
+                segmentCount: state.segmentCount,
+                segments: state.segments,
+                transcript: state.transcript.trim(),
             }
         }
 

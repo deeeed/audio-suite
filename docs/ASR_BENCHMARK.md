@@ -100,12 +100,16 @@ Translation remains a reference track because:
 
 Audio Playground now includes the `moonshine-sherpa-echobridge-perps-5m` direct replay preset. It stages the same 5-minute EchoBridge meeting fixture into the app sandbox, scores against the EchoBridge WhisperService `medium.en` backend reference, and runs Sherpa Qwen3-ASR as 30-second offline segments to avoid retained native heap.
 
+The Sherpa offline path uses the reusable `SegmentedOfflineAsrSession` JS helper from `@siteed/sherpa-onnx.rn`. It does not require a new native API: the app decodes audio into bounded mono 16 kHz PCM chunks, the session accumulates only one offline window at a time, calls `ASR.recognizeFromSamples`, emits segment/progress events, then optionally releases and reinitializes the Sherpa ASR runtime between windows.
+
 Measured on Pixel 6a (`Pixel 6a - 16 - API 36`):
 
 | Model | Mode | WER vs EchoBridge | CER vs EchoBridge | Runtime/session | Notes |
 | --- | --- | ---: | ---: | ---: | --- |
-| Sherpa Qwen3-ASR 0.6B INT8 direct replay | offline segmented | 28.1% | 22.8% | 238.9 s | best validated on-device text-quality candidate; not live-streaming |
+| Sherpa Qwen3-ASR 0.6B INT8 direct replay | offline segmented | 28.1% | 22.8% | 207.4 s | 10 × 30 s segments; best validated on-device text-quality candidate; not live-streaming |
 | Moonshine Medium Streaming | offline/file | 38.0% | 28.2% | 183.9 s | live-capable; quality below Qwen3 |
 | Moonshine Small Streaming | offline/file | 45.8% | 35.7% | 95.2 s | faster fallback |
+
+Additional streaming-decode smoke on the same Pixel 6a used `/long-audio-validation` with `streamAudioData` + `SegmentedOfflineAsrSession` over the first 60 seconds of the staged fixture. It completed successfully with 241 decoder chunks, 2 Sherpa offline ASR segments, 60.0 s processed audio, and 44.5 s wall time. This validates the compressed/decoded-stream orchestration path separately from the direct WAV benchmark.
 
 Quantization note: the official k2-fsa Qwen3-ASR model-zoo artifact available for this run is INT8 only. A true quantization-impact comparison needs a paired quantized/non-quantized Sherpa release, for example SenseVoice 2025 or Canary 180M, added as a separate benchmark matrix.

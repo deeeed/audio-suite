@@ -91,7 +91,7 @@ Reference source: EchoBridge server `WhisperService` with `medium.en` on the 5-m
 
 | Mode | Model | WER vs EchoBridge | CER vs EchoBridge | Init | Runtime | First partial | First commit | Commits |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Offline/file segmented | Sherpa Qwen3-ASR 0.6B INT8 | 28.1% | 22.8% | 5.5 s | 238.9 s | n/a | n/a | n/a |
+| Offline/file segmented | Sherpa Qwen3-ASR 0.6B INT8 | 28.1% | 22.8% | 4.8 s | 207.4 s | n/a | n/a | n/a |
 | Offline/file | Moonshine Medium Streaming | 38.0% | 28.2% | 33.4 s | 183.9 s | n/a | n/a | n/a |
 | Offline/file | Moonshine Small Streaming | 45.8% | 35.7% | 0.8 s | 95.2 s | n/a | n/a | n/a |
 | Simulated live | Moonshine Medium Streaming | 38.0% | 28.2% | 1.7 s | 300.8 s | 4.2 s | 4.5 s | 90 |
@@ -100,7 +100,8 @@ Reference source: EchoBridge server `WhisperService` with `medium.en` on the 5-m
 Findings from this replay:
 
 - Sherpa Qwen3-ASR 0.6B INT8 is the best validated on-device text-quality candidate in this benchmark: 28.1% WER vs 38.0% for Moonshine medium.
-- Qwen3 is offline-only and is run as 30-second segments with release/reinitialize between segments to avoid retained native heap. It is better quality, but not a live preview model.
+- Qwen3 is offline-only and is run through `SegmentedOfflineAsrSession`: decoded PCM is buffered into 30-second segments, each segment is submitted to Sherpa `ASR.recognizeFromSamples`, progress is emitted after each finalized segment, and Android can release/reinitialize between segments to avoid retained native heap. It is better quality, but not a live preview model.
+- `/long-audio-validation` also validates the progressive decoder path: the first 60 seconds of the staged fixture completed on Pixel 6a with 241 decoder chunks, 2 Sherpa segments, 409 transcript chars, and 44.5 s wall time.
 - Medium is the better Moonshine quality default when the device can afford it, but startup is much slower for full-file transcription.
 - Simulated-live Moonshine quality closely matches full-file Moonshine quality on this fixture, which supports using direct PCM replay as the reproducible validation path for live UX.
 - The official k2-fsa Qwen3-ASR artifact currently available in the model zoo is INT8 only, so this benchmark cannot measure Qwen3 quantization impact yet. To measure quantization impact on-device, add paired Sherpa releases that provide both quantized and non-quantized artifacts, such as SenseVoice 2025 or Canary 180M.

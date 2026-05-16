@@ -439,6 +439,7 @@ async function runOffline(model, clip) {
       runtime: model.id.startsWith('moonshine') ? 'streaming' : 'offline',
       initMs: result.result?.initMs ?? null,
       recognizeMs: result.result?.recognizeMs ?? null,
+      segmentCount: result.result?.segmentCount ?? null,
       transcript: result.result?.transcript ?? '',
     };
   }
@@ -630,11 +631,11 @@ function renderMarkdown(report) {
       `Reference: ${clip.referenceTranscript ?? 'Unavailable in repo; performance-only clip'}`
     );
     lines.push('');
-    lines.push('| Model | WER | CER | Init | Recognize | Error | Transcript |');
-    lines.push('| --- | --- | --- | --- | --- | --- | --- |');
+    lines.push('| Model | WER | CER | Init | Recognize | Segments | Error | Transcript |');
+    lines.push('| --- | --- | --- | --- | --- | --- | --- | --- |');
     for (const item of clip.results) {
       lines.push(
-        `| ${escapeCell(item.modelName || item.modelId)} | ${escapeCell(percent(item.score?.wer))} | ${escapeCell(percent(item.score?.cer))} | ${escapeCell(ms(item.initMs))} | ${escapeCell(ms(item.recognizeMs))} | ${escapeCell(item.error || '')} | ${escapeCell(clipText(item.transcript))} |`
+        `| ${escapeCell(item.modelName || item.modelId)} | ${escapeCell(percent(item.score?.wer))} | ${escapeCell(percent(item.score?.cer))} | ${escapeCell(ms(item.initMs))} | ${escapeCell(ms(item.recognizeMs))} | ${escapeCell(item.segmentCount ?? 'n/a')} | ${escapeCell(item.error || '')} | ${escapeCell(clipText(item.transcript))} |`
       );
     }
     lines.push('');

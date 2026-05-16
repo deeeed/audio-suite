@@ -113,6 +113,9 @@ function ResultCard({ result }: { result: AsrBenchmarkResult }) {
                     partials {result.partialCount ?? 0} • commits {result.commitCount ?? 0}
                 </Text>
             ) : null}
+            {result.segmentCount != null ? (
+                <Text style={styles.resultMeta}>segments {result.segmentCount}</Text>
+            ) : null}
             {result.validationKind === 'word-timestamps' ? (
                 <Text style={styles.resultMeta}>
                     lines {result.lineCount ?? 0} • lines with words {result.linesWithWords ?? 0}

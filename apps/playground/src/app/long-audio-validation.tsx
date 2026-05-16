@@ -35,7 +35,7 @@ const DEFAULT_FIXTURE_URI = Platform.select({
 
 const DEFAULT_SHERPA_CONFIG = JSON.stringify(
     {
-        modelDir: `/data/user/0/${ANDROID_PACKAGE_NAME}/files/sherpa-onnx/asr/qwen3-asr-0.6B-int8-2026-03-25`,
+        modelDir: `/data/user/0/${ANDROID_PACKAGE_NAME}/files/models/qwen3-asr-0.6B-int8-2026-03-25/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25`,
         modelType: 'qwen3',
         streaming: false,
         numThreads: 4,
