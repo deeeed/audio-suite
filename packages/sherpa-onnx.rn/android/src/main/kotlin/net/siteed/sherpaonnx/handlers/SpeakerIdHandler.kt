@@ -143,6 +143,7 @@ class SpeakerIdHandler(private val reactContext: ReactApplicationContext) {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing audio samples: ${e.message}")
+                resetEmbeddingStream()
 
                 reactContext.runOnUiQueueThread {
                     promise.reject("ERR_SPEAKER_ID_PROCESS", "Failed to process audio samples: ${e.message}")

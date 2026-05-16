@@ -89,6 +89,7 @@ export class LiveSpeakerTurnSession {
   private activeTurnId: string | null = null;
   private activeTurnStartSample: number | null = null;
   private speechActive = false;
+  private speakerIdUsable = true;
   private released = false;
 
   constructor(config: LiveSpeakerTurnConfig) {
@@ -194,6 +195,7 @@ export class LiveSpeakerTurnSession {
     this.activeTurnId = null;
     this.activeTurnStartSample = null;
     this.speechActive = false;
+    this.speakerIdUsable = true;
   }
 
   public release(): void {
@@ -271,6 +273,17 @@ export class LiveSpeakerTurnSession {
       return;
     }
 
+    if (!this.speakerIdUsable) {
+      this.emit({
+        type: 'error',
+        turnId,
+        error:
+          'Speaker ID stream requires session reset after a failed embedding attempt',
+      });
+      this.emitFinalTurn(turnId, startSample, endSample);
+      return;
+    }
+
     this.emit({ type: 'speaker_pending', turnId });
     const turnSamples = this.samplesForRange(
       paddedStartSample,
@@ -281,6 +294,7 @@ export class LiveSpeakerTurnSession {
       turnSamples
     );
     if (!processResult.success) {
+      this.speakerIdUsable = false;
       this.emit({
         type: 'error',
         turnId,
@@ -294,6 +308,7 @@ export class LiveSpeakerTurnSession {
 
     const embeddingResult = await this.config.speakerId.computeEmbedding();
     if (!embeddingResult.success) {
+      this.speakerIdUsable = false;
       this.emit({
         type: 'error',
         turnId,

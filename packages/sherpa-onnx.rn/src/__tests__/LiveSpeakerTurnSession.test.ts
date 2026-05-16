@@ -229,6 +229,44 @@ describe('LiveSpeakerTurnSession', () => {
     expect(session.getState().nextSample).toBe(160);
   });
 
+  it('does not append later turns to a failed speaker embedding stream', async () => {
+    const events: LiveSpeakerTurnEvent[] = [];
+    let processCalls = 0;
+    const session = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([true, false, true, false]),
+      speakerId: {
+        async processSamples() {
+          processCalls += 1;
+          return { success: true, samplesProcessed: 160 };
+        },
+        async computeEmbedding() {
+          return {
+            success: false,
+            durationMs: 0,
+            embedding: [],
+            embeddingDim: 0,
+            error: 'not enough audio',
+          };
+        },
+      },
+      minTurnDurationMs: 10,
+      onEvent: (event) => events.push(event),
+    });
+
+    for (const value of [1, 0, 2, 0]) {
+      await session.acceptChunk({ samples: createChunk(value) });
+    }
+
+    expect(processCalls).toBe(1);
+    expect(events.filter((event) => event.type === 'turn_final')).toHaveLength(2);
+    expect(events).toContainEqual({
+      type: 'error',
+      turnId: 'turn_2',
+      error: 'Speaker ID stream requires session reset after a failed embedding attempt',
+    });
+  });
+
   it('marks capped sub-threshold speaker assignments as forced fallback', async () => {
     const events: LiveSpeakerTurnEvent[] = [];
     const session = new LiveSpeakerTurnSession({

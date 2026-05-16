@@ -409,6 +409,32 @@ describe('LiveAttributedTranscriptionSession', () => {
     });
   });
 
+  it('creates an unattributed final segment when ASR text first appears during flush', async () => {
+    const speakerTurns = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([false]),
+      speakerId: createSpeakerIdAdapter([[1, 0]]),
+    });
+    const session = new LiveAttributedTranscriptionSession({
+      sampleRate: 16_000,
+      speakerTurns,
+      asr: createAsrAdapter(['', 'tail final'], [false, false]),
+    });
+
+    await session.acceptChunk({ samples: createChunk(0) });
+    expect(session.getState().segments).toEqual([]);
+
+    await session.flush();
+
+    expect(session.getState().segments).toEqual([
+      expect.objectContaining({
+        text: 'tail final',
+        final: true,
+        turnId: undefined,
+      }),
+    ]);
+  });
+
   it('converts ASR tail-padding accept rejections into error events during flush', async () => {
     const events: LiveAttributedTranscriptionEvent[] = [];
     let acceptCount = 0;

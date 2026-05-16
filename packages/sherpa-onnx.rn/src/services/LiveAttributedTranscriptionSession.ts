@@ -69,6 +69,7 @@ export class LiveAttributedTranscriptionSession {
   private processingChunkEndSample: number | undefined;
   private resetAsrBeforeNextChunk = false;
   private activeTurnId: string | undefined;
+  private asrHasAcceptedAudio = false;
   private released = false;
 
   constructor(config: LiveAttributedTranscriptionConfig) {
@@ -178,6 +179,7 @@ export class LiveAttributedTranscriptionSession {
         return;
       }
       this.resetAsrBeforeNextChunk = false;
+      this.asrHasAcceptedAudio = false;
     }
 
     let accepted: { success: boolean; error?: string };
@@ -202,6 +204,7 @@ export class LiveAttributedTranscriptionSession {
       });
       return;
     }
+    this.asrHasAcceptedAudio = true;
 
     try {
       const result = await this.config.asr.getResult();
@@ -274,11 +277,13 @@ export class LiveAttributedTranscriptionSession {
         source: 'asr',
         error: reset.error ?? 'ASR failed while resetting online stream',
       });
+      return;
     }
+    this.asrHasAcceptedAudio = false;
   }
 
   private async drainAsrTailPadding(): Promise<void> {
-    if (!this.currentSegmentId) {
+    if (!this.currentSegmentId && !this.asrHasAcceptedAudio) {
       return;
     }
     const paddingMs =
@@ -355,6 +360,7 @@ export class LiveAttributedTranscriptionSession {
     this.processingChunkEndSample = undefined;
     this.resetAsrBeforeNextChunk = false;
     this.activeTurnId = undefined;
+    this.asrHasAcceptedAudio = false;
     let reset: { success: boolean; error?: string };
     try {
       reset = await this.config.asr.resetStream();
