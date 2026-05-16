@@ -39,9 +39,9 @@ function cloneEvent(event: SegmentedOfflineAsrEvent): SegmentedOfflineAsrEvent {
  *
  * Sherpa offline models such as Qwen3, Whisper, SenseVoice, and Canary do not
  * expose an online `acceptWaveform/getResult` contract. This JS session wraps
-   * those offline recognizers by buffering decoded PCM into fixed-size windows,
-   * materializing only the current window as `number[]`, and emitting stable
-   * progress/segment events while callers keep decoding long audio incrementally.
+ * those offline recognizers by buffering decoded PCM into fixed-size windows,
+ * materializing only the current window as `number[]`, and emitting stable
+ * progress/segment events while callers keep decoding long audio incrementally.
  *
  * Calls are intentionally single-flight: await each `acceptChunk()` / `flush()`
  * before submitting the next chunk so segment boundaries and model cleanup stay

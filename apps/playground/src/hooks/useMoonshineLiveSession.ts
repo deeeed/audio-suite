@@ -401,6 +401,7 @@ export function useMoonshineLiveSession(
                 setError(message)
                 setStatusMessage('Moonshine live start failed.')
             }
+            throw startError
         } finally {
             if (mountedRef.current) {
                 setIsStarting(false)
@@ -434,10 +435,9 @@ export function useMoonshineLiveSession(
         try {
             sessionOwnedRef.current = false
             // Stop accepting queued live chunks before stopping the native recorder.
-            // Native callbacks can still drain during stopRecording(); without this,
-            // late chunks may race a stopped/released transcriber and surface a false
-            // "Failed to add audio to stream" error after an otherwise clean stop.
-            liveTranscription.stop()
+            // Keep transcript listeners active until after transcriber.stop(), because
+            // Moonshine can emit final lineCompleted events while flushing.
+            liveTranscription.stopAudioInput()
             const recording = stopRecorder ? await stopRecording() : null
             if (recording) {
                 setLastRecording(recording)
@@ -454,6 +454,7 @@ export function useMoonshineLiveSession(
                 .filter(Boolean)
                 .join(' ')
                 .trim()
+            liveTranscription.stop()
             await releaseLiveTranscriber()
 
             if (mountedRef.current) {
@@ -472,6 +473,7 @@ export function useMoonshineLiveSession(
                     ? stopError.message
                     : String(stopError)
             logger.error(`Moonshine finalize failed: ${message}`)
+            liveTranscription.stop()
             await releaseLiveTranscriber()
             if (mountedRef.current) {
                 setError(message)

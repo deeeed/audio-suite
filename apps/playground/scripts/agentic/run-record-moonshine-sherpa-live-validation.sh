@@ -45,8 +45,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-
-
 state_ready_for_speech() {
   node "$BRIDGE" --device "$DEVICE_NAME" eval "JSON.stringify(globalThis.__AGENTIC__?.getPageState?.() || null)" 2>/dev/null \
     | python3 -c '

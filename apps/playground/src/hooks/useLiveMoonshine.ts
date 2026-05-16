@@ -31,6 +31,7 @@ export interface UseLiveMoonshineResult {
     isListening: boolean
     start: () => void
     stop: () => void
+    stopAudioInput: () => void
 }
 
 function joinTranscriptParts(parts: string[]): string {
@@ -185,6 +186,11 @@ export function useLiveMoonshine(
         setIsListening(true)
     }, [])
 
+    const stopAudioInput = useCallback(() => {
+        logger.info('Moonshine live audio input stopped')
+        queueRef.current = []
+    }, [])
+
     const stop = useCallback(() => {
         logger.info('Moonshine live transcription stopped')
         listeningRef.current = false
@@ -213,5 +219,6 @@ export function useLiveMoonshine(
         isListening,
         start,
         stop,
+        stopAudioInput,
     }
 }
