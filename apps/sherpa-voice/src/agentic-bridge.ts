@@ -1072,6 +1072,9 @@ async function runLiveTranscriptionDiarizationReplay(
         timing.replayMs = Date.now() - replayStartedAt
         const summary = session.getSummary()
         const state = session.getState()
+        if ((eventCounts.error ?? 0) > 0) {
+            throw new Error(`Live replay emitted ${eventCounts.error} pipeline error event(s)`)
+        }
         const realtimeFactor = timing.replayMs / Math.max(audioDurationMs, 1)
 
         return {
@@ -1124,7 +1127,11 @@ type LiveMicTranscriptionDiarizationOptions = LiveTranscriptionDiarizationOption
     durationMs?: number
 }
 
-function getFloat32SamplesFromAudioEvent(eventData: AudioDataEvent | Record<string, unknown>) {
+type RawAudioDataEvent = Partial<AudioDataEvent> & {
+    pcmFloat32?: Float32Array | number[]
+}
+
+function getFloat32SamplesFromAudioEvent(eventData: RawAudioDataEvent) {
     const raw = 'pcmFloat32' in eventData ? eventData.pcmFloat32 : undefined
     if (raw instanceof Float32Array) {
         return Array.from(raw)
@@ -1304,14 +1311,19 @@ async function runLiveMicTranscriptionDiarization(
         subscription.remove()
         subscription = null
         await withTimeout(chain, 5_000, 'Timed out while draining live mic audio chunks')
+        await session.flush().catch((error: unknown) => {
+            fatalError ??= error instanceof Error ? error : new Error(String(error))
+        })
         if (fatalError) {
             throw fatalError
         }
-        await session.flush()
         timing.recordMs = Date.now() - recordStartedAt
 
         const summary = session.getSummary()
         const state = session.getState()
+        if ((eventCounts.error ?? 0) > 0) {
+            throw new Error(`Live mic emitted ${eventCounts.error} pipeline error event(s)`)
+        }
         const audioDurationMs = (stats.samples / DEFAULT_LIVE_SAMPLE_RATE) * 1000
         const averageChunkMs = stats.chunks > 0 ? stats.totalChunkMs / stats.chunks : 0
         const rms = stats.samples > 0 ? Math.sqrt(stats.sumSquares / stats.samples) : 0

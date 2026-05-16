@@ -1281,6 +1281,8 @@ export interface LiveSpeakerTurnConfig {
   centroidUpdateAlpha?: number;
   /** Bounded PCM buffer duration. Default: 60 seconds. */
   maxRingBufferDurationMs?: number;
+  /** Maximum number of emitted events retained in getState().events. Default: 1000. */
+  maxStoredEvents?: number;
 }
 
 export interface LiveSpeakerTurnSpeakerCentroid {
@@ -1382,13 +1384,21 @@ export type LiveAttributedTranscriptionEventListener = (
   event: LiveAttributedTranscriptionEvent
 ) => void;
 
+export interface LiveSpeakerTurnSessionController {
+  onEvent(listener: LiveSpeakerTurnEventListener): () => void;
+  acceptChunk(chunk: LiveSpeakerTurnChunk): Promise<void>;
+  flush(): Promise<void>;
+  reset(): void;
+  release(): void;
+}
+
 export interface LiveAttributedTranscriptionConfig {
   sampleRate: number;
   /**
    * Speaker-turn session owned by this composer. `release()` also releases this
    * instance; pass a dedicated session rather than sharing it across composers.
    */
-  speakerTurns: LiveSpeakerTurnSession;
+  speakerTurns: LiveSpeakerTurnSessionController;
   asr: LiveTranscriptionAsrAdapter;
   onEvent?: LiveAttributedTranscriptionEventListener;
   /** Emit duplicate partial text on every chunk. Default: false. */

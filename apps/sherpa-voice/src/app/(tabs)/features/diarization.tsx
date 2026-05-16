@@ -69,7 +69,7 @@ function SpeakerTimeline({ segments, totalDuration }: { segments: DiarizationSeg
           const color = SPEAKER_COLORS[seg.speaker % SPEAKER_COLORS.length];
           return (
             <View
-              key={`${seg.speaker}-${seg.start}-${seg.end}-${i}`}
+              key={`${seg.speaker}-${seg.start}-${seg.end}`}
               style={{
                 position: 'absolute',
                 left: `${left}%`,
@@ -112,7 +112,7 @@ function SegmentList({ segments }: { segments: DiarizationSegment[] }) {
         const color = SPEAKER_COLORS[seg.speaker % SPEAKER_COLORS.length];
         return (
           <View
-            key={`${seg.speaker}-${seg.start}-${seg.end}-${i}`}
+            key={`${seg.speaker}-${seg.start}-${seg.end}`}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
@@ -358,7 +358,7 @@ function LiveValidationSection({
       ) : null}
       {result ? (
         <View style={{ marginTop: 12, gap: 6 }}>
-          <Text variant="bodyMedium" style={{ color: result.keepsUp ? (theme.colors.success ?? '#4CAF50') : theme.colors.error }}>
+          <Text variant="bodyMedium" style={{ color: result.keepsUp ? theme.colors.primary : theme.colors.error }}>
             {result.keepsUp ? 'Keeps up' : 'Too slow'}: {result.realtimeFactor.toFixed(2)}x realtime ({result.replayMs}ms for {(result.audioDurationMs / 1000).toFixed(1)}s audio)
           </Text>
           <Text variant="bodySmall" style={{ color: theme.colors.onSurface }}>
@@ -494,8 +494,8 @@ export default function DiarizationScreen() {
           <Text variant="bodySmall" style={{ color: theme.colors.primary }}>Initializing...</Text>
         ) : initialized ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: theme.colors.success ?? '#4CAF50' }} />
-            <Text variant="bodySmall" style={{ color: theme.colors.success ?? '#4CAF50' }}>Ready</Text>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: theme.colors.primary }} />
+            <Text variant="bodySmall" style={{ color: theme.colors.primary }}>Ready</Text>
           </View>
         ) : (
           <ThemedButton

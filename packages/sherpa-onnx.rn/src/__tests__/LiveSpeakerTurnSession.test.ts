@@ -184,6 +184,27 @@ describe('LiveSpeakerTurnSession', () => {
     await expect(runReplay()).resolves.toEqual(await runReplay());
   });
 
+  it('caps retained event history while keeping total event count', async () => {
+    const observed: LiveSpeakerTurnEvent[] = [];
+    const session = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([true, false, true, false]),
+      speakerId: createSpeakerIdAdapter([[1, 0]]),
+      minTurnDurationMs: 10,
+      maxStoredEvents: 2,
+      onEvent: (event) => observed.push(event),
+    });
+
+    for (const value of [1, 0, 1, 0]) {
+      await session.acceptChunk({ samples: createChunk(value) });
+    }
+
+    expect(observed.length).toBeGreaterThan(2);
+    expect(session.getState().events).toHaveLength(2);
+    expect(session.getSummary().eventCount).toBe(observed.length);
+    expect(session.getSummary().turnCount).toBe(2);
+  });
+
   it('rejects non-monotonic sample clocks', async () => {
     const session = new LiveSpeakerTurnSession({
       sampleRate: 16_000,

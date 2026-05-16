@@ -567,8 +567,29 @@ describe('LiveAttributedTranscriptionSession', () => {
     expect(session.getSummary().eventCount).toBeGreaterThan(observedCount);
   });
 
-  it('clears stale active attribution for discarded short turns', async () => {
+  it('clears stale active attribution and ASR context for discarded short turns', async () => {
     const events: LiveAttributedTranscriptionEvent[] = [];
+    let acceptedChunks = 0;
+    let resetCount = 0;
+    const asr = {
+      async acceptWaveform() {
+        acceptedChunks += 1;
+        return { success: true };
+      },
+      async getResult() {
+        if (resetCount === 0) {
+          return { text: 'discarded noise' };
+        }
+        return { text: acceptedChunks >= 3 ? 'real speech' : '' };
+      },
+      async isEndpoint() {
+        return { isEndpoint: false };
+      },
+      async resetStream() {
+        resetCount += 1;
+        return { success: true };
+      },
+    } satisfies LiveTranscriptionAsrAdapter;
     const speakerTurns = new LiveSpeakerTurnSession({
       sampleRate: 16_000,
       vad: createVadAdapter([true, false, true]),
@@ -578,7 +599,7 @@ describe('LiveAttributedTranscriptionSession', () => {
     const session = new LiveAttributedTranscriptionSession({
       sampleRate: 16_000,
       speakerTurns,
-      asr: createAsrAdapter(['', '', 'real speech'], [false, false, false]),
+      asr,
       onEvent: (event) => events.push(event),
     });
 
@@ -586,6 +607,7 @@ describe('LiveAttributedTranscriptionSession', () => {
       await session.acceptChunk({ samples: createChunk(value) });
     }
 
+    expect(resetCount).toBe(1);
     expect(
       events.some(
         (event) =>

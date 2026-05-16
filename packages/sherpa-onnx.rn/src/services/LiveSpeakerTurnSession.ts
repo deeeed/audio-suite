@@ -17,6 +17,7 @@ const DEFAULT_MIN_TURN_DURATION_MS = 250;
 const DEFAULT_SPEAKER_THRESHOLD = 0.5;
 const DEFAULT_MAX_RING_BUFFER_DURATION_MS = 60_000;
 const DEFAULT_CENTROID_UPDATE_ALPHA = 0.25;
+const DEFAULT_MAX_STORED_EVENTS = 1000;
 
 function samplesToMs(samples: number, sampleRate: number): number {
   return (samples / sampleRate) * 1000;
@@ -72,6 +73,9 @@ export class LiveSpeakerTurnSession {
   private readonly listeners = new Set<LiveSpeakerTurnEventListener>();
   private readonly emittedEvents: LiveSpeakerTurnEvent[] = [];
   private readonly ringBuffer: BufferedChunk[] = [];
+  private eventCount = 0;
+  private finalizedTurnCount = 0;
+  private readonly finalizedSpeakerIds = new Set<string>();
   private readonly centroids: LiveSpeakerTurnSpeakerCentroid[] = [];
   private nextSample = 0;
   private nextTurnIndex = 1;
@@ -163,6 +167,9 @@ export class LiveSpeakerTurnSession {
     this.ringBuffer.splice(0, this.ringBuffer.length);
     this.centroids.splice(0, this.centroids.length);
     this.emittedEvents.splice(0, this.emittedEvents.length);
+    this.eventCount = 0;
+    this.finalizedTurnCount = 0;
+    this.finalizedSpeakerIds.clear();
     this.nextSample = 0;
     this.nextTurnIndex = 1;
     this.nextSpeakerIndex = 1;
@@ -182,19 +189,10 @@ export class LiveSpeakerTurnSession {
   }
 
   public getSummary(): LiveSpeakerTurnSummary {
-    const turnFinalEvents = this.emittedEvents.filter(
-      (event) => event.type === 'turn_final'
-    );
-    const speakerIds = new Set(
-      turnFinalEvents
-        .map((event) => event.speakerId)
-        .filter((speakerId): speakerId is string => Boolean(speakerId))
-    );
-
     return {
-      eventCount: this.emittedEvents.length,
-      turnCount: turnFinalEvents.length,
-      speakerCount: speakerIds.size,
+      eventCount: this.eventCount,
+      turnCount: this.finalizedTurnCount,
+      speakerCount: this.finalizedSpeakerIds.size,
       durationMs: samplesToMs(this.nextSample, this.config.sampleRate),
     };
   }
@@ -426,7 +424,19 @@ export class LiveSpeakerTurnSession {
   }
 
   private emit(event: LiveSpeakerTurnEvent): void {
+    this.eventCount += 1;
+    if (event.type === 'turn_final') {
+      this.finalizedTurnCount += 1;
+      if (event.speakerId) {
+        this.finalizedSpeakerIds.add(event.speakerId);
+      }
+    }
     this.emittedEvents.push(event);
+    const maxStoredEvents =
+      this.config.maxStoredEvents ?? DEFAULT_MAX_STORED_EVENTS;
+    if (this.emittedEvents.length > maxStoredEvents) {
+      this.emittedEvents.splice(0, this.emittedEvents.length - maxStoredEvents);
+    }
     for (const listener of this.listeners) {
       listener(event);
     }

@@ -319,7 +319,6 @@ export class LiveAttributedTranscriptionSession {
       }
       this.activeTurnId = event.turnId;
       this.ensureCurrentSegment(event.startSample);
-      this.attachSegmentToTurn(this.currentSegmentId, event.turnId);
     }
 
     if (event.type === 'speaker_resolved') {
@@ -364,6 +363,7 @@ export class LiveAttributedTranscriptionSession {
           this.currentSegmentStartSample = this.nextSample;
         }
       }
+      this.resetAsrBeforeNextChunk = true;
       return;
     }
 
