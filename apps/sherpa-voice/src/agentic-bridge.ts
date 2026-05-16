@@ -24,7 +24,7 @@ import SherpaOnnx, {
 } from '@siteed/sherpa-onnx.rn'
 import * as FileSystem from 'expo-file-system/legacy'
 import { router, type Href } from 'expo-router'
-import { AudioStudioModule } from '@siteed/audio-studio'
+import { AudioStudioModule, type AudioDataEvent } from '@siteed/audio-studio'
 import { LegacyEventEmitter } from 'expo-modules-core'
 import { Platform } from 'react-native'
 import {
@@ -987,15 +987,11 @@ async function runLiveTranscriptionDiarizationReplay(
         throw new Error('Live transcription+diarization replay requires a WAV filePath')
     }
 
-    const asrModelId = options.asrModelId ?? 'streaming-zipformer-en-20m-mobile'
-    const vadModelId = options.vadModelId ?? 'silero-vad-v5'
-    const speakerIdModelId = options.speakerIdModelId ?? 'speaker-id-en-voxceleb'
     const chunkDurationMs = options.chunkDurationMs ?? 100
     const maxDurationMs = options.maxDurationMs
     const speakerThreshold = options.speakerThreshold ?? 0.55
     const minTurnDurationMs = options.minTurnDurationMs ?? 250
     const speechPadMs = options.speechPadMs ?? 120
-    const requestedThreads = options.numThreads ?? DEFAULT_NUM_THREADS
 
     const timing: Record<string, number> = {}
     const eventCounts: Record<string, number> = {}
@@ -1029,68 +1025,8 @@ async function runLiveTranscriptionDiarizationReplay(
         const audioDurationMs = (samples.length / wav.sampleRate) * 1000
         const chunkSize = Math.max(1, Math.round((chunkDurationMs / 1000) * wav.sampleRate))
 
-        await Promise.all([
-            ASR.release().catch(() => {}),
-            VAD.release().catch(() => {}),
-            SpeakerId.release().catch(() => {}),
-        ])
-
-        const asrModelDir = await resolveDownloadedModelDir(asrModelId)
-        const vadModelDir = await resolveDownloadedModelDir(vadModelId)
-        const speakerModelDir = await resolveDownloadedModelDir(speakerIdModelId)
-        const asrConfig = getAsrModelConfigById(asrModelId) ?? getModelConfigById(asrModelId)?.asrConfig
-        const vadConfig = getModelConfigById(vadModelId)?.vadConfig
-        const speakerIdConfig = getModelConfigById(speakerIdModelId)?.speakerIdConfig
-        if (!asrConfig) {
-            throw new Error(`ASR config not found for ${asrModelId}`)
-        }
-        if (!asrConfig.modelType) {
-            throw new Error(`ASR modelType missing for ${asrModelId}`)
-        }
-        if (!asrConfig.streaming) {
-            throw new Error(
-                `ASR model ${asrModelId} is not streaming; live validation needs a streaming ASR model.`
-            )
-        }
-        if (!vadConfig) {
-            throw new Error(`VAD config not found for ${vadModelId}`)
-        }
-        if (!speakerIdConfig) {
-            throw new Error(`Speaker ID config not found for ${speakerIdModelId}`)
-        }
-
         const initStartedAt = Date.now()
-        const asrRuntimeConfig: Parameters<typeof ASR.initialize>[0] = {
-            ...asrConfig,
-            modelType: asrConfig.modelType,
-            modelDir: asrModelDir,
-            numThreads: requestedThreads,
-            streaming: true,
-        }
-        const asrInit = await ASR.initialize(asrRuntimeConfig)
-        if (!asrInit.success) {
-            throw new Error(asrInit.error || 'ASR init failed')
-        }
-        const stream = await ASR.createOnlineStream()
-        if (!stream.success) {
-            throw new Error('ASR createOnlineStream failed')
-        }
-        const vadInit = await VAD.init({
-            ...vadConfig,
-            modelDir: vadModelDir,
-            numThreads: 1,
-        })
-        if (!vadInit.success) {
-            throw new Error(vadInit.error || 'VAD init failed')
-        }
-        const speakerInit = await SpeakerId.init({
-            ...speakerIdConfig,
-            modelDir: speakerModelDir,
-            numThreads: requestedThreads,
-        })
-        if (!speakerInit.success) {
-            throw new Error(speakerInit.error || 'Speaker ID init failed')
-        }
+        const initialized = await initializeLiveTranscriptionDiarizationServices(options)
         timing.initMs = Date.now() - initStartedAt
 
         const events: unknown[] = []
@@ -1141,7 +1077,11 @@ async function runLiveTranscriptionDiarizationReplay(
         return {
             platform: Platform.OS,
             filePath: audioUri,
-            models: { asrModelId, vadModelId, speakerIdModelId },
+            models: {
+                asrModelId: initialized.asrModelId,
+                vadModelId: initialized.vadModelId,
+                speakerIdModelId: initialized.speakerIdModelId,
+            },
             config: {
                 chunkDurationMs,
                 chunkSize,
@@ -1150,7 +1090,7 @@ async function runLiveTranscriptionDiarizationReplay(
                 speakerThreshold,
                 minTurnDurationMs,
                 speechPadMs,
-                numThreads: requestedThreads,
+                numThreads: initialized.requestedThreads,
             },
             timing,
             realtimeFactor,
@@ -1184,8 +1124,8 @@ type LiveMicTranscriptionDiarizationOptions = LiveTranscriptionDiarizationOption
     durationMs?: number
 }
 
-function getFloat32SamplesFromAudioEvent(eventData: Record<string, unknown>) {
-    const raw = eventData.pcmFloat32
+function getFloat32SamplesFromAudioEvent(eventData: AudioDataEvent | Record<string, unknown>) {
+    const raw = 'pcmFloat32' in eventData ? eventData.pcmFloat32 : undefined
     if (raw instanceof Float32Array) {
         return Array.from(raw)
     }
@@ -1325,7 +1265,7 @@ async function runLiveMicTranscriptionDiarization(
         })
 
         const emitter = new LegacyEventEmitter(AudioStudioModule)
-        subscription = emitter.addListener('AudioData', (eventData: Record<string, unknown>) => {
+        subscription = emitter.addListener('AudioData', (eventData: AudioDataEvent) => {
             const samples = getFloat32SamplesFromAudioEvent(eventData)
             if (!samples) {
                 stats.droppedChunks += 1
@@ -1397,8 +1337,17 @@ async function runLiveMicTranscriptionDiarization(
         const audioDurationMs = (stats.samples / DEFAULT_LIVE_SAMPLE_RATE) * 1000
         const averageChunkMs = stats.chunks > 0 ? stats.totalChunkMs / stats.chunks : 0
         const rms = stats.samples > 0 ? Math.sqrt(stats.sumSquares / stats.samples) : 0
-        const { sumSquares: _sumSquares, ...publicStats } = stats
-        void _sumSquares
+        const publicStats = {
+            chunks: stats.chunks,
+            samples: stats.samples,
+            emptyChunks: stats.emptyChunks,
+            slowChunks: stats.slowChunks,
+            droppedChunks: stats.droppedChunks,
+            maxChunkMs: stats.maxChunkMs,
+            totalChunkMs: stats.totalChunkMs,
+            maxQueueDepth: stats.maxQueueDepth,
+            peakAbs: stats.peakAbs,
+        }
 
         return {
             platform: Platform.OS,

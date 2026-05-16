@@ -68,11 +68,11 @@ function SpeakerTimeline({ segments, totalDuration }: { segments: DiarizationSeg
           const color = SPEAKER_COLORS[seg.speaker % SPEAKER_COLORS.length];
           return (
             <View
-              key={i}
+              key={`${seg.speaker}-${seg.start}-${seg.end}`}
               style={{
                 position: 'absolute',
-                left: `${left}%` as any,
-                width: `${width}%` as any,
+                left: `${left}%`,
+                width: `${width}%`,
                 top: 4,
                 height: 40,
                 backgroundColor: color,
@@ -111,7 +111,7 @@ function SegmentList({ segments }: { segments: DiarizationSegment[] }) {
         const color = SPEAKER_COLORS[seg.speaker % SPEAKER_COLORS.length];
         return (
           <View
-            key={i}
+            key={`${seg.speaker}-${seg.start}-${seg.end}`}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
@@ -124,7 +124,7 @@ function SegmentList({ segments }: { segments: DiarizationSegment[] }) {
               borderLeftColor: color,
             }}
           >
-            <Text variant="bodySmall" style={{ flex: 1, color: theme.colors.onSurface, fontVariant: ['tabular-nums'] as any }}>
+            <Text variant="bodySmall" style={{ flex: 1, color: theme.colors.onSurface, fontVariant: ['tabular-nums'] }}>
               {formatTime(seg.start)} – {formatTime(seg.end)}
             </Text>
             <Text variant="bodySmall" style={{ color }}>Speaker {seg.speaker}</Text>

@@ -418,7 +418,7 @@ This gives local evidence that Sherpa ONNX can stay stable for 1-hour / 4-speake
 
 - For this fixture, use fixed speaker count: `numClusters=2`. Auto-clustering is not reliable on this audio.
 - For long recordings, use 5-minute native file windows plus global speaker re-ID. Do not use full-file PCM diarization for 60-minute mobile inputs.
-- Prefer `pyannote-segmentation-3-0/model.onnx + 3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx` for the mobile quality profile. It reached **6.41% DER / 8.86% JER** on 5 minutes in Python, **5.29% DER / 6.64% JER** on a real 1-hour recording in Python, **6.15% DER / 7.80% JER** on Pixel 6a native, and **5.89% DER / 7.35% JER** on iOS simulator native, and **5.89% DER / 7.35% JER** on iPhone 12 physical native.
+- Prefer `pyannote-segmentation-3-0/model.onnx + 3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx` for the mobile quality profile. It reached **6.41% DER / 8.86% JER** on 5 minutes in Python, **5.29% DER / 6.64% JER** on a real 1-hour recording in Python, **6.15% DER / 7.80% JER** on Pixel 6a native, and **5.89% DER / 7.35% JER** on both iOS simulator and iPhone 12 physical native validation.
 - The best 5-minute Python quality was `pyannote-segmentation-3-0/model.onnx + nemo_en_titanet_large.onnx` at **5.68% DER / 7.85% JER**, but the embedding is 97 MiB.
 - 4-speaker validation is also good locally with fixed count: **6.33% DER** on the short Sherpa 4-speaker sample and **7.75% DER** on a repeated 1-hour/4-speaker stress fixture.
 - The Python/iOS simulator/iPhone 12 parity check shows the RN bridge can be trusted when it uses the same model files/settings. The remaining iOS gap is normal `net.siteed.sherpavoice.development` provisioning, not diarization/native bridge parity.

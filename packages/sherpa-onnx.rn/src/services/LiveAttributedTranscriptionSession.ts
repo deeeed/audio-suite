@@ -17,6 +17,23 @@ function cloneSegment(segment: LiveTranscriptSegment): LiveTranscriptSegment {
   return { ...segment };
 }
 
+const DEFAULT_MAX_STORED_EVENTS = 1000;
+
+function stripCommittedPrefix(text: string, prefix: string): string {
+  const trimmedText = text.trim();
+  const trimmedPrefix = prefix.trim();
+  if (trimmedPrefix.length === 0) {
+    return trimmedText;
+  }
+  if (trimmedText === trimmedPrefix) {
+    return '';
+  }
+  if (trimmedText.startsWith(trimmedPrefix)) {
+    return trimmedText.slice(trimmedPrefix.length).trimStart();
+  }
+  return trimmedText;
+}
+
 /**
  * Live attributed transcription composer.
  *
@@ -29,6 +46,7 @@ export class LiveAttributedTranscriptionSession {
   private readonly config: LiveAttributedTranscriptionConfig;
   private readonly listeners = new Set<LiveAttributedTranscriptionEventListener>();
   private readonly emittedEvents: LiveAttributedTranscriptionEvent[] = [];
+  private emittedEventCount = 0;
   private readonly segments = new Map<string, LiveTranscriptSegment>();
   private readonly segmentOrder: string[] = [];
   private readonly turnSpeakers = new Map<
@@ -45,6 +63,7 @@ export class LiveAttributedTranscriptionSession {
   private nextSegmentIndex = 1;
   private currentSegmentId: string | null = null;
   private currentSegmentStartSample = 0;
+  private committedAsrPrefix = '';
   private activeTurnId: string | undefined;
   private released = false;
 
@@ -84,7 +103,7 @@ export class LiveAttributedTranscriptionSession {
   public getSummary(): LiveAttributedTranscriptionSummary {
     const segments = this.getOrderedSegments();
     return {
-      eventCount: this.emittedEvents.length,
+      eventCount: this.emittedEventCount,
       segmentCount: segments.length,
       finalSegmentCount: segments.filter((segment) => segment.final).length,
       speakerAttributedSegmentCount: segments.filter((segment) =>
@@ -112,7 +131,7 @@ export class LiveAttributedTranscriptionSession {
     }
 
     const samples = Array.from(chunk.samples);
-    this.nextSample = startSample + samples.length;
+    const endSample = startSample + samples.length;
 
     await this.config.speakerTurns.acceptChunk({
       samples,
@@ -121,6 +140,7 @@ export class LiveAttributedTranscriptionSession {
     });
 
     const accepted = await this.config.asr.acceptWaveform(sampleRate, samples);
+    this.nextSample = endSample;
     if (!accepted.success) {
       this.emit({
         type: 'error',
@@ -131,14 +151,15 @@ export class LiveAttributedTranscriptionSession {
     }
 
     const result = await this.config.asr.getResult();
-    const text = result.text.trim();
+    const text = stripCommittedPrefix(result.text, this.committedAsrPrefix);
     if (text.length > 0) {
-      this.emitPartial(text, startSample, this.nextSample);
+      this.emitPartial(text, startSample, endSample);
     }
 
     const endpoint = await this.config.asr.isEndpoint();
     if (endpoint.isEndpoint) {
-      await this.finalizeCurrentSegment(this.nextSample);
+      await this.finalizeCurrentSegment(endSample);
+      this.committedAsrPrefix = '';
       const reset = await this.config.asr.resetStream();
       if (!reset.success) {
         this.emit({
@@ -171,6 +192,7 @@ export class LiveAttributedTranscriptionSession {
       });
     }
     this.emittedEvents.splice(0, this.emittedEvents.length);
+    this.emittedEventCount = 0;
     this.segments.clear();
     this.segmentOrder.splice(0, this.segmentOrder.length);
     this.turnSpeakers.clear();
@@ -180,6 +202,7 @@ export class LiveAttributedTranscriptionSession {
     this.nextSegmentIndex = 1;
     this.currentSegmentId = null;
     this.currentSegmentStartSample = 0;
+    this.committedAsrPrefix = '';
     this.activeTurnId = undefined;
   }
 
@@ -200,6 +223,7 @@ export class LiveAttributedTranscriptionSession {
     }
 
     if (event.type === 'speech_start') {
+      this.closeCurrentSegmentForTurnBoundary(event.startSample, event.turnId);
       this.activeTurnId = event.turnId;
       this.ensureCurrentSegment(event.startSample);
       this.attachSegmentToTurn(this.currentSegmentId, event.turnId);
@@ -276,6 +300,33 @@ export class LiveAttributedTranscriptionSession {
     }
   }
 
+  private closeCurrentSegmentForTurnBoundary(
+    boundarySample: number,
+    nextTurnId: string
+  ): void {
+    const segmentId = this.currentSegmentId;
+    if (!segmentId) {
+      this.currentSegmentStartSample = boundarySample;
+      return;
+    }
+    const segment = this.segments.get(segmentId);
+    if (!segment || segment.final || segment.turnId === nextTurnId) {
+      return;
+    }
+
+    if (segment.text.trim().length > 0) {
+      this.finalizeSegment(segment, boundarySample);
+      this.committedAsrPrefix = [
+        this.committedAsrPrefix.trim(),
+        segment.text.trim(),
+      ]
+        .filter(Boolean)
+        .join(' ');
+    }
+    this.currentSegmentId = null;
+    this.currentSegmentStartSample = boundarySample;
+  }
+
   private async finalizeCurrentSegment(endSample: number): Promise<void> {
     const segmentId = this.currentSegmentId;
     if (!segmentId) {
@@ -288,6 +339,15 @@ export class LiveAttributedTranscriptionSession {
       return;
     }
 
+    this.finalizeSegment(segment, endSample);
+    this.currentSegmentId = null;
+    this.currentSegmentStartSample = endSample;
+  }
+
+  private finalizeSegment(
+    segment: LiveTranscriptSegment,
+    endSample: number
+  ): void {
     segment.final = true;
     segment.endSample = endSample;
     segment.endMs = samplesToMs(endSample, this.config.sampleRate);
@@ -308,8 +368,6 @@ export class LiveAttributedTranscriptionSession {
       endSample: segment.endSample,
       speakerId: segment.speakerId,
     });
-    this.currentSegmentId = null;
-    this.currentSegmentStartSample = endSample;
   }
 
   private ensureCurrentSegment(startSample: number): LiveTranscriptSegment {
@@ -421,7 +479,16 @@ export class LiveAttributedTranscriptionSession {
   }
 
   private emit(event: LiveAttributedTranscriptionEvent): void {
+    this.emittedEventCount += 1;
     this.emittedEvents.push(event);
+    const maxStoredEvents =
+      this.config.maxStoredEvents ?? DEFAULT_MAX_STORED_EVENTS;
+    if (maxStoredEvents >= 0 && this.emittedEvents.length > maxStoredEvents) {
+      this.emittedEvents.splice(
+        0,
+        this.emittedEvents.length - maxStoredEvents
+      );
+    }
     for (const listener of this.listeners) {
       listener(event);
     }

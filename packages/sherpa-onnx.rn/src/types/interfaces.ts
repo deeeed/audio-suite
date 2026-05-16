@@ -1389,6 +1389,11 @@ export interface LiveAttributedTranscriptionConfig {
   onEvent?: LiveAttributedTranscriptionEventListener;
   /** Emit duplicate partial text on every chunk. Default: false. */
   emitUnchangedPartials?: boolean;
+  /**
+   * Maximum number of emitted events retained in `getState().events`.
+   * Event listeners still receive every event. Default: 1000.
+   */
+  maxStoredEvents?: number;
 }
 
 export interface LiveTranscriptSegment {
