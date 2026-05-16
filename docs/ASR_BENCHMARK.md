@@ -95,3 +95,17 @@ Translation remains a reference track because:
 - the current practical live path in Sherpa for RN is streaming ASR, not true streaming translation
 - the included local sample assets are English-only
 - Canary is useful for offline translation feasibility, not as a drop-in replacement for Google Recorder style live UX
+
+## Audio Playground EchoBridge Replay Snapshot
+
+Audio Playground now includes the `moonshine-sherpa-echobridge-perps-5m` direct replay preset. It stages the same 5-minute EchoBridge meeting fixture into the app sandbox, scores against the EchoBridge WhisperService `medium.en` backend reference, and runs Sherpa Qwen3-ASR as 30-second offline segments to avoid retained native heap.
+
+Measured on Pixel 6a (`Pixel 6a - 16 - API 36`):
+
+| Model | Mode | WER vs EchoBridge | CER vs EchoBridge | Runtime/session | Notes |
+| --- | --- | ---: | ---: | ---: | --- |
+| Sherpa Qwen3-ASR 0.6B INT8 direct replay | offline segmented | 28.1% | 22.8% | 238.9 s | best validated on-device text-quality candidate; not live-streaming |
+| Moonshine Medium Streaming | offline/file | 38.0% | 28.2% | 183.9 s | live-capable; quality below Qwen3 |
+| Moonshine Small Streaming | offline/file | 45.8% | 35.7% | 95.2 s | faster fallback |
+
+Quantization note: the official k2-fsa Qwen3-ASR model-zoo artifact available for this run is INT8 only. A true quantization-impact comparison needs a paired quantized/non-quantized Sherpa release, for example SenseVoice 2025 or Canary 180M, added as a separate benchmark matrix.

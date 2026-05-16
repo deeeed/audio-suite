@@ -25,6 +25,15 @@ const OFFLINE_TIMEOUT_MS = 10 * 60 * 1000;
 const SIMULATED_TIMEOUT_MS = 10 * 60 * 1000;
 const STATE_TIMEOUT_MS = 90 * 1000;
 const POLL_INTERVAL_MS = 1000;
+const SHERPA_SOURCE_PACKAGE =
+  process.env.SHERPA_SOURCE_PACKAGE || 'net.siteed.sherpavoice.development';
+const SHERPA_MODEL_STAGING = {
+  'sherpa-qwen3-asr-0.6b-int8': {
+    sourcePackage: SHERPA_SOURCE_PACKAGE,
+    relativePath:
+      'models/qwen3-asr-0.6B-int8-2026-03-25/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25',
+  },
+};
 const PRESETS = {
   'moonshine-longform': {
     clipIds: [
@@ -39,12 +48,25 @@ const PRESETS = {
     clipIds: ['perps-controller-refactor-5m-echobridge-medium'],
     modelIds: ['moonshine-small-streaming-en', 'moonshine-medium-streaming-en'],
   },
+  'sherpa-echobridge-perps-5m': {
+    clipIds: ['perps-controller-refactor-5m-echobridge-medium'],
+    modelIds: ['sherpa-qwen3-asr-0.6b-int8'],
+  },
+  'moonshine-sherpa-echobridge-perps-5m': {
+    clipIds: ['perps-controller-refactor-5m-echobridge-medium'],
+    modelIds: [
+      'moonshine-small-streaming-en',
+      'moonshine-medium-streaming-en',
+      'sherpa-qwen3-asr-0.6b-int8',
+    ],
+  },
 };
 
 const ALL_MODELS = [
   { id: 'moonshine-small-streaming-en', live: true },
   { id: 'moonshine-medium-streaming-en', live: true },
   { id: 'whisper-small', live: true },
+  { id: 'sherpa-qwen3-asr-0.6b-int8', live: false },
 ];
 const configuredPreset = String(process.env.BENCHMARK_PRESET || '').trim();
 const presetConfig = configuredPreset ? PRESETS[configuredPreset] : null;
@@ -180,6 +202,34 @@ async function waitForState(predicate, label, timeoutMs = STATE_TIMEOUT_MS) {
   throw new Error(
     `${label} timed out${lastError ? `: ${lastError instanceof Error ? lastError.message : String(lastError)}` : ''}`
   );
+}
+
+async function ensureSherpaBenchmarkModel(model) {
+  const staging = SHERPA_MODEL_STAGING[model.id];
+  if (!staging) return;
+
+  const destPath = `/data/user/0/${PKG}/files/${staging.relativePath}`;
+  const exists = adbShell(
+    `run-as ${PKG} sh -c "test -d ${destPath} && echo yes || echo no"`
+  ).trim();
+  if (exists === 'yes') return;
+
+  const sourcePath = `files/${staging.relativePath}`;
+  const sourceExists = adb([
+    'shell',
+    `run-as ${staging.sourcePackage} sh -c "test -d ${sourcePath} && echo yes || echo no"`,
+  ]).trim();
+  if (sourceExists !== 'yes') {
+    throw new Error(
+      `Missing Sherpa benchmark model ${model.id}. Download it in ${staging.sourcePackage} or stage ${sourcePath} into ${PKG}.`
+    );
+  }
+
+  adbShell(`run-as ${PKG} sh -c "mkdir -p files/models"`);
+  run('bash', [
+    '-lc',
+    `${SERIAL ? `adb -s ${SERIAL}` : 'adb'} exec-out run-as ${staging.sourcePackage} tar -C files -cf - ${shellQuote(staging.relativePath)} | ${SERIAL ? `adb -s ${SERIAL}` : 'adb'} shell run-as ${PKG} tar -C files -xf -`,
+  ]);
 }
 
 async function ensureDeviceClip(clip) {
@@ -649,6 +699,9 @@ async function main() {
   }
 
   await ensureBenchmarkPage();
+  for (const model of OFFLINE_MODELS) {
+    await ensureSherpaBenchmarkModel(model);
+  }
 
   const qualityClips = [];
   const liveClips = [];

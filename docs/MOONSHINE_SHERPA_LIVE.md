@@ -83,7 +83,7 @@ For transcript quality, do not use speaker/microphone loopback. Use the direct A
 cd apps/playground
 ADB_SERIAL=29071JEGR20638 \
 BENCHMARK_DEVICE="Pixel 6a - 16 - API 36" \
-BENCHMARK_PRESET=moonshine-echobridge-perps-5m \
+BENCHMARK_PRESET=moonshine-sherpa-echobridge-perps-5m \
 node scripts/agentic/direct-asr-benchmark.mjs
 ```
 
@@ -91,6 +91,7 @@ Reference source: EchoBridge server `WhisperService` with `medium.en` on the 5-m
 
 | Mode | Model | WER vs EchoBridge | CER vs EchoBridge | Init | Runtime | First partial | First commit | Commits |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Offline/file segmented | Sherpa Qwen3-ASR 0.6B INT8 | 28.1% | 22.8% | 5.5 s | 238.9 s | n/a | n/a | n/a |
 | Offline/file | Moonshine Medium Streaming | 38.0% | 28.2% | 33.4 s | 183.9 s | n/a | n/a | n/a |
 | Offline/file | Moonshine Small Streaming | 45.8% | 35.7% | 0.8 s | 95.2 s | n/a | n/a | n/a |
 | Simulated live | Moonshine Medium Streaming | 38.0% | 28.2% | 1.7 s | 300.8 s | 4.2 s | 4.5 s | 90 |
@@ -98,9 +99,11 @@ Reference source: EchoBridge server `WhisperService` with `medium.en` on the 5-m
 
 Findings from this replay:
 
-- Medium is the better quality default when the device can afford it, but startup is much slower for full-file transcription.
-- Simulated-live quality closely matches full-file quality on this fixture, which supports using direct PCM replay as the reproducible validation path for live UX.
-- A 38% WER against EchoBridge medium is usable for rough meeting notes but not final-quality transcription; compare against Sherpa offline/Qwen-class candidates before choosing a final post-recording model.
+- Sherpa Qwen3-ASR 0.6B INT8 is the best validated on-device text-quality candidate in this benchmark: 28.1% WER vs 38.0% for Moonshine medium.
+- Qwen3 is offline-only and is run as 30-second segments with release/reinitialize between segments to avoid retained native heap. It is better quality, but not a live preview model.
+- Medium is the better Moonshine quality default when the device can afford it, but startup is much slower for full-file transcription.
+- Simulated-live Moonshine quality closely matches full-file Moonshine quality on this fixture, which supports using direct PCM replay as the reproducible validation path for live UX.
+- The official k2-fsa Qwen3-ASR artifact currently available in the model zoo is INT8 only, so this benchmark cannot measure Qwen3 quantization impact yet. To measure quantization impact on-device, add paired Sherpa releases that provide both quantized and non-quantized artifacts, such as SenseVoice 2025 or Canary 180M.
 
 ## Recommended use
 

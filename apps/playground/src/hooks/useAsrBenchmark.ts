@@ -6,6 +6,7 @@ import { baseLogger } from '../config'
 import {
     ASR_BENCHMARK_MODELS,
     ASR_BENCHMARK_SAMPLES,
+    type AsrBenchmarkEngine,
     type AsrBenchmarkMode,
     type AsrBenchmarkSample,
 } from '../utils/asrBenchmarkModels'
@@ -22,7 +23,7 @@ const logger = baseLogger.extend('AsrBenchmark')
 export interface AsrBenchmarkResult {
     commitCount?: number
     createdAt: number
-    engine: 'moonshine' | 'whisper'
+    engine: AsrBenchmarkEngine
     error?: string
     firstCommitMs?: number
     firstPartialMs?: number

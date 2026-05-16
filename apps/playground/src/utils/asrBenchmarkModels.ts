@@ -1,6 +1,7 @@
 import type { MoonshineModelArch } from '@siteed/moonshine.rn'
+import type { AsrModelConfig } from '@siteed/sherpa-onnx.rn'
 
-export type AsrBenchmarkEngine = 'moonshine' | 'whisper'
+export type AsrBenchmarkEngine = 'moonshine' | 'whisper' | 'sherpa'
 export type AsrBenchmarkMode = 'sample' | 'simulated'
 
 export interface AsrBenchmarkSample {
@@ -22,6 +23,13 @@ export interface WhisperBenchmarkDescriptor {
     whisperModelId: string
 }
 
+export interface SherpaBenchmarkDescriptor {
+    config: Omit<AsrModelConfig, 'modelDir'>
+    modelDir: string
+    releaseBetweenSegments?: boolean
+    segmentDurationMs?: number
+}
+
 export interface AsrBenchmarkModel {
     description: string
     engine: AsrBenchmarkEngine
@@ -30,6 +38,7 @@ export interface AsrBenchmarkModel {
     moonshine?: MoonshineBenchmarkDescriptor
     name: string
     rationale: string
+    sherpa?: SherpaBenchmarkDescriptor
     whisper?: WhisperBenchmarkDescriptor
 }
 
@@ -128,6 +137,44 @@ export const ASR_BENCHMARK_MODELS: AsrBenchmarkModel[] = [
             filename: 'ggml-small.en.bin',
             url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin',
             whisperModelId: 'small',
+        },
+    },
+    {
+        id: 'sherpa-qwen3-asr-0.6b-int8',
+        name: 'Sherpa Qwen3-ASR 0.6B INT8',
+        description:
+            'Best currently validated Sherpa ONNX offline ASR candidate for on-device long-form transcription.',
+        engine: 'sherpa',
+        liveCapable: false,
+        rationale:
+            'Runs offline on Android from the downloaded sherpa-onnx Qwen3 0.6B INT8 package; intended as the quality comparison point against Moonshine live models.',
+        sherpa: {
+            modelDir:
+                'models/qwen3-asr-0.6B-int8-2026-03-25/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25',
+            releaseBetweenSegments: true,
+            segmentDurationMs: 30_000,
+            config: {
+                modelType: 'qwen3',
+                streaming: false,
+                numThreads: 4,
+                decodingMethod: 'greedy_search',
+                maxActivePaths: 4,
+                provider: 'cpu',
+                language: 'en',
+                modelFiles: {
+                    encoder: 'encoder.int8.onnx',
+                    decoder: 'decoder.int8.onnx',
+                    convFrontend: 'conv_frontend.onnx',
+                    tokenizer: 'tokenizer',
+                },
+                qwen3: {
+                    maxTotalLen: 512,
+                    maxNewTokens: 128,
+                    temperature: 0.000001,
+                    topP: 0.8,
+                    seed: 42,
+                },
+            },
         },
     },
 ]
