@@ -131,10 +131,11 @@ function formatMs(value?: number | null): string {
 }
 
 function getSpeakerLabel(line: MoonshineTranscriptLine | AttributedMoonshineLine): string {
-    if (line.hasSpeakerId && typeof line.speakerIndex === 'number') {
+    if (!line.hasSpeakerId) return 'Unattributed turn'
+    if (typeof line.speakerIndex === 'number') {
         return `Speaker ${line.speakerIndex + 1}`
     }
-    if (line.hasSpeakerId && line.speakerId) {
+    if (typeof line.speakerId === 'string' && line.speakerId.length > 0) {
         return `Speaker ${line.speakerId}`
     }
     return 'Unattributed turn'

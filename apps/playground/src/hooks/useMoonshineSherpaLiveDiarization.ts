@@ -178,7 +178,11 @@ function selectTurnForLine(
     }
 
     if (activeSpeakerId) {
-        return turns.findLast?.((turn) => turn.speakerId === activeSpeakerId) ?? null
+        for (let index = turns.length - 1; index >= 0; index -= 1) {
+            const turn = turns[index]
+            if (turn?.speakerId === activeSpeakerId) return turn
+        }
+        return null
     }
 
     return turns[turns.length - 1] ?? null

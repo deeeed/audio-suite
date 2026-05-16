@@ -699,6 +699,8 @@ export async function validateLongAudioStream(
             sampleCount: result.samples,
             sampleRate: result.sampleRate,
             channels: result.channels,
+            // Segmented offline ASR reports user-visible progress by completed
+            // segment count rather than newline-delimited transcript lines.
             transcriptLineCount:
                 mode === 'sherpa-offline-segments'
                     ? (_longAudioValidationProgress?.sherpaSegmentCount ?? 0)
