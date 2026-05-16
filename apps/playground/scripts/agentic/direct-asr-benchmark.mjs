@@ -35,6 +35,10 @@ const PRESETS = {
     ],
     modelIds: ['moonshine-small-streaming-en', 'moonshine-medium-streaming-en'],
   },
+  'moonshine-echobridge-perps-5m': {
+    clipIds: ['perps-controller-refactor-5m-echobridge-medium'],
+    modelIds: ['moonshine-small-streaming-en', 'moonshine-medium-streaming-en'],
+  },
 };
 
 const ALL_MODELS = [

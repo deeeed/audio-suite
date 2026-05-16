@@ -74,6 +74,34 @@ Validated on a Pixel 6a-class physical Android device (`Pixel 6a - 16 - API 36`)
 | Sherpa max queue depth / drops | 2 / 0 |
 | Final speaker turns | 1 |
 
+
+## Transcript quality replay
+
+For transcript quality, do not use speaker/microphone loopback. Use the direct ASR benchmark runner: it stages a WAV into the app sandbox and feeds the identical PCM waveform into Moonshine offline/file transcription and simulated-live replay.
+
+```bash
+cd apps/playground
+ADB_SERIAL=29071JEGR20638 \
+BENCHMARK_DEVICE="Pixel 6a - 16 - API 36" \
+BENCHMARK_PRESET=moonshine-echobridge-perps-5m \
+node scripts/agentic/direct-asr-benchmark.mjs
+```
+
+Reference source: EchoBridge server `WhisperService` with `medium.en` on the 5-minute `perps_controller_refactor_5m_16k_mono.wav` fixture. This is a backend-reference score, not human-labelled WER.
+
+| Mode | Model | WER vs EchoBridge | CER vs EchoBridge | Init | Runtime | First partial | First commit | Commits |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Offline/file | Moonshine Medium Streaming | 38.0% | 28.2% | 33.4 s | 183.9 s | n/a | n/a | n/a |
+| Offline/file | Moonshine Small Streaming | 45.8% | 35.7% | 0.8 s | 95.2 s | n/a | n/a | n/a |
+| Simulated live | Moonshine Medium Streaming | 38.0% | 28.2% | 1.7 s | 300.8 s | 4.2 s | 4.5 s | 90 |
+| Simulated live | Moonshine Small Streaming | 46.4% | 35.8% | 2.0 s | 300.8 s | 4.2 s | 4.5 s | 91 |
+
+Findings from this replay:
+
+- Medium is the better quality default when the device can afford it, but startup is much slower for full-file transcription.
+- Simulated-live quality closely matches full-file quality on this fixture, which supports using direct PCM replay as the reproducible validation path for live UX.
+- A 38% WER against EchoBridge medium is usable for rough meeting notes but not final-quality transcription; compare against Sherpa offline/Qwen-class candidates before choosing a final post-recording model.
+
 ## Recommended use
 
 - Use this page for UX validation of live transcript + tentative speaker attribution.

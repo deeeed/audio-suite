@@ -1,3 +1,16 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
+const REPO_ROOT = path.resolve(SCRIPT_DIR, '..', '..', '..', '..')
+
+function readOptionalReference(relativePath) {
+  const absolutePath = path.join(REPO_ROOT, relativePath)
+  if (!fs.existsSync(absolutePath)) return null
+  return fs.readFileSync(absolutePath, 'utf8').replace(/\s+/g, ' ').trim() || null
+}
+
 const asrEvalManifest = [
   {
     id: 'ami-is1001a-150-170',
@@ -49,6 +62,19 @@ const asrEvalManifest = [
     referenceTranscript: 'hello world',
     transcriptSource: 'Literal utterance',
     description: 'Short sanity check clip for regressions.',
+    modes: ['offline', 'simulated'],
+  },
+  {
+    id: 'perps-controller-refactor-5m-echobridge-medium',
+    label: 'Perps controller refactor EchoBridge excerpt (5m)',
+    relativeHostPath: '.agent/fixtures/diarization/perps_controller_refactor_5m_16k_mono.wav',
+    deviceFileName: 'perps-controller-refactor-5m.wav',
+    referenceTranscript: readOptionalReference(
+      '.agent/validation-logs/asr/echobridge-reference/perps-5m-echobridge-whisper-medium.transcript.txt'
+    ),
+    transcriptSource: 'EchoBridge WhisperService medium.en backend reference',
+    description:
+      'Five-minute real meeting excerpt used to validate long-form Moonshine transcript quality via direct PCM replay.',
     modes: ['offline', 'simulated'],
   },
 ]
