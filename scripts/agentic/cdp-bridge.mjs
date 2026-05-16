@@ -1333,7 +1333,8 @@ Commands:
   eval-ref --list                    List named eval refs for the current app
   can-go-back                        Check if navigation can go back
   go-back                            Navigate back
-  press-test-id <testId>             Press a component by testID (walks React fiber tree)
+  press-test-id <testId> [--value true|false]
+                                      Press a component by testID, or set a switch value explicitly
   set-input <testId> <value>         Set a text input by testID via the agentic bridge
   set-step-hud <json-step>           Publish the current recipe step to the in-app HUD overlay
   clear-step-hud                     Clear the in-app HUD overlay
