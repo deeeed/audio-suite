@@ -410,8 +410,8 @@ This gives local evidence that Sherpa ONNX can stay stable for 1-hour / 4-speake
 | Good diarization with Sherpa ONNX locally | Covered for selected fixed-count cases | 5-min DER 6.41%, 60-min DER 5.29%, 4-speaker short DER 6.33%, 4-speaker 60-min stress DER 7.75% | Natural long 4-speaker recording still desirable. |
 | Up to 4 speakers | Covered locally | `0-four-speakers-zh` fixed-4 and repeated 60-min fixed-4 both return 4 speakers with low confusion | Natural 4-speaker long recording still desirable. |
 | Up to 1 hour | Covered on Python, Android physical, iOS simulator, and iPhone 12 physical | real 60-min 2-speaker fixture scored at 5.29% DER in Python, 6.15% DER on Pixel 6a native, and 5.89% DER on iOS simulator/iPhone 12 native | Natural long 4-speaker recording still desirable. |
-| Correct speaker turns | Partially covered | low formal DER/JER and confusion versus EchoBridge/repeated references | Need human spot-check/UI evidence and live-audio turn behavior later. |
-| Live audio eventually | Not yet covered | none | Future work; current validation is offline file diarization. |
+| Correct speaker turns | Partially covered | low formal DER/JER and confusion versus EchoBridge/repeated references; live replay emits transcript-attributed `turn_finalized` events | Need broader natural multi-speaker live-mic spot checks. |
+| Live audio eventually | Covered for keep-up and controlled speech | Pixel 6a replay and live-mic recipes keep up; controlled macOS `say` capture produced one final speaker-attributed transcript | Not a formal DER benchmark; offline/windowed diarization remains the quality baseline. |
 | Update `sherpa-onnx.rn` accordingly | Implemented for offline file windows | RN/native exposes segmentation model filename, file windows, speaker embedding file windows, and app-level global re-ID | API cleanup and normal SherpaVoiceDev iOS provisioning remain. |
 
 ## Current recommendation
@@ -491,4 +491,32 @@ Representative command:
 cd apps/sherpa-voice
 (sleep 2; say -r 180 'This is a controlled live microphone validation. Speaker one is talking now. The live transcription should hear this sentence and keep up with the audio stream.') &
 node scripts/agentic/cdp-bridge.mjs --device 'Pixel 6a' eval "JSON.stringify(globalThis.__AGENTIC__?.testLiveMicTranscriptionDiarization?.({durationMs:18000,chunkDurationMs:100,asrModelId:'streaming-zipformer-en-20m-mobile',vadModelId:'silero-vad-v5',speakerIdModelId:'speaker-id-en-voxceleb'}))"
+```
+
+### Mobile defaults and tuning guidance
+
+Use two separate defaults: one for **offline quality diarization** and one for **live UX**.
+
+| Use case | Mid-range default (Pixel 6 / Pixel 6a class, iPhone 12 class) | New/high-end tuning |
+| --- | --- | --- |
+| Offline long diarization quality | 5-minute native file windows, fixed `numClusters` when known, `pyannote-segmentation-3-0/model.onnx`, `speaker-id-3dspeaker-eres2net-en`, 2 threads | Same quality profile first; optionally benchmark larger embeddings such as `speaker-id-nemo-titanet-large` before exposing as a user default |
+| Live transcription + turn attribution | `streaming-zipformer-en-20m-mobile`, `silero-vad-v5`, `speaker-id-en-voxceleb`, 100 ms chunks, `minTurnDurationMs=1000`, `speechPadMs=120`, `speakerThreshold=0.55`, 1-2 ASR/Speaker threads and VAD single-threaded | Try larger streaming ASR / extra ASR threads only if recipe evidence keeps average chunk processing below the chunk duration and queue depth <= 2 |
+| Live validation threshold | Replay realtime factor <= 1.0, mic max queue depth <= 2, drops = 0, final transcript count > 0 for controlled speech | Same pass criteria; higher quality models must still pass keep-up before becoming defaults |
+
+Do **not** default live UX to the offline diarization quality stack. The PyAnnote segmentation + ERes2Net profile is accurate for file/windowed diarization, but the live path uses VAD boundaries plus per-turn speaker embeddings so it can stream partial/final transcripts and speaker updates with bounded memory.
+
+Quantized segmentation should remain opt-in. The historical int8-first profile was faster/smaller but produced much worse quality on the 5-minute reference (`41.84% DER / 61.72% JER`) than `model.onnx + 3dspeaker_eres2net_en` (`6.41% DER / 8.86% JER`).
+
+### UI validation coverage
+
+The Sherpa Voice diarization screen now exposes the live path directly:
+
+- **Run Live Replay**: replays a selected 16 kHz mono WAV as 100 ms chunks and displays keep-up metrics, event counts, speaker-turn rows, and transcript previews.
+- **Record 10s Mic**: records real microphone chunks through the same `LiveAttributedTranscriptionSession` path and displays queue/backpressure metrics plus any transcript/speaker-turn output.
+
+Use the recipes for machine validation and the UI for human spot checks of turn boundaries, speaker-label stability, and UX clarity.
+
+```bash
+cd apps/sherpa-voice
+ADB_SERIAL=29071JEGR20638 yarn recipe:run scripts/agentic/teams/sherpa/recipes/live-transcription-diarization-ui-replay.json --device 'Pixel 6a'
 ```

@@ -242,8 +242,7 @@ export class LiveAttributedTranscriptionSession {
         }
         if (reset.success) {
           this.asrHasAcceptedAudio = false;
-        }
-        if (!reset.success) {
+        } else {
           this.resetAsrBeforeNextChunk = true;
           this.emit({
             type: 'error',
@@ -282,6 +281,9 @@ export class LiveAttributedTranscriptionSession {
             : 'Speaker turn flush failed',
       });
     }
+    // Speaker turn flushing can synchronously finalize/discard turns and mutate
+    // the active ASR segment through handleSpeakerEvent(), so recompute before
+    // deciding whether the native ASR stream needs a reset.
     shouldResetAsr =
       shouldResetAsr || Boolean(this.currentSegmentId) || this.asrHasAcceptedAudio;
     await this.drainAsrTailPadding();
