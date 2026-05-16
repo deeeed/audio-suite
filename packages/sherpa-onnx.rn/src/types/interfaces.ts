@@ -10,6 +10,7 @@ import { LanguageIdService } from '../services/LanguageIdService';
 import { PunctuationService } from '../services/PunctuationService';
 import { DiarizationService } from '../services/DiarizationService';
 import { OnnxInferenceService } from '../services/OnnxInferenceService';
+import type { LiveSpeakerTurnSession } from '../services/LiveSpeakerTurnSession';
 
 /**
  * Provider type for model inference
@@ -1035,7 +1036,8 @@ export interface SpeakerIdFileProcessResult {
   error?: string;
 }
 
-export interface SpeakerIdFileWindowProcessResult extends SpeakerIdFileProcessResult {
+export interface SpeakerIdFileWindowProcessResult
+  extends SpeakerIdFileProcessResult {
   /**
    * Start offset of the processed window in milliseconds.
    */
@@ -1169,6 +1171,137 @@ export interface VadAcceptWaveformResult {
   /** Completed speech segments found in this chunk */
   segments: SpeechSegment[];
   error?: string;
+}
+
+// ----------------------------------------------------------------------------------
+// Live speaker turn interfaces
+// ----------------------------------------------------------------------------------
+
+export interface LiveSpeakerTurnChunk {
+  /** PCM samples for this chunk. Samples are expected to be mono float PCM. */
+  samples: ArrayLike<number>;
+  /** Optional per-chunk sample rate. Must match the session sampleRate when set. */
+  sampleRate?: number;
+  /** Optional absolute start sample. Omit for contiguous replay/live streams. */
+  startSample?: number;
+}
+
+export interface LiveSpeakerTurnVadAdapter {
+  acceptWaveform(
+    sampleRate: number,
+    samples: number[]
+  ): Promise<VadAcceptWaveformResult>;
+}
+
+export interface LiveSpeakerTurnSpeakerIdAdapter {
+  processSamples(
+    sampleRate: number,
+    samples: number[]
+  ): Promise<SpeakerIdProcessResult>;
+  computeEmbedding(): Promise<SpeakerEmbeddingResult>;
+}
+
+export type LiveSpeakerTurnProvenance = 'centroid_match' | 'new_speaker';
+
+export type LiveSpeakerTurnEvent =
+  | {
+      type: 'speech_start';
+      turnId: string;
+      startMs: number;
+      startSample: number;
+    }
+  | {
+      type: 'speech_end';
+      turnId: string;
+      startMs: number;
+      endMs: number;
+      startSample: number;
+      endSample: number;
+    }
+  | {
+      type: 'speaker_pending';
+      turnId: string;
+    }
+  | {
+      type: 'speaker_resolved';
+      turnId: string;
+      speakerId: string;
+      confidence: number;
+      provenance: LiveSpeakerTurnProvenance;
+    }
+  | {
+      type: 'turn_final';
+      turnId: string;
+      startMs: number;
+      endMs: number;
+      startSample: number;
+      endSample: number;
+      speakerId?: string;
+    }
+  | {
+      type: 'turn_discarded';
+      turnId: string;
+      reason: 'too_short';
+      durationMs: number;
+    }
+  | {
+      type: 'error';
+      error: string;
+      turnId?: string;
+    }
+  | {
+      type: 'released';
+    };
+
+export type LiveSpeakerTurnEventListener = (
+  event: LiveSpeakerTurnEvent
+) => void;
+
+export interface LiveSpeakerTurnConfig {
+  /** Session sample rate. All chunks must use this rate. */
+  sampleRate: number;
+  /** Adapter that provides VAD decisions. */
+  vad: LiveSpeakerTurnVadAdapter;
+  /** Adapter that computes one speaker embedding per finalized turn. */
+  speakerId: LiveSpeakerTurnSpeakerIdAdapter;
+  /** Optional event callback. Additional listeners can be registered with onEvent. */
+  onEvent?: LiveSpeakerTurnEventListener;
+  /** Minimum finalized speech duration before speaker embedding. Default: 250 ms. */
+  minTurnDurationMs?: number;
+  /** Extra audio included before/after turn boundaries for embedding. Default: 0 ms. */
+  speechPadMs?: number;
+  /** Cosine-similarity threshold for assigning a turn to an existing speaker. Default: 0.5. */
+  speakerThreshold?: number;
+  /** Optional cap on speakers. New turns fall back to the nearest centroid after the cap. */
+  maxSpeakers?: number;
+  /** Centroid update policy after a matched turn. Default: moving_average. */
+  centroidUpdate?: 'moving_average' | 'none';
+  /** Moving-average alpha for centroid updates. Default: 0.25. */
+  centroidUpdateAlpha?: number;
+  /** Bounded PCM buffer duration. Default: 60 seconds. */
+  maxRingBufferDurationMs?: number;
+}
+
+export interface LiveSpeakerTurnSpeakerCentroid {
+  speakerId: string;
+  embedding: number[];
+  turnCount: number;
+}
+
+export interface LiveSpeakerTurnSessionState {
+  released: boolean;
+  speechActive: boolean;
+  activeTurnId: string | null;
+  nextSample: number;
+  speakers: LiveSpeakerTurnSpeakerCentroid[];
+  events: LiveSpeakerTurnEvent[];
+}
+
+export interface LiveSpeakerTurnSummary {
+  eventCount: number;
+  turnCount: number;
+  speakerCount: number;
+  durationMs: number;
 }
 
 // ----------------------------------------------------------------------------------
@@ -1349,7 +1482,9 @@ export interface NativeSherpaOnnxInterface {
   releaseSpeakerId(): Promise<{ released: boolean }>;
 
   // Diarization methods
-  initDiarization(config: DiarizationModelConfig): Promise<DiarizationInitResult>;
+  initDiarization(
+    config: DiarizationModelConfig
+  ): Promise<DiarizationInitResult>;
   processDiarizationFile(
     filePath: string,
     numClusters: number,
@@ -1392,7 +1527,9 @@ export interface NativeSherpaOnnxInterface {
   releaseLanguageId(): Promise<{ released: boolean }>;
 
   // Punctuation methods
-  initPunctuation(config: PunctuationModelConfig): Promise<PunctuationInitResult>;
+  initPunctuation(
+    config: PunctuationModelConfig
+  ): Promise<PunctuationInitResult>;
   addPunctuation(text: string): Promise<PunctuationResult>;
   releasePunctuation(): Promise<{ released: boolean }>;
 
@@ -1444,6 +1581,7 @@ export interface SherpaOnnxInterface extends ApiInterface {
   Diarization: DiarizationService;
   Denoising: import('../services/DenoisingService').DenoisingService;
   OnnxInference: OnnxInferenceService;
+  LiveSpeakerTurnSession: typeof LiveSpeakerTurnSession;
 }
 
 // ----------------------------------------------------------------------------------
