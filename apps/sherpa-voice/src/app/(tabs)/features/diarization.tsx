@@ -31,11 +31,12 @@ import {
 } from '../../../components/ui';
 import { useDiarization, type DiarizationAudioFile } from '../../../hooks/useDiarization';
 import { useModels } from '../../../hooks/useModelWithConfig';
-import { getAsrModelConfigById, getModelConfigById } from '../../../hooks/useModelConfig';
+import { getAsrModelConfigById } from '../../../hooks/useModelConfig';
 import { useModelManagement } from '../../../contexts/ModelManagement';
 import { DEFAULT_LIVE_SAMPLE_RATE, DEFAULT_NUM_THREADS } from '../../../utils/constants';
 import { resolveModelDir } from '../../../utils/fileUtils';
 import { readMonoPcm16Wav } from '../../../utils/wav';
+import { initializeLiveTranscriptionDiarizationModels } from '../../../utils/liveTranscriptionDiarization';
 import { baseLogger } from '../../../config';
 
 const logger = baseLogger.extend('DiarizationScreen');
@@ -187,6 +188,14 @@ function LiveValidationSection({
     }
   }, [selectedVadModelId, vadModels]);
 
+  if (Platform.OS === 'web') {
+    return (
+      <Section title="Live Transcription + Speaker Turns">
+        <StatusBlock status="Live replay validation requires the native iOS or Android app." />
+      </Section>
+    );
+  }
+
   const handleRunLiveReplay = async () => {
     const effectiveAudioPath = liveAudioPath.trim() || selectedAudio?.localUri;
     if (!effectiveAudioPath) {
@@ -212,15 +221,6 @@ function LiveValidationSection({
       if (!vadState?.localPath) throw new Error(`VAD model ${selectedVadModelId} is not downloaded`);
       if (!speakerState?.localPath) throw new Error(`Speaker model ${selectedEmbModelId} is not downloaded`);
 
-      const asrConfig = getAsrModelConfigById(selectedAsrModelId);
-      const vadConfig = getModelConfigById(selectedVadModelId)?.vadConfig;
-      const speakerConfig = getModelConfigById(selectedEmbModelId)?.speakerIdConfig;
-      if (!asrConfig?.modelType || !asrConfig.streaming) {
-        throw new Error(`${selectedAsrModelId} is not a streaming ASR model`);
-      }
-      if (!vadConfig) throw new Error(`VAD config missing for ${selectedVadModelId}`);
-      if (!speakerConfig) throw new Error(`Speaker config missing for ${selectedEmbModelId}`);
-
       setStatus('Reading WAV fixture...');
       const wav = await readMonoPcm16Wav(effectiveAudioPath);
       if (wav.sampleRate !== DEFAULT_LIVE_SAMPLE_RATE) {
@@ -233,40 +233,15 @@ function LiveValidationSection({
       const chunkSize = Math.round((chunkDurationMs / 1000) * wav.sampleRate);
 
       setStatus('Initializing ASR, VAD, and Speaker ID...');
-      await Promise.all([
-        ASR.release().catch(() => {}),
-        VAD.release().catch(() => {}),
-        SpeakerId.release().catch(() => {}),
-      ]);
-
-      const asrDir = await resolveModelDir(asrState.localPath);
-      const vadDir = await resolveModelDir(vadState.localPath);
-      const speakerDir = await resolveModelDir(speakerState.localPath);
-
-      const asrInit = await ASR.initialize({
-        ...asrConfig,
-        modelType: asrConfig.modelType,
-        modelDir: asrDir,
-        streaming: true,
+      await initializeLiveTranscriptionDiarizationModels({
+        asrModelId: selectedAsrModelId,
+        vadModelId: selectedVadModelId,
+        speakerIdModelId: selectedEmbModelId,
+        asrModelDir: await resolveModelDir(asrState.localPath),
+        vadModelDir: await resolveModelDir(vadState.localPath),
+        speakerModelDir: await resolveModelDir(speakerState.localPath),
         numThreads: DEFAULT_NUM_THREADS,
       });
-      if (!asrInit.success) throw new Error(asrInit.error || 'ASR init failed');
-      const stream = await ASR.createOnlineStream();
-      if (!stream.success) throw new Error('ASR stream init failed');
-
-      const vadInit = await VAD.init({
-        ...vadConfig,
-        modelDir: vadDir,
-        numThreads: 1,
-      });
-      if (!vadInit.success) throw new Error(vadInit.error || 'VAD init failed');
-
-      const speakerInit = await SpeakerId.init({
-        ...speakerConfig,
-        modelDir: speakerDir,
-        numThreads: DEFAULT_NUM_THREADS,
-      });
-      if (!speakerInit.success) throw new Error(speakerInit.error || 'Speaker ID init failed');
 
       const eventCounts: Record<string, number> = {};
       session = new LiveAttributedTranscriptionSession({

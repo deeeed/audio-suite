@@ -39,12 +39,12 @@ import { getWasmBasePath, getWebAsrBackend } from './config/webFeatures'
 import { getWebModelBaseUrl } from './utils/webModelUtils'
 import {
     DEFAULT_LIVE_SAMPLE_RATE,
-    DEFAULT_NUM_THREADS,
     MODEL_STATES_STORAGE_KEY,
 } from './utils/constants'
 import { resolveModelDir } from './utils/fileUtils'
 import { getAsrModelConfigById, getModelConfigById } from './hooks/useModelConfig'
 import { readMonoPcm16Wav } from './utils/wav'
+import { initializeLiveTranscriptionDiarizationModels } from './utils/liveTranscriptionDiarization'
 
 // App-variant-aware model base directory.
 // Native: matches the running build's sandbox (e.g.
@@ -1155,69 +1155,24 @@ async function initializeLiveTranscriptionDiarizationServices(
     const asrModelId = options.asrModelId ?? 'streaming-zipformer-en-20m-mobile'
     const vadModelId = options.vadModelId ?? 'silero-vad-v5'
     const speakerIdModelId = options.speakerIdModelId ?? 'speaker-id-en-voxceleb'
-    const requestedThreads = options.numThreads ?? DEFAULT_NUM_THREADS
 
-    await Promise.all([
-        ASR.release().catch(() => {}),
-        VAD.release().catch(() => {}),
-        SpeakerId.release().catch(() => {}),
+    const [asrModelDir, vadModelDir, speakerModelDir] = await Promise.all([
+        resolveDownloadedModelDir(asrModelId),
+        resolveDownloadedModelDir(vadModelId),
+        resolveDownloadedModelDir(speakerIdModelId),
     ])
 
-    const asrModelDir = await resolveDownloadedModelDir(asrModelId)
-    const vadModelDir = await resolveDownloadedModelDir(vadModelId)
-    const speakerModelDir = await resolveDownloadedModelDir(speakerIdModelId)
-    const asrConfig = getAsrModelConfigById(asrModelId) ?? getModelConfigById(asrModelId)?.asrConfig
-    const vadConfig = getModelConfigById(vadModelId)?.vadConfig
-    const speakerIdConfig = getModelConfigById(speakerIdModelId)?.speakerIdConfig
-    if (!asrConfig?.modelType) {
-        throw new Error(`ASR modelType missing for ${asrModelId}`)
-    }
-    if (!asrConfig.streaming) {
-        throw new Error(
-            `ASR model ${asrModelId} is not streaming; live validation needs a streaming ASR model.`
-        )
-    }
-    if (!vadConfig) {
-        throw new Error(`VAD config not found for ${vadModelId}`)
-    }
-    if (!speakerIdConfig) {
-        throw new Error(`Speaker ID config not found for ${speakerIdModelId}`)
-    }
-
-    const asrRuntimeConfig: Parameters<typeof ASR.initialize>[0] = {
-        ...asrConfig,
-        modelType: asrConfig.modelType,
-        modelDir: asrModelDir,
-        numThreads: requestedThreads,
-        streaming: true,
-    }
-    const asrInit = await ASR.initialize(asrRuntimeConfig)
-    if (!asrInit.success) {
-        throw new Error(asrInit.error || 'ASR init failed')
-    }
-    const stream = await ASR.createOnlineStream()
-    if (!stream.success) {
-        throw new Error('ASR createOnlineStream failed')
-    }
-    const vadInit = await VAD.init({
-        ...vadConfig,
-        modelDir: vadModelDir,
-        numThreads: 1,
+    return initializeLiveTranscriptionDiarizationModels({
+        asrModelId,
+        vadModelId,
+        speakerIdModelId,
+        asrModelDir,
+        vadModelDir,
+        speakerModelDir,
+        numThreads: options.numThreads,
     })
-    if (!vadInit.success) {
-        throw new Error(vadInit.error || 'VAD init failed')
-    }
-    const speakerInit = await SpeakerId.init({
-        ...speakerIdConfig,
-        modelDir: speakerModelDir,
-        numThreads: requestedThreads,
-    })
-    if (!speakerInit.success) {
-        throw new Error(speakerInit.error || 'Speaker ID init failed')
-    }
-
-    return { asrModelId, vadModelId, speakerIdModelId, requestedThreads }
 }
+
 
 async function runLiveMicTranscriptionDiarization(
     options: LiveMicTranscriptionDiarizationOptions = {}

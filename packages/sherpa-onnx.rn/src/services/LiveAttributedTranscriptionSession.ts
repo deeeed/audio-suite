@@ -85,6 +85,7 @@ export class LiveAttributedTranscriptionSession {
   private currentSegmentId: string | null = null;
   private currentSegmentStartSample = 0;
   private committedAsrPrefix = '';
+  private resetAsrBeforeNextChunk = false;
   private activeTurnId: string | undefined;
   private released = false;
 
@@ -161,6 +162,22 @@ export class LiveAttributedTranscriptionSession {
       sampleRate,
       startSample,
     });
+
+    if (this.resetAsrBeforeNextChunk) {
+      this.resetAsrBeforeNextChunk = false;
+      const reset = await this.config.asr.resetStream();
+      if (!reset.success) {
+        this.emit({
+          type: 'error',
+          source: 'asr',
+          error:
+            reset.error ??
+            'ASR failed while resetting online stream at speaker boundary',
+        });
+        return;
+      }
+      this.committedAsrPrefix = '';
+    }
 
     const accepted = await this.config.asr.acceptWaveform(sampleRate, samples);
     // Advance the session audio clock once both downstream streams accepted the
@@ -261,6 +278,7 @@ export class LiveAttributedTranscriptionSession {
       if (text.length > 0) {
         this.emitPartial(text, this.currentSegmentStartSample, this.nextSample);
       }
+      await this.config.asr.isEndpoint();
     } catch (error) {
       this.emit({
         type: 'error',
@@ -296,6 +314,7 @@ export class LiveAttributedTranscriptionSession {
     this.currentSegmentId = null;
     this.currentSegmentStartSample = 0;
     this.committedAsrPrefix = '';
+    this.resetAsrBeforeNextChunk = false;
     this.activeTurnId = undefined;
   }
 
@@ -316,7 +335,9 @@ export class LiveAttributedTranscriptionSession {
     }
 
     if (event.type === 'speech_start') {
-      this.closeCurrentSegmentForTurnBoundary(event.startSample, event.turnId);
+      if (this.closeCurrentSegmentForTurnBoundary(event.startSample, event.turnId)) {
+        this.resetAsrBeforeNextChunk = true;
+      }
       this.activeTurnId = event.turnId;
       this.ensureCurrentSegment(event.startSample);
       this.attachSegmentToTurn(this.currentSegmentId, event.turnId);
@@ -398,15 +419,15 @@ export class LiveAttributedTranscriptionSession {
   private closeCurrentSegmentForTurnBoundary(
     boundarySample: number,
     nextTurnId: string
-  ): void {
+  ): boolean {
     const segmentId = this.currentSegmentId;
     if (!segmentId) {
       this.currentSegmentStartSample = boundarySample;
-      return;
+      return false;
     }
     const segment = this.segments.get(segmentId);
     if (!segment || segment.final || segment.turnId === nextTurnId) {
-      return;
+      return false;
     }
 
     if (segment.text.trim().length > 0) {
@@ -422,6 +443,7 @@ export class LiveAttributedTranscriptionSession {
     }
     this.currentSegmentId = null;
     this.currentSegmentStartSample = boundarySample;
+    return true;
   }
 
   private async finalizeCurrentSegment(endSample: number): Promise<void> {

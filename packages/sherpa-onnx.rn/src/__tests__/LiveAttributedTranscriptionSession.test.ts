@@ -400,7 +400,7 @@ describe('LiveAttributedTranscriptionSession', () => {
       sampleRate: 16_000,
       speakerTurns,
       asr: createAsrAdapter(
-        ['hello', 'hello', 'hello bonjour', 'hello bonjour friend'],
+        ['hello', 'hello', 'bonjour', 'bonjour friend'],
         [false, false, false, true]
       ),
     });
@@ -445,6 +445,59 @@ describe('LiveAttributedTranscriptionSession', () => {
     expect(eventTypes.indexOf('final_transcript')).toBeLessThan(
       eventTypes.indexOf('turn_finalized')
     );
+  });
+
+  it('resets ASR at speaker boundaries so delayed prior text is not assigned to the next speaker', async () => {
+    let resetCount = 0;
+    let acceptCount = 0;
+    const asr = {
+      async acceptWaveform() {
+        acceptCount += 1;
+        return { success: true };
+      },
+      async getResult() {
+        if (acceptCount < 3) {
+          return { text: '' };
+        }
+        return {
+          text: resetCount > 0 ? 'second speaker' : 'delayed first speaker',
+        };
+      },
+      async isEndpoint() {
+        return { isEndpoint: false };
+      },
+      async resetStream() {
+        resetCount += 1;
+        return { success: true };
+      },
+    } satisfies LiveTranscriptionAsrAdapter;
+    const speakerTurns = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([true, false, true]),
+      speakerId: createSpeakerIdAdapter([
+        [1, 0],
+        [0, 1],
+      ]),
+      minTurnDurationMs: 10,
+      speakerThreshold: 0.95,
+    });
+    const session = new LiveAttributedTranscriptionSession({
+      sampleRate: 16_000,
+      speakerTurns,
+      asr,
+    });
+
+    for (const value of [1, 0, 2]) {
+      await session.acceptChunk({ samples: createChunk(value) });
+    }
+
+    expect(resetCount).toBeGreaterThan(0);
+    expect(session.getState().segments).toEqual([
+      expect.objectContaining({
+        turnId: 'turn_2',
+        text: 'second speaker',
+      }),
+    ]);
   });
 
   it('flushes pending text, reset clears replay state, and release is idempotent', async () => {
