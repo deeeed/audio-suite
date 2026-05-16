@@ -18,14 +18,6 @@ export async function initializeLiveTranscriptionDiarizationModels(
 ) {
     const requestedThreads = options.numThreads ?? DEFAULT_NUM_THREADS
 
-    if (options.releaseExisting ?? true) {
-        await Promise.all([
-            ASR.release().catch(() => {}),
-            VAD.release().catch(() => {}),
-            SpeakerId.release().catch(() => {}),
-        ])
-    }
-
     const asrConfig =
         getAsrModelConfigById(options.asrModelId) ??
         getModelConfigById(options.asrModelId)?.asrConfig
@@ -45,6 +37,14 @@ export async function initializeLiveTranscriptionDiarizationModels(
     }
     if (!speakerIdConfig) {
         throw new Error(`Speaker ID config not found for ${options.speakerIdModelId}`)
+    }
+
+    if (options.releaseExisting ?? true) {
+        await Promise.all([
+            ASR.release().catch(() => {}),
+            VAD.release().catch(() => {}),
+            SpeakerId.release().catch(() => {}),
+        ])
     }
 
     try {

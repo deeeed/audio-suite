@@ -37,24 +37,6 @@ function cloneEvent(
   }
 }
 
-function stripCommittedPrefix(text: string, prefix: string): string {
-  const trimmedText = text.trim();
-  const trimmedPrefix = prefix.trim();
-  if (trimmedPrefix.length === 0) {
-    return trimmedText;
-  }
-  if (trimmedText === trimmedPrefix) {
-    return '';
-  }
-  if (trimmedText.startsWith(trimmedPrefix)) {
-    return trimmedText.slice(trimmedPrefix.length).trimStart();
-  }
-  // Streaming ASR models normally return text that grows monotonically until
-  // endpoint reset. If a model rewrites earlier tokens, keep the full text
-  // rather than dropping content while the caller tunes model/chunk settings.
-  return trimmedText;
-}
-
 /**
  * Live attributed transcription composer.
  *
@@ -84,7 +66,6 @@ export class LiveAttributedTranscriptionSession {
   private nextSegmentIndex = 1;
   private currentSegmentId: string | null = null;
   private currentSegmentStartSample = 0;
-  private committedAsrPrefix = '';
   private resetAsrBeforeNextChunk = false;
   private activeTurnId: string | undefined;
   private released = false;
@@ -180,7 +161,6 @@ export class LiveAttributedTranscriptionSession {
         });
         return;
       }
-      this.committedAsrPrefix = '';
     }
 
     const accepted = await this.config.asr.acceptWaveform(sampleRate, samples);
@@ -195,7 +175,7 @@ export class LiveAttributedTranscriptionSession {
 
     try {
       const result = await this.config.asr.getResult();
-      const text = stripCommittedPrefix(result.text, this.committedAsrPrefix);
+      const text = result.text.trim();
       if (text.length > 0) {
         this.emitPartial(text, startSample, endSample);
       }
@@ -203,7 +183,6 @@ export class LiveAttributedTranscriptionSession {
       const endpoint = await this.config.asr.isEndpoint();
       if (endpoint.isEndpoint) {
         await this.finalizeCurrentSegment(endSample);
-        this.committedAsrPrefix = '';
         const reset = await this.config.asr.resetStream();
         if (!reset.success) {
           this.emit({
@@ -242,7 +221,6 @@ export class LiveAttributedTranscriptionSession {
         error: reset.error ?? 'ASR failed while resetting online stream',
       });
     }
-    this.committedAsrPrefix = '';
   }
 
   private async drainAsrTailPadding(): Promise<void> {
@@ -274,7 +252,7 @@ export class LiveAttributedTranscriptionSession {
 
     try {
       const result = await this.config.asr.getResult();
-      const text = stripCommittedPrefix(result.text, this.committedAsrPrefix);
+      const text = result.text.trim();
       if (text.length > 0) {
         this.emitPartial(text, this.currentSegmentStartSample, this.nextSample);
       }
@@ -313,7 +291,6 @@ export class LiveAttributedTranscriptionSession {
     this.nextSegmentIndex = 1;
     this.currentSegmentId = null;
     this.currentSegmentStartSample = 0;
-    this.committedAsrPrefix = '';
     this.resetAsrBeforeNextChunk = false;
     this.activeTurnId = undefined;
   }
@@ -446,12 +423,6 @@ export class LiveAttributedTranscriptionSession {
 
     if (segment.text.trim().length > 0) {
       this.finalizeSegment(segment, boundarySample);
-      this.committedAsrPrefix = [
-        this.committedAsrPrefix.trim(),
-        segment.text.trim(),
-      ]
-        .filter(Boolean)
-        .join(' ');
     } else {
       this.removeSegment(segment.segmentId);
     }
@@ -610,6 +581,7 @@ export class LiveAttributedTranscriptionSession {
       }
       const text = segmentIds
         .map((segmentId) => this.segments.get(segmentId)?.text ?? '')
+        .filter(Boolean)
         .join(' ')
         .trim();
       this.emit({

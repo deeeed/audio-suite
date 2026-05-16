@@ -26,13 +26,6 @@
           "fail_when": { "operator": "eq", "field": "status", "value": "error" },
           "timeout_ms": 120000,
           "poll_ms": 1000,
-          "next": "assert-keeps-up"
-        },
-        "assert-keeps-up": {
-          "action": "eval_sync",
-          "description": "Assert mic processing kept up without backpressure.",
-          "expression": "JSON.stringify(globalThis.__AGENTIC__.getLastResult())",
-          "assert": { "operator": "eq", "field": "result.keepsUpWithLiveAudio", "value": true },
           "next": "assert-chunks"
         },
         "assert-chunks": {
@@ -40,6 +33,13 @@
           "description": "Assert mic chunks were received and processed.",
           "expression": "JSON.stringify(globalThis.__AGENTIC__.getLastResult())",
           "assert": { "operator": "gt", "field": "result.stats.chunks", "value": 0 },
+          "next": "assert-keeps-up"
+        },
+        "assert-keeps-up": {
+          "action": "eval_sync",
+          "description": "Assert mic processing kept up without backpressure.",
+          "expression": "JSON.stringify(globalThis.__AGENTIC__.getLastResult())",
+          "assert": { "operator": "eq", "field": "result.keepsUpWithLiveAudio", "value": true },
           "next": "done"
         },
         "done": { "action": "end", "status": "pass" }
