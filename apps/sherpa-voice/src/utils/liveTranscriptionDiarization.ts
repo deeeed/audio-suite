@@ -65,7 +65,8 @@ export async function initializeLiveTranscriptionDiarizationModels(
         }
         const stream = await ASR.createOnlineStream()
         if (!stream.success) {
-            throw new Error('ASR createOnlineStream failed')
+            const streamError = (stream as { error?: string }).error
+            throw new Error(streamError || 'ASR createOnlineStream failed')
         }
 
         const vadInit = await VAD.init({

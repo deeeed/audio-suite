@@ -16,7 +16,7 @@
         "check-validation-file": {
           "action": "eval_sync",
           "description": "Fail early with a clear error if the device-local replay WAV is missing.",
-          "expression": "JSON.stringify((function(){var A=globalThis.__AGENTIC__;if(!A||!A.checkFileExists||!A.getLastResult){return {status:'error',error:'agentic bridge missing checkFileExists/getLastResult'};}return A.checkFileExists('file:///data/user/0/net.siteed.sherpavoice.development/files/validation/perps_controller_refactor_5m_16k_mono.wav');})())",
+          "expression": "JSON.stringify((function(){var A=globalThis.__AGENTIC__;if(!A||!A.checkFileExists||!A.getLastResult){return {status:'error',error:'agentic bridge missing checkFileExists/getLastResult'};}return A.checkFileExists((function(){var d=(A.getDocumentDirectory&&A.getDocumentDirectory().documentDirectory)||'';return d+'validation/perps_controller_refactor_5m_16k_mono.wav';})());})())",
           "assert": {
             "operator": "eq",
             "field": "status",
@@ -45,7 +45,7 @@
         "run-live-replay": {
           "action": "eval_sync",
           "description": "Fire live replay through ASR + VAD + Speaker ID on first 60s of the validation WAV.",
-          "expression": "JSON.stringify((function(){var A=globalThis.__AGENTIC__;if(!A||!A.testLiveTranscriptionDiarizationReplay||!A.getLastResult){return {status:'error',error:'agentic bridge missing testLiveTranscriptionDiarizationReplay/getLastResult'};}return A.testLiveTranscriptionDiarizationReplay('file:///data/user/0/net.siteed.sherpavoice.development/files/validation/perps_controller_refactor_5m_16k_mono.wav',{maxDurationMs:60000,chunkDurationMs:100,asrModelId:'streaming-zipformer-en-20m-mobile',vadModelId:'silero-vad-v5',speakerIdModelId:'speaker-id-en-voxceleb'});})())",
+          "expression": "JSON.stringify((function(){var A=globalThis.__AGENTIC__;if(!A||!A.testLiveTranscriptionDiarizationReplay||!A.getLastResult){return {status:'error',error:'agentic bridge missing testLiveTranscriptionDiarizationReplay/getLastResult'};}return A.testLiveTranscriptionDiarizationReplay((function(){var d=(A.getDocumentDirectory&&A.getDocumentDirectory().documentDirectory)||'';return d+'validation/perps_controller_refactor_5m_16k_mono.wav';})(),{maxDurationMs:60000,chunkDurationMs:100,asrModelId:'streaming-zipformer-en-20m-mobile',vadModelId:'silero-vad-v5',speakerIdModelId:'speaker-id-en-voxceleb'});})())",
           "assert": {
             "operator": "eq",
             "field": "status",

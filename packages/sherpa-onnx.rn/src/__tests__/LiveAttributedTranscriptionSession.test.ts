@@ -217,7 +217,7 @@ describe('LiveAttributedTranscriptionSession', () => {
       asr: createAsrAdapter([''], [false]),
     });
 
-    await session.acceptChunk({ samples: createChunk(0), startSample: 160 });
+    await session.acceptChunk({ samples: createChunk(0) });
     await expect(
       session.acceptChunk({ samples: createChunk(0), startSample: 0 })
     ).rejects.toThrow('non-monotonic startSample');
@@ -278,8 +278,9 @@ describe('LiveAttributedTranscriptionSession', () => {
     });
   });
 
-  it('emits one normalized speaker-turn error without wrapping it as speaker_event', async () => {
+  it('emits one normalized speaker-turn error without feeding ASR on VAD failure', async () => {
     const events: LiveAttributedTranscriptionEvent[] = [];
+    let asrAcceptCount = 0;
     const speakerTurns = new LiveSpeakerTurnSession({
       sampleRate: 16_000,
       vad: {
@@ -294,15 +295,35 @@ describe('LiveAttributedTranscriptionSession', () => {
       },
       speakerId: createSpeakerIdAdapter([[1, 0]]),
     });
+    const asr = {
+      async acceptWaveform() {
+        asrAcceptCount += 1;
+        return { success: true };
+      },
+      async getResult() {
+        return { text: '' };
+      },
+      async isEndpoint() {
+        return { isEndpoint: false };
+      },
+      async resetStream() {
+        return { success: true };
+      },
+    } satisfies LiveTranscriptionAsrAdapter;
     const session = new LiveAttributedTranscriptionSession({
       sampleRate: 16_000,
       speakerTurns,
-      asr: createAsrAdapter([''], [false]),
+      asr,
       onEvent: (event) => events.push(event),
     });
 
-    await session.acceptChunk({ samples: createChunk(1) });
+    await expect(session.acceptChunk({ samples: createChunk(1) })).rejects.toThrow(
+      'vad failed'
+    );
 
+    expect(asrAcceptCount).toBe(0);
+    expect(session.getState().nextSample).toBe(0);
+    expect(speakerTurns.getState().nextSample).toBe(0);
     expect(events).toEqual([
       {
         type: 'error',
@@ -654,6 +675,33 @@ describe('LiveAttributedTranscriptionSession', () => {
         text: 'real speech',
       }),
     ]);
+  });
+
+  it('removes finalized transcript segments for turns later discarded as too short', async () => {
+    const speakerTurns = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: createVadAdapter([true, false]),
+      speakerId: createSpeakerIdAdapter([[1, 0]]),
+      minTurnDurationMs: 1_000,
+    });
+    const session = new LiveAttributedTranscriptionSession({
+      sampleRate: 16_000,
+      speakerTurns,
+      asr: createAsrAdapter(['short noise', ''], [true, false]),
+    });
+
+    await session.acceptChunk({ samples: createChunk(1) });
+    expect(session.getState().segments).toEqual([
+      expect.objectContaining({ turnId: 'turn_1', final: true }),
+    ]);
+
+    await session.acceptChunk({ samples: createChunk(0) });
+
+    expect(session.getState().segments).toEqual([]);
+    expect(session.getSummary()).toMatchObject({
+      segmentCount: 0,
+      finalSegmentCount: 0,
+    });
   });
 
   it('flushes pending text, reset clears replay state, and release is idempotent', async () => {

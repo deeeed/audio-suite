@@ -274,6 +274,9 @@ function LiveValidationSection({
       const replayMs = Date.now() - startedAt;
       const realtimeFactor = replayMs / Math.max(audioDurationMs, 1);
       const state = session.getState();
+      if ((eventCounts.error ?? 0) > 0) {
+        throw new Error(`Live replay emitted ${eventCounts.error} pipeline error event(s)`);
+      }
       setResult({
         audioDurationMs,
         replayMs,
@@ -281,7 +284,7 @@ function LiveValidationSection({
         keepsUp: realtimeFactor <= 1,
         summary: session.getSummary(),
         eventCounts,
-        segments: state.segments.slice(0, 20),
+        segments: state.segments.slice(0, 20), // UI preview only; summary keeps full counts.
       });
       setStatus(`Live replay complete: ${realtimeFactor.toFixed(2)}x realtime`);
     } catch (err) {

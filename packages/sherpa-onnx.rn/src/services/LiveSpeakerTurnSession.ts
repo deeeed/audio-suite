@@ -133,15 +133,17 @@ export class LiveSpeakerTurnSession {
     }
 
     const startSample = chunk.startSample ?? this.nextSample;
-    if (startSample < this.nextSample) {
+    if (startSample !== this.nextSample) {
       throw new Error(
-        `LiveSpeakerTurnSession received non-monotonic startSample ${startSample}; next expected sample is ${this.nextSample}`
+        `LiveSpeakerTurnSession received non-contiguous startSample ${startSample}; next expected sample is ${this.nextSample}`
       );
     }
 
-    const samples = Array.from(chunk.samples);
+    const samples = Array.isArray(chunk.samples)
+      ? chunk.samples
+      : Array.from(chunk.samples);
     const previousNextSample = this.nextSample;
-    const previousRingBufferLength = this.ringBuffer.length;
+    const previousRingBuffer = this.ringBuffer.slice();
     this.appendToRingBuffer(startSample, samples);
     this.nextSample = startSample + samples.length;
 
@@ -149,16 +151,19 @@ export class LiveSpeakerTurnSession {
     try {
       vadResult = await this.config.vad.acceptWaveform(sampleRate, samples);
     } catch (error) {
-      this.ringBuffer.splice(previousRingBufferLength);
+      this.ringBuffer.splice(0, this.ringBuffer.length, ...previousRingBuffer);
       this.nextSample = previousNextSample;
       throw error;
     }
     if (!vadResult.success) {
+      const error = vadResult.error ?? 'VAD failed while processing live chunk';
+      this.ringBuffer.splice(0, this.ringBuffer.length, ...previousRingBuffer);
+      this.nextSample = previousNextSample;
       this.emit({
         type: 'error',
-        error: vadResult.error ?? 'VAD failed while processing live chunk',
+        error,
       });
-      return;
+      throw new Error(error);
     }
 
     if (vadResult.isSpeechDetected && !this.speechActive) {

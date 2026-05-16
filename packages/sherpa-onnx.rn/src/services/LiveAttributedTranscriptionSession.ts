@@ -355,14 +355,16 @@ export class LiveAttributedTranscriptionSession {
       if (this.activeTurnId === event.turnId) {
         this.activeTurnId = undefined;
       }
-      if (this.currentSegmentId) {
-        const segment = this.segments.get(this.currentSegmentId);
-        if (segment?.turnId === event.turnId && !segment.final) {
-          this.removeSegment(segment.segmentId);
+      for (const segmentId of Array.from(
+        this.turnSegments.get(event.turnId) ?? []
+      )) {
+        this.removeSegment(segmentId);
+        if (this.currentSegmentId === segmentId) {
           this.currentSegmentId = null;
           this.currentSegmentStartSample = this.nextSample;
         }
       }
+      this.turnSegments.delete(event.turnId);
       this.resetAsrBeforeNextChunk = true;
       return;
     }
@@ -622,8 +624,10 @@ export class LiveAttributedTranscriptionSession {
     this.emittedEventCount += 1;
     const storedEvent = cloneEvent(event);
     this.emittedEvents.push(storedEvent);
-    const maxStoredEvents =
-      this.config.maxStoredEvents ?? DEFAULT_MAX_STORED_EVENTS;
+    const maxStoredEvents = Math.max(
+      0,
+      Math.floor(this.config.maxStoredEvents ?? DEFAULT_MAX_STORED_EVENTS)
+    );
     if (maxStoredEvents >= 0 && this.emittedEvents.length > maxStoredEvents) {
       this.emittedEvents.splice(
         0,

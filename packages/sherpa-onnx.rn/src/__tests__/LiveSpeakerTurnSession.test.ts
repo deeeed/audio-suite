@@ -256,16 +256,67 @@ describe('LiveSpeakerTurnSession', () => {
     });
   });
 
-  it('rejects non-monotonic sample clocks', async () => {
+  it('restores an evicted ring buffer when VAD throws', async () => {
+    const processedSamples: number[][] = [];
+    let calls = 0;
+    const session = new LiveSpeakerTurnSession({
+      sampleRate: 16_000,
+      vad: {
+        async acceptWaveform() {
+          calls += 1;
+          if (calls === 3) {
+            throw new Error('vad exploded after eviction');
+          }
+          return {
+            success: true,
+            isSpeechDetected: calls < 4,
+            segments: [],
+          };
+        },
+      },
+      speakerId: {
+        async processSamples(_sampleRate, samples) {
+          processedSamples.push(samples);
+          return { success: true, samplesProcessed: samples.length };
+        },
+        async computeEmbedding() {
+          return {
+            success: true,
+            durationMs: 1,
+            embedding: [1, 0],
+            embeddingDim: 2,
+          };
+        },
+      },
+      minTurnDurationMs: 10,
+      maxRingBufferDurationMs: 19,
+    });
+
+    await session.acceptChunk({ samples: createChunk(1) });
+    await session.acceptChunk({ samples: createChunk(2) });
+    await expect(session.acceptChunk({ samples: createChunk(3) })).rejects.toThrow(
+      'vad exploded after eviction'
+    );
+    await session.acceptChunk({ samples: createChunk(3) });
+
+    expect(processedSamples).toHaveLength(1);
+    expect(processedSamples[0]?.[0]).toBe(2);
+    expect(processedSamples[0]?.[processedSamples[0].length - 1]).toBe(3);
+  });
+
+  it('rejects non-contiguous sample clocks', async () => {
     const session = new LiveSpeakerTurnSession({
       sampleRate: 16_000,
       vad: createVadAdapter([false]),
       speakerId: createSpeakerIdAdapter([[1, 0]]),
     });
 
-    await session.acceptChunk({ samples: createChunk(0), startSample: 160 });
+    await expect(
+      session.acceptChunk({ samples: createChunk(0), startSample: 160 })
+    ).rejects.toThrow('non-contiguous startSample');
+    await session.acceptChunk({ samples: createChunk(0) });
     await expect(
       session.acceptChunk({ samples: createChunk(0), startSample: 0 })
-    ).rejects.toThrow('non-monotonic startSample');
+    ).rejects.toThrow('non-contiguous startSample');
   });
 });
