@@ -162,10 +162,6 @@ export class SegmentedOfflineAsrSession {
         this.emitProgress();
       }
     } catch (error) {
-      this.emit({
-        type: 'error',
-        error: error instanceof Error ? error.message : String(error),
-      });
       throw error;
     }
   }

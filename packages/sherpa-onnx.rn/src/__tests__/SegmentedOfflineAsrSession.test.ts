@@ -166,6 +166,7 @@ describe('SegmentedOfflineAsrSession', () => {
         }),
       ])
     );
+    expect(events.filter((event) => event.type === 'error')).toHaveLength(1);
   });
 
   it('emits a distinct cleanup error when afterSegment rejects', async () => {
@@ -196,6 +197,7 @@ describe('SegmentedOfflineAsrSession', () => {
         }),
       ])
     );
+    expect(events.filter((event) => event.type === 'error')).toHaveLength(1);
   });
 
   it('keeps overlap context while advancing output with bounded windows', async () => {
