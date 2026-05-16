@@ -132,7 +132,7 @@ export class AsrService {
   /**
    * Signal end-of-input and drain ready frames before reading the final result.
    */
-  public async finishInput(): Promise<{ success: boolean }> {
+  public async finishInput(): Promise<{ success: boolean; error?: string }> {
     if (!this.initialized) {
       throw new Error('ASR is not initialized. Call initialize() first.');
     }

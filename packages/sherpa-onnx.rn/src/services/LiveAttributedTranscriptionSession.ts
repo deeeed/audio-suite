@@ -269,7 +269,7 @@ export class LiveAttributedTranscriptionSession {
 
   public async flush(): Promise<void> {
     this.ensureNotReleased();
-    const shouldResetAsr = Boolean(this.currentSegmentId) || this.asrHasAcceptedAudio;
+    let shouldResetAsr = Boolean(this.currentSegmentId) || this.asrHasAcceptedAudio;
     try {
       await this.config.speakerTurns.flush();
     } catch (error) {
@@ -282,6 +282,8 @@ export class LiveAttributedTranscriptionSession {
             : 'Speaker turn flush failed',
       });
     }
+    shouldResetAsr =
+      shouldResetAsr || Boolean(this.currentSegmentId) || this.asrHasAcceptedAudio;
     await this.drainAsrTailPadding();
     await this.finalizeCurrentSegment(this.nextSample);
     this.emitPendingFinalTurns();

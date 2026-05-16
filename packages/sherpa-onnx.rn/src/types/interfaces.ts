@@ -1416,6 +1416,7 @@ export type LiveAttributedTranscriptionEventListener = (
 
 export interface LiveSpeakerTurnSessionController {
   onEvent(listener: LiveSpeakerTurnEventListener): () => void;
+  /** Rejects if VAD throws, VAD returns success:false, or the chunk clock is non-contiguous. */
   acceptChunk(chunk: LiveSpeakerTurnChunk): Promise<void>;
   flush(): Promise<void>;
   /**
@@ -1609,7 +1610,7 @@ export interface NativeSherpaOnnxInterface {
     tokens: string[];
     timestamps: number[];
   }>;
-  finishAsrOnlineInput(): Promise<{ success: boolean }>;
+  finishAsrOnlineInput(): Promise<{ success: boolean; error?: string }>;
   resetAsrOnlineStream(): Promise<{ success: boolean }>;
 
   // Audio tagging methods

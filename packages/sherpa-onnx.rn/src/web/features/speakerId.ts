@@ -417,6 +417,9 @@ export function SpeakerIdMixin<TBase extends Constructor>(Base: TBase) {
       }
       this.speakerIdStream = this.speakerExtractor.createStream();
       this.speakerIdSamplesProcessed = 0;
+      if (!this.speakerIdStream) {
+        return { success: false };
+      }
       return { success: true };
     }
 

@@ -202,7 +202,7 @@ const nativeAdapter: ApiInterface = {
     return NativeSherpaOnnx.getAsrOnlineResult();
   },
 
-  finishAsrOnlineInput(): Promise<{ success: boolean }> {
+  finishAsrOnlineInput(): Promise<{ success: boolean; error?: string }> {
     return NativeSherpaOnnx.finishAsrOnlineInput();
   },
 

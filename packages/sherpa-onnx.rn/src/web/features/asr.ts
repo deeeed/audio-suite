@@ -669,9 +669,9 @@ export function AsrMixin<TBase extends Constructor>(Base: TBase) {
       return { text: result.text, tokens: result.tokens ?? [], timestamps: [] };
     }
 
-    async finishAsrOnlineInput(): Promise<{ success: boolean }> {
+    async finishAsrOnlineInput(): Promise<{ success: boolean; error?: string }> {
       if (!this.asrOnlineRecognizer || !this.asrOnlineStream) {
-        return { success: false };
+        return { success: false, error: 'Online stream not created' };
       }
       this.asrOnlineStream.inputFinished();
       while (this.asrOnlineRecognizer.isReady(this.asrOnlineStream)) {

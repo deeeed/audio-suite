@@ -216,7 +216,7 @@ export interface Spec extends TurboModule {
     tokens: string[];
     timestamps: number[];
   }>;
-  finishAsrOnlineInput(): Promise<{ success: boolean }>;
+  finishAsrOnlineInput(): Promise<{ success: boolean; error?: string }>;
   resetAsrOnlineStream(): Promise<{ success: boolean }>;
 
   // Audio tagging methods
