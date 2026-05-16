@@ -500,13 +500,13 @@ export async function validateLongAudioStream(
             }
             try {
                 await SherpaASR.release()
+                sherpaAsrInitialized = false
             } catch (error) {
                 console.warn(
                     '[LongAudioValidation] Sherpa release between segments failed',
                     error,
                 )
             }
-            sherpaAsrInitialized = false
             const initResult = await SherpaASR.initialize(sherpaOfflineConfig)
             if (!initResult.success) {
                 throw new Error(

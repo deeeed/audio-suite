@@ -341,6 +341,31 @@ describe('SegmentedOfflineAsrSession', () => {
     ]);
   });
 
+  it('preserves token and timestamp metadata on emitted segments', async () => {
+    const session = new SegmentedOfflineAsrSession({
+      sampleRate: 16_000,
+      segmentDurationMs: 1_000,
+      asr: {
+        async recognizeFromSamples() {
+          return {
+            success: true,
+            text: 'hello',
+            tokens: ['hello'],
+            timestamps: [0.5],
+          };
+        },
+      },
+    });
+
+    await session.acceptChunk({ samples: createSamples(1, 16_000), isFinal: true });
+
+    expect(session.getState().segments[0]).toMatchObject({
+      text: 'hello',
+      tokens: ['hello'],
+      timestamps: [0.5],
+    });
+  });
+
   it('does not mutate segment state when released while recognition is in flight', async () => {
     let resolveRecognition:
       | ((value: { success: boolean; text: string }) => void)

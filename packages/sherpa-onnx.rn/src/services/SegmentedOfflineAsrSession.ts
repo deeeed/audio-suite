@@ -150,19 +150,15 @@ export class SegmentedOfflineAsrSession {
       this.nextSample += samples.length;
     }
 
-    try {
-      if (chunk.isFinal) {
-        await this.flushReadySegmentsForFinalInput();
-        await this.flush(true);
-        if (samples.length === 0 && this.bufferedSamples === 0) {
-          this.emitProgress();
-        }
-      } else {
-        await this.flushReadySegments();
+    if (chunk.isFinal) {
+      await this.flushReadySegmentsForFinalInput();
+      await this.flush(true);
+      if (samples.length === 0 && this.bufferedSamples === 0) {
         this.emitProgress();
       }
-    } catch (error) {
-      throw error;
+    } else {
+      await this.flushReadySegments();
+      this.emitProgress();
     }
   }
 
@@ -230,6 +226,8 @@ export class SegmentedOfflineAsrSession {
   }
 
   private async flushReadySegmentsForFinalInput(): Promise<void> {
+    // Keep one exact-fit window buffered so flush(true) can mark the real
+    // terminal segment as final and skip afterSegment cleanup for it.
     while (this.bufferedSamples > this.segmentSamples) {
       await this.recognizeBufferedSegment(this.segmentSamples, false);
     }
