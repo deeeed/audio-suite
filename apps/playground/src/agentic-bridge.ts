@@ -668,7 +668,9 @@ export async function validateLongAudioStream(
             sherpaResult = await SherpaASR.getResult().catch(() => null)
         }
         if (mode === 'sherpa-offline-segments' && sherpaAsrInitialized) {
-            await sherpaOfflineSession?.flush(true)
+            if (!result.cancelled) {
+                await sherpaOfflineSession?.flush(true)
+            }
             sherpaResult = { text: sherpaOfflineSession?.getState()?.transcript ?? '' }
         }
 
@@ -690,7 +692,9 @@ export async function validateLongAudioStream(
             sampleRate: result.sampleRate,
             channels: result.channels,
             transcriptLineCount:
-                sherpaResult?.text != null
+                mode === 'sherpa-offline-segments'
+                    ? (_longAudioValidationProgress?.sherpaSegmentCount ?? 0)
+                    : sherpaResult?.text != null
                     ? sherpaResult.text
                         ? sherpaResult.text.split('\n').length
                         : 0

@@ -54,7 +54,6 @@ describe('SegmentedOfflineAsrSession', () => {
       'segment_started',
       'segment_completed',
       'progress',
-      'progress',
     ]);
     expect(session.getState().segments).toMatchObject([
       {
@@ -204,5 +203,58 @@ describe('SegmentedOfflineAsrSession', () => {
       session.acceptChunk({ samples: createSamples(1, 160) })
     ).resolves.not.toThrow();
     expect(session.getState().nextSample).toBe(160);
+  });
+
+  it('isolates listener failures from recognition state', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const asr = createAsrAdapter();
+      const observed: SegmentedOfflineAsrEvent[] = [];
+      const session = new SegmentedOfflineAsrSession({
+        sampleRate: 16_000,
+        asr,
+        segmentDurationMs: 1_000,
+        onEvent: () => {
+          throw new Error('listener failed');
+        },
+      });
+      session.onEvent((event) => observed.push(event));
+
+      await expect(
+        session.acceptChunk({ samples: createSamples(1, 16_000), isFinal: true })
+      ).resolves.not.toThrow();
+      expect(session.getState().segments).toHaveLength(1);
+      expect(observed.some((event) => event.type === 'segment_completed')).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('supports unsubscribe, bounded event history, clone integrity, and release guard', async () => {
+    const asr = createAsrAdapter();
+    const events: SegmentedOfflineAsrEvent[] = [];
+    const session = new SegmentedOfflineAsrSession({
+      sampleRate: 16_000,
+      asr,
+      segmentDurationMs: 1_000,
+      maxStoredEvents: 2,
+    });
+    const unsubscribe = session.onEvent((event) => events.push(event));
+
+    await session.acceptChunk({ samples: createSamples(1, 16_000) });
+    unsubscribe();
+    await session.acceptChunk({ samples: createSamples(2, 16_000), isFinal: true });
+
+    expect(events.length).toBeGreaterThan(0);
+    expect(session.getState().events).toHaveLength(2);
+
+    const state = session.getState();
+    state.segments[0]!.text = 'mutated';
+    expect(session.getState().segments[0]!.text).toBe('segment 1');
+
+    session.release();
+    await expect(
+      session.acceptChunk({ samples: createSamples(3, 1) })
+    ).rejects.toThrow('has been released');
   });
 });

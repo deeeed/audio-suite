@@ -1507,7 +1507,11 @@ export interface SegmentedOfflineAsrChunk {
   sampleRate?: number;
   /** Optional absolute start sample. Defaults to the next expected sample. */
   startSample?: number;
-  /** Flush any remaining buffered audio after this chunk. */
+  /**
+   * Flush any remaining buffered audio after this chunk. Callers should set
+   * this on the final input chunk; if a complete window was already submitted
+   * earlier as non-final, `flush()` cannot retroactively mark it final.
+   */
   isFinal?: boolean;
 }
 
@@ -1568,7 +1572,11 @@ export interface SegmentedOfflineAsrConfig {
   asr: SegmentedOfflineAsrAdapter;
   /** Target offline recognition window. Default: 30 seconds. */
   segmentDurationMs?: number;
-  /** Retained audio context between adjacent segments. Default: 0. */
+  /**
+   * Retained audio context between adjacent segments. Default: 0.
+   * Final segments may be up to `segmentDurationMs + overlapMs` because the
+   * retained overlap is included in the final recognition window.
+   */
   overlapMs?: number;
   /** Called after each completed non-final segment, e.g. to release/reinitialize native ASR. */
   afterSegment?: (segment: SegmentedOfflineAsrSegment) => Promise<void>;

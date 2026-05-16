@@ -100,7 +100,7 @@ Translation remains a reference track because:
 
 Audio Playground now includes the `moonshine-sherpa-echobridge-perps-5m` direct replay preset. It stages the same 5-minute EchoBridge meeting fixture into the app sandbox, scores against the EchoBridge WhisperService `medium.en` backend reference, and runs Sherpa Qwen3-ASR as 30-second offline segments to avoid retained native heap.
 
-The Sherpa offline path uses the reusable `SegmentedOfflineAsrSession` JS helper from `@siteed/sherpa-onnx.rn`. It does not require a new native API: the app decodes audio into bounded mono 16 kHz PCM chunks, the session accumulates only one offline window at a time, calls `ASR.recognizeFromSamples`, emits segment/progress events, then optionally releases and reinitializes the Sherpa ASR runtime between windows.
+The Sherpa offline path uses the reusable `SegmentedOfflineAsrSession` JS helper from `@siteed/sherpa-onnx.rn`. It does not require a new native API: bounded PCM windows are submitted through `ASR.recognizeFromSamples`, segment/progress events are emitted, and Android can release/reinitialize the Sherpa ASR runtime between windows. The direct WAV benchmark still loads the 5-minute WAV into JS memory first for scoring parity; use `/long-audio-validation` for the progressive decoder path that proves compressed long audio can be decoded and transcribed window-by-window.
 
 Measured on Pixel 6a (`Pixel 6a - 16 - API 36`):
 

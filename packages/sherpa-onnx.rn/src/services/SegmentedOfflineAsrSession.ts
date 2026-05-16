@@ -53,7 +53,6 @@ export class SegmentedOfflineAsrSession {
   private readonly maxStoredEvents: number;
   private readonly chunks: Float32Array[] = [];
   private readonly segments: SegmentedOfflineAsrSegment[] = [];
-  private emittedEventCount = 0;
   private bufferedSamples = 0;
   private bufferStartSample = 0;
   private nextSample = 0;
@@ -153,8 +152,8 @@ export class SegmentedOfflineAsrSession {
         await this.flush(true);
       } else {
         await this.flushReadySegments();
+        this.emitProgress();
       }
-      this.emitProgress();
     } catch (error) {
       this.emit({
         type: 'error',
@@ -189,7 +188,6 @@ export class SegmentedOfflineAsrSession {
     this.chunks.length = 0;
     this.segments.length = 0;
     this.emittedEvents.length = 0;
-    this.emittedEventCount = 0;
     this.bufferedSamples = 0;
     this.bufferStartSample = 0;
     this.nextSample = 0;
@@ -349,7 +347,6 @@ export class SegmentedOfflineAsrSession {
   }
 
   private emit(event: SegmentedOfflineAsrEvent): void {
-    this.emittedEventCount += 1;
     this.emittedEvents.push(cloneEvent(event));
     if (this.emittedEvents.length > this.maxStoredEvents) {
       this.emittedEvents.splice(
@@ -358,7 +355,14 @@ export class SegmentedOfflineAsrSession {
       );
     }
     for (const listener of this.listeners) {
-      listener(cloneEvent(event));
+      try {
+        listener(cloneEvent(event));
+      } catch (error) {
+        console.warn(
+          '[SegmentedOfflineAsrSession] Ignoring listener error:',
+          error
+        );
+      }
     }
   }
 
