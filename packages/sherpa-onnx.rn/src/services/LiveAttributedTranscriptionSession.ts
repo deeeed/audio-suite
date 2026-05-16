@@ -66,6 +66,7 @@ export class LiveAttributedTranscriptionSession {
   private nextSegmentIndex = 1;
   private currentSegmentId: string | null = null;
   private currentSegmentStartSample = 0;
+  private processingChunkEndSample: number | undefined;
   private resetAsrBeforeNextChunk = false;
   private activeTurnId: string | undefined;
   private released = false;
@@ -136,11 +137,16 @@ export class LiveAttributedTranscriptionSession {
     const samples = Array.from(chunk.samples);
     const endSample = startSample + samples.length;
 
-    await this.config.speakerTurns.acceptChunk({
-      samples,
-      sampleRate,
-      startSample,
-    });
+    this.processingChunkEndSample = endSample;
+    try {
+      await this.config.speakerTurns.acceptChunk({
+        samples,
+        sampleRate,
+        startSample,
+      });
+    } finally {
+      this.processingChunkEndSample = undefined;
+    }
 
     // Speaker-turn state has consumed this chunk from here onward. Keep the
     // composer clock monotonic even if ASR reset/accept/result handling fails.
@@ -346,6 +352,7 @@ export class LiveAttributedTranscriptionSession {
     this.nextSegmentIndex = 1;
     this.currentSegmentId = null;
     this.currentSegmentStartSample = 0;
+    this.processingChunkEndSample = undefined;
     this.resetAsrBeforeNextChunk = false;
     this.activeTurnId = undefined;
     let reset: { success: boolean; error?: string };
@@ -432,10 +439,22 @@ export class LiveAttributedTranscriptionSession {
       for (const segmentId of Array.from(
         this.turnSegments.get(event.turnId) ?? []
       )) {
+        const segment = this.segments.get(segmentId);
+        if (segment) {
+          this.emit({
+            type: 'transcript_segment_removed',
+            segmentId: segment.segmentId,
+            turnId: segment.turnId,
+            reason: 'turn_discarded',
+            text: segment.text,
+            final: segment.final,
+          });
+        }
         this.removeSegment(segmentId);
         if (this.currentSegmentId === segmentId) {
           this.currentSegmentId = null;
-          this.currentSegmentStartSample = this.nextSample;
+          this.currentSegmentStartSample =
+            this.processingChunkEndSample ?? this.nextSample;
         }
       }
       this.turnSegments.delete(event.turnId);
@@ -679,6 +698,8 @@ export class LiveAttributedTranscriptionSession {
         segmentIds,
         text,
       });
+      this.turnSegments.delete(event.turnId);
+      this.turnSpeakers.delete(event.turnId);
     }
     this.pendingFinalTurns.splice(
       0,

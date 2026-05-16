@@ -1375,6 +1375,14 @@ export type LiveAttributedTranscriptionEvent =
       text: string;
     }
   | {
+      type: 'transcript_segment_removed';
+      segmentId: string;
+      turnId?: string;
+      reason: 'turn_discarded';
+      text: string;
+      final: boolean;
+    }
+  | {
       type: 'error';
       error: string;
       source: 'speaker_turn' | 'asr';

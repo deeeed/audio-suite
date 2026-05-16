@@ -890,6 +890,7 @@ describe('LiveAttributedTranscriptionSession', () => {
   });
 
   it('removes finalized transcript segments for turns later discarded as too short', async () => {
+    const events: LiveAttributedTranscriptionEvent[] = [];
     const speakerTurns = new LiveSpeakerTurnSession({
       sampleRate: 16_000,
       vad: createVadAdapter([true, false]),
@@ -900,6 +901,7 @@ describe('LiveAttributedTranscriptionSession', () => {
       sampleRate: 16_000,
       speakerTurns,
       asr: createAsrAdapter(['short noise', ''], [true, false]),
+      onEvent: (event) => events.push(event),
     });
 
     await session.acceptChunk({ samples: createChunk(1) });
@@ -909,6 +911,14 @@ describe('LiveAttributedTranscriptionSession', () => {
 
     await session.acceptChunk({ samples: createChunk(0) });
 
+    expect(events).toContainEqual({
+      type: 'transcript_segment_removed',
+      segmentId: 'segment_1',
+      turnId: 'turn_1',
+      reason: 'turn_discarded',
+      text: 'short noise',
+      final: true,
+    });
     expect(session.getState().segments).toEqual([]);
     expect(session.getSummary()).toMatchObject({
       segmentCount: 0,
