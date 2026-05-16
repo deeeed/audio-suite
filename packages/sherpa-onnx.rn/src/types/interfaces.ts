@@ -1418,6 +1418,11 @@ export interface LiveSpeakerTurnSessionController {
   onEvent(listener: LiveSpeakerTurnEventListener): () => void;
   acceptChunk(chunk: LiveSpeakerTurnChunk): Promise<void>;
   flush(): Promise<void>;
+  /**
+   * Reset the JS turn controller state. Adapter/model state is intentionally
+   * owned by the supplied VAD and SpeakerId services; reset those services
+   * separately when swapping models or recovering native state.
+   */
   reset(): void;
   release(): void;
 }

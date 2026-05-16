@@ -240,6 +240,9 @@ export class LiveAttributedTranscriptionSession {
           });
           return;
         }
+        if (reset.success) {
+          this.asrHasAcceptedAudio = false;
+        }
         if (!reset.success) {
           this.resetAsrBeforeNextChunk = true;
           this.emit({
@@ -266,6 +269,7 @@ export class LiveAttributedTranscriptionSession {
 
   public async flush(): Promise<void> {
     this.ensureNotReleased();
+    const shouldResetAsr = Boolean(this.currentSegmentId) || this.asrHasAcceptedAudio;
     try {
       await this.config.speakerTurns.flush();
     } catch (error) {
@@ -281,6 +285,9 @@ export class LiveAttributedTranscriptionSession {
     await this.drainAsrTailPadding();
     await this.finalizeCurrentSegment(this.nextSample);
     this.emitPendingFinalTurns();
+    if (!shouldResetAsr) {
+      return;
+    }
     let reset: { success: boolean; error?: string };
     try {
       reset = await this.config.asr.resetStream();
