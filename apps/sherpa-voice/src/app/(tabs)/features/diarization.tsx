@@ -250,7 +250,7 @@ function LiveValidationSection({
           sampleRate: wav.sampleRate,
           vad: VAD,
           speakerId: SpeakerId,
-          minTurnDurationMs: 250,
+          minTurnDurationMs: 1000,
           speechPadMs: 120,
           speakerThreshold: 0.55,
           maxRingBufferDurationMs: 90_000,

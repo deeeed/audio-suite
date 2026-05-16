@@ -990,7 +990,7 @@ async function runLiveTranscriptionDiarizationReplay(
     const chunkDurationMs = options.chunkDurationMs ?? 100
     const maxDurationMs = options.maxDurationMs
     const speakerThreshold = options.speakerThreshold ?? 0.55
-    const minTurnDurationMs = options.minTurnDurationMs ?? 250
+    const minTurnDurationMs = options.minTurnDurationMs ?? 1000
     const speechPadMs = options.speechPadMs ?? 120
 
     const timing: Record<string, number> = {}
@@ -1194,7 +1194,7 @@ async function runLiveMicTranscriptionDiarization(
     const durationMs = options.durationMs ?? 10_000
     const chunkDurationMs = options.chunkDurationMs ?? 100
     const speakerThreshold = options.speakerThreshold ?? 0.55
-    const minTurnDurationMs = options.minTurnDurationMs ?? 250
+    const minTurnDurationMs = options.minTurnDurationMs ?? 1000
     const speechPadMs = options.speechPadMs ?? 120
     const timing: Record<string, number> = {}
     const eventCounts: Record<string, number> = {}

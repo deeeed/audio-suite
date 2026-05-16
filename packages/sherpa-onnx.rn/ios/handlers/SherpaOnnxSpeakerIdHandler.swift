@@ -119,7 +119,6 @@ import CSherpaOnnx
         // Check readiness
         let isReady = SherpaOnnxSpeakerEmbeddingExtractorIsReady(extractorPtr, streamPtr)
         if isReady == 0 {
-            resetEmbeddingStream(extractorPtr)
             return ["success": false, "durationMs": 0, "embedding": [], "embeddingDim": 0, "error": "Not enough audio data to compute embedding"]
         }
 

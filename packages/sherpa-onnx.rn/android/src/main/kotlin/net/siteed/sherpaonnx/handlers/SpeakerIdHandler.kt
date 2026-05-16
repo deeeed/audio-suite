@@ -163,7 +163,6 @@ class SpeakerIdHandler(private val reactContext: ReactApplicationContext) {
 
                 // Check if we have enough data to compute embedding
                 if (!speakerExtractor!!.isReady(stream!!)) {
-                    resetEmbeddingStream()
                     val resultMap = Arguments.createMap()
                     resultMap.putBoolean("success", false)
                     resultMap.putString("error", "Not enough audio data to compute embedding")

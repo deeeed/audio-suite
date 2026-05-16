@@ -141,9 +141,6 @@ export function SpeakerIdMixin<TBase extends Constructor>(Base: TBase) {
         this.speakerExtractor.inputFinished(this.speakerIdStream);
 
         if (!this.speakerExtractor.isReady(this.speakerIdStream)) {
-          this.speakerExtractor.destroyStream(this.speakerIdStream);
-          this.speakerIdStream = null;
-          this.speakerIdSamplesProcessed = 0;
           return {
             success: false,
             embedding: [],
