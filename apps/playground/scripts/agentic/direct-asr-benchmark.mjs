@@ -15,6 +15,12 @@ const REPORT_DIR = path.join(APP_ROOT, '.agent', 'reports');
 const MODEL_CACHE_DIR =
   process.env.BENCHMARK_MODEL_CACHE_DIR ||
   path.join(APP_ROOT, '.agent', 'model-cache');
+const MOBILE_RECOMMENDATION_MODEL_IDS = readMobileRecommendationModelIds();
+const PERPS_ECHOBRIDGE_CLIP_IDS = ['perps-controller-refactor-5m-echobridge-medium'];
+const MOBILE_RECOMMENDATION_PERPS_PRESET = {
+  clipIds: PERPS_ECHOBRIDGE_CLIP_IDS,
+  modelIds: MOBILE_RECOMMENDATION_MODEL_IDS,
+};
 const DEVICE = process.env.BENCHMARK_DEVICE || process.env.AGENTIC_DEVICE || '';
 const SERIAL = process.env.ANDROID_SERIAL || process.env.ADB_SERIAL || '';
 const APP_VARIANT = process.env.APP_VARIANT || 'development';
@@ -83,31 +89,23 @@ const PRESETS = {
     modelIds: ['moonshine-small-streaming-en', 'moonshine-medium-streaming-en'],
   },
   'moonshine-echobridge-perps-5m': {
-    clipIds: ['perps-controller-refactor-5m-echobridge-medium'],
+    clipIds: PERPS_ECHOBRIDGE_CLIP_IDS,
     modelIds: ['moonshine-small-streaming-en', 'moonshine-medium-streaming-en'],
   },
   'sherpa-echobridge-perps-5m': {
-    clipIds: ['perps-controller-refactor-5m-echobridge-medium'],
+    clipIds: PERPS_ECHOBRIDGE_CLIP_IDS,
     modelIds: ['sherpa-qwen3-asr-0.6b-int8'],
   },
   'sherpa-whisper-echobridge-perps-5m': {
-    clipIds: ['perps-controller-refactor-5m-echobridge-medium'],
+    clipIds: PERPS_ECHOBRIDGE_CLIP_IDS,
     modelIds: ['sherpa-whisper-small', 'sherpa-whisper-medium-int8'],
   },
   'sherpa-whisper-fp32-echobridge-perps-5m': {
-    clipIds: ['perps-controller-refactor-5m-echobridge-medium'],
+    clipIds: PERPS_ECHOBRIDGE_CLIP_IDS,
     modelIds: ['sherpa-whisper-medium'],
   },
-  'moonshine-sherpa-echobridge-perps-5m': {
-    clipIds: ['perps-controller-refactor-5m-echobridge-medium'],
-    modelIds: [
-      'moonshine-small-streaming-en',
-      'moonshine-medium-streaming-en',
-      'sherpa-qwen3-asr-0.6b-int8',
-      'sherpa-whisper-small',
-      'sherpa-whisper-medium-int8',
-    ],
-  },
+  'mobile-asr-recommendation-echobridge-perps-5m': MOBILE_RECOMMENDATION_PERPS_PRESET,
+  'moonshine-sherpa-echobridge-perps-5m': MOBILE_RECOMMENDATION_PERPS_PRESET,
 };
 
 const ALL_MODELS = [
@@ -119,6 +117,19 @@ const ALL_MODELS = [
   { id: 'sherpa-whisper-medium-int8', live: false },
   { id: 'sherpa-whisper-medium', live: false },
 ];
+const ALL_MODEL_IDS = new Set(ALL_MODELS.map((model) => model.id));
+const unknownMobileRecommendationModelIds = MOBILE_RECOMMENDATION_MODEL_IDS.filter(
+  (modelId) => !ALL_MODEL_IDS.has(modelId)
+);
+if (unknownMobileRecommendationModelIds.length > 0) {
+  throw new Error(
+    `Unknown mobile recommendation model ids in asrMobileRecommendationModelIds.json: ${unknownMobileRecommendationModelIds.join(', ')}`
+  );
+}
+// Shared with ASR_MOBILE_RECOMMENDATION_MODEL_IDS in
+// apps/playground/src/utils/asrBenchmarkModels.ts via asrMobileRecommendationModelIds.json.
+// It intentionally excludes FP32 Whisper Medium and Whisper Small (whisper.rn) unless explicitly requested.
+const DEFAULT_MODEL_IDS = new Set(MOBILE_RECOMMENDATION_MODEL_IDS);
 const configuredPreset = String(process.env.BENCHMARK_PRESET || '').trim();
 const presetConfig = configuredPreset ? PRESETS[configuredPreset] : null;
 if (configuredPreset && !presetConfig) {
@@ -126,11 +137,15 @@ if (configuredPreset && !presetConfig) {
     `Unknown BENCHMARK_PRESET=${configuredPreset}. Available presets: ${Object.keys(PRESETS).join(', ')}`
   );
 }
+const configuredModelsRaw = String(process.env.BENCHMARK_MODELS || '').trim();
+const shouldRunAllModels = configuredModelsRaw.toLowerCase() === 'all';
 const configuredModelIds = new Set(
   String(
-    process.env.BENCHMARK_MODELS ||
-      presetConfig?.modelIds?.join(',') ||
-      ''
+    shouldRunAllModels
+      ? ''
+      : configuredModelsRaw ||
+          presetConfig?.modelIds?.join(',') ||
+          ''
   )
     .split(',')
     .map((value) => value.trim())
@@ -146,10 +161,11 @@ const configuredClipIds = new Set(
     .map((value) => value.trim())
     .filter(Boolean)
 );
-const OFFLINE_MODELS =
-  configuredModelIds.size > 0
+const OFFLINE_MODELS = shouldRunAllModels
+  ? ALL_MODELS
+  : configuredModelIds.size > 0
     ? ALL_MODELS.filter((model) => configuredModelIds.has(model.id))
-    : ALL_MODELS;
+    : ALL_MODELS.filter((model) => DEFAULT_MODEL_IDS.has(model.id));
 const SIMULATED_MODELS = OFFLINE_MODELS.filter((model) => model.live);
 const EVAL_CLIPS =
   configuredClipIds.size > 0
@@ -160,6 +176,24 @@ fs.mkdirSync(REPORT_DIR, { recursive: true });
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function readMobileRecommendationModelIds() {
+  const configPath = path.join(APP_ROOT, 'src/utils/asrMobileRecommendationModelIds.json');
+  try {
+    const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    if (
+      !Array.isArray(parsed) ||
+      parsed.length === 0 ||
+      !parsed.every((modelId) => typeof modelId === 'string' && modelId.length > 0)
+    ) {
+      throw new Error('expected a non-empty string array');
+    }
+    return parsed;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to load ${configPath}: ${message}`);
+  }
 }
 
 function run(command, args, { cwd = REPO_ROOT, parseJson = false, maxBuffer = 50 * 1024 * 1024 } = {}) {

@@ -1,16 +1,14 @@
 # ASR Benchmark
 
 ## Purpose
-This benchmark isolates Recorder-like ASR experiments in `apps/sherpa-voice` without changing the existing demo screen.
+This document tracks two related mobile ASR benchmark surfaces:
 
-The page is designed to compare:
-- practical live mobile models
-- practical offline baselines
-- heavier offline reference models
+- Audio Playground `/asr-benchmark`: the current recommendation workflow for live Moonshine transcription, Sherpa live speaker turns, segmented Sherpa offline ASR, and EchoBridge parity checks.
+- `apps/sherpa-voice`: the legacy Recorder-like Sherpa ASR matrix, kept as historical model-selection evidence.
 
-It intentionally does not benchmark only the likely winner. The matrix keeps weaker but useful baselines in place so tradeoffs are visible.
+The matrices intentionally do not benchmark only the likely winner. They keep weaker but useful baselines in place so tradeoffs are visible.
 
-## Current Matrix
+## Sherpa Voice Legacy Matrix
 - `streaming-zipformer-en-20m-mobile`
   Purpose: compact live mobile baseline
 - `streaming-zipformer-en-general`
@@ -102,15 +100,50 @@ Audio Playground now includes the `moonshine-sherpa-echobridge-perps-5m` direct 
 
 The Sherpa offline path uses the reusable `SegmentedOfflineAsrSession` JS helper from `@siteed/sherpa-onnx.rn`. It does not require a new native API: bounded PCM windows are submitted through `ASR.recognizeFromSamples`, segment/progress events are emitted, and Android can release/reinitialize the Sherpa ASR runtime between windows. The direct WAV benchmark still loads the 5-minute WAV into JS memory first for scoring parity; use `/long-audio-validation` for the progressive decoder path that proves compressed long audio can be decoded and transcribed window-by-window.
 
+## Audio Playground Mobile Recommendation Workflow
+
+The dev-only Audio Playground `/asr-benchmark` page is the combined recommendation surface for live Moonshine transcription, live Sherpa speaker turns, segmented Sherpa offline ASR, and EchoBridge Whisper parity.
+
+| Use case | Recommended default | Alternate | Avoid/default-off |
+| --- | --- | --- | --- |
+| Live low-latency transcript | Moonshine Small Streaming | Moonshine Medium Streaming on faster devices | Sherpa offline models for live UX |
+| Live speaker turns | Sherpa VAD + Speaker ID through `LiveSpeakerTurnSession` | Offline diarization for final quality | Treating live speaker ID as final diarization |
+| Post-recording transcript quality | Sherpa Qwen3-ASR 0.6B INT8 segmented offline | Sherpa Whisper Medium INT8 when Whisper parity is desired | Running offline models without segmentation/progress |
+| EchoBridge parity testing | Sherpa Whisper Medium INT8 | Sherpa Whisper Small | Interpreting Whisper-vs-Whisper scores as human WER |
+| Legacy compatibility | Manual `whisper.rn` small runs only | none | Practical default matrix runs |
+| Stress testing | Opt-in Sherpa Whisper Medium FP32 preset | Larger-memory device profile | Default Pixel 6a matrix runs |
+
+Use `Run Practical Matrix` in the page to run the mobile-safe model set. It intentionally excludes FP32 Sherpa Whisper Medium. The direct runner mirrors that behavior when no `BENCHMARK_MODELS` are provided, exposes a named practical preset, keeps `moonshine-sherpa-echobridge-perps-5m` as an alias for the same set, and accepts `BENCHMARK_MODELS=all` for the full legacy sweep:
+
+```bash
+cd apps/playground
+ADB_SERIAL=29071JEGR20638 \
+BENCHMARK_DEVICE="Pixel 6a - 16 - API 36" \
+BENCHMARK_PRESET=mobile-asr-recommendation-echobridge-perps-5m \
+node scripts/agentic/direct-asr-benchmark.mjs
+```
+
+Run the FP32 Whisper Medium stress row only when explicitly requested:
+
+```bash
+cd apps/playground
+ADB_SERIAL=29071JEGR20638 \
+BENCHMARK_DEVICE="Pixel 6a - 16 - API 36" \
+BENCHMARK_ALLOW_MODEL_DOWNLOAD=1 \
+BENCHMARK_OFFLINE_TIMEOUT_MS=3600000 \
+BENCHMARK_PRESET=sherpa-whisper-fp32-echobridge-perps-5m \
+node scripts/agentic/direct-asr-benchmark.mjs
+```
+
 Measured on Pixel 6a (`Pixel 6a - 16 - API 36`):
 
 | Model | Mode | WER vs EchoBridge | CER vs EchoBridge | Runtime/session | Notes |
 | --- | --- | ---: | ---: | ---: | --- |
-| Sherpa Whisper Medium INT8 | offline segmented | 19.5% | 16.3% | 475.0 s | 10 × 30 s segments; closest successful on-device Whisper-vs-EchoBridge parity row in this run |
-| Sherpa Whisper Small | offline segmented | 29.3% | 22.7% | 229.2 s | 10 × 30 s segments; useful Whisper baseline, slower than Qwen3 and slightly lower quality here |
-| Sherpa Qwen3-ASR 0.6B INT8 direct replay | offline segmented | 28.1% | 22.8% | 207.4 s | 10 × 30 s segments; best validated on-device text-quality candidate; not live-streaming |
-| Moonshine Medium Streaming | offline/file | 38.0% | 28.2% | 183.9 s | live-capable; quality below Qwen3 |
-| Moonshine Small Streaming | offline/file | 45.8% | 35.7% | 95.2 s | faster fallback |
+| Sherpa Whisper Medium INT8 | offline segmented | 19.5% | 16.3% | 502.4 s | 10 × 30 s segments; closest successful on-device Whisper-vs-EchoBridge parity row in this run |
+| Sherpa Whisper Small | offline segmented | 29.3% | 22.7% | 255.7 s | 10 × 30 s segments; useful Whisper baseline, slower than Qwen3 and slightly lower quality here |
+| Sherpa Qwen3-ASR 0.6B INT8 direct replay | offline segmented | 28.1% | 22.8% | 267.9 s | 10 × 30 s segments; best validated on-device text-quality candidate; not live-streaming |
+| Moonshine Medium Streaming | offline/file | 37.4% | 27.9% | 212.4 s | live-capable; quality below Qwen3 |
+| Moonshine Small Streaming | offline/file | 47.3% | 36.7% | 112.0 s | faster fallback |
 
 Whisper parity note: the EchoBridge reference transcript is produced by a server-side Whisper `medium.en` pipeline, so Sherpa Whisper Medium is a runtime/parity stress check rather than an independent human-labelled accuracy target. In this Pixel 6a run the INT8 Sherpa Whisper Medium row completed; the FP32 Sherpa Whisper Medium row was staged but did not produce a completed direct benchmark report before the dev target was lost, so it is kept behind the opt-in `sherpa-whisper-fp32-echobridge-perps-5m` preset and is not a recommended mobile default yet.
 

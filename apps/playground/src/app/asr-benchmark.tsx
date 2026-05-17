@@ -30,6 +30,33 @@ const getStyles = (theme: AppTheme) =>
         sectionBody: {
             color: theme.colors.onSurfaceVariant,
         },
+        recommendationGrid: {
+            gap: theme.spacing.gap,
+        },
+        recommendationCard: {
+            gap: 4,
+            padding: theme.padding.s,
+            backgroundColor: theme.colors.surfaceVariant,
+            borderRadius: theme.roundness,
+        },
+        badgeRow: {
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: 6,
+            marginTop: 6,
+        },
+        badge: {
+            alignSelf: 'flex-start',
+            paddingHorizontal: 8,
+            paddingVertical: 3,
+            borderRadius: theme.roundness,
+            backgroundColor: theme.colors.secondaryContainer,
+        },
+        badgeText: {
+            color: theme.colors.onSecondaryContainer,
+            fontSize: 11,
+            fontWeight: '700',
+        },
         row: {
             flexDirection: 'row',
             flexWrap: 'wrap',
@@ -136,6 +163,7 @@ export default function AsrBenchmarkScreen() {
         benchmarkModels,
         clearResults,
         error,
+        mobileRecommendationModels,
         mode,
         modelStatuses,
         prepareSelectedModel,
@@ -163,11 +191,21 @@ export default function AsrBenchmarkScreen() {
 
     const visibleModels = mode === 'simulated' ? simulatedBenchmarkModels : benchmarkModels
     const modeSwitchDisabled = processing || simulationIsRunning
+    const mobileRecommendationModelIds = useMemo(
+        () => mobileRecommendationModels.map((model) => model.id),
+        [mobileRecommendationModels],
+    )
+    const mobileRecommendationModelCountLabel =
+        mobileRecommendationModels.length === 1
+            ? '1 mobile-safe row'
+            : `${mobileRecommendationModels.length} mobile-safe rows`
 
     useEffect(() => {
         setAgenticPageState({
             benchmarkModelCount: benchmarkModels.length,
             error: error || null,
+            mobileRecommendationModelCount: mobileRecommendationModelIds.length,
+            mobileRecommendationModelIds,
             simulatedBenchmarkModelCount: simulatedBenchmarkModels.length,
             simulatedCommittedText: simulatedCommittedText || null,
             simulatedInterimText: simulatedInterimText || null,
@@ -197,6 +235,7 @@ export default function AsrBenchmarkScreen() {
     }, [
         benchmarkModels.length,
         error,
+        mobileRecommendationModelIds,
         mode,
         modelStatuses,
         processing,
@@ -224,9 +263,38 @@ export default function AsrBenchmarkScreen() {
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>ASR Benchmark</Text>
                 <Text style={styles.sectionBody}>
-                    Dev-only benchmark surface for Moonshine vs Whisper in the generic playground
-                    app.
+                    Dev-only recommendation surface for live Moonshine transcription, Sherpa speaker
+                    turns, segmented offline Sherpa ASR, and EchoBridge Whisper parity.
                 </Text>
+            </View>
+
+            <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Mobile Recommendation Workflow</Text>
+                <View style={styles.recommendationGrid}>
+                    {[
+                        {
+                            title: 'Live transcript',
+                            body: 'Use Moonshine Small Streaming by default. Try Moonshine Medium only when the device can afford slower startup and extra CPU.',
+                        },
+                        {
+                            title: 'Live speaker turns',
+                            body: 'Use Sherpa VAD + Speaker ID for tentative live speaker turns, then rely on offline diarization for final quality.',
+                        },
+                        {
+                            title: 'Post-recording quality',
+                            body: 'Use segmented Sherpa offline ASR after recording. Qwen3 INT8 is the practical non-Whisper candidate; Whisper Medium INT8 is the EchoBridge parity row.',
+                        },
+                        {
+                            title: 'Default matrix',
+                            body: `Run Practical Matrix uses ${mobileRecommendationModelCountLabel} and skips opt-in / avoid-default models such as FP32 Whisper Medium and Whisper Small (whisper.rn).`,
+                        },
+                    ].map((item) => (
+                        <View key={item.title} style={styles.recommendationCard}>
+                            <Text style={styles.selectorTitle}>{item.title}</Text>
+                            <Text style={styles.selectorBody}>{item.body}</Text>
+                        </View>
+                    ))}
+                </View>
             </View>
 
             <View style={styles.section}>
@@ -304,7 +372,33 @@ export default function AsrBenchmarkScreen() {
                                 <Text style={styles.selectorBody}>
                                     {model.engine} • {downloaded ? 'downloaded' : 'not downloaded'}
                                 </Text>
+                                {model.recommendationLabel ? (
+                                    <View style={styles.badgeRow}>
+                                        <View style={styles.badge}>
+                                            <Text style={styles.badgeText}>
+                                                {model.recommendationTier === 'avoid-default'
+                                                    ? `Default-off: ${model.recommendationLabel}`
+                                                    : model.recommendationLabel}
+                                            </Text>
+                                        </View>
+                                        {model.estimatedSizeLabel ? (
+                                            <View style={styles.badge}>
+                                                <Text style={styles.badgeText}>
+                                                    {model.estimatedSizeLabel}
+                                                </Text>
+                                            </View>
+                                        ) : null}
+                                    </View>
+                                ) : null}
+                                {model.recommendedUse ? (
+                                    <Text style={styles.selectorBody}>{model.recommendedUse}</Text>
+                                ) : null}
                                 <Text style={styles.selectorBody}>{model.rationale}</Text>
+                                {model.warningLabel ? (
+                                    <Text style={styles.selectorBody}>
+                                        Note: {model.warningLabel}
+                                    </Text>
+                                ) : null}
                             </Pressable>
                         )
                     })}
@@ -433,9 +527,13 @@ export default function AsrBenchmarkScreen() {
                                         },
                                     ]}
                                 >
-                                    Run Matrix
+                                    Run Practical Matrix
                                 </Text>
                             </Pressable>
+                            <Text style={styles.sectionBody}>
+                                Runs {mobileRecommendationModelCountLabel}; skips opt-in /
+                                avoid-default models.
+                            </Text>
 
                             <Pressable
                                 testID="asr-benchmark-run-word-timestamps"
