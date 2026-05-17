@@ -62,6 +62,41 @@ Validated on a Pixel 6a-class physical Android device (`Pixel 6a - 16 - API 36`)
 | Transcript finalization | 2 committed attributed lines after stop |
 | Late errors after stop | none (`moonshineSherpaError: null`) |
 
+
+### Main Record tab injected reference replay
+
+Use this recipe when validating quality/latency without the uncontrolled laptop-speaker-to-phone-microphone path. It stages a 16 kHz mono multi-speaker AMI clip into the app sandbox, injects it through the Record tab Moonshine + Sherpa live hook, and then runs post-recording segmented Sherpa Qwen3-ASR on the same WAV. This is app-side/dev instrumentation only; no new native API is required.
+
+```bash
+cd apps/playground
+ADB_SERIAL=<pixel-6a-adb-serial> \
+DEVICE_NAME="Pixel 6a - 16 - API 36" \
+node scripts/agentic/record-attributed-transcription-validation.mjs
+```
+
+Latest Pixel 6a evidence: `apps/playground/.agent/reports/record-attributed-transcription-validation-2026-05-17T06-59-14-069Z.md`. The runner now also copies the exact replay WAV next to each report as `record-attributed-transcription-validation-<timestamp>.wav`, so manual validation can use `open apps/playground/.agent/reports/record-attributed-transcription-validation-<timestamp>.wav`.
+
+| Stage | Metric | Result |
+| --- | --- | ---: |
+| Recipe | Nodes passed | 7 / 7 |
+| Source | AMI window | IS1001a 340s-380s |
+| Source | Reference speakers | 4 |
+| Live Moonshine + Sherpa | Moonshine chunks | 200 |
+| Live Moonshine + Sherpa | Sherpa chunks | 200 |
+| Live Moonshine + Sherpa | Sherpa turns | 9 |
+| Live Moonshine + Sherpa | Attributed lines | 8 |
+| Live Moonshine + Sherpa | Transcript chars | 307 |
+| Post-recording Sherpa ASR | Model | Qwen3-ASR 0.6B INT8 |
+| Post-recording Sherpa ASR | Segments | 2 |
+| Post-recording Sherpa ASR | Init / recognize | 10.9 s / 33.2 s |
+| Post-recording Sherpa ASR | Transcript chars | 312 |
+
+Observed limits:
+
+- Live attribution is useful as tentative UI feedback: it produced speaker events and attributed lines from the Record tab, but the visible speaker labels are clustering IDs, not final diarization labels.
+- Post-recording segmented Sherpa ASR produced a cleaner transcript than live Moonshine on this AMI window, but it is offline-only and should be presented as a post-stop quality pass.
+- The recipe validates chunk fan-out, visible live output, post-stop replay, and segmented ASR completion on Pixel 6a; it does not prove final diarization quality.
+
 ### Dev `/moonshine-live` page
 
 | Metric | Result |

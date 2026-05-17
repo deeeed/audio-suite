@@ -51,7 +51,13 @@ import { storeAudioFile } from '../../utils/indexedDB'
 import { isWeb } from '../../utils/utils'
 import { useSileroVAD } from '../../hooks/useSileroVAD'
 import { useMoonshineSherpaLiveDiarization } from '../../hooks/useMoonshineSherpaLiveDiarization'
-import { setAgenticPageState } from '../../agentic-bridge'
+import {
+    setAgenticPageState,
+    setAgenticRecordAttributedValidationProbe,
+    type RecordAttributedTranscriptionValidationOptions,
+} from '../../agentic-bridge'
+import { runBenchmarkFile } from '../../utils/asrBenchmarkRuntime'
+import { readMonoPcm16Wav } from '../../utils/wav'
 
 import type { TranscriptionModeSettings } from '../../component/TranscriptionModeConfig'
 
@@ -70,6 +76,49 @@ function formatMs(value?: number | null): string {
 function averageMs(totalMs: number, count: number): string {
     if (count <= 0) return 'n/a'
     return `${Math.round(totalMs / count)} ms`
+}
+
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+type RecordAttributedValidationStatus =
+    | 'idle'
+    | 'running-live'
+    | 'post-asr'
+    | 'success'
+    | 'error'
+
+interface RecordAttributedValidationState {
+    audioUri?: string
+    chunkCount?: number
+    error?: string
+    live?: {
+        attributedLineCount: number
+        committedLineCount: number
+        finalTranscript: string
+        moonshineChunks: number
+        sherpaChunks: number
+        sherpaTurnCount: number
+        speakerEventCounts: Record<string, number>
+        transcriptCharCount: number
+    }
+    postAsr?: {
+        initMs?: number
+        modelId: string
+        recognizeMs?: number
+        segmentCount?: number
+        transcript: string
+        transcriptCharCount: number
+    }
+    processedChunks?: number
+    processedMs?: number
+    progress?: number
+    realtime?: boolean
+    startedAtMs?: number
+    status: RecordAttributedValidationStatus
+    statusMessage?: string
+    updatedAtMs?: number
 }
 
 const baseRecordingConfig: RecordingConfig = {
@@ -285,7 +334,37 @@ export default function RecordScreen() {
 
     const transcriptionContext = useTranscription()
     const moonshineSherpaLive = useMoonshineSherpaLiveDiarization({ strategy: 'small-only' })
+    const moonshineSherpaLiveRef = useRef(moonshineSherpaLive)
     const moonshineSherpaLiveActiveRef = useRef(false)
+    const [recordAttributedValidation, setRecordAttributedValidation] =
+        useState<RecordAttributedValidationState>({ status: 'idle' })
+    const recordAttributedValidationRef =
+        useRef<RecordAttributedValidationState>(recordAttributedValidation)
+
+    useEffect(() => {
+        moonshineSherpaLiveRef.current = moonshineSherpaLive
+    }, [moonshineSherpaLive])
+
+    const updateRecordAttributedValidation = useCallback(
+        (patch: Partial<RecordAttributedValidationState>) => {
+            setRecordAttributedValidation((previous) => {
+                const next = {
+                    ...previous,
+                    ...patch,
+                    updatedAtMs: Date.now(),
+                }
+                recordAttributedValidationRef.current = next
+                return next
+            })
+        },
+        [],
+    )
+
+    const resetRecordAttributedValidation = useCallback(() => {
+        const next: RecordAttributedValidationState = { status: 'idle' }
+        recordAttributedValidationRef.current = next
+        setRecordAttributedValidation(next)
+    }, [])
 
     const showPermissionError = useCallback((permission: string) => {
         logger.error(`${permission} permission not granted`)
@@ -455,6 +534,186 @@ export default function RecordScreen() {
     useEffect(() => { processAudioSegmentRef.current = vadProcessAudioSegment }, [vadProcessAudioSegment])
     useEffect(() => { sampleRateRef.current = startRecordingConfig.sampleRate ?? 16000 }, [startRecordingConfig.sampleRate])
 
+    const runInjectedAttributedValidation = useCallback(
+        async (options: RecordAttributedTranscriptionValidationOptions) => {
+            if (Platform.OS === 'web') {
+                throw new Error('Record attributed validation requires a native device')
+            }
+            if (!options.audioUri) {
+                throw new Error('Record attributed validation requires audioUri')
+            }
+
+            const chunkDurationMs = Math.max(50, options.chunkDurationMs ?? CHUNK_DURATION_MS)
+            const postAsrModelId = options.postAsrModelId || 'sherpa-qwen3-asr-0.6b-int8'
+            const realtime = options.realtime !== false
+            const startedAtMs = Date.now()
+            let liveStarted = false
+
+            setEnableMoonshineSherpaLive(true)
+            setEnableLiveTranscription(false)
+            setResult(null)
+            moonshineSherpaLive.clear()
+            updateRecordAttributedValidation({
+                audioUri: options.audioUri,
+                error: undefined,
+                live: undefined,
+                postAsr: undefined,
+                processedChunks: 0,
+                processedMs: 0,
+                progress: 0,
+                realtime,
+                startedAtMs,
+                status: 'running-live',
+                statusMessage: 'Loading injected validation WAV...',
+            })
+
+            try {
+                const wav = await readMonoPcm16Wav(options.audioUri)
+                if (wav.sampleRate !== WhisperSampleRate) {
+                    throw new Error(
+                        `Injected validation WAV must be ${WhisperSampleRate} Hz, got ${wav.sampleRate}`,
+                    )
+                }
+
+                const chunkSize = Math.max(
+                    1,
+                    Math.floor((wav.sampleRate * chunkDurationMs) / 1000),
+                )
+                const chunkCount = Math.max(1, Math.ceil(wav.samples.length / chunkSize))
+                updateRecordAttributedValidation({
+                    chunkCount,
+                    statusMessage: 'Starting live Moonshine + Sherpa session...',
+                })
+
+                await moonshineSherpaLive.startSession({ externalAudio: true })
+                liveStarted = true
+
+                for (
+                    let offset = 0, chunkIndex = 0;
+                    offset < wav.samples.length;
+                    offset += chunkSize, chunkIndex += 1
+                ) {
+                    const chunkStartedAt = Date.now()
+                    const chunk = Float32Array.from(wav.samples.slice(offset, offset + chunkSize))
+                    await moonshineSherpaLive.processAudioEvent({
+                        data: chunk,
+                        eventDataSize: chunk.byteLength,
+                        fileUri: options.audioUri,
+                        position: offset * 4,
+                        streamFormat: 'float32',
+                        totalSize: wav.samples.length * 4,
+                    })
+
+                    const processedChunks = chunkIndex + 1
+                    const processedMs = Math.min(
+                        Math.round((processedChunks * chunkDurationMs)),
+                        Math.round((wav.samples.length / wav.sampleRate) * 1000),
+                    )
+                    if (processedChunks === chunkCount || processedChunks % 10 === 0) {
+                        updateRecordAttributedValidation({
+                            processedChunks,
+                            processedMs,
+                            progress: processedChunks / chunkCount,
+                            statusMessage: `Injected ${processedChunks}/${chunkCount} live chunks...`,
+                        })
+                    }
+
+                    if (realtime) {
+                        await sleep(Math.max(0, chunkDurationMs - (Date.now() - chunkStartedAt)))
+                    }
+                }
+
+                updateRecordAttributedValidation({
+                    progress: 1,
+                    statusMessage: 'Finalizing live transcript and speaker turns...',
+                })
+                await moonshineSherpaLive.stopSession({ stopRecorder: false })
+                liveStarted = false
+                await sleep(1500)
+
+                const liveSnapshot = moonshineSherpaLiveRef.current
+                const liveTranscript = [
+                    liveSnapshot.finalTranscript,
+                    liveSnapshot.liveCommittedText,
+                    liveSnapshot.liveInterimText,
+                ]
+                    .map((value) => value?.trim())
+                    .find(Boolean) ?? ''
+                const live = {
+                    attributedLineCount: liveSnapshot.attributedCommittedLines.length,
+                    committedLineCount: liveSnapshot.liveCommittedLines.length,
+                    finalTranscript: liveTranscript,
+                    moonshineChunks: liveSnapshot.moonshineStats.chunks,
+                    sherpaChunks: liveSnapshot.sherpaStats.chunks,
+                    sherpaTurnCount: liveSnapshot.sherpaTurns.length,
+                    speakerEventCounts: liveSnapshot.speakerEventCounts,
+                    transcriptCharCount: liveTranscript.length,
+                }
+
+                updateRecordAttributedValidation({
+                    live,
+                    status: 'post-asr',
+                    statusMessage: `Running post-recording segmented ASR with ${postAsrModelId}...`,
+                })
+                const postAsrResult = await runBenchmarkFile(
+                    postAsrModelId,
+                    options.audioUri,
+                    (message) =>
+                        updateRecordAttributedValidation({
+                            statusMessage: message,
+                        }),
+                )
+                const postAsr = {
+                    initMs: postAsrResult.initMs,
+                    modelId: postAsrModelId,
+                    recognizeMs: postAsrResult.recognizeMs,
+                    segmentCount: postAsrResult.segmentCount,
+                    transcript: postAsrResult.transcript,
+                    transcriptCharCount: postAsrResult.transcript.length,
+                }
+                const result = {
+                    audioUri: options.audioUri,
+                    elapsedMs: Date.now() - startedAtMs,
+                    live,
+                    postAsr,
+                    realtime,
+                }
+                updateRecordAttributedValidation({
+                    postAsr,
+                    status: 'success',
+                    statusMessage: 'Injected attributed transcription validation completed.',
+                })
+                return result
+            } catch (validationError) {
+                const message =
+                    validationError instanceof Error
+                        ? validationError.message
+                        : String(validationError)
+                updateRecordAttributedValidation({
+                    error: message,
+                    status: 'error',
+                    statusMessage: 'Injected attributed transcription validation failed.',
+                })
+                throw validationError
+            } finally {
+                if (liveStarted) {
+                    await moonshineSherpaLive.stopSession({ stopRecorder: false }).catch(() => undefined)
+                }
+            }
+        },
+        [moonshineSherpaLive, updateRecordAttributedValidation],
+    )
+
+    useEffect(() => {
+        setAgenticRecordAttributedValidationProbe({
+            getState: () => ({ ...recordAttributedValidationRef.current }),
+            run: runInjectedAttributedValidation,
+        })
+        return () => {
+            setAgenticRecordAttributedValidationProbe(null)
+        }
+    }, [runInjectedAttributedValidation])
+
     useEffect(() => {
         setAgenticPageState({
             route: '/record',
@@ -485,9 +744,15 @@ export default function RecordScreen() {
                 moonshineSherpaLive.finalTranscript || null,
             moonshineSherpaError:
                 moonshineSherpaLive.error || moonshineSherpaLive.sherpaError || null,
+            recordAttributedValidationStatus: recordAttributedValidation.status,
+            recordAttributedValidationProgress: recordAttributedValidation.progress ?? 0,
+            recordAttributedValidationLive: recordAttributedValidation.live ?? null,
+            recordAttributedValidationPostAsr: recordAttributedValidation.postAsr ?? null,
+            recordAttributedValidationError: recordAttributedValidation.error ?? null,
         })
     }, [
         advancedMode,
+        recordAttributedValidation,
         result,
         processing,
         stopping,
@@ -714,6 +979,8 @@ export default function RecordScreen() {
                 setTranscripts([])
                 setActiveTranscript(null)
                 setResult(null)
+                resetRecordAttributedValidation()
+                moonshineSherpaLive.clear()
 
                 const finalConfig: RecordingConfig = {
                     ...startRecordingConfig,
@@ -726,6 +993,14 @@ export default function RecordScreen() {
                         await moonshineSherpaLive.processAudioEvent(event)
                     },
                 }
+
+                // The Record tab can have an already-prepared recorder from the
+                // default settings path. Re-prepare with the Moonshine + Sherpa
+                // callback before start so native does not reuse a stale
+                // onAudioStream config that only records the file.
+                preparedConfigRef.current = null
+                await prepareRecording(finalConfig)
+                setIsRecordingPrepared(true)
 
                 await moonshineSherpaLive.startSession({ externalAudio: true })
                 try {
@@ -983,6 +1258,7 @@ export default function RecordScreen() {
         customFileName,
         startRecordingConfig,
         startRecording,
+        prepareRecording,
         initializeTranscription,
         ready,
         show,
@@ -995,6 +1271,7 @@ export default function RecordScreen() {
         transcriptionContext,
         enableMoonshineSherpaLive,
         moonshineSherpaLive,
+        resetRecordAttributedValidation,
     ])
 
     const handleStopRecording = useCallback(async () => {
@@ -1209,6 +1486,56 @@ export default function RecordScreen() {
                         </Text>
                     )}
                 </View>
+            </View>
+        )
+    }
+
+    const renderRecordAttributedValidationResult = () => {
+        if (recordAttributedValidation.status === 'idle') return null
+
+        return (
+            <View
+                testID="record-attributed-validation-result"
+                style={{
+                    padding: 16,
+                    backgroundColor: colors.secondaryContainer,
+                    borderRadius: 8,
+                    marginVertical: 10,
+                    gap: 8,
+                }}
+            >
+                <Text variant="titleSmall">Injected attributed transcription validation</Text>
+                <Text variant="bodySmall" style={{ color: colors.onSecondaryContainer }}>
+                    Status: {recordAttributedValidation.status}
+                    {recordAttributedValidation.progress != null
+                        ? ` • ${Math.round(recordAttributedValidation.progress * 100)}%`
+                        : ''}
+                </Text>
+                {recordAttributedValidation.statusMessage ? (
+                    <Text variant="bodySmall" style={{ color: colors.onSecondaryContainer }}>
+                        {recordAttributedValidation.statusMessage}
+                    </Text>
+                ) : null}
+                {recordAttributedValidation.error ? (
+                    <Text variant="bodySmall" style={{ color: colors.error }}>
+                        {recordAttributedValidation.error}
+                    </Text>
+                ) : null}
+                {recordAttributedValidation.live ? (
+                    <Text variant="bodySmall" style={{ color: colors.onSecondaryContainer }}>
+                        Live: {recordAttributedValidation.live.transcriptCharCount} transcript chars •{' '}
+                        {recordAttributedValidation.live.sherpaTurnCount} Sherpa turns •{' '}
+                        {recordAttributedValidation.live.attributedLineCount} attributed lines
+                    </Text>
+                ) : null}
+                {recordAttributedValidation.postAsr ? (
+                    <Text variant="bodySmall" style={{ color: colors.onSecondaryContainer }}>
+                        Post ASR: {recordAttributedValidation.postAsr.modelId} •{' '}
+                        {recordAttributedValidation.postAsr.segmentCount ?? 0} segment(s) •{' '}
+                        {recordAttributedValidation.postAsr.transcriptCharCount} chars • recognize{' '}
+                        {formatMs(recordAttributedValidation.postAsr.recognizeMs)}
+                    </Text>
+                ) : null}
             </View>
         )
     }
@@ -1709,6 +2036,11 @@ style={{
                             value={enableMoonshineSherpaLive}
                             onValueChange={(enabled: boolean) => {
                                 setEnableMoonshineSherpaLive(enabled)
+                                moonshineSherpaLive.clear()
+                                moonshineSherpaLiveActiveRef.current = false
+                                resetRecordAttributedValidation()
+                                setIsRecordingPrepared(false)
+                                preparedConfigRef.current = null
                                 if (enabled) {
                                     setEnableLiveTranscription(false)
                                     if (startRecordingConfig.sampleRate !== WhisperSampleRate) {
@@ -1722,9 +2054,6 @@ style={{
                                             duration: 2000,
                                         })
                                     }
-                                } else {
-                                    moonshineSherpaLive.clear()
-                                    moonshineSherpaLiveActiveRef.current = false
                                 }
                             }}
                         />
@@ -1893,6 +2222,7 @@ style={{
                         testID="record-screen-notice"
                     />
                 </View>
+                {renderRecordAttributedValidationResult()}
                 {result && (
                     <View style={{ gap: 10, paddingBottom: 100 }} testID="recording-result-view">
                         {enableMoonshineSherpaLive && (
@@ -1910,7 +2240,16 @@ style={{
                             actionText="Visualize"
                             testID="audio-recording-view"
                         />
-                        <Button mode="contained" onPress={() => setResult(null)} testID="record-again-button">
+                        <Button
+                            mode="contained"
+                            onPress={() => {
+                                setResult(null)
+                                moonshineSherpaLive.clear()
+                                moonshineSherpaLiveActiveRef.current = false
+                                resetRecordAttributedValidation()
+                            }}
+                            testID="record-again-button"
+                        >
                             Record Again
                         </Button>
                     </View>

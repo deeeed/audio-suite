@@ -118,10 +118,32 @@ export interface AgenticAudioPlayerProbe {
 
 let _audioPlayerProbe: AgenticAudioPlayerProbe | null = null
 
+export interface RecordAttributedTranscriptionValidationOptions {
+    audioUri: string
+    chunkDurationMs?: number
+    postAsrModelId?: string
+    realtime?: boolean
+}
+
+export interface RecordAttributedTranscriptionValidationProbe {
+    getState: () => Record<string, unknown>
+    run: (
+        options: RecordAttributedTranscriptionValidationOptions,
+    ) => Promise<Record<string, unknown>>
+}
+
+let _recordAttributedValidationProbe: RecordAttributedTranscriptionValidationProbe | null = null
+
 export function setAgenticAudioPlayerProbe(
     probe: AgenticAudioPlayerProbe | null,
 ) {
     _audioPlayerProbe = probe
+}
+
+export function setAgenticRecordAttributedValidationProbe(
+    probe: RecordAttributedTranscriptionValidationProbe | null,
+) {
+    _recordAttributedValidationProbe = probe
 }
 
 export function setAgenticAudioState(state: Record<string, unknown>) {
@@ -941,6 +963,36 @@ if (__DEV__) {
     agenticGlobal.__AGENTIC__ = {
         platform: Platform.OS,
         audioPlayer: audioPlayerProxy,
+        recordAttributedValidation: {
+            getState: () =>
+                _recordAttributedValidationProbe
+                    ? _recordAttributedValidationProbe.getState()
+                    : { ok: false, error: 'Record attributed validation probe is not mounted' },
+            run: (options: RecordAttributedTranscriptionValidationOptions) => {
+                const op = 'recordAttributedValidation'
+                _lastAsyncResult = { op, status: 'pending' }
+                if (!_recordAttributedValidationProbe) {
+                    const error = 'Record attributed validation probe is not mounted'
+                    _lastAsyncResult = { op, status: 'error', error }
+                    return { op, status: 'error', error }
+                }
+                void _recordAttributedValidationProbe
+                    .run(options)
+                    .then((result) => {
+                        _lastAsyncResult = { op, status: 'success', result }
+                        return undefined
+                    })
+                    .catch((error) => {
+                        _lastAsyncResult = {
+                            op,
+                            status: 'error',
+                            error: error instanceof Error ? error.message : String(error),
+                            result: options,
+                        }
+                    })
+                return { op, status: 'pending' }
+            },
+        },
 
         navigate: (path: string) => {
             try {
