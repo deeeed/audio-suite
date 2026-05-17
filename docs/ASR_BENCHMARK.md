@@ -106,10 +106,14 @@ Measured on Pixel 6a (`Pixel 6a - 16 - API 36`):
 
 | Model | Mode | WER vs EchoBridge | CER vs EchoBridge | Runtime/session | Notes |
 | --- | --- | ---: | ---: | ---: | --- |
+| Sherpa Whisper Medium INT8 | offline segmented | 19.5% | 16.3% | 475.0 s | 10 × 30 s segments; closest successful on-device Whisper-vs-EchoBridge parity row in this run |
+| Sherpa Whisper Small | offline segmented | 29.3% | 22.7% | 229.2 s | 10 × 30 s segments; useful Whisper baseline, slower than Qwen3 and slightly lower quality here |
 | Sherpa Qwen3-ASR 0.6B INT8 direct replay | offline segmented | 28.1% | 22.8% | 207.4 s | 10 × 30 s segments; best validated on-device text-quality candidate; not live-streaming |
 | Moonshine Medium Streaming | offline/file | 38.0% | 28.2% | 183.9 s | live-capable; quality below Qwen3 |
 | Moonshine Small Streaming | offline/file | 45.8% | 35.7% | 95.2 s | faster fallback |
 
+Whisper parity note: the EchoBridge reference transcript is produced by a server-side Whisper `medium.en` pipeline, so Sherpa Whisper Medium is a runtime/parity stress check rather than an independent human-labelled accuracy target. In this Pixel 6a run the INT8 Sherpa Whisper Medium row completed; the FP32 Sherpa Whisper Medium row was staged but did not produce a completed direct benchmark report before the dev target was lost, so it is kept behind the opt-in `sherpa-whisper-fp32-echobridge-perps-5m` preset and is not a recommended mobile default yet.
+
 Additional streaming-decode smoke on the same Pixel 6a used `/long-audio-validation` with `streamAudioData` + `SegmentedOfflineAsrSession` over the first 60 seconds of the staged fixture. It completed successfully with 241 decoder chunks, 2 Sherpa offline ASR segments, 60.0 s processed audio, and 44.5 s wall time. This validates the compressed/decoded-stream orchestration path separately from the direct WAV benchmark.
 
-Quantization note: the official k2-fsa Qwen3-ASR model-zoo artifact available for this run is INT8 only. A true quantization-impact comparison needs a paired quantized/non-quantized Sherpa release, for example SenseVoice 2025 or Canary 180M, added as a separate benchmark matrix.
+Quantization note: the official k2-fsa Qwen3-ASR model-zoo artifact available for this run is INT8 only. Whisper Medium provides paired FP32/INT8 ONNX files, and the INT8 row completed on Pixel 6a. A true Whisper FP32-vs-INT8 quality/runtime comparison still needs a completed FP32 mobile run or a higher-memory device profile.

@@ -92,6 +92,8 @@ Reference source: EchoBridge server `WhisperService` with `medium.en` on the 5-m
 
 | Mode | Model | WER vs EchoBridge | CER vs EchoBridge | Init | Runtime | First partial | First commit | Commits |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Offline/file segmented | Sherpa Whisper Medium INT8 | 19.5% | 16.3% | 6.5 s | 475.0 s | n/a | n/a | n/a |
+| Offline/file segmented | Sherpa Whisper Small | 29.3% | 22.7% | 3.5 s | 229.2 s | n/a | n/a | n/a |
 | Offline/file segmented | Sherpa Qwen3-ASR 0.6B INT8 | 28.1% | 22.8% | 4.8 s | 207.4 s | n/a | n/a | n/a |
 | Offline/file | Moonshine Medium Streaming | 38.0% | 28.2% | 33.4 s | 183.9 s | n/a | n/a | n/a |
 | Offline/file | Moonshine Small Streaming | 45.8% | 35.7% | 0.8 s | 95.2 s | n/a | n/a | n/a |
@@ -100,12 +102,13 @@ Reference source: EchoBridge server `WhisperService` with `medium.en` on the 5-m
 
 Findings from this replay:
 
-- Sherpa Qwen3-ASR 0.6B INT8 is the best validated on-device text-quality candidate in this benchmark: 28.1% WER vs 38.0% for Moonshine medium.
+- Sherpa Whisper Medium INT8 is the best completed backend-reference score in this benchmark: 19.5% WER. Treat it as a Whisper runtime/parity row, because the EchoBridge reference itself is server-side Whisper `medium.en`, not a human transcript.
+- Sherpa Qwen3-ASR 0.6B INT8 remains the best non-Whisper Sherpa candidate validated here: 28.1% WER vs 38.0% for Moonshine medium.
 - Qwen3 is offline-only and is run through `SegmentedOfflineAsrSession`: PCM is submitted to Sherpa `ASR.recognizeFromSamples` in 30-second segments, progress is emitted after each finalized segment, and Android can release/reinitialize between segments to avoid retained native heap. The direct benchmark loads the 5-minute WAV first for reproducible scoring; `/long-audio-validation` validates the progressive decoder path.
 - `/long-audio-validation` also validates the progressive decoder path: the first 60 seconds of the staged fixture completed on Pixel 6a with 241 decoder chunks, 2 Sherpa segments, 409 transcript chars, and 44.5 s wall time.
 - Medium is the better Moonshine quality default when the device can afford it, but startup is much slower for full-file transcription.
 - Simulated-live Moonshine quality closely matches full-file Moonshine quality on this fixture, which supports using direct PCM replay as the reproducible validation path for live UX.
-- The official k2-fsa Qwen3-ASR artifact currently available in the model zoo is INT8 only, so this benchmark cannot measure Qwen3 quantization impact yet. To measure quantization impact on-device, add paired Sherpa releases that provide both quantized and non-quantized artifacts, such as SenseVoice 2025 or Canary 180M.
+- The official k2-fsa Qwen3-ASR artifact currently available in the model zoo is INT8 only, so this benchmark cannot measure Qwen3 quantization impact yet. Whisper Medium does provide paired FP32/INT8 ONNX files: INT8 completed on Pixel 6a, while the FP32 row was staged but did not produce a completed direct benchmark report before the dev target was lost. FP32 is therefore kept behind the opt-in `sherpa-whisper-fp32-echobridge-perps-5m` preset; do not make it a mobile default until it is proven on-device.
 
 ## Recommended use
 

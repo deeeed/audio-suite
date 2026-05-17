@@ -12,6 +12,9 @@ const APP_ROOT = path.resolve(SCRIPT_DIR, '..', '..');
 const REPO_ROOT = path.resolve(APP_ROOT, '..', '..');
 const BRIDGE = path.join(APP_ROOT, 'scripts/agentic/cdp-bridge.mjs');
 const REPORT_DIR = path.join(APP_ROOT, '.agent', 'reports');
+const MODEL_CACHE_DIR =
+  process.env.BENCHMARK_MODEL_CACHE_DIR ||
+  path.join(APP_ROOT, '.agent', 'model-cache');
 const DEVICE = process.env.BENCHMARK_DEVICE || process.env.AGENTIC_DEVICE || '';
 const SERIAL = process.env.ANDROID_SERIAL || process.env.ADB_SERIAL || '';
 const APP_VARIANT = process.env.APP_VARIANT || 'development';
@@ -25,8 +28,10 @@ const DEV_CLIENT_SCHEME =
     ? `exp+${SCHEME_BASE}`
     : `exp+${SCHEME_BASE}-${APP_VARIANT}`);
 const ROUTE = '/asr-benchmark';
-const OFFLINE_TIMEOUT_MS = 10 * 60 * 1000;
-const SIMULATED_TIMEOUT_MS = 10 * 60 * 1000;
+const OFFLINE_TIMEOUT_MS = Number(process.env.BENCHMARK_OFFLINE_TIMEOUT_MS || 10 * 60 * 1000);
+const SIMULATED_TIMEOUT_MS = Number(
+  process.env.BENCHMARK_SIMULATED_TIMEOUT_MS || 10 * 60 * 1000
+);
 const STATE_TIMEOUT_MS = 90 * 1000;
 const POLL_INTERVAL_MS = 1000;
 const SHERPA_SOURCE_PACKAGE =
@@ -36,6 +41,35 @@ const SHERPA_MODEL_STAGING = {
     sourcePackage: SHERPA_SOURCE_PACKAGE,
     relativePath:
       'models/qwen3-asr-0.6B-int8-2026-03-25/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25',
+    requiredFiles: ['encoder.int8.onnx', 'decoder.int8.onnx', 'conv_frontend.onnx', 'tokenizer'],
+  },
+  'sherpa-whisper-small': {
+    sourcePackage: SHERPA_SOURCE_PACKAGE,
+    relativePath: 'models/whisper-small-multilingual/sherpa-onnx-whisper-small',
+    archiveUrl:
+      'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-small.tar.bz2',
+    archiveFileName: 'sherpa-onnx-whisper-small.tar.bz2',
+    requiredFiles: ['small-encoder.onnx', 'small-decoder.onnx', 'small-tokens.txt'],
+  },
+  'sherpa-whisper-medium': {
+    sourcePackage: SHERPA_SOURCE_PACKAGE,
+    relativePath: 'models/whisper-medium-multilingual/sherpa-onnx-whisper-medium',
+    archiveUrl:
+      'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-medium.tar.bz2',
+    archiveFileName: 'sherpa-onnx-whisper-medium.tar.bz2',
+    requiredFiles: ['medium-encoder.onnx', 'medium-decoder.onnx', 'medium-tokens.txt'],
+  },
+  'sherpa-whisper-medium-int8': {
+    sourcePackage: SHERPA_SOURCE_PACKAGE,
+    relativePath: 'models/whisper-medium-multilingual/sherpa-onnx-whisper-medium',
+    archiveUrl:
+      'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-medium.tar.bz2',
+    archiveFileName: 'sherpa-onnx-whisper-medium.tar.bz2',
+    requiredFiles: [
+      'medium-encoder.int8.onnx',
+      'medium-decoder.int8.onnx',
+      'medium-tokens.txt',
+    ],
   },
 };
 const PRESETS = {
@@ -56,12 +90,22 @@ const PRESETS = {
     clipIds: ['perps-controller-refactor-5m-echobridge-medium'],
     modelIds: ['sherpa-qwen3-asr-0.6b-int8'],
   },
+  'sherpa-whisper-echobridge-perps-5m': {
+    clipIds: ['perps-controller-refactor-5m-echobridge-medium'],
+    modelIds: ['sherpa-whisper-small', 'sherpa-whisper-medium-int8'],
+  },
+  'sherpa-whisper-fp32-echobridge-perps-5m': {
+    clipIds: ['perps-controller-refactor-5m-echobridge-medium'],
+    modelIds: ['sherpa-whisper-medium'],
+  },
   'moonshine-sherpa-echobridge-perps-5m': {
     clipIds: ['perps-controller-refactor-5m-echobridge-medium'],
     modelIds: [
       'moonshine-small-streaming-en',
       'moonshine-medium-streaming-en',
       'sherpa-qwen3-asr-0.6b-int8',
+      'sherpa-whisper-small',
+      'sherpa-whisper-medium-int8',
     ],
   },
 };
@@ -71,6 +115,9 @@ const ALL_MODELS = [
   { id: 'moonshine-medium-streaming-en', live: true },
   { id: 'whisper-small', live: true },
   { id: 'sherpa-qwen3-asr-0.6b-int8', live: false },
+  { id: 'sherpa-whisper-small', live: false },
+  { id: 'sherpa-whisper-medium-int8', live: false },
+  { id: 'sherpa-whisper-medium', live: false },
 ];
 const configuredPreset = String(process.env.BENCHMARK_PRESET || '').trim();
 const presetConfig = configuredPreset ? PRESETS[configuredPreset] : null;
@@ -149,6 +196,64 @@ function shellQuote(value) {
   return `'${String(value).replace(/'/g, `'\\''`)}'`;
 }
 
+function requiredFilesTest(basePath, requiredFiles = []) {
+  const tests = [`test -d ${shellQuote(basePath)}`];
+  for (const fileName of requiredFiles) {
+    tests.push(`test -e ${shellQuote(`${basePath}/${fileName}`)}`);
+  }
+  return tests.join(' && ');
+}
+
+function adbCommandPrefix() {
+  return SERIAL ? `adb -s ${shellQuote(SERIAL)}` : 'adb';
+}
+
+function ensureHostSherpaModel(staging, modelId) {
+  const hostModelPath = path.join(MODEL_CACHE_DIR, staging.relativePath);
+  const requiredFiles = staging.requiredFiles || [];
+  const hasModel =
+    fs.existsSync(hostModelPath) &&
+    requiredFiles.every((fileName) => fs.existsSync(path.join(hostModelPath, fileName)));
+  if (hasModel) return MODEL_CACHE_DIR;
+
+  if (!staging.archiveUrl) return null;
+
+  const archiveFileName = staging.archiveFileName || `${modelId}.tar.bz2`;
+  const archivePath = path.join(MODEL_CACHE_DIR, 'archives', archiveFileName);
+  fs.mkdirSync(path.dirname(archivePath), { recursive: true });
+
+  if (!fs.existsSync(archivePath)) {
+    if (process.env.BENCHMARK_ALLOW_MODEL_DOWNLOAD !== '1') {
+      throw new Error(
+        `Missing Sherpa benchmark model ${modelId}. It was not found in ${staging.sourcePackage} or ${hostModelPath}. ` +
+          `Set BENCHMARK_ALLOW_MODEL_DOWNLOAD=1 to download ${archiveFileName}, or pre-stage the model in sherpa-voice.`
+      );
+    }
+    run('curl', ['-L', '--fail', '--continue-at', '-', '-o', archivePath, staging.archiveUrl], {
+      cwd: REPO_ROOT,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+  }
+
+  const relativeParent = path.posix.dirname(staging.relativePath);
+  const hostParent = path.join(MODEL_CACHE_DIR, relativeParent);
+  fs.mkdirSync(hostParent, { recursive: true });
+  run('tar', ['-xjf', archivePath, '-C', hostParent], {
+    cwd: REPO_ROOT,
+    maxBuffer: 10 * 1024 * 1024,
+  });
+
+  const extracted =
+    fs.existsSync(hostModelPath) &&
+    requiredFiles.every((fileName) => fs.existsSync(path.join(hostModelPath, fileName)));
+  if (!extracted) {
+    throw new Error(
+      `Downloaded ${archiveFileName}, but expected model files were not found at ${hostModelPath}`
+    );
+  }
+  return MODEL_CACHE_DIR;
+}
+
 function bridge(args, parseJson = true) {
   const bridgeArgs = DEVICE ? ['--device', DEVICE, ...args] : args;
   return run('node', [BRIDGE, ...bridgeArgs], { parseJson });
@@ -212,28 +317,50 @@ async function ensureSherpaBenchmarkModel(model) {
   const staging = SHERPA_MODEL_STAGING[model.id];
   if (!staging) return;
 
-  const destPath = `/data/user/0/${PKG}/files/${staging.relativePath}`;
-  const exists = adbShell(
-    `run-as ${PKG} sh -c "test -d ${destPath} && echo yes || echo no"`
+  const appPath = `files/${staging.relativePath}`;
+  const destinationReady = adbShell(
+    `run-as ${PKG} sh -c ${shellQuote(`${requiredFilesTest(appPath, staging.requiredFiles)} && echo yes || echo no`)}`
   ).trim();
-  if (exists === 'yes') return;
+  if (destinationReady === 'yes') return;
 
   const sourcePath = `files/${staging.relativePath}`;
-  const sourceExists = adb([
-    'shell',
-    `run-as ${staging.sourcePackage} sh -c "test -d ${sourcePath} && echo yes || echo no"`,
-  ]).trim();
-  if (sourceExists !== 'yes') {
+  let sourceReady = 'no';
+  try {
+    sourceReady = adb([
+      'shell',
+      `run-as ${staging.sourcePackage} sh -c ${shellQuote(`${requiredFilesTest(sourcePath, staging.requiredFiles)} && echo yes || echo no`)}`,
+    ]).trim();
+  } catch (_error) {
+    sourceReady = 'no';
+  }
+
+  adbShell(`run-as ${PKG} sh -c "mkdir -p files/${path.posix.dirname(staging.relativePath)}"`);
+  if (sourceReady === 'yes') {
+    run('bash', [
+      '-lc',
+      `${adbCommandPrefix()} exec-out run-as ${shellQuote(staging.sourcePackage)} tar -C files -cf - ${shellQuote(staging.relativePath)} | ${adbCommandPrefix()} shell run-as ${shellQuote(PKG)} tar -C files -xf -`,
+    ]);
+    return;
+  }
+
+  const cacheRoot = ensureHostSherpaModel(staging, model.id);
+  if (!cacheRoot) {
     throw new Error(
       `Missing Sherpa benchmark model ${model.id}. Download it in ${staging.sourcePackage} or stage ${sourcePath} into ${PKG}.`
     );
   }
 
-  adbShell(`run-as ${PKG} sh -c "mkdir -p files/models"`);
   run('bash', [
     '-lc',
-    `${SERIAL ? `adb -s ${SERIAL}` : 'adb'} exec-out run-as ${staging.sourcePackage} tar -C files -cf - ${shellQuote(staging.relativePath)} | ${SERIAL ? `adb -s ${SERIAL}` : 'adb'} shell run-as ${PKG} tar -C files -xf -`,
+    `tar -C ${shellQuote(cacheRoot)} -cf - ${shellQuote(staging.relativePath)} | ${adbCommandPrefix()} shell run-as ${shellQuote(PKG)} tar -C files -xf -`,
   ]);
+
+  const copiedReady = adbShell(
+    `run-as ${PKG} sh -c ${shellQuote(`${requiredFilesTest(appPath, staging.requiredFiles)} && echo yes || echo no`)}`
+  ).trim();
+  if (copiedReady !== 'yes') {
+    throw new Error(`Failed to stage Sherpa benchmark model ${model.id} into ${PKG}`);
+  }
 }
 
 async function ensureDeviceClip(clip) {

@@ -161,6 +161,18 @@ export async function getBenchmarkModelStatus(modelId: string): Promise<Benchmar
     if (model.sherpa) {
         const modelPath = await getSherpaModelDirectoryPath(modelId)
         const info = await FileSystem.getInfoAsync(`file://${modelPath}`)
+        if (info.exists && model.sherpa.requiredFiles?.length) {
+            const requiredStatuses = await Promise.all(
+                model.sherpa.requiredFiles.map((fileName) =>
+                    FileSystem.getInfoAsync(`file://${modelPath}/${fileName}`),
+                ),
+            )
+            const hasRequiredFiles = requiredStatuses.every((status) => status.exists)
+            return {
+                downloaded: hasRequiredFiles,
+                localPath: hasRequiredFiles ? modelPath : null,
+            }
+        }
         return {
             downloaded: info.exists,
             localPath: info.exists ? modelPath : null,
@@ -518,9 +530,7 @@ export async function transcribeSherpaFile(
                 asr: SherpaASR,
                 afterSegment: model.sherpa.releaseBetweenSegments
                     ? async (segment) => {
-                          onStatus?.(
-                              `Resetting Sherpa after segment ${segment.segmentIndex}...`,
-                          )
+                          onStatus?.(`Resetting Sherpa after segment ${segment.segmentIndex}...`)
                           await initializeSherpaBenchmarkModel(modelId, onStatus)
                       }
                     : undefined,
