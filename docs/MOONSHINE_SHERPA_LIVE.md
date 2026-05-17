@@ -90,20 +90,22 @@ node scripts/agentic/direct-asr-benchmark.mjs
 
 Reference source: EchoBridge server `WhisperService` with `medium.en` on the 5-minute `perps_controller_refactor_5m_16k_mono.wav` fixture. This is a backend-reference score, not human-labelled WER.
 
+The offline/file and simulated-live Moonshine rows come from separate passes within the same Pixel 6a direct replay report. The small WER/CER differences are expected because simulated live commits incremental streaming text instead of scoring a single full-file transcript.
+
 | Mode | Model | WER vs EchoBridge | CER vs EchoBridge | Init | Runtime | First partial | First commit | Commits |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Offline/file segmented | Sherpa Whisper Medium INT8 | 19.5% | 16.3% | 6.5 s | 475.0 s | n/a | n/a | n/a |
-| Offline/file segmented | Sherpa Whisper Small | 29.3% | 22.7% | 3.5 s | 229.2 s | n/a | n/a | n/a |
-| Offline/file segmented | Sherpa Qwen3-ASR 0.6B INT8 | 28.1% | 22.8% | 4.8 s | 207.4 s | n/a | n/a | n/a |
-| Offline/file | Moonshine Medium Streaming | 38.0% | 28.2% | 33.4 s | 183.9 s | n/a | n/a | n/a |
-| Offline/file | Moonshine Small Streaming | 45.8% | 35.7% | 0.8 s | 95.2 s | n/a | n/a | n/a |
-| Simulated live | Moonshine Medium Streaming | 38.0% | 28.2% | 1.7 s | 300.8 s | 4.2 s | 4.5 s | 90 |
-| Simulated live | Moonshine Small Streaming | 46.4% | 35.8% | 2.0 s | 300.8 s | 4.2 s | 4.5 s | 91 |
+| Offline/file segmented | Sherpa Whisper Medium INT8 | 19.5% | 16.3% | 13.8 s | 502.4 s | n/a | n/a | n/a |
+| Offline/file segmented | Sherpa Whisper Small | 29.3% | 22.7% | 7.8 s | 255.7 s | n/a | n/a | n/a |
+| Offline/file segmented | Sherpa Qwen3-ASR 0.6B INT8 | 28.1% | 22.8% | 11.3 s | 267.9 s | n/a | n/a | n/a |
+| Offline/file | Moonshine Medium Streaming | 37.4% | 27.9% | 3.0 s | 212.4 s | n/a | n/a | n/a |
+| Offline/file | Moonshine Small Streaming | 47.3% | 36.7% | 1.0 s | 112.0 s | n/a | n/a | n/a |
+| Simulated live | Moonshine Medium Streaming | 38.0% | 28.2% | 1.5 s | 300.8 s | 4.2 s | 4.4 s | 90 |
+| Simulated live | Moonshine Small Streaming | 46.4% | 35.8% | 1.6 s | 300.8 s | 4.2 s | 4.6 s | 91 |
 
 Findings from this replay:
 
 - Sherpa Whisper Medium INT8 is the best completed backend-reference score in this benchmark: 19.5% WER. Treat it as a Whisper runtime/parity row, because the EchoBridge reference itself is server-side Whisper `medium.en`, not a human transcript.
-- Sherpa Qwen3-ASR 0.6B INT8 remains the best non-Whisper Sherpa candidate validated here: 28.1% WER vs 38.0% for Moonshine medium.
+- Sherpa Qwen3-ASR 0.6B INT8 remains the best non-Whisper Sherpa candidate validated here: 28.1% WER vs 37.4% for offline/file Moonshine medium.
 - Qwen3 is offline-only and is run through `SegmentedOfflineAsrSession`: PCM is submitted to Sherpa `ASR.recognizeFromSamples` in 30-second segments, progress is emitted after each finalized segment, and Android can release/reinitialize between segments to avoid retained native heap. The direct benchmark loads the 5-minute WAV first for reproducible scoring; `/long-audio-validation` validates the progressive decoder path.
 - `/long-audio-validation` also validates the progressive decoder path: the first 60 seconds of the staged fixture completed on Pixel 6a with 241 decoder chunks, 2 Sherpa segments, 409 transcript chars, and 44.5 s wall time.
 - Medium is the better Moonshine quality default when the device can afford it, but startup is much slower for full-file transcription.
@@ -112,6 +114,8 @@ Findings from this replay:
 
 ## Recommended use
 
-- Use this page for UX validation of live transcript + tentative speaker attribution.
+- Use the Record tab Moonshine + Sherpa mode for UX validation of live transcript + tentative speaker attribution.
+- Use `/asr-benchmark` for the combined mobile recommendation workflow and `Run Practical Matrix` for the default mobile-safe benchmark set.
 - Use Sherpa offline diarization for final speaker-turn quality comparisons.
-- Use Sherpa Qwen3/offline ASR benchmarks for post-recording transcription quality; Qwen3 is not the live-streaming path.
+- Use segmented Sherpa offline ASR for post-recording transcription quality; Qwen3 is the practical non-Whisper row and Whisper Medium INT8 is the EchoBridge parity row.
+- Keep FP32 Sherpa Whisper Medium opt-in only until it has a completed mobile run on the target device class.

@@ -1,6 +1,8 @@
 import type { MoonshineModelArch } from '@siteed/moonshine.rn'
 import type { AsrModelConfig } from '@siteed/sherpa-onnx.rn'
 
+import mobileRecommendationModelIdsJson from './asrMobileRecommendationModelIds.json'
+
 export type AsrBenchmarkEngine = 'moonshine' | 'whisper' | 'sherpa'
 export type AsrBenchmarkMode = 'sample' | 'simulated'
 
@@ -34,12 +36,17 @@ export interface SherpaBenchmarkDescriptor {
 export interface AsrBenchmarkModel {
     description: string
     engine: AsrBenchmarkEngine
+    estimatedSizeLabel?: string
     id: string
     liveCapable: boolean
     moonshine?: MoonshineBenchmarkDescriptor
     name: string
     rationale: string
+    recommendationLabel?: string
+    recommendationTier?: 'recommended' | 'alternate' | 'avoid-default'
+    recommendedUse?: string
     sherpa?: SherpaBenchmarkDescriptor
+    warningLabel?: string
     whisper?: WhisperBenchmarkDescriptor
 }
 
@@ -125,7 +132,11 @@ export const ASR_BENCHMARK_MODELS: AsrBenchmarkModel[] = [
         name: 'Moonshine Small Streaming',
         description: 'Primary Moonshine live contender for on-device English transcription.',
         engine: 'moonshine',
+        estimatedSizeLabel: '~230 MB on device',
         liveCapable: true,
+        recommendationLabel: 'Live default',
+        recommendationTier: 'recommended',
+        recommendedUse: 'Live low-latency transcript',
         rationale:
             'The smaller serious Moonshine candidate. Fast enough to be practical while still competitive on device.',
         moonshine: {
@@ -140,8 +151,13 @@ export const ASR_BENCHMARK_MODELS: AsrBenchmarkModel[] = [
         name: 'Moonshine Medium Streaming',
         description: 'Highest-quality official Moonshine streaming contender for English.',
         engine: 'moonshine',
+        estimatedSizeLabel: '~420 MB on device',
         liveCapable: true,
+        recommendationLabel: 'Live quality alternate',
+        recommendationTier: 'alternate',
+        recommendedUse: 'Live transcript when startup/CPU budget allows',
         rationale: 'Current Moonshine quality ceiling for live English speech on device.',
+        warningLabel: 'Slower startup on full-file replay',
         moonshine: {
             modelArch: 'medium-streaming',
             slug: 'medium-streaming-en',
@@ -154,8 +170,13 @@ export const ASR_BENCHMARK_MODELS: AsrBenchmarkModel[] = [
         name: 'Whisper Small (whisper.rn)',
         description: 'Whisper.cpp-backed English small model through whisper.rn.',
         engine: 'whisper',
+        estimatedSizeLabel: '~466 MB on device',
         liveCapable: true,
+        recommendationLabel: 'Legacy baseline',
+        recommendationTier: 'avoid-default',
+        recommendedUse: 'Compatibility baseline only; excluded from practical matrix',
         rationale: 'Best practical open Whisper contender already available in playground.',
+        warningLabel: 'Pseudo-streaming replay re-decodes cumulative audio and can hang long runs',
         whisper: {
             filename: 'ggml-small.en.bin',
             url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin',
@@ -168,9 +189,14 @@ export const ASR_BENCHMARK_MODELS: AsrBenchmarkModel[] = [
         description:
             'Best currently validated Sherpa ONNX offline ASR candidate for on-device long-form transcription.',
         engine: 'sherpa',
+        estimatedSizeLabel: '~1.0 GB on device',
         liveCapable: false,
+        recommendationLabel: 'Post-recording default',
+        recommendationTier: 'recommended',
+        recommendedUse: 'Offline segmented post-recording transcript quality',
         rationale:
             'Runs offline on Android from the downloaded sherpa-onnx Qwen3 0.6B INT8 package; intended as the quality comparison point against Moonshine live models.',
+        warningLabel: 'Offline-only; not a live transcript model',
         sherpa: {
             modelDir:
                 'models/qwen3-asr-0.6B-int8-2026-03-25/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25',
@@ -206,9 +232,14 @@ export const ASR_BENCHMARK_MODELS: AsrBenchmarkModel[] = [
         description:
             'Sherpa ONNX offline Whisper small baseline, using the same Sherpa ASR API as Qwen3.',
         engine: 'sherpa',
+        estimatedSizeLabel: '~1.3 GB on device',
         liveCapable: false,
+        recommendationLabel: 'Whisper baseline',
+        recommendationTier: 'alternate',
+        recommendedUse: 'EchoBridge parity baseline',
         rationale:
             'Practical Whisper parity baseline already available from the Sherpa model zoo; useful to separate model quality from wrapper/runtime behavior.',
+        warningLabel: 'Offline-only and slower than Qwen3 on Pixel 6a',
         sherpa: {
             modelDir: 'models/whisper-small-multilingual/sherpa-onnx-whisper-small',
             releaseBetweenSegments: true,
@@ -223,9 +254,14 @@ export const ASR_BENCHMARK_MODELS: AsrBenchmarkModel[] = [
         description:
             'Sherpa ONNX offline Whisper medium parity/stress-test model against the EchoBridge Whisper medium reference.',
         engine: 'sherpa',
+        estimatedSizeLabel: '~3.7 GB on device',
         liveCapable: false,
+        recommendationLabel: 'Opt-in stress test',
+        recommendationTier: 'avoid-default',
+        recommendedUse: 'FP32 Whisper parity stress testing only',
         rationale:
             'Closest on-device Sherpa Whisper comparison to the EchoBridge Whisper medium backend reference; expected to be slow/heavy on mid-range phones.',
+        warningLabel: 'Not a default mobile model; Pixel 6a run did not complete',
         sherpa: {
             modelDir: 'models/whisper-medium-multilingual/sherpa-onnx-whisper-medium',
             releaseBetweenSegments: true,
@@ -239,9 +275,14 @@ export const ASR_BENCHMARK_MODELS: AsrBenchmarkModel[] = [
         name: 'Sherpa Whisper Medium INT8',
         description: 'Quantized Sherpa ONNX Whisper medium variant for mobile feasibility checks.',
         engine: 'sherpa',
+        estimatedSizeLabel: '~3.7 GB on device',
         liveCapable: false,
+        recommendationLabel: 'EchoBridge parity default',
+        recommendationTier: 'recommended',
+        recommendedUse: 'Whisper-vs-EchoBridge parity benchmark',
         rationale:
             'Uses the same Whisper medium export as the parity model but selects INT8 encoder/decoder files to measure the mobile quality/speed trade-off.',
+        warningLabel: 'Very slow offline model; backend-reference score is not human WER',
         sherpa: {
             modelDir: 'models/whisper-medium-multilingual/sherpa-onnx-whisper-medium',
             releaseBetweenSegments: true,
@@ -257,6 +298,19 @@ export const ASR_BENCHMARK_MODELS: AsrBenchmarkModel[] = [
 ]
 
 export const ASR_BENCHMARK_MODEL_IDS = ASR_BENCHMARK_MODELS.map((model) => model.id)
+const mobileRecommendationModelIds = mobileRecommendationModelIdsJson as string[]
+const benchmarkModelIdSet = new Set(ASR_BENCHMARK_MODEL_IDS)
+const unknownMobileRecommendationModelIds = mobileRecommendationModelIds.filter(
+    (modelId) => !benchmarkModelIdSet.has(modelId),
+)
+
+if (unknownMobileRecommendationModelIds.length > 0) {
+    throw new Error(
+        `Unknown ASR mobile recommendation model ids: ${unknownMobileRecommendationModelIds.join(', ')}`,
+    )
+}
+
+export const ASR_MOBILE_RECOMMENDATION_MODEL_IDS = mobileRecommendationModelIds
 
 export const ASR_BENCHMARK_SAMPLES: AsrBenchmarkSample[] = [
     {

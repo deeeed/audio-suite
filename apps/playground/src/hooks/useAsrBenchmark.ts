@@ -6,6 +6,7 @@ import { baseLogger } from '../config'
 import {
     ASR_BENCHMARK_MODELS,
     ASR_BENCHMARK_SAMPLES,
+    ASR_MOBILE_RECOMMENDATION_MODEL_IDS,
     type AsrBenchmarkEngine,
     type AsrBenchmarkMode,
     type AsrBenchmarkSample,
@@ -19,6 +20,7 @@ import {
 } from '../utils/asrBenchmarkRuntime'
 
 const logger = baseLogger.extend('AsrBenchmark')
+const mobileRecommendationModelIdSet = new Set(ASR_MOBILE_RECOMMENDATION_MODEL_IDS)
 
 export interface AsrBenchmarkResult {
     commitCount?: number
@@ -116,6 +118,13 @@ export function useAsrBenchmark() {
         () => benchmarkModels.filter((model) => model.liveCapable),
         [benchmarkModels],
     )
+    const mobileRecommendationModels = useMemo(
+        () =>
+            benchmarkModels.filter((model) =>
+                mobileRecommendationModelIdSet.has(model.id),
+            ),
+        [benchmarkModels],
+    )
 
     const refreshModelStatuses = useCallback(async () => {
         const nextStatuses: Record<string, BenchmarkModelStatus> = {}
@@ -211,7 +220,6 @@ export function useAsrBenchmark() {
             setError('Select a sample audio file first')
             return
         }
-
         setProcessing(true)
         setError(null)
         try {
@@ -264,11 +272,15 @@ export function useAsrBenchmark() {
             setError('Select a sample audio file first')
             return
         }
+        if (mobileRecommendationModels.length === 0) {
+            setError('No mobile recommendation benchmark models are configured')
+            return
+        }
 
         setProcessing(true)
         setError(null)
         try {
-            for (const model of benchmarkModels) {
+            for (const model of mobileRecommendationModels) {
                 setStatusMessage(`Running ${model.name} on ${selectedSample.name}...`)
                 const startedAt = nowMs()
                 try {
@@ -312,7 +324,7 @@ export function useAsrBenchmark() {
             setStatusMessage('')
             setProcessing(false)
         }
-    }, [appendResult, benchmarkModels, refreshModelStatuses, selectedSample])
+    }, [appendResult, mobileRecommendationModels, refreshModelStatuses, selectedSample])
 
     const runSelectedSimulatedBenchmark = useCallback(async () => {
         if (!selectedModel) {
@@ -477,6 +489,7 @@ export function useAsrBenchmark() {
         benchmarkModels,
         clearResults,
         error,
+        mobileRecommendationModels,
         mode,
         modelStatuses,
         prepareSelectedModel,
