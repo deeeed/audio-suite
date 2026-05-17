@@ -30,6 +30,7 @@ export interface SherpaBenchmarkDescriptor {
     modelDir: string
     releaseBetweenSegments?: boolean
     requiredFiles?: string[]
+    rollingWindowMs?: number
     segmentDurationMs?: number
 }
 
@@ -134,11 +135,11 @@ export const ASR_BENCHMARK_MODELS: AsrBenchmarkModel[] = [
         engine: 'moonshine',
         estimatedSizeLabel: '~230 MB on device',
         liveCapable: true,
-        recommendationLabel: 'Live default',
+        recommendationLabel: 'Moonshine live optimization candidate',
         recommendationTier: 'recommended',
-        recommendedUse: 'Live low-latency transcript',
+        recommendedUse: 'Primary open-model live candidate after bridge/coalescing optimization',
         rationale:
-            'The smaller serious Moonshine candidate. Fast enough to be practical while still competitive on device.',
+            'The smaller serious Moonshine candidate. It is the lower-memory live fallback, but must still be gated by RTF/backlog after RN transport optimization.',
         moonshine: {
             modelArch: 'small-streaming',
             slug: 'small-streaming-en',
@@ -153,11 +154,11 @@ export const ASR_BENCHMARK_MODELS: AsrBenchmarkModel[] = [
         engine: 'moonshine',
         estimatedSizeLabel: '~420 MB on device',
         liveCapable: true,
-        recommendationLabel: 'Live quality alternate',
+        recommendationLabel: 'Moonshine quality candidate',
         recommendationTier: 'alternate',
-        recommendedUse: 'Live transcript when startup/CPU budget allows',
+        recommendedUse: 'Live transcript only if RTF/backlog is acceptable on target device',
         rationale: 'Current Moonshine quality ceiling for live English speech on device.',
-        warningLabel: 'Slower startup on full-file replay',
+        warningLabel: 'Likely slower than real time on Pixel 6a-class devices until optimized',
         moonshine: {
             modelArch: 'medium-streaming',
             slug: 'medium-streaming-en',
@@ -190,17 +191,18 @@ export const ASR_BENCHMARK_MODELS: AsrBenchmarkModel[] = [
             'Best currently validated Sherpa ONNX offline ASR candidate for on-device long-form transcription.',
         engine: 'sherpa',
         estimatedSizeLabel: '~1.0 GB on device',
-        liveCapable: false,
-        recommendationLabel: 'Post-recording default',
+        liveCapable: true,
+        recommendationLabel: 'Delayed-live candidate',
         recommendationTier: 'recommended',
-        recommendedUse: 'Offline segmented post-recording transcript quality',
+        recommendedUse: 'Rolling-window delayed live and offline final transcript quality',
         rationale:
-            'Runs offline on Android from the downloaded sherpa-onnx Qwen3 0.6B INT8 package; intended as the quality comparison point against Moonshine live models.',
-        warningLabel: 'Offline-only; not a live transcript model',
+            'Runs offline on Android from the downloaded sherpa-onnx Qwen3 0.6B INT8 package; useful for high-quality delayed-live refinement and final transcript quality.',
+        warningLabel: 'Not true streaming; simulated live emits only after each rolling window',
         sherpa: {
             modelDir:
                 'models/qwen3-asr-0.6B-int8-2026-03-25/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25',
             releaseBetweenSegments: true,
+            rollingWindowMs: 15_000,
             segmentDurationMs: 30_000,
             config: {
                 modelType: 'qwen3',
@@ -298,6 +300,10 @@ export const ASR_BENCHMARK_MODELS: AsrBenchmarkModel[] = [
 ]
 
 export const ASR_BENCHMARK_MODEL_IDS = ASR_BENCHMARK_MODELS.map((model) => model.id)
+// Shared source for the on-device recommendation matrix. The direct Android
+// runner in apps/playground/scripts/agentic/direct-asr-benchmark.mjs reads the
+// same JSON and performs a matching registry validation against its Node-side
+// ALL_MODELS list so TS/UI and automation fail loudly on drift.
 const mobileRecommendationModelIds = mobileRecommendationModelIdsJson as string[]
 const benchmarkModelIdSet = new Set(ASR_BENCHMARK_MODEL_IDS)
 const unknownMobileRecommendationModelIds = mobileRecommendationModelIds.filter(

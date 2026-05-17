@@ -134,9 +134,7 @@ export interface RecordAttributedTranscriptionValidationProbe {
 
 let _recordAttributedValidationProbe: RecordAttributedTranscriptionValidationProbe | null = null
 
-export function setAgenticAudioPlayerProbe(
-    probe: AgenticAudioPlayerProbe | null,
-) {
+export function setAgenticAudioPlayerProbe(probe: AgenticAudioPlayerProbe | null) {
     _audioPlayerProbe = probe
 }
 
@@ -249,9 +247,7 @@ function getTranscriptCharCount(lengthByLineId: Map<string, number>): number {
     return total
 }
 
-function updateLongAudioValidationProgress(
-    patch: Partial<LongAudioValidationProgress>,
-) {
+function updateLongAudioValidationProgress(patch: Partial<LongAudioValidationProgress>) {
     if (!_longAudioValidationProgress) return
     const now = Date.now()
     _longAudioValidationProgress = {
@@ -262,9 +258,7 @@ function updateLongAudioValidationProgress(
     }
 }
 
-export async function validateLongAudioStream(
-    options: LongAudioValidationOptions,
-): Promise<void> {
+export async function validateLongAudioStream(options: LongAudioValidationOptions): Promise<void> {
     const op = 'validateLongAudioStream'
     const mode = options.mode ?? 'decode-only'
     const moonshineFeedMode = options.moonshineFeedMode ?? 'typed-array'
@@ -274,8 +268,7 @@ export async function validateLongAudioStream(
         options.sherpaReleaseBetweenSegments ??
         // Qwen3 has the highest retained native heap in this benchmark path;
         // reset it between offline windows unless callers explicitly opt out.
-        (mode === 'sherpa-offline-segments' &&
-            options.sherpaAsrConfig?.modelType === 'qwen3')
+        (mode === 'sherpa-offline-segments' && options.sherpaAsrConfig?.modelType === 'qwen3')
     const startedAtMs = Date.now()
     const transcriptLengthByLineId = new Map<string, number>()
     let transcriber: MoonshineTranscriber | null = null
@@ -316,9 +309,7 @@ export async function validateLongAudioStream(
                 ? options.sherpaAsrConfig?.modelType
                 : undefined,
         sherpaReleaseBetweenSegments:
-            mode === 'sherpa-offline-segments'
-                ? sherpaReleaseBetweenSegments
-                : undefined,
+            mode === 'sherpa-offline-segments' ? sherpaReleaseBetweenSegments : undefined,
         startedAtMs,
         updatedAtMs: startedAtMs,
         elapsedWallMs: 0,
@@ -474,8 +465,7 @@ export async function validateLongAudioStream(
             const initResult = await SherpaASR.initialize(streamingConfig)
             if (!initResult.success) {
                 throw new Error(
-                    initResult.error ??
-                        `Sherpa ASR init failed for ${streamingConfig.modelType}`,
+                    initResult.error ?? `Sherpa ASR init failed for ${streamingConfig.modelType}`,
                 )
             }
             const streamResult = await SherpaASR.createOnlineStream()
@@ -504,8 +494,7 @@ export async function validateLongAudioStream(
             const initResult = await SherpaASR.initialize(offlineConfig)
             if (!initResult.success) {
                 throw new Error(
-                    initResult.error ??
-                        `Sherpa ASR init failed for ${offlineConfig.modelType}`,
+                    initResult.error ?? `Sherpa ASR init failed for ${offlineConfig.modelType}`,
                 )
             }
             sherpaAsrInitialized = true
@@ -524,10 +513,7 @@ export async function validateLongAudioStream(
                 await SherpaASR.release()
                 sherpaAsrInitialized = false
             } catch (error) {
-                console.warn(
-                    '[LongAudioValidation] Sherpa release between segments failed',
-                    error,
-                )
+                console.warn('[LongAudioValidation] Sherpa release between segments failed', error)
             }
             const initResult = await SherpaASR.initialize(sherpaOfflineConfig)
             if (!initResult.success) {
@@ -591,11 +577,7 @@ export async function validateLongAudioStream(
                                 moonshineFeedMode === 'array-copy'
                                     ? Array.from(chunk.samples)
                                     : chunk.samples
-                            await transcriber.addAudioToStream(
-                                streamId,
-                                samples,
-                                chunk.sampleRate,
-                            )
+                            await transcriber.addAudioToStream(streamId, samples, chunk.sampleRate)
                         }
                         if (mode === 'sherpa-online') {
                             // Sherpa's current React Native ASR service accepts
@@ -607,20 +589,15 @@ export async function validateLongAudioStream(
                                 chunk.sampleRate,
                                 Array.from(chunk.samples),
                             )
-                            if (
-                                chunk.chunkIndex % progressEveryChunks === 0 ||
-                                chunk.isFinal
-                            ) {
-                                const partial = await SherpaASR.getResult().catch(
-                                    () => null,
-                                )
+                            if (chunk.chunkIndex % progressEveryChunks === 0 || chunk.isFinal) {
+                                const partial = await SherpaASR.getResult().catch(() => null)
                                 const text = partial?.text ?? ''
                                 updateLongAudioValidationProgress({
                                     transcriptLineCount: text ? 1 : 0,
                                     transcriptCharCount: text.length,
                                     transcriptEventCount:
-                                        (_longAudioValidationProgress
-                                            ?.transcriptEventCount ?? 0) + 1,
+                                        (_longAudioValidationProgress?.transcriptEventCount ?? 0) +
+                                        1,
                                 })
                             }
                         }
@@ -637,8 +614,7 @@ export async function validateLongAudioStream(
 
                         const chunkCount = chunk.chunkIndex + 1
                         const sampleCount =
-                            (_longAudioValidationProgress?.sampleCount ?? 0) +
-                            chunk.sampleCount
+                            (_longAudioValidationProgress?.sampleCount ?? 0) + chunk.sampleCount
                         if (
                             chunkCount % progressEveryChunks === 0 ||
                             chunk.isFinal ||
@@ -727,13 +703,13 @@ export async function validateLongAudioStream(
                 mode === 'sherpa-offline-segments'
                     ? (_longAudioValidationProgress?.sherpaSegmentCount ?? 0)
                     : sherpaResult?.text != null
-                    ? sherpaResult.text
-                        ? sherpaResult.text.split('\n').length
-                        : 0
-                    : Math.max(
-                          moonshineResult?.lines?.length ?? 0,
-                          transcriptLengthByLineId.size
-                      ),
+                      ? sherpaResult.text
+                          ? sherpaResult.text.split('\n').length
+                          : 0
+                      : Math.max(
+                            moonshineResult?.lines?.length ?? 0,
+                            transcriptLengthByLineId.size,
+                        ),
             transcriptCharCount:
                 sherpaResult?.text?.length ??
                 moonshineResult?.text?.length ??
@@ -750,7 +726,7 @@ export async function validateLongAudioStream(
                     ? {
                           lineCount: Math.max(
                               moonshineResult.lines?.length ?? 0,
-                              transcriptLengthByLineId.size
+                              transcriptLengthByLineId.size,
                           ),
                           transcriptCharCount: moonshineResult.text?.length ?? 0,
                       }
@@ -838,11 +814,7 @@ async function loadSampleFileUri(): Promise<string> {
 }
 
 async function loadSpeechWavSampleFileUri(): Promise<string> {
-    return loadBundledAssetToUri(
-        SPEECH_WAV_ASSET,
-        'speech_sample.wav',
-        'speech WAV sample',
-    )
+    return loadBundledAssetToUri(SPEECH_WAV_ASSET, 'speech_sample.wav', 'speech WAV sample')
 }
 
 async function loadJfkWavSampleFileUri(): Promise<string> {
@@ -850,11 +822,7 @@ async function loadJfkWavSampleFileUri(): Promise<string> {
 }
 
 async function loadOsrLongWavSampleFileUri(): Promise<string> {
-    return loadBundledAssetToUri(
-        OSR_LONG_WAV_ASSET,
-        'osr_long_sample.wav',
-        'OSR long WAV sample',
-    )
+    return loadBundledAssetToUri(OSR_LONG_WAV_ASSET, 'osr_long_sample.wav', 'OSR long WAV sample')
 }
 function resolveMoonshineProbeModelPath(modelPath: string, appendTrailingSlash?: boolean): string {
     if (!appendTrailingSlash || modelPath.endsWith('/')) {
@@ -936,24 +904,17 @@ const audioPlayerProxy = {
         return { mounted: true as const, ..._audioPlayerProbe.getState() }
     },
     getDataPointsSample: (count?: number) =>
-        _audioPlayerProbe
-            ? _audioPlayerProbe.getDataPointsSample(count)
-            : audioPlayerNotReady(),
-    loadSample: () =>
-        _audioPlayerProbe ? _audioPlayerProbe.loadSample() : audioPlayerNotReady(),
+        _audioPlayerProbe ? _audioPlayerProbe.getDataPointsSample(count) : audioPlayerNotReady(),
+    loadSample: () => (_audioPlayerProbe ? _audioPlayerProbe.loadSample() : audioPlayerNotReady()),
     loadFromUri: (uri: string) =>
         _audioPlayerProbe ? _audioPlayerProbe.loadFromUri(uri) : audioPlayerNotReady(),
     setThreshold: (value: number) =>
         _audioPlayerProbe ? _audioPlayerProbe.setThreshold(value) : audioPlayerNotReady(),
     setShowSilenceTrack: (value: boolean) =>
-        _audioPlayerProbe
-            ? _audioPlayerProbe.setShowSilenceTrack(value)
-            : audioPlayerNotReady(),
+        _audioPlayerProbe ? _audioPlayerProbe.setShowSilenceTrack(value) : audioPlayerNotReady(),
     play: () => (_audioPlayerProbe ? _audioPlayerProbe.play() : audioPlayerNotReady()),
-    pause: () =>
-        _audioPlayerProbe ? _audioPlayerProbe.pause() : audioPlayerNotReady(),
-    toggle: () =>
-        _audioPlayerProbe ? _audioPlayerProbe.toggle() : audioPlayerNotReady(),
+    pause: () => (_audioPlayerProbe ? _audioPlayerProbe.pause() : audioPlayerNotReady()),
+    toggle: () => (_audioPlayerProbe ? _audioPlayerProbe.toggle() : audioPlayerNotReady()),
     seekTo: (timeMs: number) =>
         _audioPlayerProbe ? _audioPlayerProbe.seekTo(timeMs) : audioPlayerNotReady(),
 }
@@ -987,7 +948,7 @@ if (__DEV__) {
                             op,
                             status: 'error',
                             error: error instanceof Error ? error.message : String(error),
-                            result: options,
+                            context: options,
                         }
                     })
                 return { op, status: 'pending' }
@@ -1215,18 +1176,24 @@ if (__DEV__) {
                         op,
                         status: 'success',
                         result: {
+                            audioDurationMs: result.audioDurationMs,
                             audioUri,
+                            chunkCount: result.chunkCount,
                             commitCount: result.commitCount,
                             engine: model.engine,
                             firstCommitMs: result.firstCommitMs,
                             firstPartialMs: result.firstPartialMs,
                             initMs: result.initMs,
+                            maxBacklogMs: result.maxBacklogMs,
+                            maxChunkProcessingMs: result.maxChunkProcessingMs,
                             modelId,
                             modelName: model.name,
                             partialCount: result.partialCount,
-                            runtime: 'streaming',
+                            processingRealTimeFactor: result.processingRealTimeFactor,
+                            runtime: result.runtime,
                             sessionMs: result.sessionMs,
                             transcript: result.transcript,
+                            wallRealTimeFactor: result.wallRealTimeFactor,
                         },
                     }
                 } catch (e) {
@@ -1415,8 +1382,7 @@ if (__DEV__) {
                         : {
                               config: await getMoonshineRuntimeConfig(modelId),
                               validationModelId: modelId,
-                              validationModelLabel:
-                                  getBenchmarkModelOrThrow(modelId).name,
+                              validationModelLabel: getBenchmarkModelOrThrow(modelId).name,
                               note: undefined,
                           }
 
@@ -1450,9 +1416,7 @@ if (__DEV__) {
                             type === 'lineTextChanged',
                     )
                     const eventSpanMs =
-                        events.length >= 2
-                            ? (events.at(-1)?.atMs ?? 0) - (events[0]?.atMs ?? 0)
-                            : 0
+                        events.length >= 2 ? (events.at(-1)?.atMs ?? 0) - (events[0]?.atMs ?? 0) : 0
                     const progressSemantics = (() => {
                         if (events.length === 0) return 'none'
                         if (!hasIntermediateProgress) return 'terminal-only'
@@ -1526,9 +1490,7 @@ if (__DEV__) {
                         )
                     }
 
-                    const sample =
-                        options?.sample ??
-                        (Platform.OS === 'web' ? 'jfk' : 'osr-long')
+                    const sample = options?.sample ?? (Platform.OS === 'web' ? 'jfk' : 'osr-long')
                     const wordTimestamps = options?.wordTimestamps === true
                     const progressIntervalMs = Math.max(options?.intervalMs ?? 250, 0)
                     const audioUri =
@@ -1543,8 +1505,7 @@ if (__DEV__) {
                         : {
                               config: await getMoonshineRuntimeConfig(modelId),
                               validationModelId: modelId,
-                              validationModelLabel:
-                                  getBenchmarkModelOrThrow(modelId).name,
+                              validationModelLabel: getBenchmarkModelOrThrow(modelId).name,
                               note: undefined,
                           }
 
@@ -1579,7 +1540,8 @@ if (__DEV__) {
                         )
                     }
                     const monotonic = progressValues.every(
-                        (value, index) => index === 0 || value >= progressValues[index - 1] - 0.0001,
+                        (value, index) =>
+                            index === 0 || value >= progressValues[index - 1] - 0.0001,
                     )
                     if (!monotonic) {
                         validationIssues.push('Offline progress values are not monotonic')
@@ -1650,9 +1612,7 @@ if (__DEV__) {
                         )
                     }
 
-                    const sample =
-                        options?.sample ??
-                        (Platform.OS === 'web' ? 'jfk' : 'osr-long')
+                    const sample = options?.sample ?? (Platform.OS === 'web' ? 'jfk' : 'osr-long')
                     const wordTimestamps = options?.wordTimestamps === true
                     const audioUri =
                         sample === 'jfk'
@@ -1666,8 +1626,7 @@ if (__DEV__) {
                         : {
                               config: await getMoonshineRuntimeConfig(modelId),
                               validationModelId: modelId,
-                              validationModelLabel:
-                                  getBenchmarkModelOrThrow(modelId).name,
+                              validationModelLabel: getBenchmarkModelOrThrow(modelId).name,
                               note: undefined,
                           }
 
@@ -1764,8 +1723,7 @@ if (__DEV__) {
                         : {
                               config: await getMoonshineRuntimeConfig(modelId),
                               validationModelId: modelId,
-                              validationModelLabel:
-                                  getBenchmarkModelOrThrow(modelId).name,
+                              validationModelLabel: getBenchmarkModelOrThrow(modelId).name,
                               note: undefined,
                           }
 
@@ -1837,8 +1795,7 @@ if (__DEV__) {
                                 typeof error.code === 'string'
                                     ? error.code
                                     : undefined,
-                            message:
-                                error instanceof Error ? error.message : String(error),
+                            message: error instanceof Error ? error.message : String(error),
                         }
                     }
 
@@ -1897,9 +1854,7 @@ if (__DEV__) {
                             rejectedAfterCancelMs:
                                 firstRunSettledAtMs == null
                                     ? null
-                                    : firstRunSettledAtMs -
-                                      startedAtMs -
-                                      cancellationRequestedAtMs,
+                                    : firstRunSettledAtMs - startedAtMs - cancellationRequestedAtMs,
                             sample,
                             secondRunDurationMs,
                             secondRunTranscript: secondRunResult.text,
@@ -2083,7 +2038,7 @@ if (__DEV__) {
                             onProgress: () => {
                                 progressEvents += 1
                             },
-                        }
+                        },
                     )
                     _lastAsyncResult = {
                         op,
@@ -2130,8 +2085,16 @@ if (__DEV__) {
                         op,
                         status: 'success',
                         result: {
-                            single: { uri: result1.uri, durationMs: result1.durationMs, size: result1.size },
-                            keepRanges: { uri: result2.uri, durationMs: result2.durationMs, size: result2.size },
+                            single: {
+                                uri: result1.uri,
+                                durationMs: result1.durationMs,
+                                size: result1.size,
+                            },
+                            keepRanges: {
+                                uri: result2.uri,
+                                durationMs: result2.durationMs,
+                                size: result2.size,
+                            },
                         },
                     }
                 } catch (e) {

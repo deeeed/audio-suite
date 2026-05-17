@@ -28,7 +28,10 @@ const logger = baseLogger.extend('AsrBenchmarkRuntime')
 
 const moonshineModelRoot = `${FileSystem.documentDirectory ?? ''}moonshine-models/`
 const whisperModelRoot = `${FileSystem.documentDirectory ?? ''}whisper-models/`
-const MOONSHINE_SIMULATED_CHUNK_MS = 200
+// Match the live Moonshine RN transport: the recorder can emit smaller waveform
+// chunks, but ASR bridge calls are coalesced to reduce JS/native copies.
+const MOONSHINE_SIMULATED_CHUNK_MS = 600
+const SHERPA_STREAMING_SIMULATED_CHUNK_MS = 200
 const WHISPER_SIMULATED_CHUNK_MS = 5000
 const SIMULATED_FINALIZATION_WAIT_MS = 750
 const EXPECTED_WHISPER_SAMPLE_RATE = 16000
@@ -61,13 +64,20 @@ export interface BenchmarkWordTimestampValidationRunResult extends BenchmarkFile
 }
 
 export interface BenchmarkSimulatedLiveRunResult {
+    audioDurationMs: number
+    chunkCount: number
     commitCount: number
     firstCommitMs?: number
     firstPartialMs?: number
     initMs: number
+    maxBacklogMs: number
+    maxChunkProcessingMs: number
     partialCount: number
+    processingRealTimeFactor: number
+    runtime: 'streaming' | 'rolling-offline'
     sessionMs: number
     transcript: string
+    wallRealTimeFactor: number
 }
 
 export interface BenchmarkMoonshineSpeakerTurnRunResult extends BenchmarkSimulatedLiveRunResult {
@@ -670,7 +680,10 @@ export async function runBenchmarkSimulatedLive(
     }
 
     if (model.engine === 'sherpa') {
-        throw new Error(`Model ${modelId} is offline-only and does not support simulated live`)
+        const isStreaming = model.sherpa?.config.streaming === true
+        return isStreaming
+            ? runSherpaStreamingSimulatedLive(modelId, audioUri, callbacks)
+            : runSherpaRollingOfflineSimulatedLive(modelId, audioUri, callbacks)
     }
 
     return model.engine === 'moonshine'
@@ -723,13 +736,20 @@ async function runMoonshineSimulatedLive(
         identifySpeakers: false,
     })
     return {
+        audioDurationMs: result.audioDurationMs,
+        chunkCount: result.chunkCount,
         commitCount: result.commitCount,
         firstCommitMs: result.firstCommitMs,
         firstPartialMs: result.firstPartialMs,
         initMs: result.initMs,
+        maxBacklogMs: result.maxBacklogMs,
+        maxChunkProcessingMs: result.maxChunkProcessingMs,
         partialCount: result.partialCount,
+        processingRealTimeFactor: result.processingRealTimeFactor,
+        runtime: 'streaming',
         sessionMs: result.sessionMs,
         transcript: result.transcript,
+        wallRealTimeFactor: result.wallRealTimeFactor,
     }
 }
 
@@ -776,6 +796,7 @@ async function runMoonshineSimulatedLiveInternal(
             Math.floor((wav.sampleRate * MOONSHINE_SIMULATED_CHUNK_MS) / 1000),
         )
         const chunkCount = Math.max(1, Math.ceil(wav.samples.length / chunkSize))
+        const audioDurationMs = Math.round((wav.samples.length / wav.sampleRate) * 1000)
         let committedText = ''
         let interimText = ''
         let commitCount = 0
@@ -783,6 +804,9 @@ async function runMoonshineSimulatedLiveInternal(
         let firstPartialMs: number | undefined
         let firstCommitMs: number | undefined
         let listenerError: string | null = null
+        let maxBacklogMs = 0
+        let maxChunkProcessingMs = 0
+        let totalProcessingMs = 0
         const completedLineIds = new Set<string>()
         const completedLines: MoonshineTranscriptLine[] = []
         const activeLineTexts = new Map<string, string>()
@@ -853,12 +877,26 @@ async function runMoonshineSimulatedLiveInternal(
             ) {
                 const chunk = wav.samples.slice(offset, offset + chunkSize)
                 if (chunk.length === 0) continue
+                const chunkStartedAt = Date.now()
                 await transcriber.addAudio(chunk, wav.sampleRate)
+                const chunkProcessingMs = Date.now() - chunkStartedAt
+                totalProcessingMs += chunkProcessingMs
+                maxChunkProcessingMs = Math.max(maxChunkProcessingMs, chunkProcessingMs)
                 if (listenerError) {
                     throw new Error(listenerError)
                 }
+                const targetAudioMs = Math.min(
+                    (chunkIndex + 1) * MOONSHINE_SIMULATED_CHUNK_MS,
+                    audioDurationMs,
+                )
+                maxBacklogMs = Math.max(
+                    maxBacklogMs,
+                    Date.now() - sessionStartedAt - targetAudioMs,
+                )
                 callbacks.onStatus?.(
-                    `Simulating Moonshine chunk ${chunkIndex + 1}/${chunkCount}...`,
+                    `Simulating Moonshine chunk ${chunkIndex + 1}/${chunkCount} (backlog ${Math.round(
+                        Math.max(0, maxBacklogMs),
+                    )}ms)...`,
                 )
                 await waitForSimulatedClock(
                     sessionStartedAt,
@@ -878,20 +916,269 @@ async function runMoonshineSimulatedLiveInternal(
                 .trim()
 
             return {
+                audioDurationMs,
+                chunkCount,
                 commitCount,
                 firstCommitMs,
                 firstPartialMs,
                 initMs,
                 lines: completedLines,
+                maxBacklogMs: Math.max(0, maxBacklogMs),
+                maxChunkProcessingMs,
                 partialCount,
+                processingRealTimeFactor: totalProcessingMs / Math.max(1, audioDurationMs),
+                runtime: 'streaming',
                 sessionMs: Date.now() - sessionStartedAt,
                 transcript,
+                wallRealTimeFactor: (Date.now() - sessionStartedAt) / Math.max(1, audioDurationMs),
             }
         } finally {
             unsubscribe()
         }
     } finally {
         await safeReleaseMoonshineTranscriber(transcriber)
+    }
+}
+
+async function runSherpaStreamingSimulatedLive(
+    modelId: string,
+    audioUri: string,
+    callbacks: SimulatedLiveCallbacks,
+): Promise<BenchmarkSimulatedLiveRunResult> {
+    const model = getAsrBenchmarkModel(modelId)
+    if (!model?.sherpa?.config.streaming) {
+        throw new Error(`Model ${modelId} is not a Sherpa streaming benchmark model`)
+    }
+
+    const initStartedAt = Date.now()
+    await initializeSherpaBenchmarkModel(modelId, callbacks.onStatus)
+    const initMs = Date.now() - initStartedAt
+
+    try {
+        const streamResult = await SherpaASR.createOnlineStream()
+        if (!streamResult.success) {
+            throw new Error(`Sherpa createOnlineStream failed for ${modelId}`)
+        }
+
+        const wav = await readMonoPcm16Wav(audioUri)
+        const chunkSize = Math.max(
+            1,
+            Math.floor((wav.sampleRate * SHERPA_STREAMING_SIMULATED_CHUNK_MS) / 1000),
+        )
+        const chunkCount = Math.max(1, Math.ceil(wav.samples.length / chunkSize))
+        const audioDurationMs = Math.round((wav.samples.length / wav.sampleRate) * 1000)
+        const sessionStartedAt = Date.now()
+
+        let committedText = ''
+        let interimText = ''
+        let lastText = ''
+        let commitCount = 0
+        let partialCount = 0
+        let firstPartialMs: number | undefined
+        let firstCommitMs: number | undefined
+        let maxBacklogMs = 0
+        let maxChunkProcessingMs = 0
+        let totalProcessingMs = 0
+
+        callbacks.onStatus?.(`Simulating Sherpa streaming on ${chunkCount} chunk(s)...`)
+
+        for (
+            let offset = 0, chunkIndex = 0;
+            offset < wav.samples.length;
+            offset += chunkSize, chunkIndex += 1
+        ) {
+            const chunk = wav.samples.slice(offset, offset + chunkSize)
+            if (chunk.length === 0) continue
+
+            const chunkStartedAt = Date.now()
+            const accepted = await SherpaASR.acceptWaveform(wav.sampleRate, chunk)
+            if (!accepted.success) {
+                throw new Error(`Sherpa acceptWaveform failed for ${modelId}`)
+            }
+            const endpoint = await SherpaASR.isEndpoint()
+            const result = await SherpaASR.getResult()
+            const chunkProcessingMs = Date.now() - chunkStartedAt
+            totalProcessingMs += chunkProcessingMs
+            maxChunkProcessingMs = Math.max(maxChunkProcessingMs, chunkProcessingMs)
+
+            const text = String(result.text || '').trim()
+            if (text && text !== lastText) {
+                lastText = text
+                partialCount += 1
+                if (firstPartialMs == null) {
+                    firstPartialMs = Date.now() - sessionStartedAt
+                }
+                callbacks.onInterimUpdate?.(text)
+            }
+            if (endpoint.isEndpoint && text) {
+                committedText = committedText ? `${committedText} ${text}` : text
+                interimText = ''
+                lastText = ''
+                commitCount += 1
+                if (firstCommitMs == null) {
+                    firstCommitMs = Date.now() - sessionStartedAt
+                }
+                callbacks.onCommit?.(committedText.trim())
+                await SherpaASR.resetStream()
+            } else {
+                interimText = text
+            }
+
+            const targetAudioMs = Math.min(
+                (chunkIndex + 1) * SHERPA_STREAMING_SIMULATED_CHUNK_MS,
+                audioDurationMs,
+            )
+            maxBacklogMs = Math.max(
+                maxBacklogMs,
+                Date.now() - sessionStartedAt - targetAudioMs,
+            )
+            callbacks.onStatus?.(
+                `Simulating Sherpa streaming chunk ${chunkIndex + 1}/${chunkCount} (backlog ${Math.round(
+                    Math.max(0, maxBacklogMs),
+                )}ms)...`,
+            )
+            await waitForSimulatedClock(
+                sessionStartedAt,
+                (chunkIndex + 1) * SHERPA_STREAMING_SIMULATED_CHUNK_MS,
+            )
+        }
+
+        await SherpaASR.finishInput().catch(() => ({ success: false }))
+        const finalResult = await SherpaASR.getResult().catch(() => ({ text: '' }))
+        const finalText = String(finalResult.text || '').trim()
+        if (finalText && finalText !== interimText) {
+            interimText = finalText
+        }
+        const transcript = [committedText.trim(), interimText.trim()]
+            .filter(Boolean)
+            .join(' ')
+            .trim()
+
+        return {
+            audioDurationMs,
+            chunkCount,
+            commitCount,
+            firstCommitMs,
+            firstPartialMs,
+            initMs,
+            maxBacklogMs: Math.max(0, maxBacklogMs),
+            maxChunkProcessingMs,
+            partialCount,
+            processingRealTimeFactor: totalProcessingMs / Math.max(1, audioDurationMs),
+            runtime: 'streaming',
+            sessionMs: Date.now() - sessionStartedAt,
+            transcript,
+            wallRealTimeFactor: (Date.now() - sessionStartedAt) / Math.max(1, audioDurationMs),
+        }
+    } finally {
+        await SherpaASR.release().catch(() => undefined)
+    }
+}
+
+async function runSherpaRollingOfflineSimulatedLive(
+    modelId: string,
+    audioUri: string,
+    callbacks: SimulatedLiveCallbacks,
+): Promise<BenchmarkSimulatedLiveRunResult> {
+    const model = getAsrBenchmarkModel(modelId)
+    if (!model?.sherpa || model.sherpa.config.streaming) {
+        throw new Error(`Model ${modelId} is not a Sherpa offline rolling benchmark model`)
+    }
+
+    const initStartedAt = Date.now()
+    await initializeSherpaBenchmarkModel(modelId, callbacks.onStatus)
+    const initMs = Date.now() - initStartedAt
+
+    try {
+        const wav = await readMonoPcm16Wav(audioUri)
+        const rollingWindowMs = model.sherpa.rollingWindowMs ?? 15_000
+        const chunkSize = Math.max(1, Math.floor((wav.sampleRate * rollingWindowMs) / 1000))
+        const chunkCount = Math.max(1, Math.ceil(wav.samples.length / chunkSize))
+        const audioDurationMs = Math.round((wav.samples.length / wav.sampleRate) * 1000)
+        const sessionStartedAt = Date.now()
+
+        let transcript = ''
+        let commitCount = 0
+        let partialCount = 0
+        let firstPartialMs: number | undefined
+        let firstCommitMs: number | undefined
+        let maxBacklogMs = 0
+        let maxChunkProcessingMs = 0
+        let totalProcessingMs = 0
+
+        callbacks.onStatus?.(
+            `Simulating Sherpa rolling offline on ${chunkCount} × ${Math.round(
+                rollingWindowMs / 1000,
+            )}s window(s)...`,
+        )
+
+        for (
+            let offset = 0, chunkIndex = 0;
+            offset < wav.samples.length;
+            offset += chunkSize, chunkIndex += 1
+        ) {
+            const chunk = wav.samples.slice(offset, offset + chunkSize)
+            if (chunk.length === 0) continue
+
+            const chunkStartedAt = Date.now()
+            const result = await SherpaASR.recognizeFromSamples(wav.sampleRate, chunk)
+            const chunkProcessingMs = Date.now() - chunkStartedAt
+            totalProcessingMs += chunkProcessingMs
+            maxChunkProcessingMs = Math.max(maxChunkProcessingMs, chunkProcessingMs)
+            if (!result.success) {
+                throw new Error(result.error ?? `Sherpa rolling recognition failed for ${modelId}`)
+            }
+
+            const text = String(result.text || '').trim()
+            if (text) {
+                transcript = transcript ? `${transcript} ${text}` : text
+                partialCount += 1
+                commitCount += 1
+                if (firstPartialMs == null) {
+                    firstPartialMs = Date.now() - sessionStartedAt
+                }
+                if (firstCommitMs == null) {
+                    firstCommitMs = Date.now() - sessionStartedAt
+                }
+                callbacks.onInterimUpdate?.(text)
+                callbacks.onCommit?.(transcript.trim())
+            }
+
+            if (model.sherpa.releaseBetweenSegments && chunkIndex + 1 < chunkCount) {
+                await initializeSherpaBenchmarkModel(modelId, callbacks.onStatus)
+            }
+
+            const targetAudioMs = Math.min((chunkIndex + 1) * rollingWindowMs, audioDurationMs)
+            maxBacklogMs = Math.max(
+                maxBacklogMs,
+                Date.now() - sessionStartedAt - targetAudioMs,
+            )
+            callbacks.onStatus?.(
+                `Simulating Sherpa rolling window ${chunkIndex + 1}/${chunkCount} (backlog ${Math.round(
+                    Math.max(0, maxBacklogMs),
+                )}ms)...`,
+            )
+            await waitForSimulatedClock(sessionStartedAt, (chunkIndex + 1) * rollingWindowMs)
+        }
+
+        return {
+            audioDurationMs,
+            chunkCount,
+            commitCount,
+            firstCommitMs,
+            firstPartialMs,
+            initMs,
+            maxBacklogMs: Math.max(0, maxBacklogMs),
+            maxChunkProcessingMs,
+            partialCount,
+            processingRealTimeFactor: totalProcessingMs / Math.max(1, audioDurationMs),
+            runtime: 'rolling-offline',
+            sessionMs: Date.now() - sessionStartedAt,
+            transcript: transcript.trim(),
+            wallRealTimeFactor: (Date.now() - sessionStartedAt) / Math.max(1, audioDurationMs),
+        }
+    } finally {
+        await SherpaASR.release().catch(() => undefined)
     }
 }
 
@@ -917,12 +1204,16 @@ async function runWhisperSimulatedLive(
             Math.floor((wav.sampleRate * WHISPER_SIMULATED_CHUNK_MS) / 1000),
         )
         const chunkCount = Math.max(1, Math.ceil(wav.pcm16.length / chunkSize))
+        const audioDurationMs = Math.round((wav.pcm16.length / wav.sampleRate) * 1000)
         const sessionStartedAt = Date.now()
 
         let partialCount = 0
         let commitCount = 0
         let firstPartialMs: number | undefined
         let firstCommitMs: number | undefined
+        let maxBacklogMs = 0
+        let maxChunkProcessingMs = 0
+        let totalProcessingMs = 0
         let lastTranscript = ''
 
         callbacks.onStatus?.(`Simulating Whisper on ${chunkCount} chunk(s)...`)
@@ -934,10 +1225,14 @@ async function runWhisperSimulatedLive(
         ) {
             const boundedEnd = Math.min(end, wav.pcm16.length)
             const cumulativePcm = wav.pcm16.slice(0, boundedEnd)
+            const chunkStartedAt = Date.now()
             const { promise } = context.transcribeData(pcm16ToArrayBuffer(cumulativePcm), {
                 language: 'en',
             })
             const result = await promise
+            const chunkProcessingMs = Date.now() - chunkStartedAt
+            totalProcessingMs += chunkProcessingMs
+            maxChunkProcessingMs = Math.max(maxChunkProcessingMs, chunkProcessingMs)
             const nextTranscript = String(result?.result || '').trim()
 
             if (nextTranscript && nextTranscript !== lastTranscript) {
@@ -949,7 +1244,20 @@ async function runWhisperSimulatedLive(
                 callbacks.onInterimUpdate?.(nextTranscript)
             }
 
-            callbacks.onStatus?.(`Simulating Whisper chunk ${chunkIndex + 1}/${chunkCount}...`)
+            const targetAudioMs = Math.min(
+                (chunkIndex + 1) * WHISPER_SIMULATED_CHUNK_MS,
+                audioDurationMs,
+            )
+            maxBacklogMs = Math.max(
+                maxBacklogMs,
+                Date.now() - sessionStartedAt - targetAudioMs,
+            )
+
+            callbacks.onStatus?.(
+                `Simulating Whisper chunk ${chunkIndex + 1}/${chunkCount} (backlog ${Math.round(
+                    Math.max(0, maxBacklogMs),
+                )}ms)...`,
+            )
             await waitForSimulatedClock(
                 sessionStartedAt,
                 (chunkIndex + 1) * WHISPER_SIMULATED_CHUNK_MS,
@@ -963,13 +1271,20 @@ async function runWhisperSimulatedLive(
         }
 
         return {
+            audioDurationMs,
+            chunkCount,
             commitCount,
             firstCommitMs,
             firstPartialMs,
             initMs,
+            maxBacklogMs: Math.max(0, maxBacklogMs),
+            maxChunkProcessingMs,
             partialCount,
+            processingRealTimeFactor: totalProcessingMs / Math.max(1, audioDurationMs),
+            runtime: 'rolling-offline',
             sessionMs: Date.now() - sessionStartedAt,
             transcript: lastTranscript,
+            wallRealTimeFactor: (Date.now() - sessionStartedAt) / Math.max(1, audioDurationMs),
         }
     } finally {
         await safeReleaseWhisper(context)

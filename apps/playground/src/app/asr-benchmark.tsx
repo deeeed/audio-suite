@@ -1,6 +1,6 @@
 import { Redirect } from 'expo-router'
 import React, { useEffect, useMemo } from 'react'
-import { Pressable, StyleSheet, View } from 'react-native'
+import { Platform, Pressable, StyleSheet, View } from 'react-native'
 
 import type { AppTheme } from '@siteed/design-system'
 import { Notice, ScreenWrapper, Text, useTheme } from '@siteed/design-system'
@@ -114,6 +114,11 @@ function formatMs(value?: number): string {
     return `${Math.round(value)} ms`
 }
 
+function formatRatio(value?: number): string {
+    if (value == null || !Number.isFinite(value)) return 'n/a'
+    return `${value.toFixed(2)}×`
+}
+
 function ResultCard({ result }: { result: AsrBenchmarkResult }) {
     const theme = useTheme()
     const styles = useMemo(() => getStyles(theme), [theme])
@@ -136,9 +141,21 @@ function ResultCard({ result }: { result: AsrBenchmarkResult }) {
                 {result.sessionMs != null ? ` • session ${formatMs(result.sessionMs)}` : ''}
             </Text>
             {result.mode === 'simulated' ? (
-                <Text style={styles.resultMeta}>
-                    partials {result.partialCount ?? 0} • commits {result.commitCount ?? 0}
-                </Text>
+                <>
+                    <Text style={styles.resultMeta}>
+                        runtime {result.runtime} • audio {formatMs(result.audioDurationMs)} • chunks{' '}
+                        {result.chunkCount ?? 0}
+                    </Text>
+                    <Text style={styles.resultMeta}>
+                        processing RTF {formatRatio(result.processingRealTimeFactor)} • wall RTF{' '}
+                        {formatRatio(result.wallRealTimeFactor)} • max backlog{' '}
+                        {formatMs(result.maxBacklogMs)}
+                    </Text>
+                    <Text style={styles.resultMeta}>
+                        partials {result.partialCount ?? 0} • commits {result.commitCount ?? 0} •
+                        max chunk {formatMs(result.maxChunkProcessingMs)}
+                    </Text>
+                </>
             ) : null}
             {result.segmentCount != null ? (
                 <Text style={styles.resultMeta}>segments {result.segmentCount}</Text>
@@ -191,6 +208,7 @@ export default function AsrBenchmarkScreen() {
 
     const visibleModels = mode === 'simulated' ? simulatedBenchmarkModels : benchmarkModels
     const modeSwitchDisabled = processing || simulationIsRunning
+    const practicalMatrixDisabled = processing || simulationIsRunning || Platform.OS === 'web'
     const mobileRecommendationModelIds = useMemo(
         () => mobileRecommendationModels.map((model) => model.id),
         [mobileRecommendationModels],
@@ -273,20 +291,20 @@ export default function AsrBenchmarkScreen() {
                 <View style={styles.recommendationGrid}>
                     {[
                         {
-                            title: 'Live transcript',
-                            body: 'Use Moonshine Small Streaming by default. Try Moonshine Medium only when the device can afford slower startup and extra CPU.',
+                            title: 'True live transcript',
+                            body: 'Benchmark Moonshine with RTF/backlog gates before choosing a default. Use Qwen3/Whisper as delayed or final-quality passes, not instant captions.',
                         },
                         {
                             title: 'Live speaker turns',
                             body: 'Use Sherpa VAD + Speaker ID for tentative live speaker turns, then rely on offline diarization for final quality.',
                         },
                         {
-                            title: 'Post-recording quality',
-                            body: 'Use segmented Sherpa offline ASR after recording. Qwen3 INT8 is the practical non-Whisper candidate; Whisper Medium INT8 is the EchoBridge parity row.',
+                            title: 'Delayed high-quality live',
+                            body: 'Use Sherpa Qwen3 INT8 as a rolling-window candidate when higher quality is worth delayed segment updates.',
                         },
                         {
-                            title: 'Default matrix',
-                            body: `Run Practical Matrix uses ${mobileRecommendationModelCountLabel} and skips opt-in / avoid-default models such as FP32 Whisper Medium and Whisper Small (whisper.rn).`,
+                            title: 'Default file matrix',
+                            body: `The Practical File Matrix runs ${mobileRecommendationModelCountLabel}: Moonshine, Qwen3, and Whisper rows for repeatable file-quality comparison. Use Simulated Live per Moonshine model, or the direct runner, for RTF/backlog gates.`,
                         },
                     ].map((item) => (
                         <View key={item.title} style={styles.recommendationCard}>
@@ -507,7 +525,7 @@ export default function AsrBenchmarkScreen() {
                             <Pressable
                                 testID="asr-benchmark-run-all"
                                 accessibilityRole="button"
-                                disabled={processing || simulationIsRunning}
+                                disabled={practicalMatrixDisabled}
                                 onPress={() => {
                                     void runAllSampleBenchmarks()
                                 }}
@@ -515,7 +533,7 @@ export default function AsrBenchmarkScreen() {
                                     styles.actionButton,
                                     {
                                         backgroundColor: theme.colors.tertiaryContainer,
-                                        opacity: processing || simulationIsRunning ? 0.6 : 1,
+                                        opacity: practicalMatrixDisabled ? 0.6 : 1,
                                     },
                                 ]}
                             >
@@ -527,12 +545,13 @@ export default function AsrBenchmarkScreen() {
                                         },
                                     ]}
                                 >
-                                    Run Practical Matrix
+                                    Run Practical File Matrix
                                 </Text>
                             </Pressable>
                             <Text style={styles.sectionBody}>
-                                Runs {mobileRecommendationModelCountLabel}; skips opt-in /
-                                avoid-default models.
+                                {Platform.OS === 'web'
+                                    ? `Practical Matrix is Android/iOS-only; it covers ${mobileRecommendationModelCountLabel} when run on device.`
+                                    : `Runs ${mobileRecommendationModelCountLabel} on the selected sample; skips opt-in stress models.`}
                             </Text>
 
                             <Pressable
