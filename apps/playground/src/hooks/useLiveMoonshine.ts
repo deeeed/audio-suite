@@ -12,6 +12,11 @@ const logger = baseLogger.extend('LiveMoonshine')
 interface UseLiveMoonshineOptions {
     onCommit?: (text: string) => void
     onError?: (error: string) => void
+    onChunkProcessed?: (info: {
+        durationMs: number
+        queueDepth: number
+        sampleCount: number
+    }) => void
     onInterimUpdate?: (text: string) => void
     transcriber?: MoonshineTranscriber | null
 }
@@ -26,6 +31,7 @@ export interface UseLiveMoonshineResult {
     isListening: boolean
     start: () => void
     stop: () => void
+    stopAudioInput: () => void
 }
 
 function joinTranscriptParts(parts: string[]): string {
@@ -53,7 +59,7 @@ export function useLiveMoonshine(
     const [interimText, setInterimText] = useState('')
     const [isListening, setIsListening] = useState(false)
     const processingRef = useRef(false)
-    const queueRef = useRef<Array<{ sampleRate: number; samples: number[] }>>([])
+    const queueRef = useRef<{ sampleRate: number; samples: number[] }[]>([])
     const listeningRef = useRef(false)
     const transcriberRef = useRef<MoonshineTranscriber | null>(
         options.transcriber ?? null
@@ -73,7 +79,13 @@ export function useLiveMoonshine(
 
         processingRef.current = true
         try {
+            const startedAt = Date.now()
             await transcriber.addAudio(next.samples, next.sampleRate)
+            options.onChunkProcessed?.({
+                durationMs: Date.now() - startedAt,
+                queueDepth: queueRef.current.length,
+                sampleCount: next.samples.length,
+            })
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error)
             if (!listeningRef.current) {
@@ -174,6 +186,11 @@ export function useLiveMoonshine(
         setIsListening(true)
     }, [])
 
+    const stopAudioInput = useCallback(() => {
+        logger.info('Moonshine live audio input stopped')
+        queueRef.current = []
+    }, [])
+
     const stop = useCallback(() => {
         logger.info('Moonshine live transcription stopped')
         listeningRef.current = false
@@ -202,5 +219,6 @@ export function useLiveMoonshine(
         isListening,
         start,
         stop,
+        stopAudioInput,
     }
 }

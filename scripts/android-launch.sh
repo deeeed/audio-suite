@@ -42,7 +42,11 @@ if [ -z "$DEV_CLIENT_SCHEME" ] && [ -f "$AGENTIC_CONF_FILE" ]; then
     # shellcheck disable=SC1090
     source "$AGENTIC_CONF_FILE"
     if [ -n "${AGENTIC_SCHEME:-}" ]; then
-        DEV_CLIENT_SCHEME="exp+${AGENTIC_SCHEME}"
+        if [ "${AGENTIC_ANDROID_DEV_CLIENT_SCHEME_MODE:-slug}" = "variant" ] && [ -n "${APP_VARIANT:-}" ] && [ "${APP_VARIANT}" != "production" ]; then
+            DEV_CLIENT_SCHEME="exp+${AGENTIC_SCHEME}-${APP_VARIANT}"
+        else
+            DEV_CLIENT_SCHEME="exp+${AGENTIC_SCHEME}"
+        fi
     fi
 fi
 

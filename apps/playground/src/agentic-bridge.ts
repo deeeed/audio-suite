@@ -34,12 +34,14 @@ import {
 } from '@siteed/audio-studio'
 import {
     ASR as SherpaASR,
+    SegmentedOfflineAsrSession,
     OnnxInference,
     typedArrayToBase64,
     base64ToTypedArray,
     type AsrModelConfig,
+    type OnnxTensorData,
+    type SegmentedOfflineAsrEvent,
 } from '@siteed/sherpa-onnx.rn'
-import type { OnnxTensorData } from '@siteed/sherpa-onnx.rn'
 import {
     getBenchmarkModelOrThrow,
     getMoonshineRuntimeConfig,
@@ -248,6 +250,8 @@ export async function validateLongAudioStream(
     const sherpaSegmentDurationMs = options.sherpaSegmentDurationMs ?? 30_000
     const sherpaReleaseBetweenSegments =
         options.sherpaReleaseBetweenSegments ??
+        // Qwen3 has the highest retained native heap in this benchmark path;
+        // reset it between offline windows unless callers explicitly opt out.
         (mode === 'sherpa-offline-segments' &&
             options.sherpaAsrConfig?.modelType === 'qwen3')
     const startedAtMs = Date.now()
@@ -257,10 +261,7 @@ export async function validateLongAudioStream(
     let removeListener: (() => void) | null = null
     let sherpaAsrInitialized = false
     let sherpaOfflineConfig: AsrModelConfig | null = null
-    let sherpaSegmentChunks: Float32Array[] = []
-    let sherpaSegmentSampleCount = 0
-    let sherpaSegmentCount = 0
-    let sherpaTranscriptText = ''
+    let sherpaOfflineSession: SegmentedOfflineAsrSession | null = null
     const controller = new AbortController()
 
     if (!options.fileUri) {
@@ -499,13 +500,13 @@ export async function validateLongAudioStream(
             }
             try {
                 await SherpaASR.release()
+                sherpaAsrInitialized = false
             } catch (error) {
                 console.warn(
                     '[LongAudioValidation] Sherpa release between segments failed',
                     error,
                 )
             }
-            sherpaAsrInitialized = false
             const initResult = await SherpaASR.initialize(sherpaOfflineConfig)
             if (!initResult.success) {
                 throw new Error(
@@ -516,65 +517,32 @@ export async function validateLongAudioStream(
             sherpaAsrInitialized = true
         }
 
-        const flushSherpaOfflineSegment = async (
-            sampleRate: number,
-            force = false,
-        ) => {
-            if (mode !== 'sherpa-offline-segments') return
-            const minSamples = Math.max(
-                1,
-                Math.floor((sherpaSegmentDurationMs / 1000) * sampleRate),
-            )
-            if (!force && sherpaSegmentSampleCount < minSamples) return
-            if (sherpaSegmentSampleCount === 0) return
-            // Keep long segment accumulation in Float32Array chunks to avoid
-            // retaining millions of boxed JS numbers while decode is still
-            // running. The current Sherpa RN bridge still requires number[]
-            // at the recognition boundary, so materialize it only for the
-            // bounded segment being submitted.
-            const segmentSamples = new Array<number>(sherpaSegmentSampleCount)
-            let offset = 0
-            for (const samples of sherpaSegmentChunks) {
-                for (let i = 0; i < samples.length; i += 1) {
-                    segmentSamples[offset + i] = samples[i]
-                }
-                offset += samples.length
+        const handleSherpaOfflineEvent = (event: SegmentedOfflineAsrEvent) => {
+            if (event.type === 'segment_completed') {
+                updateLongAudioValidationProgress({
+                    transcriptLineCount: event.segmentCount,
+                    transcriptCharCount: event.transcriptCharCount,
+                    transcriptEventCount:
+                        (_longAudioValidationProgress?.transcriptEventCount ?? 0) + 1,
+                    sherpaSegmentCount: event.segmentCount,
+                })
             }
-            sherpaSegmentChunks = []
-            sherpaSegmentSampleCount = 0
-            const recognized = await SherpaASR.recognizeFromSamples(
-                sampleRate,
-                segmentSamples,
-            )
-            if (!recognized.success) {
-                throw new Error(
-                    recognized.error ??
-                        `Sherpa offline segment ${sherpaSegmentCount + 1} failed`,
-                )
-            }
-            sherpaSegmentCount += 1
-            const text = (recognized.text ?? '').trim()
-            if (text) {
-                sherpaTranscriptText = sherpaTranscriptText
-                    ? `${sherpaTranscriptText}\n${text}`
-                    : text
-            }
-            updateLongAudioValidationProgress({
-                transcriptLineCount: sherpaTranscriptText
-                    ? sherpaTranscriptText.split('\n').length
-                    : 0,
-                transcriptCharCount: sherpaTranscriptText.length,
-                transcriptEventCount:
-                    (_longAudioValidationProgress?.transcriptEventCount ?? 0) + 1,
-                sherpaSegmentCount,
+        }
+
+        if (mode === 'sherpa-offline-segments') {
+            sherpaOfflineSession = new SegmentedOfflineAsrSession({
+                sampleRate: 16000,
+                asr: SherpaASR,
+                segmentDurationMs: sherpaSegmentDurationMs,
+                afterSegment: sherpaReleaseBetweenSegments
+                    ? async () => {
+                          if (!controller.signal.aborted) {
+                              await reinitializeSherpaOfflineAsr()
+                          }
+                      }
+                    : undefined,
+                onEvent: handleSherpaOfflineEvent,
             })
-            if (
-                sherpaReleaseBetweenSegments &&
-                !force &&
-                !controller.signal.aborted
-            ) {
-                await reinitializeSherpaOfflineAsr()
-            }
         }
 
         const result = await streamAudioData(
@@ -635,9 +603,14 @@ export async function validateLongAudioStream(
                             }
                         }
                         if (mode === 'sherpa-offline-segments') {
-                            sherpaSegmentChunks.push(chunk.samples)
-                            sherpaSegmentSampleCount += chunk.samples.length
-                            await flushSherpaOfflineSegment(chunk.sampleRate, chunk.isFinal)
+                            if (!sherpaOfflineSession) {
+                                throw new Error('Sherpa offline segment session unavailable')
+                            }
+                            await sherpaOfflineSession.acceptChunk({
+                                samples: chunk.samples,
+                                sampleRate: chunk.sampleRate,
+                                isFinal: chunk.isFinal,
+                            })
                         }
 
                         const chunkCount = chunk.chunkIndex + 1
@@ -697,8 +670,16 @@ export async function validateLongAudioStream(
             sherpaResult = await SherpaASR.getResult().catch(() => null)
         }
         if (mode === 'sherpa-offline-segments' && sherpaAsrInitialized) {
-            await flushSherpaOfflineSegment(result.sampleRate, true)
-            sherpaResult = { text: sherpaTranscriptText }
+            if (!sherpaOfflineSession) {
+                throw new Error('Sherpa offline segment session unavailable')
+            }
+            if (!result.cancelled) {
+                // Safety net for streams that finish without an isFinal chunk.
+                // Normal streamAudioData completion has already flushed from
+                // the final chunk, so this is usually a no-op.
+                await sherpaOfflineSession.flush(true)
+            }
+            sherpaResult = { text: sherpaOfflineSession.getState().transcript }
         }
 
         const cancelled = result.cancelled
@@ -718,8 +699,12 @@ export async function validateLongAudioStream(
             sampleCount: result.samples,
             sampleRate: result.sampleRate,
             channels: result.channels,
+            // Segmented offline ASR reports user-visible progress by completed
+            // segment count rather than newline-delimited transcript lines.
             transcriptLineCount:
-                sherpaResult?.text != null
+                mode === 'sherpa-offline-segments'
+                    ? (_longAudioValidationProgress?.sherpaSegmentCount ?? 0)
+                    : sherpaResult?.text != null
                     ? sherpaResult.text
                         ? sherpaResult.text.split('\n').length
                         : 0
@@ -773,6 +758,7 @@ export async function validateLongAudioStream(
         }
         await safeReleaseMoonshineTranscriber(transcriber)
         await safeReleaseMoonshine()
+        sherpaOfflineSession?.release()
         if (sherpaAsrInitialized) {
             await SherpaASR.release().catch(() => undefined)
         }
@@ -1141,6 +1127,7 @@ if (__DEV__) {
                             modelId,
                             modelName: model.name,
                             recognizeMs: result.recognizeMs,
+                            segmentCount: result.segmentCount,
                             transcript: result.transcript,
                         },
                     }
@@ -2251,7 +2238,7 @@ if (__DEV__) {
 
         findFiberByTestId,
 
-        pressTestId: (testId: string) => {
+        pressTestId: (testId: string, targetValue?: boolean) => {
             try {
                 const fiber = findFiberByTestId(testId)
                 if (!fiber) {
@@ -2260,20 +2247,38 @@ if (__DEV__) {
 
                 const props = fiber.memoizedProps as Record<string, unknown> | null
                 const onPress = props?.onPress as ((...args: unknown[]) => unknown) | undefined
+                const onValueChange = props?.onValueChange as
+                    | ((value: boolean) => unknown)
+                    | undefined
                 const click = (fiber.stateNode as { click?: () => void } | null)?.click
-                if (typeof onPress !== 'function' && typeof click !== 'function') {
+                if (
+                    typeof onPress !== 'function' &&
+                    typeof onValueChange !== 'function' &&
+                    typeof click !== 'function'
+                ) {
                     return {
                         ok: false,
-                        error: `Component with testID="${testId}" has no onPress prop`,
+                        error: `Component with testID="${testId}" has no onPress/onValueChange prop`,
                     }
                 }
 
                 if (typeof onPress === 'function') {
                     onPress()
+                    return { ok: true, testId, action: 'press' }
+                } else if (typeof onValueChange === 'function') {
+                    const currentValue = props?.value
+                    const nextValue =
+                        typeof targetValue === 'boolean'
+                            ? targetValue
+                            : typeof currentValue === 'boolean'
+                              ? !currentValue
+                              : true
+                    onValueChange(nextValue)
+                    return { ok: true, testId, action: 'valueChange', value: nextValue }
                 } else {
                     click?.()
+                    return { ok: true, testId, action: 'click' }
                 }
-                return { ok: true, testId }
             } catch (e) {
                 return { ok: false, error: String(e) }
             }

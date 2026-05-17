@@ -1,6 +1,7 @@
 import type { MoonshineModelArch } from '@siteed/moonshine.rn'
+import type { AsrModelConfig } from '@siteed/sherpa-onnx.rn'
 
-export type AsrBenchmarkEngine = 'moonshine' | 'whisper'
+export type AsrBenchmarkEngine = 'moonshine' | 'whisper' | 'sherpa'
 export type AsrBenchmarkMode = 'sample' | 'simulated'
 
 export interface AsrBenchmarkSample {
@@ -22,6 +23,14 @@ export interface WhisperBenchmarkDescriptor {
     whisperModelId: string
 }
 
+export interface SherpaBenchmarkDescriptor {
+    config: Omit<AsrModelConfig, 'modelDir'>
+    modelDir: string
+    releaseBetweenSegments?: boolean
+    requiredFiles?: string[]
+    segmentDurationMs?: number
+}
+
 export interface AsrBenchmarkModel {
     description: string
     engine: AsrBenchmarkEngine
@@ -30,6 +39,7 @@ export interface AsrBenchmarkModel {
     moonshine?: MoonshineBenchmarkDescriptor
     name: string
     rationale: string
+    sherpa?: SherpaBenchmarkDescriptor
     whisper?: WhisperBenchmarkDescriptor
 }
 
@@ -87,6 +97,28 @@ function createMoonshineFiles(slug: string): MoonshineBenchmarkDownloadFile[] {
     }))
 }
 
+function createSherpaWhisperConfig(
+    size: 'small' | 'medium',
+    precision: 'fp32' | 'int8' = 'fp32',
+): Omit<AsrModelConfig, 'modelDir'> {
+    const suffix = precision === 'int8' ? '.int8.onnx' : '.onnx'
+    return {
+        modelType: 'whisper',
+        streaming: false,
+        numThreads: 4,
+        decodingMethod: 'greedy_search',
+        maxActivePaths: 4,
+        provider: 'cpu',
+        language: 'en',
+        task: 'transcribe',
+        modelFiles: {
+            encoder: `${size}-encoder${suffix}`,
+            decoder: `${size}-decoder${suffix}`,
+            tokens: `${size}-tokens.txt`,
+        },
+    }
+}
+
 export const ASR_BENCHMARK_MODELS: AsrBenchmarkModel[] = [
     {
         id: 'moonshine-small-streaming-en',
@@ -128,6 +160,98 @@ export const ASR_BENCHMARK_MODELS: AsrBenchmarkModel[] = [
             filename: 'ggml-small.en.bin',
             url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin',
             whisperModelId: 'small',
+        },
+    },
+    {
+        id: 'sherpa-qwen3-asr-0.6b-int8',
+        name: 'Sherpa Qwen3-ASR 0.6B INT8',
+        description:
+            'Best currently validated Sherpa ONNX offline ASR candidate for on-device long-form transcription.',
+        engine: 'sherpa',
+        liveCapable: false,
+        rationale:
+            'Runs offline on Android from the downloaded sherpa-onnx Qwen3 0.6B INT8 package; intended as the quality comparison point against Moonshine live models.',
+        sherpa: {
+            modelDir:
+                'models/qwen3-asr-0.6B-int8-2026-03-25/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25',
+            releaseBetweenSegments: true,
+            segmentDurationMs: 30_000,
+            config: {
+                modelType: 'qwen3',
+                streaming: false,
+                numThreads: 4,
+                decodingMethod: 'greedy_search',
+                maxActivePaths: 4,
+                provider: 'cpu',
+                language: 'en',
+                modelFiles: {
+                    encoder: 'encoder.int8.onnx',
+                    decoder: 'decoder.int8.onnx',
+                    convFrontend: 'conv_frontend.onnx',
+                    tokenizer: 'tokenizer',
+                },
+                qwen3: {
+                    maxTotalLen: 512,
+                    maxNewTokens: 128,
+                    temperature: 0.000001,
+                    topP: 0.8,
+                    seed: 42,
+                },
+            },
+        },
+    },
+    {
+        id: 'sherpa-whisper-small',
+        name: 'Sherpa Whisper Small',
+        description:
+            'Sherpa ONNX offline Whisper small baseline, using the same Sherpa ASR API as Qwen3.',
+        engine: 'sherpa',
+        liveCapable: false,
+        rationale:
+            'Practical Whisper parity baseline already available from the Sherpa model zoo; useful to separate model quality from wrapper/runtime behavior.',
+        sherpa: {
+            modelDir: 'models/whisper-small-multilingual/sherpa-onnx-whisper-small',
+            releaseBetweenSegments: true,
+            requiredFiles: ['small-encoder.onnx', 'small-decoder.onnx', 'small-tokens.txt'],
+            segmentDurationMs: 30_000,
+            config: createSherpaWhisperConfig('small'),
+        },
+    },
+    {
+        id: 'sherpa-whisper-medium',
+        name: 'Sherpa Whisper Medium',
+        description:
+            'Sherpa ONNX offline Whisper medium parity/stress-test model against the EchoBridge Whisper medium reference.',
+        engine: 'sherpa',
+        liveCapable: false,
+        rationale:
+            'Closest on-device Sherpa Whisper comparison to the EchoBridge Whisper medium backend reference; expected to be slow/heavy on mid-range phones.',
+        sherpa: {
+            modelDir: 'models/whisper-medium-multilingual/sherpa-onnx-whisper-medium',
+            releaseBetweenSegments: true,
+            requiredFiles: ['medium-encoder.onnx', 'medium-decoder.onnx', 'medium-tokens.txt'],
+            segmentDurationMs: 30_000,
+            config: createSherpaWhisperConfig('medium'),
+        },
+    },
+    {
+        id: 'sherpa-whisper-medium-int8',
+        name: 'Sherpa Whisper Medium INT8',
+        description: 'Quantized Sherpa ONNX Whisper medium variant for mobile feasibility checks.',
+        engine: 'sherpa',
+        liveCapable: false,
+        rationale:
+            'Uses the same Whisper medium export as the parity model but selects INT8 encoder/decoder files to measure the mobile quality/speed trade-off.',
+        sherpa: {
+            modelDir: 'models/whisper-medium-multilingual/sherpa-onnx-whisper-medium',
+            releaseBetweenSegments: true,
+            requiredFiles: [
+                'medium-encoder.int8.onnx',
+                'medium-decoder.int8.onnx',
+                'medium-tokens.txt',
+            ],
+            segmentDurationMs: 30_000,
+            config: createSherpaWhisperConfig('medium', 'int8'),
         },
     },
 ]

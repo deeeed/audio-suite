@@ -14,6 +14,7 @@ cd "$APP_ROOT"
 
 LOGFILE=".agent/metro.log"
 PIDFILE=".agent/metro.pid"
+HOSTFILE=".agent/metro.host"
 TIMEOUT=60
 
 mkdir -p .agent
@@ -31,13 +32,64 @@ print_launch_hint() {
 
 # --- Detect a running Metro via HTTP probe ---
 if curl -sf "http://localhost:${PORT}/status" >/dev/null 2>&1; then
-  echo "Metro already running on port $PORT."
-  print_launch_hint
-  if [ -s "$LOGFILE" ]; then
-    echo "Recent logs from $LOGFILE:"
-    tail -20 "$LOGFILE"
+  # Metro bakes the packager hostname at startup. On physical devices, reusing
+  # an old Metro after Wi-Fi/LAN changes can make the app connect to a stale IP
+  # even though the localhost health probe passes.
+  if [ -f "$HOSTFILE" ]; then
+    PREVIOUS_HOST="$(cat "$HOSTFILE" 2>/dev/null || true)"
+    if [ -n "$PREVIOUS_HOST" ] && [ "$PREVIOUS_HOST" != "$DEV_HOST" ]; then
+      echo "Metro is running on port $PORT for stale host $PREVIOUS_HOST; restarting for $DEV_HOST..."
+      PORT_PID=$(lsof -ti:"$PORT" 2>/dev/null || true)
+      if [ -n "$PORT_PID" ]; then
+        kill "$PORT_PID" 2>/dev/null || true
+        sleep 1
+        REMAINING=$(lsof -ti:"$PORT" 2>/dev/null || true)
+        [ -n "$REMAINING" ] && kill -9 "$REMAINING" 2>/dev/null || true
+      fi
+      rm -f "$PIDFILE" "$HOSTFILE"
+    else
+      echo "Metro already running on port $PORT."
+      print_launch_hint
+      if [ -s "$LOGFILE" ]; then
+        echo "Recent logs from $LOGFILE:"
+        tail -20 "$LOGFILE"
+      fi
+      exit 0
+    fi
+  elif [ -f "$PIDFILE" ] && ! kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null; then
+    echo "Metro is running on port $PORT but ${PIDFILE} is stale; restarting so physical-device host metadata is refreshed..."
+    PORT_PID=$(lsof -ti:"$PORT" 2>/dev/null || true)
+    if [ -n "$PORT_PID" ]; then
+      kill "$PORT_PID" 2>/dev/null || true
+      sleep 1
+      REMAINING=$(lsof -ti:"$PORT" 2>/dev/null || true)
+      [ -n "$REMAINING" ] && kill -9 "$REMAINING" 2>/dev/null || true
+    fi
+    rm -f "$PIDFILE" "$HOSTFILE"
+  else
+    echo "Metro is running on port $PORT without host metadata; restarting so physical-device host metadata is refreshed..."
+    PORT_PID=$(lsof -ti:"$PORT" 2>/dev/null || true)
+    if [ -n "$PORT_PID" ]; then
+      kill "$PORT_PID" 2>/dev/null || true
+      sleep 1
+      REMAINING=$(lsof -ti:"$PORT" 2>/dev/null || true)
+      [ -n "$REMAINING" ] && kill -9 "$REMAINING" 2>/dev/null || true
+    fi
+    rm -f "$PIDFILE" "$HOSTFILE"
   fi
-  exit 0
+fi
+
+# A stale Metro may have been stopped above; re-check before starting.
+if curl -sf "http://localhost:${PORT}/status" >/dev/null 2>&1; then
+  echo "Metro is still running on port $PORT without trusted host metadata; restarting..."
+  PORT_PID=$(lsof -ti:"$PORT" 2>/dev/null || true)
+  if [ -n "$PORT_PID" ]; then
+    kill "$PORT_PID" 2>/dev/null || true
+    sleep 1
+    REMAINING=$(lsof -ti:"$PORT" 2>/dev/null || true)
+    [ -n "$REMAINING" ] && kill -9 "$REMAINING" 2>/dev/null || true
+  fi
+  rm -f "$PIDFILE" "$HOSTFILE"
 fi
 
 # --- No Metro detected — start fresh ---
@@ -59,6 +111,7 @@ else
 fi
 METRO_PID=$!
 echo "$METRO_PID" > "$PIDFILE"
+echo "$DEV_HOST" > "$HOSTFILE"
 echo "Metro PID: $METRO_PID, logging to $LOGFILE"
 
 # Wait for ready signal

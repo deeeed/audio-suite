@@ -5,6 +5,12 @@ import Moonshine, {
     normalizeMoonshineWebModelArch,
     resolveMoonshineWebModelBasePath,
 } from '@siteed/moonshine.rn'
+import {
+    ASR as SherpaASR,
+    SegmentedOfflineAsrSession,
+    type AsrModelConfig,
+    type SegmentedOfflineAsrSegment,
+} from '@siteed/sherpa-onnx.rn'
 import * as FileSystem from 'expo-file-system/legacy'
 import { Platform } from 'react-native'
 import { initWhisper, type WhisperContext } from 'whisper.rn'
@@ -40,6 +46,8 @@ export interface BenchmarkDownloadState {
 export interface BenchmarkFileRunResult {
     initMs: number
     recognizeMs: number
+    segmentCount?: number
+    segments?: SegmentedOfflineAsrSegment[]
     transcript: string
 }
 
@@ -102,6 +110,19 @@ export async function getWhisperModelFilePath(modelId: string): Promise<string> 
     return `${whisperModelRoot}${benchmarkModel.whisper.filename}`
 }
 
+export async function getSherpaModelDirectoryPath(modelId: string): Promise<string> {
+    const benchmarkModel = getAsrBenchmarkModel(modelId)
+    if (!benchmarkModel?.sherpa) {
+        throw new Error(`Model ${modelId} is not a Sherpa benchmark model`)
+    }
+
+    const documentDirectory = FileSystem.documentDirectory
+    if (!documentDirectory) {
+        throw new Error('Sherpa benchmark model lookup requires a document directory')
+    }
+    return toNativePath(`${documentDirectory}${benchmarkModel.sherpa.modelDir}`)
+}
+
 export async function getBenchmarkModelStatus(modelId: string): Promise<BenchmarkDownloadState> {
     const model = getAsrBenchmarkModel(modelId)
     if (!model) {
@@ -134,6 +155,27 @@ export async function getBenchmarkModelStatus(modelId: string): Promise<Benchmar
         return {
             downloaded,
             localPath: downloaded ? toNativePath(dirUri) : null,
+        }
+    }
+
+    if (model.sherpa) {
+        const modelPath = await getSherpaModelDirectoryPath(modelId)
+        const info = await FileSystem.getInfoAsync(`file://${modelPath}`)
+        if (info.exists && model.sherpa.requiredFiles?.length) {
+            const requiredStatuses = await Promise.all(
+                model.sherpa.requiredFiles.map((fileName) =>
+                    FileSystem.getInfoAsync(`file://${modelPath}/${fileName}`),
+                ),
+            )
+            const hasRequiredFiles = requiredStatuses.every((status) => status.exists)
+            return {
+                downloaded: hasRequiredFiles,
+                localPath: hasRequiredFiles ? modelPath : null,
+            }
+        }
+        return {
+            downloaded: info.exists,
+            localPath: info.exists ? modelPath : null,
         }
     }
 
@@ -255,6 +297,17 @@ async function runPrepareBenchmarkModel(
         }
     }
 
+    if (model.sherpa) {
+        const status = await getBenchmarkModelStatus(modelId)
+        if (!status.downloaded || !status.localPath) {
+            throw new Error(
+                `Sherpa model ${modelId} is not downloaded in the app sandbox at ${model.sherpa.modelDir}`,
+            )
+        }
+        onStatus?.(`Using downloaded Sherpa model at ${status.localPath}`)
+        return status
+    }
+
     const whisperFilePath = await getWhisperModelFilePath(modelId)
     const existing = await FileSystem.getInfoAsync(whisperFilePath)
     if (!existing.exists) {
@@ -372,6 +425,38 @@ export async function createMoonshineBenchmarkTranscriber(
     return { config, transcriber }
 }
 
+export async function getSherpaBenchmarkConfig(
+    modelId: string,
+    onStatus?: (message: string) => void,
+): Promise<AsrModelConfig> {
+    const model = getAsrBenchmarkModel(modelId)
+    if (!model?.sherpa) {
+        throw new Error(`Model ${modelId} is not a Sherpa benchmark model`)
+    }
+
+    const prepared = await prepareBenchmarkModel(modelId, onStatus)
+    if (!prepared.localPath) {
+        throw new Error(`Sherpa model ${modelId} is not ready`)
+    }
+
+    return {
+        ...model.sherpa.config,
+        modelDir: prepared.localPath,
+    }
+}
+
+export async function initializeSherpaBenchmarkModel(
+    modelId: string,
+    onStatus?: (message: string) => void,
+): Promise<void> {
+    const config = await getSherpaBenchmarkConfig(modelId, onStatus)
+    await SherpaASR.release().catch(() => undefined)
+    const result = await SherpaASR.initialize(config)
+    if (!result.success) {
+        throw new Error(result.error ?? `Sherpa ASR init failed for ${modelId}`)
+    }
+}
+
 export async function initializeWhisperBenchmarkModel(
     modelId: string,
     onStatus?: (message: string) => void,
@@ -400,6 +485,10 @@ export async function runBenchmarkFile(
         return transcribeMoonshineFile(modelId, audioUri, onStatus)
     }
 
+    if (model.engine === 'sherpa') {
+        return transcribeSherpaFile(modelId, audioUri, onStatus)
+    }
+
     const initStartedAt = Date.now()
     const context = await initializeWhisperBenchmarkModel(modelId, onStatus)
     const initMs = Date.now() - initStartedAt
@@ -414,6 +503,79 @@ export async function runBenchmarkFile(
         initMs,
         recognizeMs,
         transcript: String(result?.result || '').trim(),
+    }
+}
+
+export async function transcribeSherpaFile(
+    modelId: string,
+    audioUri: string,
+    onStatus?: (message: string) => void,
+): Promise<BenchmarkFileRunResult> {
+    const model = getAsrBenchmarkModel(modelId)
+    if (!model?.sherpa) {
+        throw new Error(`Model ${modelId} is not a Sherpa benchmark model`)
+    }
+
+    const initStartedAt = Date.now()
+    await initializeSherpaBenchmarkModel(modelId, onStatus)
+    const initMs = Date.now() - initStartedAt
+    try {
+        const recognizeStartedAt = Date.now()
+        const segmentDurationMs = model.sherpa.segmentDurationMs
+        if (segmentDurationMs && segmentDurationMs > 0) {
+            const wav = await readMonoPcm16Wav(audioUri)
+            const session = new SegmentedOfflineAsrSession({
+                sampleRate: wav.sampleRate,
+                segmentDurationMs,
+                asr: SherpaASR,
+                afterSegment: model.sherpa.releaseBetweenSegments
+                    ? async (segment) => {
+                          onStatus?.(`Resetting Sherpa after segment ${segment.segmentIndex}...`)
+                          await initializeSherpaBenchmarkModel(modelId, onStatus)
+                      }
+                    : undefined,
+                onEvent: (event) => {
+                    if (event.type === 'segment_started') {
+                        onStatus?.(
+                            `Recognizing Sherpa segment ${event.segmentIndex} (${Math.round(
+                                event.startMs,
+                            )}-${Math.round(event.endMs)}ms)...`,
+                        )
+                    }
+                },
+            })
+            try {
+                await session.acceptChunk({
+                    samples: wav.samples,
+                    isFinal: true,
+                })
+                const state = session.getState()
+                const recognizeMs = Date.now() - recognizeStartedAt
+                return {
+                    initMs,
+                    recognizeMs,
+                    segmentCount: state.segmentCount,
+                    segments: state.segments,
+                    transcript: state.transcript.trim(),
+                }
+            } finally {
+                session.release()
+            }
+        }
+
+        const result = await SherpaASR.recognizeFromFile(audioUri)
+        const recognizeMs = Date.now() - recognizeStartedAt
+        if (!result.success) {
+            throw new Error(result.error ?? `Sherpa recognition failed for ${modelId}`)
+        }
+
+        return {
+            initMs,
+            recognizeMs,
+            transcript: String(result.text || '').trim(),
+        }
+    } finally {
+        await SherpaASR.release().catch(() => undefined)
     }
 }
 
@@ -505,6 +667,10 @@ export async function runBenchmarkSimulatedLive(
     const model = getAsrBenchmarkModel(modelId)
     if (!model) {
         throw new Error(`Unknown benchmark model ${modelId}`)
+    }
+
+    if (model.engine === 'sherpa') {
+        throw new Error(`Model ${modelId} is offline-only and does not support simulated live`)
     }
 
     return model.engine === 'moonshine'

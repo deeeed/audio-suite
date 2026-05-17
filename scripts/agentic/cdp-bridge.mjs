@@ -839,9 +839,19 @@ const COMMANDS = {
   async 'press-test-id'(client, args, { deviceName } = {}) {
     const testId = args[0];
     if (!testId) {
-      throw new Error('Usage: press-test-id <testId>');
+      throw new Error('Usage: press-test-id <testId> [--value true|false]');
     }
-    const expr = `globalThis.__AGENTIC__?.pressTestId(${JSON.stringify(testId)})`;
+    let targetValue;
+    if (args[1] === '--value') {
+      if (!['true', 'false'].includes(args[2])) {
+        throw new Error('Usage: press-test-id <testId> [--value true|false]');
+      }
+      targetValue = args[2] === 'true';
+    }
+    const expr =
+      targetValue === undefined
+        ? `globalThis.__AGENTIC__?.pressTestId(${JSON.stringify(testId)})`
+        : `globalThis.__AGENTIC__?.pressTestId(${JSON.stringify(testId)}, ${JSON.stringify(targetValue)})`;
     const result = await cdpEval(client, expr);
     return { ...result, testId, deviceName };
   },
@@ -1323,7 +1333,8 @@ Commands:
   eval-ref --list                    List named eval refs for the current app
   can-go-back                        Check if navigation can go back
   go-back                            Navigate back
-  press-test-id <testId>             Press a component by testID (walks React fiber tree)
+  press-test-id <testId> [--value true|false]
+                                      Press a component by testID, or set a switch value explicitly
   set-input <testId> <value>         Set a text input by testID via the agentic bridge
   set-step-hud <json-step>           Publish the current recipe step to the in-app HUD overlay
   clear-step-hud                     Clear the in-app HUD overlay

@@ -6,6 +6,7 @@ import { baseLogger } from '../config'
 import {
     ASR_BENCHMARK_MODELS,
     ASR_BENCHMARK_SAMPLES,
+    type AsrBenchmarkEngine,
     type AsrBenchmarkMode,
     type AsrBenchmarkSample,
 } from '../utils/asrBenchmarkModels'
@@ -22,7 +23,7 @@ const logger = baseLogger.extend('AsrBenchmark')
 export interface AsrBenchmarkResult {
     commitCount?: number
     createdAt: number
-    engine: 'moonshine' | 'whisper'
+    engine: AsrBenchmarkEngine
     error?: string
     firstCommitMs?: number
     firstPartialMs?: number
@@ -35,6 +36,7 @@ export interface AsrBenchmarkResult {
     recognizeMs?: number
     runtime: 'streaming' | 'offline'
     sampleName?: string
+    segmentCount?: number
     sessionMs?: number
     lineCount?: number
     transcript: string
@@ -231,6 +233,7 @@ export function useAsrBenchmark() {
                 recognizeMs: result.recognizeMs,
                 runtime: selectedModel.engine === 'moonshine' ? 'streaming' : 'offline',
                 sampleName: selectedSample.name,
+                segmentCount: result.segmentCount,
                 sessionMs: nowMs() - startedAt,
                 transcript: result.transcript,
             })
@@ -285,6 +288,7 @@ export function useAsrBenchmark() {
                         recognizeMs: result.recognizeMs,
                         runtime: model.engine === 'moonshine' ? 'streaming' : 'offline',
                         sampleName: selectedSample.name,
+                        segmentCount: result.segmentCount,
                         sessionMs: nowMs() - startedAt,
                         transcript: result.transcript,
                     })

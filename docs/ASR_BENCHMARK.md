@@ -95,3 +95,25 @@ Translation remains a reference track because:
 - the current practical live path in Sherpa for RN is streaming ASR, not true streaming translation
 - the included local sample assets are English-only
 - Canary is useful for offline translation feasibility, not as a drop-in replacement for Google Recorder style live UX
+
+## Audio Playground EchoBridge Replay Snapshot
+
+Audio Playground now includes the `moonshine-sherpa-echobridge-perps-5m` direct replay preset. It stages the same 5-minute EchoBridge meeting fixture into the app sandbox, scores against the EchoBridge WhisperService `medium.en` backend reference, and runs Sherpa Qwen3-ASR as 30-second offline segments to avoid retained native heap.
+
+The Sherpa offline path uses the reusable `SegmentedOfflineAsrSession` JS helper from `@siteed/sherpa-onnx.rn`. It does not require a new native API: bounded PCM windows are submitted through `ASR.recognizeFromSamples`, segment/progress events are emitted, and Android can release/reinitialize the Sherpa ASR runtime between windows. The direct WAV benchmark still loads the 5-minute WAV into JS memory first for scoring parity; use `/long-audio-validation` for the progressive decoder path that proves compressed long audio can be decoded and transcribed window-by-window.
+
+Measured on Pixel 6a (`Pixel 6a - 16 - API 36`):
+
+| Model | Mode | WER vs EchoBridge | CER vs EchoBridge | Runtime/session | Notes |
+| --- | --- | ---: | ---: | ---: | --- |
+| Sherpa Whisper Medium INT8 | offline segmented | 19.5% | 16.3% | 475.0 s | 10 × 30 s segments; closest successful on-device Whisper-vs-EchoBridge parity row in this run |
+| Sherpa Whisper Small | offline segmented | 29.3% | 22.7% | 229.2 s | 10 × 30 s segments; useful Whisper baseline, slower than Qwen3 and slightly lower quality here |
+| Sherpa Qwen3-ASR 0.6B INT8 direct replay | offline segmented | 28.1% | 22.8% | 207.4 s | 10 × 30 s segments; best validated on-device text-quality candidate; not live-streaming |
+| Moonshine Medium Streaming | offline/file | 38.0% | 28.2% | 183.9 s | live-capable; quality below Qwen3 |
+| Moonshine Small Streaming | offline/file | 45.8% | 35.7% | 95.2 s | faster fallback |
+
+Whisper parity note: the EchoBridge reference transcript is produced by a server-side Whisper `medium.en` pipeline, so Sherpa Whisper Medium is a runtime/parity stress check rather than an independent human-labelled accuracy target. In this Pixel 6a run the INT8 Sherpa Whisper Medium row completed; the FP32 Sherpa Whisper Medium row was staged but did not produce a completed direct benchmark report before the dev target was lost, so it is kept behind the opt-in `sherpa-whisper-fp32-echobridge-perps-5m` preset and is not a recommended mobile default yet.
+
+Additional streaming-decode smoke on the same Pixel 6a used `/long-audio-validation` with `streamAudioData` + `SegmentedOfflineAsrSession` over the first 60 seconds of the staged fixture. It completed successfully with 241 decoder chunks, 2 Sherpa offline ASR segments, 60.0 s processed audio, and 44.5 s wall time. This validates the compressed/decoded-stream orchestration path separately from the direct WAV benchmark.
+
+Quantization note: the official k2-fsa Qwen3-ASR model-zoo artifact available for this run is INT8 only. Whisper Medium provides paired FP32/INT8 ONNX files, and the INT8 row completed on Pixel 6a. A true Whisper FP32-vs-INT8 quality/runtime comparison still needs a completed FP32 mobile run or a higher-memory device profile.

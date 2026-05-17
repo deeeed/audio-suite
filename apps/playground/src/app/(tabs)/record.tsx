@@ -50,6 +50,8 @@ import { useUnifiedTranscription } from '../../hooks/useUnifiedTranscription'
 import { storeAudioFile } from '../../utils/indexedDB'
 import { isWeb } from '../../utils/utils'
 import { useSileroVAD } from '../../hooks/useSileroVAD'
+import { useMoonshineSherpaLiveDiarization } from '../../hooks/useMoonshineSherpaLiveDiarization'
+import { setAgenticPageState } from '../../agentic-bridge'
 
 import type { TranscriptionModeSettings } from '../../component/TranscriptionModeConfig'
 
@@ -59,6 +61,16 @@ const MAX_AUDIO_BUFFER_LENGTH = 48000 * 5 // 5 seconds of audio at 48kHz
 
 const logger = baseLogger.extend('RecordScreen')
 const DEFAULT_BITRATE = Platform.OS === 'ios' ? 32000 : 24000
+
+function formatMs(value?: number | null): string {
+    if (value == null) return 'n/a'
+    return `${Math.round(value)} ms`
+}
+
+function averageMs(totalMs: number, count: number): string {
+    if (count <= 0) return 'n/a'
+    return `${Math.round(totalMs / count)} ms`
+}
 
 const baseRecordingConfig: RecordingConfig = {
     interval: CHUNK_DURATION_MS,
@@ -180,6 +192,7 @@ export default function RecordScreen() {
     const [streamConfig, setStreamConfig] =
         useState<StartRecordingResult | null>(null)
     const [enableLiveTranscription, setEnableLiveTranscription] = useState(false)
+    const [enableMoonshineSherpaLive, setEnableMoonshineSherpaLive] = useState(false)
     const [enableVAD, setEnableVAD] = useState(true)
     const [vadResult, setVadResult] = useState<{ probability: number; isSpeech: boolean } | null>(null)
     const [startRecordingConfig, setStartRecordingConfig] =
@@ -271,6 +284,8 @@ export default function RecordScreen() {
     const liveMelData = useLiveMelSpectrogram(analysisData)
 
     const transcriptionContext = useTranscription()
+    const moonshineSherpaLive = useMoonshineSherpaLiveDiarization({ strategy: 'small-only' })
+    const moonshineSherpaLiveActiveRef = useRef(false)
 
     const showPermissionError = useCallback((permission: string) => {
         logger.error(`${permission} permission not granted`)
@@ -368,8 +383,9 @@ export default function RecordScreen() {
                             processAudioSegmentRef.current(data, sr)
                                 .then((result) => {
                                     if (result) setVadResult(result)
+                                    return undefined
                                 })
-                                .catch(() => {/* handled in hook */})
+                                .catch(() => undefined)
                         }
                     }
 
@@ -438,6 +454,60 @@ export default function RecordScreen() {
     useEffect(() => { enableVADRef.current = enableVAD }, [enableVAD])
     useEffect(() => { processAudioSegmentRef.current = vadProcessAudioSegment }, [vadProcessAudioSegment])
     useEffect(() => { sampleRateRef.current = startRecordingConfig.sampleRate ?? 16000 }, [startRecordingConfig.sampleRate])
+
+    useEffect(() => {
+        setAgenticPageState({
+            route: '/record',
+            advancedMode,
+            hasRecordingResult: result != null,
+            isRecordScreenProcessing: processing,
+            isRecordScreenStopping: stopping,
+            enableMoonshineSherpaLive,
+            isMoonshineSherpaRecording:
+                enableMoonshineSherpaLive && (isRecording || moonshineSherpaLive.isRecording),
+            moonshineSherpaLiveModelDownloaded: moonshineSherpaLive.smallModelStatus.downloaded,
+            moonshineSherpaSherpaReady: moonshineSherpaLive.isSherpaReady,
+            moonshineSherpaMoonshineStats: moonshineSherpaLive.moonshineStats,
+            moonshineSherpaSherpaStats: moonshineSherpaLive.sherpaStats,
+            moonshineSherpaSpeakerEventCounts: moonshineSherpaLive.speakerEventCounts,
+            moonshineSherpaTurnCount: moonshineSherpaLive.sherpaTurns.length,
+            moonshineSherpaFinalTurnCount:
+                moonshineSherpaLive.speakerEventCounts.turn_final ?? 0,
+            moonshineSherpaAttributedCommittedLineCount:
+                moonshineSherpaLive.attributedCommittedLines.length,
+            moonshineSherpaAttributedInterimLineCount:
+                moonshineSherpaLive.attributedInterimLines.length,
+            moonshineSherpaLiveCommittedLineCount:
+                moonshineSherpaLive.liveCommittedLines.length,
+            moonshineSherpaLiveInterimLineCount:
+                moonshineSherpaLive.liveInterimLines.length,
+            moonshineSherpaFinalTranscript:
+                moonshineSherpaLive.finalTranscript || null,
+            moonshineSherpaError:
+                moonshineSherpaLive.error || moonshineSherpaLive.sherpaError || null,
+        })
+    }, [
+        advancedMode,
+        result,
+        processing,
+        stopping,
+        enableMoonshineSherpaLive,
+        isRecording,
+        moonshineSherpaLive.attributedCommittedLines.length,
+        moonshineSherpaLive.attributedInterimLines.length,
+        moonshineSherpaLive.error,
+        moonshineSherpaLive.finalTranscript,
+        moonshineSherpaLive.isRecording,
+        moonshineSherpaLive.isSherpaReady,
+        moonshineSherpaLive.liveCommittedLines.length,
+        moonshineSherpaLive.liveInterimLines.length,
+        moonshineSherpaLive.moonshineStats,
+        moonshineSherpaLive.sherpaError,
+        moonshineSherpaLive.sherpaStats,
+        moonshineSherpaLive.sherpaTurns.length,
+        moonshineSherpaLive.smallModelStatus.downloaded,
+        moonshineSherpaLive.speakerEventCounts,
+    ])
 
     // Define our transcription settings state
     const [transcriptionSettings, setTranscriptionSettings] = useState<TranscriptionModeSettings>({
@@ -618,6 +688,61 @@ export default function RecordScreen() {
     const handleStart = useCallback(async () => {
         try {
             setProcessing(true)
+
+            if (enableMoonshineSherpaLive) {
+                if (Platform.OS === 'web') {
+                    show({
+                        type: 'error',
+                        message: 'Moonshine + Sherpa live mode is available on native devices only.',
+                        duration: 3000,
+                    })
+                    return
+                }
+
+                if (startRecordingConfig.sampleRate !== WhisperSampleRate) {
+                    setStartRecordingConfig((prev) => ({ ...prev, sampleRate: WhisperSampleRate }))
+                    show({
+                        type: 'info',
+                        message: 'Sample rate set to 16kHz for Moonshine + Sherpa live mode',
+                        duration: 2000,
+                    })
+                }
+
+                webAudioChunks.current = new Float32Array(0)
+                currentSize.current = 0
+                setLiveWebAudio(null)
+                setTranscripts([])
+                setActiveTranscript(null)
+                setResult(null)
+
+                const finalConfig: RecordingConfig = {
+                    ...startRecordingConfig,
+                    sampleRate: WhisperSampleRate,
+                    streamFormat: 'float32',
+                    encoding: 'pcm_32bit',
+                    outputDirectory: !isWeb ? defaultDirectory : undefined,
+                    onAudioStream: async (event: AudioDataEvent): Promise<void> => {
+                        await onAudioDataRef.current(event)
+                        await moonshineSherpaLive.processAudioEvent(event)
+                    },
+                }
+
+                await moonshineSherpaLive.startSession({ externalAudio: true })
+                try {
+                    const liveStreamConfig = await startRecording(finalConfig)
+                    moonshineSherpaLiveActiveRef.current = true
+                    setStreamConfig(liveStreamConfig)
+                } catch (recordingError) {
+                    await moonshineSherpaLive.stopSession({ stopRecorder: false })
+                    throw recordingError
+                }
+                show({
+                    type: 'success',
+                    message: 'Moonshine + Sherpa live transcription active',
+                    duration: 2000,
+                })
+                return
+            }
             
             // If we haven't prepared yet, we need to check permissions
             if (!isRecordingPrepared) {
@@ -867,7 +992,9 @@ export default function RecordScreen() {
         stopProgressiveBatch,
         startProgressiveBatch,
         startRealtimeTranscription,
-        transcriptionContext
+        transcriptionContext,
+        enableMoonshineSherpaLive,
+        moonshineSherpaLive,
     ])
 
     const handleStopRecording = useCallback(async () => {
@@ -875,6 +1002,25 @@ export default function RecordScreen() {
             setStopping(true)
             setProcessing(true)
             setIsRecordingPrepared(false) // Reset prepared state when stopping
+
+            if (moonshineSherpaLiveActiveRef.current || enableMoonshineSherpaLive) {
+                await moonshineSherpaLive.stopSession({ stopRecorder: false })
+                if (isRecording) {
+                    const recording = await stopRecording()
+                    setResult(recording)
+                }
+                // This dev validation mode intentionally keeps the finalized
+                // transcript/speaker turns inline instead of navigating through
+                // the normal persisted-file post-recording flow.
+                moonshineSherpaLiveActiveRef.current = false
+                preparedConfigRef.current = null
+                show({
+                    type: 'success',
+                    message: 'Moonshine + Sherpa live transcript finalized',
+                    duration: 2000,
+                })
+                return
+            }
 
             // Stop active transcription
             if (isRealtimeTranscribing) {
@@ -959,7 +1105,113 @@ export default function RecordScreen() {
             setTranscripts([])
             setActiveTranscript(null)
         }
-    }, [router, transcripts, refreshFiles, stopRecording, isRealtimeTranscribing, stopRealtimeTranscription, stopProgressiveBatch])
+    }, [
+        router,
+        transcripts,
+        refreshFiles,
+        stopRecording,
+        isRealtimeTranscribing,
+        stopRealtimeTranscription,
+        stopProgressiveBatch,
+        isRecording,
+        enableMoonshineSherpaLive,
+        moonshineSherpaLive,
+        show,
+    ])
+
+    const renderMoonshineSherpaLiveOutput = () => {
+        if (!enableMoonshineSherpaLive) return null
+
+        const committedLines = moonshineSherpaLive.attributedCommittedLines
+        const interimLines = moonshineSherpaLive.attributedInterimLines
+        const visibleLines = [...committedLines.slice(-4), ...interimLines.slice(-2)]
+
+        return (
+            <View
+                testID="record-moonshine-sherpa-live-output"
+                style={{
+                    padding: 16,
+                    backgroundColor: colors.surfaceVariant,
+                    borderRadius: 8,
+                    marginVertical: 10,
+                    gap: 10,
+                }}
+            >
+                <Text variant="titleSmall">Moonshine + Sherpa Live</Text>
+                <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+                    {moonshineSherpaLive.sherpaStatusMessage ||
+                        (moonshineSherpaLive.isSherpaReady
+                            ? 'Sherpa speaker turns ready.'
+                            : 'Sherpa speaker turns will initialize on start.')}
+                </Text>
+                {moonshineSherpaLive.error ? (
+                    <Text variant="bodySmall" style={{ color: colors.error }}>
+                        Moonshine error: {moonshineSherpaLive.error}
+                    </Text>
+                ) : null}
+                {moonshineSherpaLive.sherpaError ? (
+                    <Text variant="bodySmall" style={{ color: colors.error }}>
+                        Sherpa error: {moonshineSherpaLive.sherpaError}
+                    </Text>
+                ) : null}
+
+                <View testID="record-moonshine-sherpa-metrics" style={{ gap: 4 }}>
+                    <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>
+                        Moonshine avg {averageMs(
+                            moonshineSherpaLive.moonshineStats.totalProcessingMs,
+                            moonshineSherpaLive.moonshineStats.chunks
+                        )} • chunks {moonshineSherpaLive.moonshineStats.chunks} • max queue{' '}
+                        {moonshineSherpaLive.moonshineStats.maxQueueDepth}
+                    </Text>
+                    <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>
+                        Sherpa avg {averageMs(
+                            moonshineSherpaLive.sherpaStats.totalProcessingMs,
+                            moonshineSherpaLive.sherpaStats.chunks
+                        )} • turns {moonshineSherpaLive.sherpaTurns.length} • max queue{' '}
+                        {moonshineSherpaLive.sherpaStats.maxQueueDepth} • drops{' '}
+                        {moonshineSherpaLive.sherpaStats.droppedChunks}
+                    </Text>
+                    <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>
+                        Events: start {moonshineSherpaLive.speakerEventCounts.speech_start ?? 0} • final{' '}
+                        {moonshineSherpaLive.speakerEventCounts.turn_final ?? 0} • resolved{' '}
+                        {moonshineSherpaLive.speakerEventCounts.speaker_resolved ?? 0}
+                    </Text>
+                </View>
+
+                <View testID="record-moonshine-sherpa-attributed-transcript" style={{ gap: 6 }}>
+                    <Text variant="labelMedium">Attributed transcript</Text>
+                    {visibleLines.length > 0 ? (
+                        visibleLines.map((line) => (
+                            <View
+                                key={`${line.lineId}-${line.completedAtMs ?? line.startedAtMs ?? 0}`}
+                                style={{
+                                    padding: 10,
+                                    borderRadius: 8,
+                                    backgroundColor: colors.surface,
+                                }}
+                            >
+                                <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>
+                                    {typeof line.speakerIndex === 'number'
+                                        ? `Speaker ${line.speakerIndex + 1}`
+                                        : line.speakerId
+                                          ? `Speaker ${line.speakerId}`
+                                          : 'Unattributed'}
+                                    {line.startedAtMs != null ? ` • ${formatMs(line.startedAtMs)}` : ''}
+                                </Text>
+                                <Text variant="bodyMedium">{line.text || 'Listening...'}</Text>
+                            </View>
+                        ))
+                    ) : (
+                        <Text variant="bodyMedium">
+                            {moonshineSherpaLive.finalTranscript ||
+                                moonshineSherpaLive.liveInterimText ||
+                                'Listening for speech...'}
+                        </Text>
+                    )}
+                </View>
+            </View>
+        )
+    }
 
     const renderRecording = () => (
         <View style={{ gap: 10, display: 'flex' }}>
@@ -1054,8 +1306,10 @@ export default function RecordScreen() {
                 </View>
             )}
 
+            {renderMoonshineSherpaLiveOutput()}
+
             {/* Display transcription text */}
-            {enableLiveTranscription && (
+            {enableLiveTranscription && !enableMoonshineSherpaLive && (
                 <View
 style={{
                     padding: 16,
@@ -1095,6 +1349,7 @@ style={{
             <Button
                 testID="pause-recording-button"
                 mode="contained"
+                disabled={enableMoonshineSherpaLive}
                 onPress={() => {
                     pauseRecording()
                     if (isProgressiveBatchRunningRef.current || isRealtimeTranscribing) {
@@ -1102,7 +1357,7 @@ style={{
                     }
                 }}
             >
-                Pause Recording
+                {enableMoonshineSherpaLive ? 'Pause Disabled in Live Diarization' : 'Pause Recording'}
             </Button>
             <Button
                 testID="stop-recording-button"
@@ -1196,7 +1451,9 @@ style={{
             />
 
             {/* Display transcription text */}
-            {enableLiveTranscription && (
+            {renderMoonshineSherpaLiveOutput()}
+
+            {enableLiveTranscription && !enableMoonshineSherpaLive && (
                 <View
 style={{
                     padding: 16,
@@ -1269,6 +1526,8 @@ style={{
 
     const renderStopped = () => (
         <View style={{ gap: 16 }} testID="stopped-recording-view">
+            {renderMoonshineSherpaLiveOutput()}
+
             {/* Essential Controls Card */}
             <View
 style={{ 
@@ -1347,10 +1606,15 @@ style={{
                 {/* Live Transcription Switch - Always visible */}
                 <View style={{ marginTop: 16 }}>
                     <LabelSwitch
+                        testID="record-enable-live-transcription"
                         label="Enable Live Transcription"
                         value={enableLiveTranscription}
                         onValueChange={(enabled: boolean) => {
                             setEnableLiveTranscription(enabled)
+                            if (enabled) {
+                                setEnableMoonshineSherpaLive(false)
+                                moonshineSherpaLiveActiveRef.current = false
+                            }
                             if (enabled) {
                                 if (startRecordingConfig.sampleRate !== WhisperSampleRate) {
                                     setStartRecordingConfig((prev) => ({ ...prev, sampleRate: WhisperSampleRate }))
@@ -1394,6 +1658,7 @@ style={{
                 }}
                 >
                     <LabelSwitch 
+                        testID="record-show-advanced-settings"
                         label="Show Advanced Settings"
                         value={advancedMode} 
                         onValueChange={setAdvancedMode}
@@ -1426,8 +1691,49 @@ style={{
                         currentDevice={currentDevice}
                         hideFilenameInput
                     />
+
+                    <View
+                        style={{
+                            marginTop: 16,
+                            borderTopWidth: 1,
+                            borderTopColor: colors.outlineVariant,
+                            paddingTop: 16,
+                        }}
+                    >
+                        <Text variant="titleSmall" style={{ marginBottom: 8 }}>
+                            Live Moonshine + Speaker Turns
+                        </Text>
+                        <LabelSwitch
+                            testID="record-enable-moonshine-sherpa-live"
+                            label="Use Moonshine + Sherpa live transcription"
+                            value={enableMoonshineSherpaLive}
+                            onValueChange={(enabled: boolean) => {
+                                setEnableMoonshineSherpaLive(enabled)
+                                if (enabled) {
+                                    setEnableLiveTranscription(false)
+                                    if (startRecordingConfig.sampleRate !== WhisperSampleRate) {
+                                        setStartRecordingConfig((prev) => ({
+                                            ...prev,
+                                            sampleRate: WhisperSampleRate,
+                                        }))
+                                        show({
+                                            type: 'info',
+                                            message: 'Sample rate set to 16kHz for Moonshine + Sherpa live mode',
+                                            duration: 2000,
+                                        })
+                                    }
+                                } else {
+                                    moonshineSherpaLive.clear()
+                                    moonshineSherpaLiveActiveRef.current = false
+                                }
+                            }}
+                        />
+                        <Text variant="bodySmall" style={{ marginTop: 6, color: colors.onSurfaceVariant }}>
+                            Runs Moonshine.rn live ASR and Sherpa ONNX speaker-turn detection from the same recorder stream. Native only.
+                        </Text>
+                    </View>
                     
-                    {enableLiveTranscription && (
+                    {enableLiveTranscription && !enableMoonshineSherpaLive && (
                         <View
 style={{ 
                             marginTop: 16, 
@@ -1441,6 +1747,10 @@ style={{
                                 enabled={enableLiveTranscription}
                                 onEnabledChange={(enabled) => {
                                     setEnableLiveTranscription(enabled)
+                                    if (enabled) {
+                                        setEnableMoonshineSherpaLive(false)
+                                        moonshineSherpaLiveActiveRef.current = false
+                                    }
                                     
                                     // Preload the model if enabled
                                     if (enabled && !ready && !unifiedIsModelLoading && validSRTranscription) {
@@ -1558,7 +1868,7 @@ style={{
         )
     }
 
-    if (processing) {
+    if (processing && !isRecording && !isPaused) {
         return <ActivityIndicator size="large" />
     }
 
@@ -1585,6 +1895,12 @@ style={{
                 </View>
                 {result && (
                     <View style={{ gap: 10, paddingBottom: 100 }} testID="recording-result-view">
+                        {enableMoonshineSherpaLive && (
+                            <View testID="record-moonshine-sherpa-result-output">
+                                <Text variant="titleMedium">Live transcript validation result</Text>
+                                {renderMoonshineSherpaLiveOutput()}
+                            </View>
+                        )}
                         <AudioRecordingView
                             recording={result}
                             onDelete={() => handleDelete(result)}
