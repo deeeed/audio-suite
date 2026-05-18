@@ -655,7 +655,6 @@ async function ensureDeviceClip(clip) {
 async function restartDevClient() {
     ensureDevClientOnline()
     const metroHost = getMetroHost(SERIAL)
-    adb(['reverse', `tcp:${METRO_PORT}`, `tcp:${METRO_PORT}`])
     adb(['shell', 'am', 'force-stop', PKG])
     adb([
         'shell',

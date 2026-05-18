@@ -29,6 +29,7 @@ const DEV_CLIENT_SCHEME =
   (APP_VARIANT === 'production'
     ? `exp+${SCHEME_BASE}`
     : `exp+${SCHEME_BASE}-${APP_VARIANT}`);
+const METRO_PORT = Number(process.env.WATCHER_PORT || 7365);
 const RELATIVE_DEVICE_CLIP = 'benchmarks/record-attributed-validation.wav';
 const DEVICE_CLIP = `/data/user/0/${PKG}/files/${RELATIVE_DEVICE_CLIP}`;
 const HOST_CLIP = process.env.VALIDATION_HOST_CLIP || `/tmp/${MEETING_ID}-${START_S}-${END_S}-record-attributed.wav`;
@@ -248,7 +249,6 @@ async function waitForBridgeTarget(timeoutMs = 120000) {
 
 async function restartDevClient() {
   const metroHost = getMetroHost(SERIAL);
-  adb(['reverse', 'tcp:7365', 'tcp:7365']);
   adb(['shell', 'am', 'force-stop', PKG]);
   adb([
     'shell',
@@ -257,7 +257,7 @@ async function restartDevClient() {
     '-a',
     'android.intent.action.VIEW',
     '-d',
-    `${DEV_CLIENT_SCHEME}://expo-development-client/?url=${encodeURIComponent(`http://${metroHost}:7365`)}`,
+    `${DEV_CLIENT_SCHEME}://expo-development-client/?url=${encodeURIComponent(`http://${metroHost}:${METRO_PORT}`)}`,
     PKG,
   ]);
   await waitForBridgeTarget();

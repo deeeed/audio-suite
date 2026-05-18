@@ -24,6 +24,7 @@ const DEV_CLIENT_SCHEME =
     ? `exp+${SCHEME_BASE}`
     : `exp+${SCHEME_BASE}-${APP_VARIANT}`);
 const ROUTE = '/moonshine-live';
+const METRO_PORT = Number(process.env.WATCHER_PORT || 7365);
 const TIMEOUT_MS = 10 * 60 * 1000;
 const STATE_TIMEOUT_MS = 90 * 1000;
 const POLL_INTERVAL_MS = 1000;
@@ -118,7 +119,6 @@ async function waitForBridgeTarget(timeoutMs = STATE_TIMEOUT_MS) {
 
 async function restartDevClient() {
   const metroHost = getMetroHost(SERIAL);
-  adb(['reverse', 'tcp:7365', 'tcp:7365']);
   adb(['shell', 'am', 'force-stop', PKG]);
   adb([
     'shell',
@@ -127,7 +127,7 @@ async function restartDevClient() {
     '-a',
     'android.intent.action.VIEW',
     '-d',
-    `${DEV_CLIENT_SCHEME}://expo-development-client/?url=${encodeURIComponent(`http://${metroHost}:7365`)}`,
+    `${DEV_CLIENT_SCHEME}://expo-development-client/?url=${encodeURIComponent(`http://${metroHost}:${METRO_PORT}`)}`,
     PKG,
   ]);
   await sleep(5000);
