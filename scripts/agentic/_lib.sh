@@ -75,14 +75,26 @@ resolve_agentic_dev_host() {
     return 0
   fi
 
-  local lan_ip
-  lan_ip=$(ifconfig | awk '/inet / && !/127\./ && !/169\.254\./ {print $2}' | grep -v '^::' | head -1)
-  if [ -n "$lan_ip" ]; then
-    printf '%s\n' "$lan_ip"
-    return 0
-  fi
+  local ips lan_ip
+  ips=$(ifconfig | awk '/inet / {print $2}' | grep -Ev '^(127\.|169\.254\.|172\.17\.)' || true)
+  for lan_ip in $ips; do
+    [[ "$lan_ip" == 192.168.* ]] && printf '%s\n' "$lan_ip" && return 0
+  done
+  for lan_ip in $ips; do
+    [[ "$lan_ip" == 10.* ]] && printf '%s\n' "$lan_ip" && return 0
+  done
+  for lan_ip in $ips; do
+    [[ "$lan_ip" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]] && printf '%s\n' "$lan_ip" && return 0
+  done
+  for lan_ip in $ips; do
+    [ -n "$lan_ip" ] && printf '%s\n' "$lan_ip" && return 0
+  done
 
-  printf 'localhost\n'
+  return 1
+}
+
+resolve_agentic_dev_host_or_localhost() {
+  resolve_agentic_dev_host || printf 'localhost\n'
 }
 
 # Helpers

@@ -74,7 +74,6 @@ function run(command, args, { cwd = REPO_ROOT, parseJson = false, maxBuffer = 50
   return stdout ? JSON.parse(stdout) : null;
 }
 
-
 function isMetroOnline() {
   try {
     run('curl', ['-sf', `http://localhost:${METRO_PORT}/status`], {

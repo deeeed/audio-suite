@@ -54,7 +54,6 @@ function run(command, args, { cwd = REPO_ROOT, parseJson = false, maxBuffer = 50
   return parseJson ? (stdout ? JSON.parse(stdout) : null) : stdout;
 }
 
-
 function isMetroOnline() {
   try {
     run('curl', ['-sf', `http://localhost:${METRO_PORT}/status`], {
@@ -291,7 +290,6 @@ async function main() {
     throw new Error(`Selected reference window has ${speakers.length} speaker(s); choose a multi-speaker AMI window`);
   }
 
-  run('yarn', ['android:device:launch'], { cwd: APP_ROOT, maxBuffer: 5 * 1024 * 1024 });
   await restartDevClient();
   const stagedSize = stageDeviceClip();
   const devices = await waitForBridgeTarget();
