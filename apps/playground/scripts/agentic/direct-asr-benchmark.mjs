@@ -31,6 +31,7 @@ const DEV_CLIENT_SCHEME =
     process.env.DEV_CLIENT_SCHEME ||
     (APP_VARIANT === 'production' ? `exp+${SCHEME_BASE}` : `exp+${SCHEME_BASE}-${APP_VARIANT}`)
 const ROUTE = '/asr-benchmark'
+const METRO_PORT = Number(process.env.WATCHER_PORT || 7365)
 const OFFLINE_TIMEOUT_MS = Number(process.env.BENCHMARK_OFFLINE_TIMEOUT_MS || 10 * 60 * 1000)
 const SIMULATED_TIMEOUT_MS = Number(process.env.BENCHMARK_SIMULATED_TIMEOUT_MS || 10 * 60 * 1000)
 const STATE_TIMEOUT_MS = 90 * 1000
@@ -502,6 +503,18 @@ function ensureHostSherpaModel(staging, modelId) {
     return MODEL_CACHE_DIR
 }
 
+function isMetroOnline() {
+    return tryRun('curl', ['-sf', `http://localhost:${METRO_PORT}/status`], {
+        cwd: APP_ROOT,
+        maxBuffer: 1024 * 1024,
+    }) != null
+}
+
+function ensureDevClientOnline() {
+    if (isMetroOnline()) return
+    run('yarn', ['android:device:launch'], { cwd: APP_ROOT, maxBuffer: 25 * 1024 * 1024 })
+}
+
 function bridge(args, parseJson = true) {
     const bridgeArgs = DEVICE ? ['--device', DEVICE, ...args] : args
     return run('node', [BRIDGE, ...bridgeArgs], { parseJson })
@@ -640,8 +653,9 @@ async function ensureDeviceClip(clip) {
 }
 
 async function restartDevClient() {
-    const metroHost = getMetroHost()
-    adb(['reverse', 'tcp:7365', 'tcp:7365'])
+    ensureDevClientOnline()
+    const metroHost = getMetroHost(SERIAL)
+    adb(['reverse', `tcp:${METRO_PORT}`, `tcp:${METRO_PORT}`])
     adb(['shell', 'am', 'force-stop', PKG])
     adb([
         'shell',
@@ -650,7 +664,7 @@ async function restartDevClient() {
         '-a',
         'android.intent.action.VIEW',
         '-d',
-        `${DEV_CLIENT_SCHEME}://expo-development-client/?url=http://${metroHost}:7365`,
+        `${DEV_CLIENT_SCHEME}://expo-development-client/?url=${encodeURIComponent(`http://${metroHost}:${METRO_PORT}`)}`,
         PKG,
     ])
     await sleep(5000)
@@ -1203,6 +1217,7 @@ async function main() {
         throw new Error('No clips selected. Check BENCHMARK_CLIPS.')
     }
 
+    ensureDevClientOnline()
     await ensureBenchmarkPage()
     for (const model of OFFLINE_MODELS) {
         await ensureSherpaBenchmarkModel(model)

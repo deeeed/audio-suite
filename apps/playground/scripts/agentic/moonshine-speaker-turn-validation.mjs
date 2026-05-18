@@ -117,7 +117,7 @@ async function waitForBridgeTarget(timeoutMs = STATE_TIMEOUT_MS) {
 }
 
 async function restartDevClient() {
-  const metroHost = getMetroHost();
+  const metroHost = getMetroHost(SERIAL);
   adb(['reverse', 'tcp:7365', 'tcp:7365']);
   adb(['shell', 'am', 'force-stop', PKG]);
   adb([
@@ -127,7 +127,7 @@ async function restartDevClient() {
     '-a',
     'android.intent.action.VIEW',
     '-d',
-    `${DEV_CLIENT_SCHEME}://expo-development-client/?url=http://${metroHost}:7365`,
+    `${DEV_CLIENT_SCHEME}://expo-development-client/?url=${encodeURIComponent(`http://${metroHost}:7365`)}`,
     PKG,
   ]);
   await sleep(5000);
