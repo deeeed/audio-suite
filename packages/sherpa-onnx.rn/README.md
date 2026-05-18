@@ -272,7 +272,7 @@ add the `libonnxruntime.so` `pickFirst` packaging rule. That rule only resolves
 duplicate files; it does not prove that Moonshine, Sherpa, and the selected
 ONNX Runtime binary are symbol-compatible.
 
-`@siteed/sherpa-onnx.rn@1.2.0` Android prebuilts import/export
+`@siteed/sherpa-onnx.rn@1.3.0` Android prebuilts import/export
 `OrtGetApiBase` with `VERS_1.24.3`. The default
 `@siteed/moonshine.rn@0.3.3` Maven artifact has been observed importing
 `OrtGetApiBase@VERS_1.23.0`, which is risky when both packages are shipped in

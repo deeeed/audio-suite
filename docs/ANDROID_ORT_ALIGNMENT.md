@@ -84,7 +84,7 @@ normally versioned, so its imported version should match the selected Sherpa
 
 ## Current package guidance
 
-For `@siteed/sherpa-onnx.rn@1.2.0`, Android prebuilts use ONNX Runtime
+For `@siteed/sherpa-onnx.rn@1.3.0`, Android prebuilts use ONNX Runtime
 `VERS_1.24.3`:
 
 ```text

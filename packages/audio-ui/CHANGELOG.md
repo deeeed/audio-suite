@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-05-18
+
+### Fixed
+- Keep `AudioTimeRangeSelector` controlled values, handle drags, and range drags clamped within the provided audio duration.
 
 ## [1.1.0] - 2026-05-10
 ### Changed
@@ -108,7 +112,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Feature: Seamless integration with @siteed/expo-audio-studio
 - Feature: Support for iOS, Android, and web platforms
 
-[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/audio-ui@1.1.0...HEAD
+[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/audio-ui@1.1.1...HEAD
+[1.1.1]: https://github.com/deeeed/audiolab/compare/@siteed/audio-ui@1.1.0...@siteed/audio-ui@1.1.1
 [1.1.0]: https://github.com/deeeed/audiolab/compare/@siteed/audio-ui@1.0.1...@siteed/audio-ui@1.1.0
 [1.0.1]: https://github.com/deeeed/audiolab/compare/@siteed/audio-ui@1.0.0...@siteed/audio-ui@1.0.1
 [1.0.0]: https://github.com/deeeed/audiolab/compare/@siteed/audio-ui@0.7.2...@siteed/audio-ui@1.0.0

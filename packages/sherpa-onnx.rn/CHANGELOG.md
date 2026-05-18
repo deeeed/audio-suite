@@ -7,12 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-05-18
+
 ### Added
+- Live speaker-turn and live attributed transcription session helpers for app-level streaming transcription plus speaker attribution workflows.
+- Segmented offline ASR session helper for memory-bounded long-file transcription with progress callbacks.
 - Long diarization primitives: native/web file-window diarization and speaker-embedding window APIs for memory-bounded app-level long-file diarization.
 
 ### Changed
 - Speaker diarization now defaults segmentation to full `model.onnx` for quality; `model.int8.onnx` remains available only when callers explicitly pass `segmentationModelFile`.
-
 
 ## [1.2.0] - 2026-05-06
 
@@ -152,7 +155,8 @@ First stable release — production-proven via the [Sherpa Voice](https://deeeed
 ## [0.1.0] - 2025-03-04
 - Initial development release
 
-[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/sherpa-onnx.rn@1.2.0...HEAD
+[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/sherpa-onnx.rn@1.3.0...HEAD
+[1.3.0]: https://github.com/deeeed/audiolab/compare/@siteed/sherpa-onnx.rn@1.2.0...@siteed/sherpa-onnx.rn@1.3.0
 [1.2.0]: https://github.com/deeeed/audiolab/compare/@siteed/sherpa-onnx.rn@1.1.2...@siteed/sherpa-onnx.rn@1.2.0
 [1.1.2]: https://github.com/deeeed/audiolab/compare/@siteed/sherpa-onnx.rn@1.1.1...@siteed/sherpa-onnx.rn@1.1.2
 [1.1.1]: https://github.com/deeeed/audiolab/compare/@siteed/sherpa-onnx.rn@1.1.0...@siteed/sherpa-onnx.rn@1.1.1
