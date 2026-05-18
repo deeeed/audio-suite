@@ -68,15 +68,14 @@ Reference source: EchoBridge server `WhisperService` with `medium.en`. These WER
 
 | Model                                                 | Mode              |   WER |   CER | First partial | First commit | Wall RTF | Processing RTF | Max backlog | Memory delta | Result                                                                     |
 | ----------------------------------------------------- | ----------------- | ----: | ----: | ------------: | -----------: | -------: | -------------: | ----------: | -----------: | -------------------------------------------------------------------------- |
-| Moonshine Medium Streaming, 600ms coalesced transport | simulated live    | 37.7% | 27.7% |         4.14s |        4.57s |    1.00× |          0.49× |        2.1s |     +100.5MB | Best Moonshine live-draft candidate; still too rough for final transcript  |
-| Moonshine Small Streaming, 600ms coalesced transport  | simulated live    | 47.6% | 35.5% |         4.00s |        4.52s |    1.00× |          0.31× |        0.1s |     +182.6MB | Lower-backlog fallback; long-form quality is poor                          |
+| Moonshine Medium Streaming, 600ms coalesced transport | simulated live    | 37.7% | 27.7% |         4.0s |        4.4s |    1.00× |          0.45× |        1.0s |     +252.8MB | Best Moonshine live-draft candidate; still too rough for final transcript  |
+| Moonshine Small Streaming, 600ms coalesced transport  | simulated live    | 47.6% | 35.5% |         4.0s |        4.6s |    1.00× |          0.33× |        0.3s |     +120.0MB | Lower-backlog fallback; long-form quality is poor                          |
 | Sherpa Qwen3-ASR 0.6B INT8                            | segmented offline | 28.1% | 22.8% |           n/a |          n/a |      n/a |            n/a |         n/a |          n/a | Practical non-Whisper final/delayed pass                                   |
 | Sherpa Whisper Medium INT8                            | segmented offline | 19.5% | 16.3% |           n/a |          n/a |      n/a |            n/a |         n/a |          n/a | Best completed EchoBridge/Whisper parity row, too slow for default live UX |
 
-Long Moonshine artifacts:
+Current practical matrix artifact:
 
-- `apps/playground/.agent/reports/direct-asr-benchmark-2026-05-17T15-17-03-834Z.md` — Moonshine Medium 5-minute replay
-- `apps/playground/.agent/reports/direct-asr-benchmark-2026-05-17T15-08-31-422Z.md` — Moonshine Small 5-minute replay
+- `apps/playground/.agent/reports/direct-asr-benchmark-2026-05-18T00-48-26-710Z.md` — full practical 5-minute Pixel 6a matrix after Android LAN Metro host fix
 
 Conclusion: Moonshine can now keep up on a Pixel 6a-class device after coalescing, but it does not deliver high-quality final meeting transcription. A Recorder-like UX should display Moonshine live draft text and speaker-turn hints, then replace/refine with segmented Sherpa Qwen3/Whisper and offline diarization.
 

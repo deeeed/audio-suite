@@ -127,13 +127,13 @@ The offline/file and simulated-live Moonshine rows come from separate passes wit
 
 | Mode                            | Model                      | WER vs EchoBridge | CER vs EchoBridge |   Init | Runtime | First partial | First commit | Commits |
 | ------------------------------- | -------------------------- | ----------------: | ----------------: | -----: | ------: | ------------: | -----------: | ------: |
-| Offline/file segmented          | Sherpa Whisper Medium INT8 |             19.5% |             16.3% | 13.8 s | 502.4 s |           n/a |          n/a |     n/a |
+| Offline/file segmented          | Sherpa Whisper Medium INT8 |             19.5% |             16.3% | 13.6 s | 500.0 s |           n/a |          n/a |     n/a |
 | Offline/file segmented          | Sherpa Whisper Small       |             29.3% |             22.7% |  7.8 s | 255.7 s |           n/a |          n/a |     n/a |
-| Offline/file segmented          | Sherpa Qwen3-ASR 0.6B INT8 |             28.1% |             22.8% | 11.3 s | 267.9 s |           n/a |          n/a |     n/a |
-| Offline/file                    | Moonshine Medium Streaming |             37.4% |             27.9% |  3.0 s | 212.4 s |           n/a |          n/a |     n/a |
-| Offline/file                    | Moonshine Small Streaming  |             47.3% |             36.7% |  1.0 s | 112.0 s |           n/a |          n/a |     n/a |
-| Simulated live, 600ms coalesced | Moonshine Medium Streaming |             37.7% |             27.7% |  2.4 s | 300.8 s |         4.1 s |        4.6 s |      90 |
-| Simulated live, 600ms coalesced | Moonshine Small Streaming  |             47.6% |             35.5% |  1.3 s | 300.8 s |         4.0 s |        4.5 s |      91 |
+| Offline/file segmented          | Sherpa Qwen3-ASR 0.6B INT8 |             28.1% |             22.8% | 11.6 s | 268.4 s |           n/a |          n/a |     n/a |
+| Offline/file                    | Moonshine Medium Streaming |             37.4% |             27.9% |  2.1 s | 200.4 s |           n/a |          n/a |     n/a |
+| Offline/file                    | Moonshine Small Streaming  |             47.3% |             36.7% |  0.8 s |  96.4 s |           n/a |          n/a |     n/a |
+| Simulated live, 600ms coalesced | Moonshine Medium Streaming |             37.7% |             27.7% |  1.3 s | 300.8 s |         4.0 s |        4.4 s |      90 |
+| Simulated live, 600ms coalesced | Moonshine Small Streaming  |             47.6% |             35.5% |  1.6 s | 300.8 s |         4.0 s |        4.6 s |      91 |
 
 Findings from this replay:
 

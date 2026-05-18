@@ -169,18 +169,18 @@ Measured on Pixel 6a (`Pixel 6a - 16 - API 36`):
 
 | Model                                    | Mode              | WER vs EchoBridge | CER vs EchoBridge | Runtime/session | Notes                                                                                                                     |
 | ---------------------------------------- | ----------------- | ----------------: | ----------------: | --------------: | ------------------------------------------------------------------------------------------------------------------------- |
-| Sherpa Whisper Medium INT8               | offline segmented |             19.5% |             16.3% |         502.4 s | 10 × 30 s segments; closest successful on-device Whisper-vs-EchoBridge parity row in this run                             |
+| Sherpa Whisper Medium INT8               | offline segmented |             19.5% |             16.3% |         500.0 s | 10 × 30 s segments; closest successful on-device Whisper-vs-EchoBridge parity row in this run                             |
 | Sherpa Whisper Small                     | offline segmented |             29.3% |             22.7% |         255.7 s | 10 × 30 s segments; useful manual/`sherpa-whisper-echobridge-perps-5m` baseline, not part of the default practical matrix |
-| Sherpa Qwen3-ASR 0.6B INT8 direct replay | offline segmented |             28.1% |             22.8% |         267.9 s | 10 × 30 s segments; best validated on-device text-quality candidate; not live-streaming                                   |
-| Moonshine Medium Streaming               | offline/file      |             37.4% |             27.9% |         212.4 s | live-capable; quality below Qwen3                                                                                         |
-| Moonshine Small Streaming                | offline/file      |             47.3% |             36.7% |         112.0 s | faster fallback                                                                                                           |
+| Sherpa Qwen3-ASR 0.6B INT8 direct replay | offline segmented |             28.1% |             22.8% |         268.4 s | 10 × 30 s segments; best validated on-device text-quality candidate; not live-streaming                                   |
+| Moonshine Medium Streaming               | offline/file      |             37.4% |             27.9% |         200.4 s | live-capable; quality below Qwen3                                                                                         |
+| Moonshine Small Streaming                | offline/file      |             47.3% |             36.7% |          96.4 s | faster fallback                                                                                                           |
 
 Latest 600 ms coalesced simulated-live 5-minute Moonshine replays:
 
 | Model                      | Mode           | WER vs EchoBridge | CER vs EchoBridge | First partial | First commit | Wall RTF | Processing RTF | Max backlog | Notes                                                                                                                       |
 | -------------------------- | -------------- | ----------------: | ----------------: | ------------: | -----------: | -------: | -------------: | ----------: | --------------------------------------------------------------------------------------------------------------------------- |
-| Moonshine Medium Streaming | simulated live |             37.7% |             27.7% |        4.14 s |       4.57 s |    1.00× |          0.49× |       2.1 s | Better Moonshine text quality; recommended live draft on capable Pixel-class devices, but not high-quality final transcript |
-| Moonshine Small Streaming  | simulated live |             47.6% |             35.5% |        4.00 s |       4.52 s |    1.00× |          0.31× |       0.1 s | Safer lower-backlog fallback; text quality is substantially worse                                                           |
+| Moonshine Medium Streaming | simulated live |             37.7% |             27.7% |         4.0 s |        4.4 s |    1.00× |          0.45× |       1.0 s | Better Moonshine text quality; recommended live draft on capable Pixel-class devices, but not high-quality final transcript |
+| Moonshine Small Streaming  | simulated live |             47.6% |             35.5% |         4.0 s |        4.6 s |    1.00× |          0.33× |       0.3 s | Safer lower-backlog fallback; text quality is substantially worse                                                           |
 
 > Note: simulated-live wall RTF is clock-paced by the replay harness. Use processing RTF and max backlog as the capacity signals for whether a model actually keeps up.
 
