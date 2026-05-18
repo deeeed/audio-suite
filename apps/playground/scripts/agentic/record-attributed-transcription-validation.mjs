@@ -54,6 +54,24 @@ function run(command, args, { cwd = REPO_ROOT, parseJson = false, maxBuffer = 50
   return parseJson ? (stdout ? JSON.parse(stdout) : null) : stdout;
 }
 
+
+function isMetroOnline() {
+  try {
+    run('curl', ['-sf', `http://localhost:${METRO_PORT}/status`], {
+      cwd: APP_ROOT,
+      maxBuffer: 1024 * 1024,
+    });
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+function ensureDevClientOnline() {
+  if (isMetroOnline()) return;
+  run('yarn', ['android:device:launch'], { cwd: APP_ROOT, maxBuffer: 25 * 1024 * 1024 });
+}
+
 function adb(args) {
   return run('adb', SERIAL ? ['-s', SERIAL, ...args] : args);
 }
@@ -248,6 +266,7 @@ async function waitForBridgeTarget(timeoutMs = 120000) {
 }
 
 async function restartDevClient() {
+  ensureDevClientOnline();
   const metroHost = getMetroHost(SERIAL);
   adb(['shell', 'am', 'force-stop', PKG]);
   adb([
@@ -260,6 +279,7 @@ async function restartDevClient() {
     `${DEV_CLIENT_SCHEME}://expo-development-client/?url=${encodeURIComponent(`http://${metroHost}:${METRO_PORT}`)}`,
     PKG,
   ]);
+  await sleep(5000);
   await waitForBridgeTarget();
 }
 

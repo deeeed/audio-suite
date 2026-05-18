@@ -74,6 +74,24 @@ function run(command, args, { cwd = REPO_ROOT, parseJson = false, maxBuffer = 50
   return stdout ? JSON.parse(stdout) : null;
 }
 
+
+function isMetroOnline() {
+  try {
+    run('curl', ['-sf', `http://localhost:${METRO_PORT}/status`], {
+      cwd: APP_ROOT,
+      maxBuffer: 1024 * 1024,
+    });
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+function ensureDevClientOnline() {
+  if (isMetroOnline()) return;
+  run('yarn', ['android:device:launch'], { cwd: APP_ROOT, maxBuffer: 25 * 1024 * 1024 });
+}
+
 function adb(args) {
   return run('adb', SERIAL ? ['-s', SERIAL, ...args] : args);
 }
@@ -118,6 +136,7 @@ async function waitForBridgeTarget(timeoutMs = STATE_TIMEOUT_MS) {
 }
 
 async function restartDevClient() {
+  ensureDevClientOnline();
   const metroHost = getMetroHost(SERIAL);
   adb(['shell', 'am', 'force-stop', PKG]);
   adb([
@@ -548,6 +567,7 @@ function renderMarkdown(report) {
 }
 
 async function main() {
+  ensureDevClientOnline();
   await ensureRoute();
   const clips = [];
 
