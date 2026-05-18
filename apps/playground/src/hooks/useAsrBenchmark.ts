@@ -23,6 +23,8 @@ const logger = baseLogger.extend('AsrBenchmark')
 const mobileRecommendationModelIdSet = new Set(ASR_MOBILE_RECOMMENDATION_MODEL_IDS)
 
 export interface AsrBenchmarkResult {
+    audioDurationMs?: number
+    chunkCount?: number
     commitCount?: number
     createdAt: number
     engine: AsrBenchmarkEngine
@@ -30,19 +32,23 @@ export interface AsrBenchmarkResult {
     firstCommitMs?: number
     firstPartialMs?: number
     initMs?: number
+    maxBacklogMs?: number
+    maxChunkProcessingMs?: number
     mode: AsrBenchmarkMode
     modelId: string
     modelName: string
     notes?: string
     partialCount?: number
+    processingRealTimeFactor?: number
     recognizeMs?: number
-    runtime: 'streaming' | 'offline'
+    runtime: 'streaming' | 'offline' | 'rolling-offline'
     sampleName?: string
     segmentCount?: number
     sessionMs?: number
     lineCount?: number
     transcript: string
     validationKind?: 'benchmark' | 'word-timestamps'
+    wallRealTimeFactor?: number
     wordCount?: number
     linesWithWords?: number
 }
@@ -119,11 +125,8 @@ export function useAsrBenchmark() {
         [benchmarkModels],
     )
     const mobileRecommendationModels = useMemo(
-        () =>
-            benchmarkModels.filter((model) =>
-                mobileRecommendationModelIdSet.has(model.id),
-            ),
-        [benchmarkModels],
+        () => ASR_BENCHMARK_MODELS.filter((model) => mobileRecommendationModelIdSet.has(model.id)),
+        [],
     )
 
     const refreshModelStatuses = useCallback(async () => {
@@ -268,6 +271,10 @@ export function useAsrBenchmark() {
     }, [appendResult, refreshModelStatuses, selectedModel, selectedSample])
 
     const runAllSampleBenchmarks = useCallback(async () => {
+        if (Platform.OS === 'web') {
+            setError('Practical Matrix is Android/iOS-only because it stages native mobile models')
+            return
+        }
         if (!selectedSample) {
             setError('Select a sample audio file first')
             return
@@ -361,21 +368,27 @@ export function useAsrBenchmark() {
             )
 
             appendResult({
+                audioDurationMs: result.audioDurationMs,
+                chunkCount: result.chunkCount,
                 commitCount: result.commitCount,
                 createdAt: nowMs(),
                 engine: selectedModel.engine,
                 firstCommitMs: result.firstCommitMs,
                 firstPartialMs: result.firstPartialMs,
                 initMs: result.initMs,
+                maxBacklogMs: result.maxBacklogMs,
+                maxChunkProcessingMs: result.maxChunkProcessingMs,
                 validationKind: 'benchmark',
                 mode: 'simulated',
                 modelId: selectedModel.id,
                 modelName: selectedModel.name,
                 partialCount: result.partialCount,
-                runtime: 'streaming',
+                processingRealTimeFactor: result.processingRealTimeFactor,
+                runtime: result.runtime,
                 sampleName: selectedSample.name,
                 sessionMs: result.sessionMs || nowMs() - startedAt,
                 transcript: result.transcript,
+                wallRealTimeFactor: result.wallRealTimeFactor,
             })
             await refreshModelStatuses()
         } catch (runError) {
@@ -387,7 +400,11 @@ export function useAsrBenchmark() {
                 mode: 'simulated',
                 modelId: selectedModel.id,
                 modelName: selectedModel.name,
-                runtime: 'streaming',
+                runtime:
+                    selectedModel.sherpa?.rollingWindowMs != null ||
+                    selectedModel.engine === 'whisper'
+                        ? 'rolling-offline'
+                        : 'streaming',
                 sampleName: selectedSample.name,
                 transcript: '',
                 validationKind: 'benchmark',

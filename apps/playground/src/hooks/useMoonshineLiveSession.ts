@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Platform } from 'react-native'
 
-import type {
-    AudioDataEvent,
-    AudioRecording,
-    RecordingConfig,
-} from '@siteed/audio-studio'
+import type { AudioDataEvent, AudioRecording, RecordingConfig } from '@siteed/audio-studio'
 import { AudioStudioModule, useSharedAudioRecorder } from '@siteed/audio-studio'
 import Moonshine, {
     type MoonshineTranscriptLine,
@@ -28,6 +24,7 @@ const SMALL_MODEL_ID = 'moonshine-small-streaming-en'
 const MEDIUM_MODEL_ID = 'moonshine-medium-streaming-en'
 const SAMPLE_RATE = 16000
 const LIVE_INTERVAL_MS = 200
+const MOONSHINE_BRIDGE_CHUNK_MS = 600
 const STOP_SETTLE_MS = 500
 
 export type MoonshineLiveStrategy = 'small-only' | 'medium-only'
@@ -41,6 +38,7 @@ export interface MoonshineLiveAudioSamplesEvent {
 }
 
 export interface MoonshineLiveChunkProcessedEvent {
+    coalescedChunkCount: number
     durationMs: number
     queueDepth: number
     sampleCount: number
@@ -55,6 +53,8 @@ export interface MoonshineLiveStopOptions {
 }
 
 interface UseMoonshineLiveSessionOptions {
+    bridgeChunkDurationMs?: number
+    identifySpeakers?: boolean
     onAudioSamples?: (event: MoonshineLiveAudioSamplesEvent) => void
     onMoonshineChunkProcessed?: (event: MoonshineLiveChunkProcessedEvent) => void
     strategy?: MoonshineLiveStrategy
@@ -103,7 +103,7 @@ function eventToSamples(event: AudioDataEvent): number[] {
 
     if (typeof data === 'string') {
         throw new Error(
-            'Moonshine live demo expects float32 or int16 audio chunks, but received string data.'
+            'Moonshine live demo expects float32 or int16 audio chunks, but received string data.',
         )
     }
 
@@ -147,7 +147,7 @@ const BASE_RECORDING_CONFIG: RecordingConfig = {
 }
 
 export function useMoonshineLiveSession(
-    options: UseMoonshineLiveSessionOptions = {}
+    options: UseMoonshineLiveSessionOptions = {},
 ): UseMoonshineLiveSessionResult {
     const recorder = useSharedAudioRecorder()
     const { isRecording, startRecording, stopRecording } = recorder
@@ -155,11 +155,10 @@ export function useMoonshineLiveSession(
         downloaded: false,
         localPath: null,
     })
-    const [mediumModelStatus, setMediumModelStatus] =
-        useState<BenchmarkDownloadState>({
-            downloaded: false,
-            localPath: null,
-        })
+    const [mediumModelStatus, setMediumModelStatus] = useState<BenchmarkDownloadState>({
+        downloaded: false,
+        localPath: null,
+    })
     const [statusMessage, setStatusMessage] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [isPreparingModels, setIsPreparingModels] = useState(false)
@@ -168,19 +167,20 @@ export function useMoonshineLiveSession(
     const [liveInitMs, setLiveInitMs] = useState<number | null>(null)
     const [finalTranscript, setFinalTranscript] = useState('')
     const [lastRecording, setLastRecording] = useState<AudioRecording | null>(null)
-    const [liveTranscriber, setLiveTranscriber] =
-        useState<MoonshineTranscriber | null>(null)
+    const [liveTranscriber, setLiveTranscriber] = useState<MoonshineTranscriber | null>(null)
     const liveTranscriberRef = useRef<MoonshineTranscriber | null>(null)
     const mountedRef = useRef(true)
     const sessionOwnedRef = useRef(false)
     const nextSampleRef = useRef(0)
     const { onAudioSamples, onMoonshineChunkProcessed } = options
+    const bridgeChunkDurationMs = options.bridgeChunkDurationMs ?? MOONSHINE_BRIDGE_CHUNK_MS
+    const identifySpeakers = options.identifySpeakers === true
     const strategy = options.strategy ?? 'medium-only'
-    const liveModelId =
-        strategy === 'medium-only' ? MEDIUM_MODEL_ID : SMALL_MODEL_ID
+    const liveModelId = strategy === 'medium-only' ? MEDIUM_MODEL_ID : SMALL_MODEL_ID
 
     const liveTranscription = useLiveMoonshine({
         transcriber: liveTranscriber,
+        minBridgeChunkDurationMs: bridgeChunkDurationMs,
         onError: (message) => {
             logger.warn(`Moonshine listener error: ${message}`)
             setError(message)
@@ -209,15 +209,12 @@ export function useMoonshineLiveSession(
         }
     }, [stopRecording])
 
-    const setCurrentLiveTranscriber = useCallback(
-        (transcriber: MoonshineTranscriber | null) => {
-            liveTranscriberRef.current = transcriber
-            if (mountedRef.current) {
-                setLiveTranscriber(transcriber)
-            }
-        },
-        []
-    )
+    const setCurrentLiveTranscriber = useCallback((transcriber: MoonshineTranscriber | null) => {
+        liveTranscriberRef.current = transcriber
+        if (mountedRef.current) {
+            setLiveTranscriber(transcriber)
+        }
+    }, [])
 
     const releaseLiveTranscriber = useCallback(async () => {
         const currentTranscriber = liveTranscriberRef.current
@@ -246,21 +243,19 @@ export function useMoonshineLiveSession(
         try {
             await prepareBenchmarkModel(
                 strategy === 'medium-only' ? MEDIUM_MODEL_ID : SMALL_MODEL_ID,
-                setStatusMessage
+                setStatusMessage,
             )
             await refreshModelStatuses()
             if (mountedRef.current) {
                 setStatusMessage(
                     strategy === 'medium-only'
                         ? 'Moonshine medium is ready.'
-                        : 'Moonshine small is ready.'
+                        : 'Moonshine small is ready.',
                 )
             }
         } catch (prepareError) {
             const message =
-                prepareError instanceof Error
-                    ? prepareError.message
-                    : String(prepareError)
+                prepareError instanceof Error ? prepareError.message : String(prepareError)
             logger.error(`Failed to prepare Moonshine models: ${message}`)
             if (mountedRef.current) {
                 setError(message)
@@ -294,14 +289,12 @@ export function useMoonshineLiveSession(
                 liveTranscription.feedAudio(samples, SAMPLE_RATE)
             } catch (streamError) {
                 const message =
-                    streamError instanceof Error
-                        ? streamError.message
-                        : String(streamError)
+                    streamError instanceof Error ? streamError.message : String(streamError)
                 logger.error(`Failed to process live Moonshine chunk: ${message}`)
                 setError(message)
             }
         },
-        [liveTranscription, onAudioSamples]
+        [liveTranscription, onAudioSamples],
     )
 
     const recordingConfig = useMemo<RecordingConfig>(
@@ -309,189 +302,197 @@ export function useMoonshineLiveSession(
             ...BASE_RECORDING_CONFIG,
             onAudioStream: processAudioEvent,
         }),
-        [processAudioEvent]
+        [processAudioEvent],
     )
 
-    const startSession = useCallback(async (options: MoonshineLiveStartOptions = {}) => {
-        const externalAudio = options.externalAudio === true
-        if ((!externalAudio && isRecording) || isStarting || isPreparingModels || isStopping) return
-        if (externalAudio && liveTranscription.isListening) return
+    const startSession = useCallback(
+        async (options: MoonshineLiveStartOptions = {}) => {
+            const externalAudio = options.externalAudio === true
+            if ((!externalAudio && isRecording) || isStarting || isPreparingModels || isStopping)
+                return
+            if (externalAudio && liveTranscription.isListening) return
 
-        setError(null)
-        setFinalTranscript('')
-        setLastRecording(null)
-        setLiveInitMs(null)
-        nextSampleRef.current = 0
-        setIsStarting(true)
+            setError(null)
+            setFinalTranscript('')
+            setLastRecording(null)
+            setLiveInitMs(null)
+            nextSampleRef.current = 0
+            setIsStarting(true)
 
-        try {
-            const microphonePermission = await AudioStudioModule.requestPermissionsAsync()
-            if (microphonePermission.status !== 'granted') {
-                throw new Error('Recording permission has not been granted')
-            }
-            if (Platform.OS === 'android' && Number(Platform.Version) >= 33) {
-                const notificationPermission =
-                    await AudioStudioModule.requestNotificationPermissionsAsync()
-                if (notificationPermission.status !== 'granted') {
-                    throw new Error('Notification permission has not been granted')
+            try {
+                const microphonePermission = await AudioStudioModule.requestPermissionsAsync()
+                if (microphonePermission.status !== 'granted') {
+                    throw new Error('Recording permission has not been granted')
                 }
-            }
+                if (Platform.OS === 'android' && Number(Platform.Version) >= 33) {
+                    const notificationPermission =
+                        await AudioStudioModule.requestNotificationPermissionsAsync()
+                    if (notificationPermission.status !== 'granted') {
+                        throw new Error('Notification permission has not been granted')
+                    }
+                }
 
-            const missingRequiredModel =
-                strategy === 'medium-only'
-                    ? !mediumModelStatus.downloaded
-                    : !smallModelStatus.downloaded
-            if (missingRequiredModel) {
-                await prepareModels()
-            }
+                const missingRequiredModel =
+                    strategy === 'medium-only'
+                        ? !mediumModelStatus.downloaded
+                        : !smallModelStatus.downloaded
+                if (missingRequiredModel) {
+                    await prepareModels()
+                }
 
-            setStatusMessage(
-                strategy === 'medium-only'
-                    ? 'Initializing Moonshine medium live model...'
-                    : 'Initializing Moonshine small live model...'
-            )
-            await releaseLiveTranscriber()
-            const initStartedAt = Date.now()
-            const config = await getMoonshineRuntimeConfig(
-                liveModelId,
-                setStatusMessage
-            )
-            const transcriberOptions =
-                Platform.OS === 'android'
+                setStatusMessage(
+                    strategy === 'medium-only'
+                        ? 'Initializing Moonshine medium live model...'
+                        : 'Initializing Moonshine small live model...',
+                )
+                await releaseLiveTranscriber()
+                const initStartedAt = Date.now()
+                const config = await getMoonshineRuntimeConfig(liveModelId, setStatusMessage)
+                // Speaker attribution in the recommendation workflow comes from
+                // Sherpa VAD + Speaker ID. Keep Moonshine speaker identification
+                // opt-in so Android does not run two independent speaker trackers
+                // by default.
+                const transcriberOptions = identifySpeakers
                     ? {
                           ...config.options,
                           identifySpeakers: true,
                       }
                     : config.options
-            const transcriber = await Moonshine.createTranscriberFromFiles({
-                ...config,
-                ...(transcriberOptions ? { options: transcriberOptions } : {}),
-            })
-            const nextLiveInitMs = Date.now() - initStartedAt
-            setCurrentLiveTranscriber(transcriber)
+                const transcriber = await Moonshine.createTranscriberFromFiles({
+                    ...config,
+                    ...(transcriberOptions ? { options: transcriberOptions } : {}),
+                })
+                const nextLiveInitMs = Date.now() - initStartedAt
+                setCurrentLiveTranscriber(transcriber)
 
-            if (mountedRef.current) {
-                setLiveInitMs(nextLiveInitMs)
-            }
+                if (mountedRef.current) {
+                    setLiveInitMs(nextLiveInitMs)
+                }
 
-            liveTranscription.start()
-            await transcriber.start()
-            sessionOwnedRef.current = true
-            if (!externalAudio) {
-                await startRecording(recordingConfig)
-            }
+                liveTranscription.start()
+                await transcriber.start()
+                sessionOwnedRef.current = true
+                if (!externalAudio) {
+                    await startRecording(recordingConfig)
+                }
 
-            if (mountedRef.current) {
-                const baseStatusMessage =
-                    strategy === 'medium-only'
-                        ? 'Listening with Moonshine medium.'
-                        : 'Listening with Moonshine small.'
-                setStatusMessage(baseStatusMessage)
+                if (mountedRef.current) {
+                    const baseStatusMessage =
+                        strategy === 'medium-only'
+                            ? 'Listening with Moonshine medium.'
+                            : 'Listening with Moonshine small.'
+                    setStatusMessage(baseStatusMessage)
+                }
+            } catch (startError) {
+                const message =
+                    startError instanceof Error ? startError.message : String(startError)
+                logger.error(`Moonshine live start failed: ${message}`)
+                liveTranscription.stop()
+                sessionOwnedRef.current = false
+                await releaseLiveTranscriber()
+                if (mountedRef.current) {
+                    setError(message)
+                    setStatusMessage('Moonshine live start failed.')
+                }
+                throw startError
+            } finally {
+                if (mountedRef.current) {
+                    setIsStarting(false)
+                }
             }
-        } catch (startError) {
-            const message =
-                startError instanceof Error
-                    ? startError.message
-                    : String(startError)
-            logger.error(`Moonshine live start failed: ${message}`)
-            liveTranscription.stop()
-            sessionOwnedRef.current = false
-            await releaseLiveTranscriber()
-            if (mountedRef.current) {
-                setError(message)
-                setStatusMessage('Moonshine live start failed.')
-            }
-            throw startError
-        } finally {
-            if (mountedRef.current) {
-                setIsStarting(false)
-            }
-        }
-    }, [
-        isPreparingModels,
-        isRecording,
-        isStopping,
-        isStarting,
-        liveTranscription,
-        mediumModelStatus.downloaded,
-        prepareModels,
-        recordingConfig,
-        smallModelStatus.downloaded,
-        startRecording,
-        strategy,
-        liveModelId,
-        releaseLiveTranscriber,
-        setCurrentLiveTranscriber,
-    ])
+        },
+        [
+            identifySpeakers,
+            isPreparingModels,
+            isRecording,
+            isStopping,
+            isStarting,
+            liveTranscription,
+            mediumModelStatus.downloaded,
+            prepareModels,
+            recordingConfig,
+            smallModelStatus.downloaded,
+            startRecording,
+            strategy,
+            liveModelId,
+            releaseLiveTranscriber,
+            setCurrentLiveTranscriber,
+        ],
+    )
 
-    const stopSession = useCallback(async (options: MoonshineLiveStopOptions = {}) => {
-        const stopRecorder = options.stopRecorder !== false
-        if ((stopRecorder && !isRecording && !liveTranscription.isListening) || (!stopRecorder && !liveTranscription.isListening) || isStopping) return
+    const stopSession = useCallback(
+        async (options: MoonshineLiveStopOptions = {}) => {
+            const stopRecorder = options.stopRecorder !== false
+            if (
+                (stopRecorder && !isRecording && !liveTranscription.isListening) ||
+                (!stopRecorder && !liveTranscription.isListening) ||
+                isStopping
+            )
+                return
 
-        setError(null)
-        setIsStopping(true)
-        setStatusMessage('Stopping live Moonshine stream...')
+            setError(null)
+            setIsStopping(true)
+            setStatusMessage('Stopping live Moonshine stream...')
 
-        try {
-            sessionOwnedRef.current = false
-            // Stop accepting queued live chunks before stopping the native recorder.
-            // Keep transcript listeners active until after transcriber.stop(), because
-            // Moonshine can emit final lineCompleted events while flushing.
-            liveTranscription.stopAudioInput()
-            const recording = stopRecorder ? await stopRecording() : null
-            if (recording) {
-                setLastRecording(recording)
-            }
+            try {
+                sessionOwnedRef.current = false
+                // Stop accepting queued live chunks before stopping the native recorder.
+                // Keep transcript listeners active until after transcriber.stop(), because
+                // Moonshine can emit final lineCompleted events while flushing.
+                await liveTranscription.stopAudioInput()
+                const recording = stopRecorder ? await stopRecording() : null
+                if (recording) {
+                    setLastRecording(recording)
+                }
 
-            await liveTranscriberRef.current?.stop().catch((stopError) => {
-                logger.warn(`Ignoring Moonshine stop error: ${String(stopError)}`)
-            })
-            await sleep(STOP_SETTLE_MS)
-            const liveTranscript = [
-                liveCommittedRef.current.trim(),
-                liveInterimRef.current.trim(),
-            ]
-                .filter(Boolean)
-                .join(' ')
-                .trim()
-            liveTranscription.stop()
-            await releaseLiveTranscriber()
+                await liveTranscriberRef.current?.stop().catch((stopError) => {
+                    logger.warn(`Ignoring Moonshine stop error: ${String(stopError)}`)
+                })
+                await sleep(STOP_SETTLE_MS)
+                const liveTranscript = [
+                    liveCommittedRef.current.trim(),
+                    liveInterimRef.current.trim(),
+                ]
+                    .filter(Boolean)
+                    .join(' ')
+                    .trim()
+                liveTranscription.stop()
+                await releaseLiveTranscriber()
 
-            if (mountedRef.current) {
-                setFinalTranscript(
-                    liveTranscript || 'No transcript was produced during the live session.'
-                )
-                setStatusMessage(
-                    strategy === 'medium-only'
-                        ? 'Final transcript captured directly from Moonshine medium.'
-                        : 'Final transcript captured directly from Moonshine small.'
-                )
+                if (mountedRef.current) {
+                    setFinalTranscript(
+                        liveTranscript || 'No transcript was produced during the live session.',
+                    )
+                    setStatusMessage(
+                        strategy === 'medium-only'
+                            ? 'Final transcript captured directly from Moonshine medium.'
+                            : 'Final transcript captured directly from Moonshine small.',
+                    )
+                }
+            } catch (stopError) {
+                const message = stopError instanceof Error ? stopError.message : String(stopError)
+                logger.error(`Moonshine finalize failed: ${message}`)
+                liveTranscription.stop()
+                await releaseLiveTranscriber()
+                if (mountedRef.current) {
+                    setError(message)
+                    setStatusMessage('Moonshine finalize failed.')
+                }
+            } finally {
+                if (mountedRef.current) {
+                    setIsStopping(false)
+                }
             }
-        } catch (stopError) {
-            const message =
-                stopError instanceof Error
-                    ? stopError.message
-                    : String(stopError)
-            logger.error(`Moonshine finalize failed: ${message}`)
-            liveTranscription.stop()
-            await releaseLiveTranscriber()
-            if (mountedRef.current) {
-                setError(message)
-                setStatusMessage('Moonshine finalize failed.')
-            }
-        } finally {
-            if (mountedRef.current) {
-                setIsStopping(false)
-            }
-        }
-    }, [
-        isRecording,
-        isStopping,
-        liveTranscription,
-        releaseLiveTranscriber,
-        stopRecording,
-        strategy,
-    ])
+        },
+        [
+            isRecording,
+            isStopping,
+            liveTranscription,
+            releaseLiveTranscriber,
+            stopRecording,
+            strategy,
+        ],
+    )
 
     const clear = useCallback(() => {
         liveTranscription.clear()

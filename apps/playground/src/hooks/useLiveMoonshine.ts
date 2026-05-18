@@ -9,10 +9,31 @@ import { baseLogger } from '../config'
 
 const logger = baseLogger.extend('LiveMoonshine')
 
+const DEFAULT_MIN_BRIDGE_CHUNK_MS = 600
+const DEFAULT_MAX_BRIDGE_CHUNK_MS = 2000
+const AUDIO_DRAIN_TIMEOUT_MS = 2000
+const AUDIO_DRAIN_POLL_MS = 25
+
+interface QueuedMoonshineChunk {
+    chunkCount: number
+    sampleRate: number
+    samples: number[]
+}
+
+interface PendingMoonshineChunk {
+    chunkCount: number
+    chunks: number[][]
+    sampleCount: number
+    sampleRate: number
+}
+
 interface UseLiveMoonshineOptions {
+    maxBridgeChunkDurationMs?: number
+    minBridgeChunkDurationMs?: number
     onCommit?: (text: string) => void
     onError?: (error: string) => void
     onChunkProcessed?: (info: {
+        coalescedChunkCount: number
         durationMs: number
         queueDepth: number
         sampleCount: number
@@ -31,16 +52,42 @@ export interface UseLiveMoonshineResult {
     isListening: boolean
     start: () => void
     stop: () => void
-    stopAudioInput: () => void
+    stopAudioInput: () => Promise<void>
 }
 
 function joinTranscriptParts(parts: string[]): string {
-    return parts.map((part) => part.trim()).filter(Boolean).join(' ').trim()
+    return parts
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .join(' ')
+        .trim()
 }
 
-function normalizeLine(
-    line: MoonshineTranscriptEvent['line']
-): MoonshineTranscriptLine | null {
+function durationMsForSamples(sampleCount: number, sampleRate: number): number {
+    return sampleRate > 0 ? (sampleCount / sampleRate) * 1000 : 0
+}
+
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function flattenChunks(chunks: number[][], sampleCount: number): number[] {
+    if (chunks.length === 1) {
+        return chunks[0] ?? []
+    }
+
+    const samples = new Array<number>(sampleCount)
+    let offset = 0
+    for (const chunk of chunks) {
+        for (let index = 0; index < chunk.length; index += 1) {
+            samples[offset + index] = chunk[index] ?? 0
+        }
+        offset += chunk.length
+    }
+    return samples
+}
+
+function normalizeLine(line: MoonshineTranscriptEvent['line']): MoonshineTranscriptLine | null {
     if (!line?.lineId) return null
     return {
         ...line,
@@ -48,40 +95,82 @@ function normalizeLine(
     }
 }
 
-export function useLiveMoonshine(
-    options: UseLiveMoonshineOptions = {}
-): UseLiveMoonshineResult {
-    const [committedLines, setCommittedLines] = useState<MoonshineTranscriptLine[]>(
-        []
-    )
+export function useLiveMoonshine(options: UseLiveMoonshineOptions = {}): UseLiveMoonshineResult {
+    const [committedLines, setCommittedLines] = useState<MoonshineTranscriptLine[]>([])
     const [committedText, setCommittedText] = useState('')
     const [interimLines, setInterimLines] = useState<MoonshineTranscriptLine[]>([])
     const [interimText, setInterimText] = useState('')
     const [isListening, setIsListening] = useState(false)
     const processingRef = useRef(false)
-    const queueRef = useRef<{ sampleRate: number; samples: number[] }[]>([])
+    const queueRef = useRef<QueuedMoonshineChunk[]>([])
+    const pendingChunkRef = useRef<PendingMoonshineChunk | null>(null)
+    const pendingFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const listeningRef = useRef(false)
-    const transcriberRef = useRef<MoonshineTranscriber | null>(
-        options.transcriber ?? null
-    )
+    const transcriberRef = useRef<MoonshineTranscriber | null>(options.transcriber ?? null)
     const completedLineIdsRef = useRef(new Set<string>())
     const activeLinesRef = useRef(new Map<string, MoonshineTranscriptLine>())
+    const minBridgeChunkDurationMs = options.minBridgeChunkDurationMs ?? DEFAULT_MIN_BRIDGE_CHUNK_MS
+    const maxBridgeChunkDurationMs = options.maxBridgeChunkDurationMs ?? DEFAULT_MAX_BRIDGE_CHUNK_MS
 
     useEffect(() => {
         transcriberRef.current = options.transcriber ?? null
     }, [options.transcriber])
 
+    const clearPendingFlushTimer = useCallback(() => {
+        if (pendingFlushTimerRef.current) {
+            clearTimeout(pendingFlushTimerRef.current)
+            pendingFlushTimerRef.current = null
+        }
+    }, [])
+
+    const enqueuePendingChunk = useCallback(() => {
+        clearPendingFlushTimer()
+        const pending = pendingChunkRef.current
+        if (!pending) return
+        pendingChunkRef.current = null
+        queueRef.current.push({
+            chunkCount: pending.chunkCount,
+            sampleRate: pending.sampleRate,
+            samples: flattenChunks(pending.chunks, pending.sampleCount),
+        })
+    }, [clearPendingFlushTimer])
+
     const processQueue = useCallback(async () => {
         const transcriber = transcriberRef.current
         if (processingRef.current || !listeningRef.current || !transcriber) return
-        const next = queueRef.current.shift()
+        let next = queueRef.current.shift()
         if (!next) return
+
+        const coalescedChunks = [next.samples]
+        let coalescedChunkCount = next.chunkCount
+        let sampleCount = next.samples.length
+        while (queueRef.current.length > 0) {
+            const candidate = queueRef.current[0]
+            if (
+                !candidate ||
+                candidate.sampleRate !== next.sampleRate ||
+                durationMsForSamples(sampleCount + candidate.samples.length, next.sampleRate) >
+                    maxBridgeChunkDurationMs
+            ) {
+                break
+            }
+            queueRef.current.shift()
+            coalescedChunks.push(candidate.samples)
+            coalescedChunkCount += candidate.chunkCount
+            sampleCount += candidate.samples.length
+        }
+        next = {
+            chunkCount: coalescedChunkCount,
+            sampleRate: next.sampleRate,
+            samples: flattenChunks(coalescedChunks, sampleCount),
+        }
 
         processingRef.current = true
         try {
             const startedAt = Date.now()
             await transcriber.addAudio(next.samples, next.sampleRate)
             options.onChunkProcessed?.({
+                coalescedChunkCount: next.chunkCount,
                 durationMs: Date.now() - startedAt,
                 queueDepth: queueRef.current.length,
                 sampleCount: next.samples.length,
@@ -100,15 +189,59 @@ export function useLiveMoonshine(
                 void processQueue()
             }
         }
-    }, [options])
+    }, [maxBridgeChunkDurationMs, options])
+
+    const flushPendingChunk = useCallback(() => {
+        enqueuePendingChunk()
+        void processQueue()
+    }, [enqueuePendingChunk, processQueue])
 
     const feedAudio = useCallback(
         (samples: number[], sampleRate: number) => {
             if (!listeningRef.current) return
-            queueRef.current.push({ sampleRate, samples })
-            void processQueue()
+            if (minBridgeChunkDurationMs <= 0) {
+                queueRef.current.push({ chunkCount: 1, sampleRate, samples })
+                void processQueue()
+                return
+            }
+
+            const pending = pendingChunkRef.current
+            if (pending && pending.sampleRate !== sampleRate) {
+                flushPendingChunk()
+            }
+
+            const nextPending = pendingChunkRef.current
+            if (nextPending) {
+                nextPending.chunks.push(samples)
+                nextPending.sampleCount += samples.length
+                nextPending.chunkCount += 1
+            } else {
+                pendingChunkRef.current = {
+                    chunkCount: 1,
+                    chunks: [samples],
+                    sampleCount: samples.length,
+                    sampleRate,
+                }
+            }
+
+            const updatedPending = pendingChunkRef.current
+            if (!updatedPending) return
+            const pendingDurationMs = durationMsForSamples(
+                updatedPending.sampleCount,
+                updatedPending.sampleRate,
+            )
+            if (pendingDurationMs >= minBridgeChunkDurationMs) {
+                flushPendingChunk()
+                return
+            }
+            if (!pendingFlushTimerRef.current) {
+                pendingFlushTimerRef.current = setTimeout(
+                    flushPendingChunk,
+                    minBridgeChunkDurationMs,
+                )
+            }
         },
-        [processQueue]
+        [flushPendingChunk, minBridgeChunkDurationMs, processQueue],
     )
 
     const handleTranscriptEvent = useCallback(
@@ -132,7 +265,7 @@ export function useLiveMoonshine(
                 activeLinesRef.current.set(lineId, line)
                 const activeLines = Array.from(activeLinesRef.current.values())
                 const interim = joinTranscriptParts(
-                    activeLines.map((activeLine) => activeLine.text)
+                    activeLines.map((activeLine) => activeLine.text),
                 )
                 setInterimLines(activeLines)
                 setInterimText(interim)
@@ -151,7 +284,7 @@ export function useLiveMoonshine(
                     })
                     const activeLines = Array.from(activeLinesRef.current.values())
                     const interim = joinTranscriptParts(
-                        activeLines.map((activeLine) => activeLine.text)
+                        activeLines.map((activeLine) => activeLine.text),
                     )
                     setInterimLines(activeLines)
                     setInterimText(interim)
@@ -162,7 +295,7 @@ export function useLiveMoonshine(
                 }
             }
         },
-        [options]
+        [options],
     )
 
     useEffect(() => {
@@ -175,39 +308,68 @@ export function useLiveMoonshine(
 
     const start = useCallback(() => {
         logger.info('Moonshine live transcription started')
+        clearPendingFlushTimer()
         listeningRef.current = true
         completedLineIdsRef.current = new Set()
         activeLinesRef.current = new Map()
         queueRef.current = []
+        pendingChunkRef.current = null
         setCommittedLines([])
         setCommittedText('')
         setInterimLines([])
         setInterimText('')
         setIsListening(true)
-    }, [])
+    }, [clearPendingFlushTimer])
 
-    const stopAudioInput = useCallback(() => {
+    const stopAudioInput = useCallback(async () => {
         logger.info('Moonshine live audio input stopped')
+        clearPendingFlushTimer()
+        enqueuePendingChunk()
+        const startedAt = Date.now()
+        while (
+            listeningRef.current &&
+            (processingRef.current || queueRef.current.length > 0) &&
+            Date.now() - startedAt < AUDIO_DRAIN_TIMEOUT_MS
+        ) {
+            void processQueue()
+            await sleep(AUDIO_DRAIN_POLL_MS)
+        }
+        if (queueRef.current.length > 0) {
+            logger.warn(
+                `Dropping ${queueRef.current.length} Moonshine chunk(s) after ${AUDIO_DRAIN_TIMEOUT_MS}ms drain timeout`,
+            )
+        }
+        // stop() owns flipping listeningRef to false. If the native recorder
+        // delivers another chunk after this explicit drain window, discard it
+        // rather than extending stop latency indefinitely.
+        pendingChunkRef.current = null
         queueRef.current = []
-    }, [])
+    }, [clearPendingFlushTimer, enqueuePendingChunk, processQueue])
 
     const stop = useCallback(() => {
         logger.info('Moonshine live transcription stopped')
+        clearPendingFlushTimer()
         listeningRef.current = false
         activeLinesRef.current = new Map()
+        pendingChunkRef.current = null
         queueRef.current = []
         setInterimLines([])
         setIsListening(false)
-    }, [])
+    }, [clearPendingFlushTimer])
 
     const clear = useCallback(() => {
+        clearPendingFlushTimer()
         completedLineIdsRef.current = new Set()
         activeLinesRef.current = new Map()
+        pendingChunkRef.current = null
+        queueRef.current = []
         setCommittedLines([])
         setCommittedText('')
         setInterimLines([])
         setInterimText('')
-    }, [])
+    }, [clearPendingFlushTimer])
+
+    useEffect(() => clearPendingFlushTimer, [clearPendingFlushTimer])
 
     return {
         clear,

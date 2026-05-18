@@ -24,6 +24,7 @@ const DEV_CLIENT_SCHEME =
     ? `exp+${SCHEME_BASE}`
     : `exp+${SCHEME_BASE}-${APP_VARIANT}`);
 const ROUTE = '/moonshine-live';
+const METRO_PORT = Number(process.env.WATCHER_PORT || 7365);
 const TIMEOUT_MS = 10 * 60 * 1000;
 const STATE_TIMEOUT_MS = 90 * 1000;
 const POLL_INTERVAL_MS = 1000;
@@ -73,6 +74,23 @@ function run(command, args, { cwd = REPO_ROOT, parseJson = false, maxBuffer = 50
   return stdout ? JSON.parse(stdout) : null;
 }
 
+function isMetroOnline() {
+  try {
+    run('curl', ['-sf', `http://localhost:${METRO_PORT}/status`], {
+      cwd: APP_ROOT,
+      maxBuffer: 1024 * 1024,
+    });
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+function ensureDevClientOnline() {
+  if (isMetroOnline()) return;
+  run('yarn', ['android:device:launch'], { cwd: APP_ROOT, maxBuffer: 25 * 1024 * 1024 });
+}
+
 function adb(args) {
   return run('adb', SERIAL ? ['-s', SERIAL, ...args] : args);
 }
@@ -117,8 +135,8 @@ async function waitForBridgeTarget(timeoutMs = STATE_TIMEOUT_MS) {
 }
 
 async function restartDevClient() {
-  const metroHost = getMetroHost();
-  adb(['reverse', 'tcp:7365', 'tcp:7365']);
+  ensureDevClientOnline();
+  const metroHost = getMetroHost(SERIAL);
   adb(['shell', 'am', 'force-stop', PKG]);
   adb([
     'shell',
@@ -127,7 +145,7 @@ async function restartDevClient() {
     '-a',
     'android.intent.action.VIEW',
     '-d',
-    `${DEV_CLIENT_SCHEME}://expo-development-client/?url=http://${metroHost}:7365`,
+    `${DEV_CLIENT_SCHEME}://expo-development-client/?url=${encodeURIComponent(`http://${metroHost}:${METRO_PORT}`)}`,
     PKG,
   ]);
   await sleep(5000);
@@ -548,6 +566,7 @@ function renderMarkdown(report) {
 }
 
 async function main() {
+  ensureDevClientOnline();
   await ensureRoute();
   const clips = [];
 

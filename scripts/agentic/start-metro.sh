@@ -19,7 +19,7 @@ TIMEOUT=60
 
 mkdir -p .agent
 
-DEV_HOST="$(resolve_agentic_dev_host)"
+DEV_HOST="$(resolve_agentic_dev_host_or_localhost)"
 
 print_launch_hint() {
   if [ -n "$DEV_HOST" ]; then

@@ -2,6 +2,5 @@
     "moonshine-small-streaming-en",
     "moonshine-medium-streaming-en",
     "sherpa-qwen3-asr-0.6b-int8",
-    "sherpa-whisper-small",
     "sherpa-whisper-medium-int8"
 ]
