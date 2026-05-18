@@ -258,7 +258,7 @@ such as `OrtGetApiBase@VERS_...` must match the selected `libonnxruntime.so`.
 
 The current default Maven artifact (`ai.moonshine:moonshine-voice:0.0.59`) has
 been observed with `OrtGetApiBase@VERS_1.23.0`, which is risky beside
-`@siteed/sherpa-onnx.rn@1.2.0`'s `VERS_1.24.3` runtime. Use a compatible custom
+`@siteed/sherpa-onnx.rn@1.3.0`'s `VERS_1.24.3` runtime. Use a compatible custom
 or source Moonshine AAR, align the other runtime provider, or patch after
 Android native libraries are merged and stripped. See
 [Android ONNX Runtime coexistence](../../docs/ANDROID_ORT_ALIGNMENT.md).

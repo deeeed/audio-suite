@@ -165,10 +165,10 @@ cd android && ./gradlew :app:installDebug
 
 ## 4. Install and configure @siteed/sherpa-onnx.rn
 
-> ⚠️ This section covers beta v1.1.0-beta.1. iOS prebuilts are published via GitHub release but require manual setup — see the sherpa-onnx.rn README.
+> For native setup details and platform caveats, see the sherpa-onnx.rn README.
 
 ```bash
-yarn add @siteed/sherpa-onnx.rn@1.1.0-beta.1 expo-file-system
+yarn add @siteed/sherpa-onnx.rn expo-file-system
 ```
 
 No additional `app.json` plugin entry needed — auto-linking handles it.
