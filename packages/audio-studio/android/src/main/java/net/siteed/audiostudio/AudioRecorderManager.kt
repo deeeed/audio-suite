@@ -225,7 +225,7 @@ class AudioRecorderManager(
                 override fun resolve(value: Any?) {
                     LogUtils.d(CLASS_NAME, "🔄 Successfully reinitialized AudioRecord with new device")
                 }
-                override fun reject(code: String, message: String?, cause: Throwable?) {
+                override fun reject(code: String?, message: String?, cause: Throwable?) {
                     LogUtils.e(CLASS_NAME, "🔄 Failed to reinitialize AudioRecord: $message")
                 }
             })) {
@@ -237,7 +237,7 @@ class AudioRecorderManager(
                             "isPaused" to true
                         ))
                     }
-                    override fun reject(code: String, message: String?, cause: Throwable?) {}
+                    override fun reject(code: String?, message: String?, cause: Throwable?) {}
                 })
                 return
             }
@@ -253,7 +253,7 @@ class AudioRecorderManager(
                                 "isPaused" to true
                             ))
                         }
-                        override fun reject(code: String, message: String?, cause: Throwable?) {}
+                        override fun reject(code: String?, message: String?, cause: Throwable?) {}
                     })
                     return
                 }
@@ -297,7 +297,7 @@ class AudioRecorderManager(
                         "error" to e.message
                     ))
                 }
-                override fun reject(code: String, message: String?, cause: Throwable?) {}
+                override fun reject(code: String?, message: String?, cause: Throwable?) {}
             })
         }
     }
@@ -417,7 +417,7 @@ class AudioRecorderManager(
                                     "isPaused" to true
                                 ))
                             }
-                            override fun reject(code: String, message: String?, cause: Throwable?) {
+                            override fun reject(code: String?, message: String?, cause: Throwable?) {
                                 LogUtils.e(CLASS_NAME, "Failed to pause recording on phone call", cause)
                             }
                         })
@@ -444,7 +444,7 @@ class AudioRecorderManager(
                                         "isPaused" to false
                                     ))
                                 }
-                                override fun reject(code: String, message: String?, cause: Throwable?) {
+                                override fun reject(code: String?, message: String?, cause: Throwable?) {
                                     LogUtils.e(CLASS_NAME, "Failed to resume recording after phone call", cause)
                                 }
                             })
@@ -1226,7 +1226,7 @@ class AudioRecorderManager(
                     override fun resolve(value: Any?) {
                         LogUtils.d(CLASS_NAME, "⏺️ Successfully reinitialized AudioRecord for resumption")
                     }
-                    override fun reject(code: String, message: String?, cause: Throwable?) {
+                    override fun reject(code: String?, message: String?, cause: Throwable?) {
                         LogUtils.e(CLASS_NAME, "⏺️ Failed to reinitialize AudioRecord: $message")
                         // We'll let the main try-catch handle this error
                         throw IllegalStateException("Failed to reinitialize AudioRecord: $message")
@@ -1936,7 +1936,7 @@ class AudioRecorderManager(
                                         "isPaused" to true
                                     ))
                                 }
-                                override fun reject(code: String, message: String?, cause: Throwable?) {
+                                override fun reject(code: String?, message: String?, cause: Throwable?) {
                                     LogUtils.e(CLASS_NAME, "Failed to pause recording on audio focus loss")
                                 }
                             })
@@ -1959,7 +1959,7 @@ class AudioRecorderManager(
                                         "isPaused" to false
                                     ))
                                 }
-                                override fun reject(code: String, message: String?, cause: Throwable?) {
+                                override fun reject(code: String?, message: String?, cause: Throwable?) {
                                     LogUtils.e(CLASS_NAME, "Failed to resume recording on audio focus gain")
                                 }
                             })
@@ -2006,7 +2006,7 @@ class AudioRecorderManager(
                                         "isPaused" to true
                                     ))
                                 }
-                                override fun reject(code: String, message: String?, cause: Throwable?) {
+                                override fun reject(code: String?, message: String?, cause: Throwable?) {
                                     LogUtils.e(CLASS_NAME, "Failed to pause recording on audio focus loss")
                                 }
                             })
@@ -2033,7 +2033,7 @@ class AudioRecorderManager(
                                         "isPaused" to false
                                     ))
                                 }
-                                override fun reject(code: String, message: String?, cause: Throwable?) {
+                                override fun reject(code: String?, message: String?, cause: Throwable?) {
                                     LogUtils.e(CLASS_NAME, "Failed to resume recording on audio focus gain")
                                 }
                             })
@@ -2139,7 +2139,7 @@ class AudioRecorderManager(
             // Check permissions - create a dummy promise to avoid rejections
             val dummyPromise = object : Promise {
                 override fun resolve(value: Any?) {}
-                override fun reject(code: String, message: String?, cause: Throwable?) { 
+                override fun reject(code: String?, message: String?, cause: Throwable?) {
                     LogUtils.e(CLASS_NAME, "Preparation error: $code - $message", cause)
                 }
             }
