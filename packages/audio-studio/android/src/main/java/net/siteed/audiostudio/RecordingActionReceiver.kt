@@ -41,7 +41,7 @@ class RecordingActionReceiver : BroadcastReceiver() {
                     isProcessingAction.set(false)
                 }
 
-                override fun reject(code: String, message: String?, cause: Throwable?) {
+                override fun reject(code: String?, message: String?, cause: Throwable?) {
                     Log.e("RecordingActionReceiver", "$action failed: $message", cause)
                     isProcessingAction.set(false)
                 }

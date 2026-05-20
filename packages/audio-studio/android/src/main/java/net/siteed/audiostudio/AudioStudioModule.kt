@@ -252,7 +252,7 @@ class AudioStudioModule : Module(), EventSender, AudioStreamDecoderDelegate {
                         LogUtils.d(CLASS_NAME, "⏺️ resumeRecording completed successfully")
                         promise.resolve(value)
                     }
-                    override fun reject(code: String, message: String?, cause: Throwable?) {
+                    override fun reject(code: String?, message: String?, cause: Throwable?) {
                         LogUtils.e(CLASS_NAME, "⏺️ resumeRecording failed: $code - $message", cause)
                         promise.reject(code, message, cause)
                     }
@@ -1294,7 +1294,7 @@ class AudioStudioModule : Module(), EventSender, AudioStreamDecoderDelegate {
                                     "isPaused" to true
                                 ))
                             }
-                            override fun reject(code: String, message: String?, cause: Throwable?) {
+                            override fun reject(code: String?, message: String?, cause: Throwable?) {
                                 LogUtils.e(CLASS_NAME, "📱 Failed to pause recording after device disconnection: $message")
                             }
                         })
@@ -1314,7 +1314,7 @@ class AudioStudioModule : Module(), EventSender, AudioStreamDecoderDelegate {
                                 "isPaused" to true
                             ))
                         }
-                        override fun reject(code: String, message: String?, cause: Throwable?) {
+                        override fun reject(code: String?, message: String?, cause: Throwable?) {
                             LogUtils.e(CLASS_NAME, "📱 Failed to pause recording after device disconnection: $message")
                         }
                     })
@@ -1336,7 +1336,7 @@ class AudioStudioModule : Module(), EventSender, AudioStreamDecoderDelegate {
                             "isPaused" to true
                         ))
                     }
-                    override fun reject(code: String, message: String?, cause: Throwable?) {
+                    override fun reject(code: String?, message: String?, cause: Throwable?) {
                         LogUtils.e(CLASS_NAME, "📱 Failed to pause recording after device disconnection: $message")
                     }
                 })
