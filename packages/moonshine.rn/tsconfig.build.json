@@ -1,6 +1,7 @@
 {
   "extends": "./tsconfig",
   "compilerOptions": {
+    "rootDir": "./src",
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "skipLibCheck": true,
