@@ -5,20 +5,19 @@ import { SymbolWeight } from 'expo-symbols';
 import React from 'react';
 import { OpaqueColorValue, StyleProp, ViewStyle } from 'react-native';
 
+type SFSymbolName = Extract<import('expo-symbols').SymbolViewProps['name'], string>;
+type MaterialIconName = React.ComponentProps<typeof MaterialIcons>['name'];
+
 // Add your SFSymbol to MaterialIcons mappings here.
 const MAPPING = {
   // See MaterialIcons here: https://icons.expo.fyi
   // See SF Symbols in the SF Symbols app on Mac.
   'house.fill': 'home',
   'paperplane.fill': 'send',
+  waveform: 'graphic-eq',
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
-} as Partial<
-  Record<
-    import('expo-symbols').SymbolViewProps['name'],
-    React.ComponentProps<typeof MaterialIcons>['name']
-  >
->;
+} satisfies Partial<Record<SFSymbolName, MaterialIconName>>;
 
 export type IconSymbolName = keyof typeof MAPPING;
 

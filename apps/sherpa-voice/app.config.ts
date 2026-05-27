@@ -85,11 +85,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         icon: IS_PRODUCTION ? "./assets/icon.png" : "./assets/icon-dev.png",
         userInterfaceStyle: "light",
         scheme: APP_SCHEME,
-        splash: {
-            image: "./assets/splash-icon.png",
-            resizeMode: "contain",
-            backgroundColor: IS_PRODUCTION ? '#1a73e8' : '#ffffff',
-        },
         assetBundlePatterns: [
             "**/*"
         ],
@@ -139,6 +134,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
             "./plugins/withCustomGradleConfig.cjs",
             "./plugins/withProguardRules.cjs",
             "expo-router",
+            [
+                "expo-splash-screen",
+                {
+                    image: "./assets/splash-icon.png",
+                    resizeMode: "contain",
+                    backgroundColor: IS_PRODUCTION ? '#1a73e8' : '#ffffff',
+                }
+            ],
             [
                 "expo-audio",
                 {

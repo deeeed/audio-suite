@@ -506,19 +506,22 @@ async function resolveWebSocket() {
  */
 function createWSClient(wsUrl, timeout, WebSocketImpl) {
   return new Promise((resolve, reject) => {
-    const origin = process.env.CDP_ORIGIN || (() => {
-      try {
-        const parsed = new URL(wsUrl);
-        if (!parsed.pathname.startsWith('/inspector/')) return undefined;
-        parsed.protocol = parsed.protocol === 'wss:' ? 'https:' : 'http:';
-        parsed.pathname = '';
-        parsed.search = '';
-        parsed.hash = '';
-        return parsed.toString().replace(/\/$/, '');
-      } catch {
-        return undefined;
-      }
-    })();
+    const origin =
+      process.env.CDP_ORIGIN !== undefined
+        ? process.env.CDP_ORIGIN || undefined
+        : (() => {
+            try {
+              const parsed = new URL(wsUrl);
+              if (!parsed.pathname.startsWith('/inspector/')) return undefined;
+              parsed.protocol = parsed.protocol === 'wss:' ? 'https:' : 'http:';
+              parsed.pathname = '';
+              parsed.search = '';
+              parsed.hash = '';
+              return parsed.toString().replace(/\/$/, '');
+            } catch {
+              return undefined;
+            }
+          })();
     const ws = origin
       ? new WebSocketImpl(wsUrl, undefined, { headers: { Origin: origin } })
       : new WebSocketImpl(wsUrl);
