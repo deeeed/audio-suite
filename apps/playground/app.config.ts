@@ -109,12 +109,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         icon: './assets/icon.png',
         userInterfaceStyle: 'light',
         scheme: APP_SCHEME,
-        splash: {
-            image: './assets/splash.png',
-            resizeMode: 'contain',
-            backgroundColor:
-                validatedEnv.APP_VARIANT === 'production' ? '#98c1d9' : '#ffffff',
-        },
         assetBundlePatterns: ['**/*', 'assets/audio_samples/*', 'public/audioStorage.worker.js', 'assets/silero_vad.onnx', 'assets/silero_vad_v5.onnx'],
         ios: {
             supportsTablet: true,
@@ -172,6 +166,15 @@ export default ({ config }: ConfigContext): ExpoConfig => {
                             './node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Entypo.ttf',
                         ],
                     },
+                },
+            ],
+            [
+                'expo-splash-screen',
+                {
+                    image: './assets/splash.png',
+                    resizeMode: 'contain',
+                    backgroundColor:
+                        validatedEnv.APP_VARIANT === 'production' ? '#98c1d9' : '#ffffff',
                 },
             ],
             [
