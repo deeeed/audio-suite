@@ -3,11 +3,9 @@ module.exports = function (api) {
   return {
     presets: ['babel-preset-expo'],
     plugins: [
-      'react-native-worklets/plugin',
       [
         'module-resolver',
         {
-          root: ['./'],
           alias: {
             '@assets': './assets',
             'react-native-vector-icons': '@expo/vector-icons',

@@ -8,7 +8,6 @@ import { useTheme } from '@siteed/design-system'
 
 import { HeaderIcon } from '../component/HeaderIcon'
 
-import type { NativeStackNavigationOptions } from '@react-navigation/native-stack'
 import type { Href } from 'expo-router'
 
 interface UseScreenHeaderProps {
@@ -18,6 +17,13 @@ interface UseScreenHeaderProps {
     fallbackUrl?: string;
     onBack?: () => void;
   };
+}
+
+interface ScreenHeaderOptions {
+  headerShown: boolean;
+  title: string;
+  headerRight?: () => React.ReactNode;
+  headerLeft?: () => React.ReactNode;
 }
 
 export function useScreenHeader({
@@ -62,7 +68,7 @@ export function useScreenHeader({
   }, [handleBackNavigation])
 
   useEffect(() => {
-    const options: NativeStackNavigationOptions = {
+    const options: ScreenHeaderOptions = {
       headerShown: true,
       title,
       headerRight: rightElements,
