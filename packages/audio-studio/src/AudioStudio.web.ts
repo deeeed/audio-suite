@@ -52,6 +52,7 @@ export interface AudioStudioWebProps {
     audioWorkletUrl: string
     featuresExtratorUrl: string
     maxBufferSize?: number // Maximum number of chunks to keep in memory
+    emitEvent?: (eventName: string, params: unknown) => void
 }
 
 export class AudioStudioWeb extends LegacyEventEmitter {
@@ -80,12 +81,19 @@ export class AudioStudioWeb extends LegacyEventEmitter {
     totalCompressedSize: number = 0
     private readonly maxBufferSize: number
     private eventCallback?: (event: AudioStreamEvent) => void
+    private readonly moduleEventEmitter?: (eventName: string, params: unknown) => void
+    private maxDurationTimer?: ReturnType<typeof setTimeout>
+    private maxDurationTargetMs = 0
+    private maxDurationAccumulatedActiveMs = 0
+    private maxDurationSegmentStartMs = 0
+    private maxDurationReached = false
 
     constructor({
         audioWorkletUrl,
         featuresExtratorUrl,
         logger,
         maxBufferSize = DEFAULT_MAX_BUFFER_SIZE,
+        emitEvent,
     }: AudioStudioWebProps) {
         const mockNativeModule = {
             addListener: () => {},
@@ -114,6 +122,125 @@ export class AudioStudioWeb extends LegacyEventEmitter {
         this.audioWorkletUrl = audioWorkletUrl
         this.featuresExtratorUrl = featuresExtratorUrl
         this.maxBufferSize = maxBufferSize
+        this.moduleEventEmitter = emitEvent
+    }
+
+    private emitModuleEvent(eventName: string, params: unknown) {
+        this.emit(eventName, params)
+        this.moduleEventEmitter?.(eventName, params)
+    }
+
+    private resetMaxDurationState(preserveReached = false) {
+        if (this.maxDurationTimer) {
+            clearTimeout(this.maxDurationTimer)
+            this.maxDurationTimer = undefined
+        }
+        this.maxDurationSegmentStartMs = 0
+        if (!preserveReached || !this.maxDurationReached) {
+            this.maxDurationTargetMs = 0
+            this.maxDurationAccumulatedActiveMs = 0
+            this.maxDurationReached = false
+        }
+    }
+
+    private getMaxDurationActiveMs(now = performance.now()) {
+        if (this.maxDurationSegmentStartMs <= 0) {
+            return this.maxDurationAccumulatedActiveMs
+        }
+        return (
+            this.maxDurationAccumulatedActiveMs +
+            (now - this.maxDurationSegmentStartMs)
+        )
+    }
+
+    private scheduleMaxDurationTimer() {
+        if (
+            this.maxDurationTargetMs <= 0 ||
+            this.maxDurationReached ||
+            !this.isRecording ||
+            this.isPaused
+        ) {
+            return
+        }
+
+        if (this.maxDurationTimer) {
+            clearTimeout(this.maxDurationTimer)
+        }
+
+        const remainingMs = Math.max(
+            0,
+            this.maxDurationTargetMs - this.getMaxDurationActiveMs()
+        )
+        this.maxDurationTimer = setTimeout(() => {
+            this.maxDurationTimer = undefined
+            this.emitMaxDurationReached()
+        }, remainingMs)
+    }
+
+    private startMaxDurationTimer(recordingConfig: RecordingConfig) {
+        this.resetMaxDurationState()
+        const targetMs = Number(recordingConfig.maxDurationMs ?? 0)
+        if (!Number.isFinite(targetMs) || targetMs <= 0) {
+            return
+        }
+
+        this.maxDurationTargetMs = targetMs
+        this.maxDurationSegmentStartMs = performance.now()
+        this.scheduleMaxDurationTimer()
+    }
+
+    private pauseMaxDurationTimer() {
+        if (this.maxDurationTimer) {
+            clearTimeout(this.maxDurationTimer)
+            this.maxDurationTimer = undefined
+        }
+        if (this.maxDurationSegmentStartMs > 0) {
+            this.maxDurationAccumulatedActiveMs = this.getMaxDurationActiveMs()
+            this.maxDurationSegmentStartMs = 0
+        }
+    }
+
+    private resumeMaxDurationTimer() {
+        if (this.maxDurationTargetMs <= 0 || this.maxDurationReached) {
+            return
+        }
+        this.maxDurationSegmentStartMs = performance.now()
+        this.scheduleMaxDurationTimer()
+    }
+
+    private emitMaxDurationReached() {
+        if (this.maxDurationTargetMs <= 0 || this.maxDurationReached) {
+            return
+        }
+
+        const durationMs = Math.round(this.getMaxDurationActiveMs())
+        this.maxDurationReached = true
+        const autoStopped = !!this.recordingConfig?.autoStopOnMaxDuration
+        this.emitModuleEvent('MaxDurationReached', {
+            durationMs,
+            maxDurationMs: this.maxDurationTargetMs,
+            overrunMs: Math.max(0, durationMs - this.maxDurationTargetMs),
+            streamUuid: this.streamUuid ?? undefined,
+            autoStopped,
+        })
+        if (autoStopped) {
+            this.stopRecording().catch((error) => {
+                this.logger?.error(
+                    'Error auto-stopping on max duration:',
+                    error
+                )
+            })
+        }
+    }
+
+    private flushExpiredMaxDuration() {
+        if (
+            this.maxDurationTargetMs > 0 &&
+            !this.maxDurationReached &&
+            this.getMaxDurationActiveMs() >= this.maxDurationTargetMs
+        ) {
+            this.emitMaxDurationReached()
+        }
     }
 
     // Utility to handle user media stream
@@ -275,6 +402,7 @@ export class AudioStudioWeb extends LegacyEventEmitter {
         this.currentInterval = recordingConfig.interval ?? 1000
         this.currentIntervalAnalysis = recordingConfig.intervalAnalysis ?? 500
         this.lastEmittedAnalysisTime = Date.now()
+        this.startMaxDurationTimer(recordingConfig)
 
         // Use custom filename if provided, otherwise fallback to timestamp
         if (recordingConfig.filename) {
@@ -321,11 +449,11 @@ export class AudioStudioWeb extends LegacyEventEmitter {
         // Update local state if the interruption should pause recording
         if (event.isPaused) {
             this.isPaused = true
+            this.pausedTime = Date.now()
+            this.pauseMaxDurationTimer()
 
             // If this is a device disconnection, handle according to behavior setting
             if (event.reason === 'deviceDisconnected') {
-                this.pausedTime = Date.now()
-
                 // Check if we should try fallback to another device
                 if (
                     this.recordingConfig?.deviceDisconnectionBehavior ===
@@ -339,7 +467,7 @@ export class AudioStudioWeb extends LegacyEventEmitter {
                     this.handleDeviceFallback().catch((error) => {
                         // If fallback fails, emit warning
                         this.logger?.error('Device fallback failed:', error)
-                        this.emit('onRecordingInterrupted', {
+                        this.emitModuleEvent('onRecordingInterrupted', {
                             reason: 'deviceSwitchFailed',
                             isPaused: true,
                             timestamp: Date.now(),
@@ -352,15 +480,15 @@ export class AudioStudioWeb extends LegacyEventEmitter {
                     this.logger?.warn(
                         'Device disconnected - recording paused automatically'
                     )
-                    this.emit('onRecordingInterrupted', event)
+                    this.emitModuleEvent('onRecordingInterrupted', event)
                 }
             } else {
                 // For other interruption types, just emit the event
-                this.emit('onRecordingInterrupted', event)
+                this.emitModuleEvent('onRecordingInterrupted', event)
             }
         } else {
             // If not causing a pause, just forward the event
-            this.emit('onRecordingInterrupted', event)
+            this.emitModuleEvent('onRecordingInterrupted', event)
         }
     }
 
@@ -390,7 +518,7 @@ export class AudioStudioWeb extends LegacyEventEmitter {
     private customRecorderAnalysisCallback(
         audioAnalysisData: AudioAnalysis
     ): void {
-        this.emit('AudioAnalysis', audioAnalysisData)
+        this.emitModuleEvent('AudioAnalysis', audioAnalysisData)
     }
 
     // Get recording duration
@@ -425,6 +553,7 @@ export class AudioStudioWeb extends LegacyEventEmitter {
         } else {
             this.currentDurationMs += chunkDurationMs
         }
+        this.flushExpiredMaxDuration()
 
         const audioEventPayload: AudioEventPayload = {
             fileUri,
@@ -445,7 +574,7 @@ export class AudioStudioWeb extends LegacyEventEmitter {
                 : undefined,
         }
 
-        this.emit('AudioData', audioEventPayload)
+        this.emitModuleEvent('AudioData', audioEventPayload)
     }
 
     // Stop recording
@@ -457,6 +586,7 @@ export class AudioStudioWeb extends LegacyEventEmitter {
         this.logger?.debug('Starting stop process')
 
         try {
+            this.pauseMaxDurationTimer()
             const { compressedBlob, uncompressedBlob } =
                 await this.customRecorder.stop()
 
@@ -540,6 +670,7 @@ export class AudioStudioWeb extends LegacyEventEmitter {
             this.totalCompressedSize = 0
             this.lastEmittedCompressionSize = 0
             this.audioChunks = []
+            this.resetMaxDurationState(true)
 
             return result
         } catch (error) {
@@ -565,11 +696,13 @@ export class AudioStudioWeb extends LegacyEventEmitter {
             }
             this.isPaused = true
             this.pausedTime = Date.now()
+            this.pauseMaxDurationTimer()
         } catch (error) {
             this.logger?.error('Error in pauseRecording', error)
             // Even if the pause operation failed, make sure our state is consistent
             this.isPaused = true
             this.pausedTime = Date.now()
+            this.pauseMaxDurationTimer()
         }
     }
 
@@ -607,8 +740,9 @@ export class AudioStudioWeb extends LegacyEventEmitter {
             const pauseDuration = Date.now() - this.pausedTime
             this.recordingStartTime += pauseDuration
             this.pausedTime = 0
+            this.resumeMaxDurationTimer()
 
-            this.emit('onRecordingInterrupted', {
+            this.emitModuleEvent('onRecordingInterrupted', {
                 reason: 'userResumed',
                 isPaused: false,
                 timestamp: Date.now(),
@@ -616,7 +750,7 @@ export class AudioStudioWeb extends LegacyEventEmitter {
         } catch (error) {
             this.logger?.error('Resume failed:', error)
             // Fallback to emitting a general failure if resume fails unexpectedly
-            this.emit('onRecordingInterrupted', {
+            this.emitModuleEvent('onRecordingInterrupted', {
                 reason: 'resumeFailed', // Use a more specific reason
                 isPaused: true, // Remain paused if resume fails
                 timestamp: Date.now(),
@@ -628,6 +762,7 @@ export class AudioStudioWeb extends LegacyEventEmitter {
 
     // Get current status
     status() {
+        this.flushExpiredMaxDuration()
         const durationMs = this.getRecordingDuration()
 
         const status: AudioStreamStatus = {
@@ -651,6 +786,9 @@ export class AudioStudioWeb extends LegacyEventEmitter {
                       compressedFileUri: `${this.streamUuid}.webm`,
                   }
                 : undefined,
+            maxDurationMs:
+                this.maxDurationTargetMs > 0 ? this.maxDurationTargetMs : undefined,
+            maxDurationReached: this.maxDurationReached,
         }
         return status
     }
@@ -708,7 +846,7 @@ export class AudioStudioWeb extends LegacyEventEmitter {
             // Try to get a fallback device
             const fallbackDeviceInfo = await this.getFallbackDevice()
             if (!fallbackDeviceInfo) {
-                this.emit('onRecordingInterrupted', {
+                this.emitModuleEvent('onRecordingInterrupted', {
                     reason: 'deviceSwitchFailed',
                     isPaused: true,
                     timestamp: Date.now(),
@@ -774,6 +912,7 @@ export class AudioStudioWeb extends LegacyEventEmitter {
                 // Update recording state
                 this.isPaused = false
                 this.recordingStartTime = Date.now()
+                this.resumeMaxDurationTimer()
 
                 // Restore size counters to maintain continuity
                 this.currentSize = previousTotalSize
@@ -795,7 +934,7 @@ export class AudioStudioWeb extends LegacyEventEmitter {
                     error
                 )
                 this.isPaused = true
-                this.emit('onRecordingInterrupted', {
+                this.emitModuleEvent('onRecordingInterrupted', {
                     reason: 'deviceSwitchFailed',
                     isPaused: true,
                     timestamp: Date.now(),
@@ -807,7 +946,7 @@ export class AudioStudioWeb extends LegacyEventEmitter {
         } catch (error) {
             this.logger?.error('Failed to use fallback device', error)
             this.isPaused = true
-            this.emit('onRecordingInterrupted', {
+            this.emitModuleEvent('onRecordingInterrupted', {
                 reason: 'deviceSwitchFailed',
                 isPaused: true,
                 timestamp: Date.now(),

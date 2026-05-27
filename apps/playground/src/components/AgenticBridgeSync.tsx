@@ -32,6 +32,8 @@ function AgenticBridgeSyncInner() {
         size,
         analysisData,
         compression,
+        maxDurationMs,
+        maxDurationReached,
     } = recorder
 
     // Wire the recorder instance into the bridge on mount
@@ -51,8 +53,19 @@ function AgenticBridgeSyncInner() {
             size,
             analysisData,
             compression,
+            maxDurationMs,
+            maxDurationReached,
         })
-    }, [isRecording, isPaused, durationMs, size, analysisData, compression])
+    }, [
+        isRecording,
+        isPaused,
+        durationMs,
+        size,
+        analysisData,
+        compression,
+        maxDurationMs,
+        maxDurationReached,
+    ])
 
     return null
 }

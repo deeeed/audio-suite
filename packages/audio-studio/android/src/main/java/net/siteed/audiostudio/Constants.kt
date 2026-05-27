@@ -9,6 +9,7 @@ object Constants {
     const val AUDIO_EVENT_NAME = "AudioData"
     const val AUDIO_ANALYSIS_EVENT_NAME = "AudioAnalysis"
     const val RECORDING_INTERRUPTED_EVENT_NAME = "onRecordingInterrupted"
+    const val MAX_DURATION_REACHED_EVENT_NAME = "MaxDurationReached"
     const val TRIM_PROGRESS_EVENT = "TrimProgress"
     const val DEVICE_CHANGED_EVENT = "deviceChangedEvent"
     const val AUDIO_STREAM_CHUNK_EVENT = "AudioDataStreamChunk"

@@ -3,7 +3,10 @@
 import { LegacyEventEmitter, type EventSubscription } from 'expo-modules-core'
 
 import { AudioAnalysis } from './AudioAnalysis/AudioAnalysis.types'
-import { RecordingInterruptionEvent } from './AudioStudio.types'
+import type {
+    MaxDurationReachedEvent,
+    RecordingInterruptionEvent,
+} from './AudioStudio.types'
 import AudioStudioModule from './AudioStudioModule'
 
 const emitter = new LegacyEventEmitter(AudioStudioModule)
@@ -60,4 +63,13 @@ export function addRecordingInterruptionListener(
     )
 
     return subscription
+}
+
+export function addMaxDurationReachedListener(
+    listener: (event: MaxDurationReachedEvent) => void
+): EventSubscription {
+    return emitter.addListener<MaxDurationReachedEvent>(
+        'MaxDurationReached',
+        listener
+    )
 }

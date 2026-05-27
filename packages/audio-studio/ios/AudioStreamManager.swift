@@ -11,6 +11,7 @@ import Accelerate
 import UIKit
 import MediaPlayer
 import UserNotifications
+import QuartzCore
 
 // Constants
 internal let WAV_HEADER_SIZE: Int64 = 44  // Standard WAV header is 44 bytes
@@ -48,6 +49,11 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
     private var startTime: Date?
     private var totalPausedDuration: TimeInterval = 0  // Track total paused time
     private var currentPauseStart: Date?              // Track current pause start
+    private var maxDurationTimer: DispatchSourceTimer?
+    private var maxDurationTargetMs: Int64 = 0
+    private var maxDurationAccumulatedActiveMs: Double = 0
+    private var maxDurationSegmentStart: CFTimeInterval?
+    private var maxDurationReached: Bool = false
     var isRecording = false
     var isPaused = false
     var isPrepared = false  // Add this new state flag
@@ -690,37 +696,39 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
     /// Gets the current status of the recording.
     /// - Returns: A dictionary containing the recording status information.
     func getStatus() -> [String: Any] {
-        guard let settings = recordingSettings else {
-            print("Recording settings are not available.")
-            return [:]
-        }
-        
         let durationInSeconds = currentRecordingDuration()
         let durationInMilliseconds = Int(durationInSeconds * 1000)
+        let settings = recordingSettings
         
         var status: [String: Any] = [
             "durationMs": durationInMilliseconds,
             "isRecording": isRecording,
             "isPaused": isPaused,
             "mimeType": mimeType,
-            "size": totalDataSize
+            "size": totalDataSize,
+            "maxDurationReached": maxDurationReached
         ]
+
+        let statusMaxDurationMs = settings?.maxDurationMs ?? maxDurationTargetMs
+        if statusMaxDurationMs > 0 {
+            status["maxDurationMs"] = statusMaxDurationMs
+        }
         
         // Safely handle optional interval values
-        if let interval = settings.interval {
+        if let interval = settings?.interval {
             status["interval"] = interval
         } else {
             status["interval"] = 1000 // Default value
         }
         
-        if let intervalAnalysis = settings.intervalAnalysis {
+        if let intervalAnalysis = settings?.intervalAnalysis {
             status["intervalAnalysis"] = intervalAnalysis
         } else {
             status["intervalAnalysis"] = 500 // Default value
         }
         
         // Add compression info if enabled
-        if settings.output.compressed.enabled,
+        if settings?.output.compressed.enabled == true,
            let compressedURL = compressedFileURL,
            FileManager.default.fileExists(atPath: compressedURL.path) {
             do {
@@ -742,6 +750,86 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         }
         
         return status
+    }
+
+    private func maxDurationActiveMs(now: CFTimeInterval = CACurrentMediaTime()) -> Double {
+        if let segmentStart = maxDurationSegmentStart {
+            return maxDurationAccumulatedActiveMs + ((now - segmentStart) * 1000)
+        }
+        return maxDurationAccumulatedActiveMs
+    }
+
+    private func startMaxDurationTimer(settings: RecordingSettings) {
+        cancelMaxDurationTimer()
+        maxDurationReached = false
+        maxDurationTargetMs = settings.maxDurationMs
+        maxDurationAccumulatedActiveMs = 0
+        maxDurationSegmentStart = nil
+        guard settings.maxDurationMs > 0 else { return }
+
+        maxDurationSegmentStart = CACurrentMediaTime()
+        scheduleMaxDurationTimer()
+    }
+
+    private func scheduleMaxDurationTimer() {
+        guard maxDurationTargetMs > 0, !maxDurationReached, isRecording, !isPaused else {
+            return
+        }
+
+        maxDurationTimer?.cancel()
+        let remainingMs = max(0, Double(maxDurationTargetMs) - maxDurationActiveMs())
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.main)
+        timer.schedule(deadline: .now() + .milliseconds(Int(remainingMs.rounded(.up))))
+        timer.setEventHandler { [weak self] in
+            self?.maxDurationTimer = nil
+            self?.emitMaxDurationReached()
+        }
+        maxDurationTimer = timer
+        timer.resume()
+    }
+
+    private func pauseMaxDurationTimer() {
+        maxDurationTimer?.cancel()
+        maxDurationTimer = nil
+        if maxDurationSegmentStart != nil {
+            maxDurationAccumulatedActiveMs = maxDurationActiveMs()
+            maxDurationSegmentStart = nil
+        }
+    }
+
+    private func resumeMaxDurationTimer() {
+        guard maxDurationTargetMs > 0, !maxDurationReached else { return }
+        maxDurationSegmentStart = CACurrentMediaTime()
+        scheduleMaxDurationTimer()
+    }
+
+    private func cancelMaxDurationTimer() {
+        maxDurationTimer?.cancel()
+        maxDurationTimer = nil
+        maxDurationSegmentStart = nil
+        if !maxDurationReached {
+            maxDurationTargetMs = 0
+            maxDurationAccumulatedActiveMs = 0
+        }
+    }
+
+    private func emitMaxDurationReached() {
+        guard maxDurationTargetMs > 0, !maxDurationReached else { return }
+        guard isRecording, !isPaused else { return }
+
+        let durationMs = Int64(maxDurationActiveMs().rounded())
+        maxDurationReached = true
+        let shouldAutoStop = recordingSettings?.autoStopOnMaxDuration == true
+        delegate?.audioStreamManager(self, didReachMaxDuration: [
+            "durationMs": durationMs,
+            "maxDurationMs": maxDurationTargetMs,
+            "overrunMs": max(Int64(0), durationMs - maxDurationTargetMs),
+            "streamUuid": recordingUUID ?? "",
+            "autoStopped": shouldAutoStop
+        ])
+        if shouldAutoStop {
+            _ = stopRecording()
+        }
     }
 
     /// Builds compression info dictionary with incremental compressed data for streaming events.
@@ -1179,6 +1267,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             isRecording = true
             isPaused = false
             pausedBySystemInterruption = false
+            startMaxDurationTimer(settings: settings)
             
             // Start the audio engine
             try audioEngine.start()
@@ -1220,6 +1309,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         } catch {
             Logger.debug("Error starting audio engine: \(error.localizedDescription)")
             isRecording = false
+            cancelMaxDurationTimer()
             cleanupPreparation()
             return nil
         }
@@ -1231,6 +1321,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         guard isPrepared && !isRecording else { return }
         
         Logger.debug("Cleaning up prepared resources that weren't used")
+        cancelMaxDurationTimer()
         
         // Remove input tap
         audioEngine.inputNode.removeTap(onBus: 0)
@@ -1296,6 +1387,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
 
         // Store when we paused
         currentPauseStart = Date()
+        pauseMaxDurationTimer()
         
         // Update state
         isPaused = true
@@ -1357,6 +1449,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             
             // Clear the stored valid duration
             lastValidDuration = nil
+            resumeMaxDurationTimer()
             
             // Reset emission timers to ensure emission starts immediately after resume
             lastEmissionTime = Date()
@@ -1843,6 +1936,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         
         // Set stopping flag to prevent race conditions with background/foreground transitions
         stopping = true
+        cancelMaxDurationTimer()
         
         Logger.debug("Stopping recording...")
         

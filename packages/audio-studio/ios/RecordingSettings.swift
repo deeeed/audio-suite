@@ -22,13 +22,13 @@ struct OutputSettings {
         var enabled: Bool = true
         var format: String = "wav"  // Currently only "wav" is supported
     }
-    
+
     struct CompressedOutput {
         var enabled: Bool = false
         var format: String = "aac"  // "aac" or "opus" (opus falls back to aac on iOS)
         var bitrate: Int = 128000
     }
-    
+
     var primary: PrimaryOutput = PrimaryOutput()
     var compressed: CompressedOutput = CompressedOutput()
 }
@@ -39,13 +39,13 @@ struct CompressedRecordingInfo {
     var bitrate: Int
     var format: String
     var size: Int64 = 0  // Add size with default value
-    
+
     static func validate(format: String, bitrate: Int) -> Result<(String, Int), Error> {
         // Validate format
         guard ["aac", "opus"].contains(format.lowercased()) else {
             return .failure(RecordingError.unsupportedFormat(format))
         }
-        
+
         // Adjust bitrate based on format
         let adjustedBitrate: Int
         if format.lowercased() == "aac" {
@@ -57,7 +57,7 @@ struct CompressedRecordingInfo {
             // Typical Opus voice bitrates: 8-24 kbps, music: 32-128 kbps
             adjustedBitrate = min(max(bitrate, 8000), 320000)
         }
-        
+
         return .success((format, adjustedBitrate))
     }
 }
@@ -77,7 +77,7 @@ enum RecordingError: Error {
     case unsupportedFormat(String)
     case invalidBitrate(Int)
     case invalidOutputDirectory(String)
-    
+
     var localizedDescription: String {
         switch self {
         case .unsupportedFormat(let format):
@@ -98,56 +98,58 @@ struct RecordingSettings {
     var bitDepth: Int = 16
     var interval: Int?
     var intervalAnalysis: Int?
-    
+
     // Feature flags
     var keepAwake: Bool = true
     var showNotification: Bool = false
     var enableProcessing: Bool = false
-    
+
     // Remove pointsPerSecond and algorithm
     var featureOptions: [String: Bool]? = ["rms": true, "zcr": true]
-    
+
     // iOS-specific configuration
     var ios: IOSConfig?
-    
+
     // Notification configuration
     var notification: NotificationConfig?
-    
+
     // Output configuration
     var output: OutputSettings = OutputSettings()
-    
+
     let autoResumeAfterInterruption: Bool
-    
+
     var outputDirectory: String? = nil
     var filename: String? = nil
-    
+
     // Update default to 100ms
     var segmentDurationMs: Int = 100  // Default 100ms segments
-    
+
     // Add these new properties
     var deviceId: String?
     var deviceDisconnectionBehavior: DeviceDisconnectionBehavior = .FALLBACK
     var bufferDurationSeconds: Double?
     var streamFormat: String = "raw"
-    
+    var maxDurationMs: Int64 = 0
+    var autoStopOnMaxDuration: Bool = false
+
     static func fromDictionary(_ dict: [String: Any]) -> Result<RecordingSettings, Error> {
         // Parse output configuration
         var outputSettings = OutputSettings()
-        
+
         if let outputDict = dict["output"] as? [String: Any] {
             // Parse primary output settings
             if let primaryDict = outputDict["primary"] as? [String: Any] {
                 outputSettings.primary.enabled = primaryDict["enabled"] as? Bool ?? true
                 outputSettings.primary.format = primaryDict["format"] as? String ?? "wav"
             }
-            
+
             // Parse compressed output settings
             if let compressedDict = outputDict["compressed"] as? [String: Any] {
                 outputSettings.compressed.enabled = compressedDict["enabled"] as? Bool ?? false
                 let format = (compressedDict["format"] as? String)?.lowercased() ?? "aac"
                 outputSettings.compressed.format = format
                 outputSettings.compressed.bitrate = compressedDict["bitrate"] as? Int ?? 128000
-                
+
                 // Validate compression settings if enabled
                 if outputSettings.compressed.enabled {
                     if case .failure(let error) = CompressedRecordingInfo.validate(
@@ -159,40 +161,43 @@ struct RecordingSettings {
                 }
             }
         }
-        
+
         // Add extraction of new properties
         let deviceId = dict["deviceId"] as? String
         let deviceDisconnectionBehaviorStr = dict["deviceDisconnectionBehavior"] as? String
-        
+
         // Create settings
         var settings = RecordingSettings(
             sampleRate: dict["sampleRate"] as? Double ?? 44100.0,
             desiredSampleRate: dict["desiredSampleRate"] as? Double ?? 44100.0,
             autoResumeAfterInterruption: dict["autoResumeAfterInterruption"] as? Bool ?? false
         )
-        
+
         settings.output = outputSettings
-        
+
         // Parse core settings
         settings.numberOfChannels = dict["channels"] as? Int ?? 1
         settings.bitDepth = dict["bitDepth"] as? Int ?? 16
         settings.interval = dict["interval"] as? Int
         settings.intervalAnalysis = dict["intervalAnalysis"] as? Int
-        
+        if let maxDurationNumber = dict["maxDurationMs"] as? NSNumber {
+            settings.maxDurationMs = maxDurationNumber.int64Value
+        }
+        settings.autoStopOnMaxDuration = dict["autoStopOnMaxDuration"] as? Bool ?? false
         // Parse feature flags
         settings.keepAwake = dict["keepAwake"] as? Bool ?? true
         settings.showNotification = dict["showNotification"] as? Bool ?? false
         settings.enableProcessing = dict["enableProcessing"] as? Bool ?? false
-        
+
         settings.featureOptions = dict["features"] as? [String: Bool]
-        
+
         // Update segmentDurationMs parsing
         settings.segmentDurationMs = dict["segmentDurationMs"] as? Int ?? 100
-        
+
         // Parse iOS-specific config
         if let iosDict = dict["ios"] as? [String: Any],
            let audioSessionDict = iosDict["audioSession"] as? [String: Any] {
-            
+
             // Map category
             let category: AVAudioSession.Category
             if let categoryStr = audioSessionDict["category"] as? String {
@@ -208,7 +213,7 @@ struct RecordingSettings {
             } else {
                 category = .record
             }
-            
+
             // Map mode
             let mode: AVAudioSession.Mode
             if let modeStr = audioSessionDict["mode"] as? String {
@@ -226,7 +231,7 @@ struct RecordingSettings {
             } else {
                 mode = .default
             }
-            
+
             // Map category options
             var categoryOptions: AVAudioSession.CategoryOptions = []
             if let optionsArray = audioSessionDict["categoryOptions"] as? [String] {
@@ -243,63 +248,63 @@ struct RecordingSettings {
                     }
                 }
             }
-            
+
             settings.ios = IOSConfig(audioSession: IOSAudioSessionConfig(
                 category: category,
                 mode: mode,
                 categoryOptions: categoryOptions
             ))
         }
-        
+
         // Parse notification config
         if let notificationDict = dict["notification"] as? [String: Any] {
             var notificationConfig = NotificationConfig()
             notificationConfig.title = notificationDict["title"] as? String
             notificationConfig.text = notificationDict["text"] as? String
             notificationConfig.icon = notificationDict["icon"] as? String
-            
+
             // Parse iOS-specific notification config
             if let iosNotificationDict = notificationDict["ios"] as? [String: Any] {
                 notificationConfig.ios = IOSNotificationConfig(
                     categoryIdentifier: iosNotificationDict["categoryIdentifier"] as? String
                 )
             }
-            
+
             settings.notification = notificationConfig
         }
-        
+
         // Parse output settings (they remain nil if not provided)
         if let directory = dict["outputDirectory"] as? String {
             // Only validate if a custom directory is provided
             let fileManager = FileManager.default
             var isDirectory: ObjCBool = false
-            
+
             // Clean up the directory path by removing file:// protocol if present
             let cleanDirectory = directory.replacingOccurrences(of: "file://", with: "")
                 .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
                 .replacingOccurrences(of: "//", with: "/")
-            
+
             if !fileManager.fileExists(atPath: cleanDirectory, isDirectory: &isDirectory) {
                 return .failure(RecordingError.invalidOutputDirectory("Directory does not exist: \(cleanDirectory)"))
             }
-            
+
             if !isDirectory.boolValue {
                 return .failure(RecordingError.invalidOutputDirectory("Path is not a directory: \(cleanDirectory)"))
             }
-            
+
             if !fileManager.isWritableFile(atPath: cleanDirectory) {
                 return .failure(RecordingError.invalidOutputDirectory("Directory is not writable: \(cleanDirectory)"))
             }
-            
+
             settings.outputDirectory = cleanDirectory
         }
-        
+
         settings.filename = dict["filename"] as? String
-        
+
         // Set new properties
         settings.deviceId = deviceId
         settings.deviceDisconnectionBehavior = DeviceDisconnectionBehavior(rawValue: deviceDisconnectionBehaviorStr ?? "fallback") ?? .FALLBACK
-        
+
         if let bufferDuration = dict["bufferDurationSeconds"] as? Double {
             settings.bufferDurationSeconds = bufferDuration
         }

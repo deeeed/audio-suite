@@ -67,6 +67,8 @@ data class RecordingConfig(
     val audioFocusStrategy: String? = null,
     val bufferDurationSeconds: Double? = null,
     val streamFormat: String = "raw",
+    val maxDurationMs: Long = 0L,
+    val autoStopOnMaxDuration: Boolean = false,
 ) {
     companion object {
         fun fromMap(options: Map<String, Any?>?): Result<Pair<RecordingConfig, AudioFormatInfo>> {
@@ -160,6 +162,8 @@ data class RecordingConfig(
                 audioFocusStrategy = audioFocusStrategy,
                 bufferDurationSeconds = (options["bufferDurationSeconds"] as? Number)?.toDouble(),
                 streamFormat = options.getStringOrDefault("streamFormat", "raw"),
+                maxDurationMs = options.getNumberOrDefault("maxDurationMs", 0L),
+                autoStopOnMaxDuration = options.getBooleanOrDefault("autoStopOnMaxDuration", false),
             )
 
             // Validate sample rate and channels

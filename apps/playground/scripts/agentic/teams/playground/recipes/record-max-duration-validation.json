@@ -1,0 +1,119 @@
+{
+  "title": "Record tab max-duration validation",
+  "description": "Validates maxDurationMs reached state and optional auto-stop through the Audio Playground recorder bridge.",
+  "validate": {
+    "workflow": {
+      "entry": "record-screen-smoke",
+      "pre_conditions": [
+        "playground.agentic_ready"
+      ],
+      "nodes": {
+        "record-screen-smoke": {
+          "action": "call",
+          "ref": "playground/record-screen-smoke",
+          "next": "start-notify-only-recording"
+        },
+        "start-notify-only-recording": {
+          "action": "eval_async",
+          "expression": "globalThis.__AGENTIC__?.startRecording?.({ interval: 1000, intervalAnalysis: 1000, sampleRate: 16000, encoding: 'pcm_16bit', enableProcessing: false, maxDurationMs: 1500, output: { primary: { enabled: false }, compressed: { enabled: false } } }).then(function(result) { return JSON.stringify(result); })",
+          "assert": {
+            "operator": "falsy",
+            "field": "error"
+          },
+          "next": "wait-notify-only-event"
+        },
+        "wait-notify-only-event": {
+          "action": "wait_for",
+          "expression": "JSON.stringify(globalThis.__AGENTIC__?.getState?.() || null)",
+          "assert": {
+            "all": [
+              {
+                "operator": "eq",
+                "field": "maxDurationReached",
+                "value": true
+              },
+              {
+                "operator": "eq",
+                "field": "maxDurationMs",
+                "value": 1500
+              }
+            ]
+          },
+          "timeout_ms": 30000,
+          "poll_ms": 250,
+          "next": "assert-notify-only-still-recording"
+        },
+        "assert-notify-only-still-recording": {
+          "action": "eval_ref",
+          "ref": "recording-state",
+          "assert": {
+            "operator": "eq",
+            "field": "isRecording",
+            "value": true
+          },
+          "next": "stop-notify-only-recording"
+        },
+        "stop-notify-only-recording": {
+          "action": "eval_async",
+          "expression": "globalThis.__AGENTIC__?.stopRecording?.().then(function(result) { return JSON.stringify(result); })",
+          "assert": {
+            "operator": "falsy",
+            "field": "error"
+          },
+          "next": "wait-notify-only-stopped"
+        },
+        "wait-notify-only-stopped": {
+          "action": "wait_for",
+          "expression": "JSON.stringify(globalThis.__AGENTIC__?.getState?.() || null)",
+          "assert": {
+            "operator": "eq",
+            "field": "isRecording",
+            "value": false
+          },
+          "timeout_ms": 10000,
+          "poll_ms": 250,
+          "next": "start-auto-stop-recording"
+        },
+        "start-auto-stop-recording": {
+          "action": "eval_async",
+          "expression": "globalThis.__AGENTIC__?.startRecording?.({ interval: 1000, intervalAnalysis: 1000, sampleRate: 16000, encoding: 'pcm_16bit', enableProcessing: false, maxDurationMs: 1200, autoStopOnMaxDuration: true, output: { primary: { enabled: false }, compressed: { enabled: false } } }).then(function(result) { return JSON.stringify(result); })",
+          "assert": {
+            "operator": "falsy",
+            "field": "error"
+          },
+          "next": "wait-auto-stop-stopped"
+        },
+        "wait-auto-stop-stopped": {
+          "action": "wait_for",
+          "expression": "JSON.stringify(globalThis.__AGENTIC__?.getState?.() || null)",
+          "assert": {
+            "all": [
+              {
+                "operator": "eq",
+                "field": "isRecording",
+                "value": false
+              },
+              {
+                "operator": "eq",
+                "field": "isPaused",
+                "value": false
+              },
+              {
+                "operator": "eq",
+                "field": "maxDurationReached",
+                "value": true
+              }
+            ]
+          },
+          "timeout_ms": 30000,
+          "poll_ms": 250,
+          "next": "done"
+        },
+        "done": {
+          "action": "end",
+          "status": "pass"
+        }
+      }
+    }
+  }
+}

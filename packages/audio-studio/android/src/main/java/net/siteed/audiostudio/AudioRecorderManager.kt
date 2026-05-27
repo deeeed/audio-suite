@@ -92,6 +92,12 @@ class AudioRecorderManager(
     private var lastEmitTime = SystemClock.elapsedRealtime()
     private var lastPauseTime = 0L
     private var pausedDuration = 0L
+    private val maxDurationLock = Any()
+    private var maxDurationRunnable: Runnable? = null
+    private var maxDurationTargetMs = 0L
+    private var maxDurationAccumulatedActiveMs = 0L
+    private var maxDurationSegmentStartElapsed = 0L
+    private var maxDurationReached = false
     private var lastEmittedSize = 0L
     private var lastEmittedCompressedSize = 0L
     private var streamPosition = 0L  // Track total bytes processed in the stream
@@ -650,6 +656,7 @@ class AudioRecorderManager(
                     "compressedFileUri" to compressedFile?.toURI().toString()
                 ) else null
             )
+            startMaxDurationTimer()
             promise.resolve(result)
 
         } catch (e: Exception) {
@@ -693,6 +700,123 @@ class AudioRecorderManager(
 
         audioRecord.release()
         return isSupported
+    }
+
+    private fun getMaxDurationActiveMs(now: Long = SystemClock.elapsedRealtime()): Long {
+        return synchronized(maxDurationLock) {
+            if (maxDurationSegmentStartElapsed <= 0L) {
+                maxDurationAccumulatedActiveMs
+            } else {
+                maxDurationAccumulatedActiveMs + (now - maxDurationSegmentStartElapsed)
+            }
+        }
+    }
+
+    private fun startMaxDurationTimer() {
+        synchronized(maxDurationLock) {
+            maxDurationRunnable?.let { mainHandler.removeCallbacks(it) }
+            maxDurationRunnable = null
+            maxDurationTargetMs = recordingConfig.maxDurationMs
+            maxDurationAccumulatedActiveMs = 0L
+            maxDurationSegmentStartElapsed = 0L
+            maxDurationReached = false
+
+            if (maxDurationTargetMs <= 0L) {
+                return
+            }
+
+            maxDurationSegmentStartElapsed = SystemClock.elapsedRealtime()
+        }
+        scheduleMaxDurationTimer()
+    }
+
+    private fun scheduleMaxDurationTimer() {
+        val remainingMs = synchronized(maxDurationLock) {
+            if (
+                maxDurationTargetMs <= 0L ||
+                maxDurationReached ||
+                !_isRecording.get() ||
+                isPaused.get()
+            ) {
+                return
+            }
+
+            maxDurationRunnable?.let { mainHandler.removeCallbacks(it) }
+            (maxDurationTargetMs - getMaxDurationActiveMs()).coerceAtLeast(0L)
+        }
+
+        val runnable = Runnable { emitMaxDurationReached() }
+        synchronized(maxDurationLock) {
+            maxDurationRunnable = runnable
+        }
+        mainHandler.postDelayed(runnable, remainingMs)
+    }
+
+    private fun pauseMaxDurationTimer() {
+        synchronized(maxDurationLock) {
+            maxDurationRunnable?.let { mainHandler.removeCallbacks(it) }
+            maxDurationRunnable = null
+            if (maxDurationSegmentStartElapsed > 0L) {
+                maxDurationAccumulatedActiveMs = getMaxDurationActiveMs()
+                maxDurationSegmentStartElapsed = 0L
+            }
+        }
+    }
+
+    private fun resumeMaxDurationTimer() {
+        synchronized(maxDurationLock) {
+            if (maxDurationTargetMs <= 0L || maxDurationReached) {
+                return
+            }
+            maxDurationSegmentStartElapsed = SystemClock.elapsedRealtime()
+        }
+        scheduleMaxDurationTimer()
+    }
+
+    private fun cancelMaxDurationTimer() {
+        synchronized(maxDurationLock) {
+            maxDurationRunnable?.let { mainHandler.removeCallbacks(it) }
+            maxDurationRunnable = null
+            maxDurationSegmentStartElapsed = 0L
+            if (!maxDurationReached) {
+                maxDurationTargetMs = 0L
+                maxDurationAccumulatedActiveMs = 0L
+            }
+        }
+    }
+
+    private fun emitMaxDurationReached() {
+        val event = synchronized(maxDurationLock) {
+            if (maxDurationTargetMs <= 0L || maxDurationReached) {
+                return
+            }
+            if (!_isRecording.get() || isPaused.get()) {
+                return
+            }
+
+            val durationMs = getMaxDurationActiveMs()
+            maxDurationReached = true
+            maxDurationRunnable = null
+            bundleOf(
+                "durationMs" to durationMs,
+                "maxDurationMs" to maxDurationTargetMs,
+                "overrunMs" to (durationMs - maxDurationTargetMs).coerceAtLeast(0L),
+                "streamUuid" to streamUuid,
+                "autoStopped" to recordingConfig.autoStopOnMaxDuration,
+            )
+        }
+
+        eventSender.sendExpoEvent(Constants.MAX_DURATION_REACHED_EVENT_NAME, event)
+        if (recordingConfig.autoStopOnMaxDuration) {
+            stopRecording(object : Promise {
+                override fun resolve(value: Any?) {
+                    LogUtils.d(CLASS_NAME, "Auto-stopped recording after maxDurationMs")
+                }
+                override fun reject(code: String?, message: String?, cause: Throwable?) {
+                    LogUtils.e(CLASS_NAME, "Failed to auto-stop recording after maxDurationMs: $message")
+                }
+            })
+        }
     }
 
     private fun checkPermissions(options: Map<String, Any?>, promise: Promise): Boolean {
@@ -996,6 +1120,7 @@ class AudioRecorderManager(
 
     fun stopRecording(promise: Promise) {
         val stopStartTime = System.currentTimeMillis()
+        cancelMaxDurationTimer()
         
         synchronized(audioRecordLock) {
             if (!_isRecording.get()) {
@@ -1246,6 +1371,7 @@ class AudioRecorderManager(
             acquireWakeLock()
             pausedDuration += System.currentTimeMillis() - lastPauseTime
             isPaused.set(false)
+            resumeMaxDurationTimer()
             
             synchronized(audioRecordLock) {
                 // Double-check audioRecord is valid after potential reinitialization
@@ -1292,6 +1418,7 @@ class AudioRecorderManager(
             lastPauseTime = System.currentTimeMillis()
             isPaused.set(true)
             pausedBySystemInterruption.set(isSystemInterruption)
+            pauseMaxDurationTimer()
 
             if (recordingConfig.showNotification) {
                 notificationManager.pauseUpdates()
@@ -1381,6 +1508,8 @@ class AudioRecorderManager(
                 "mimeType" to mimeType,
                 "size" to totalDataSize,
                 "interval" to recordingConfig.interval,
+                "maxDurationMs" to if (recordingConfig.maxDurationMs > 0) recordingConfig.maxDurationMs else null,
+                "maxDurationReached" to maxDurationReached,
                 "compression" to compressionBundle
             )
         }
@@ -1756,6 +1885,7 @@ class AudioRecorderManager(
     }
 
     fun cleanup() {
+        cancelMaxDurationTimer()
         synchronized(audioRecordLock) {
             try {
                 if (_isRecording.get()) {

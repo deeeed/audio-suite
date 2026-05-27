@@ -26,6 +26,7 @@ import type {
     StartRecordingResult,
     TranscriberData,
     AudioDevice,
+    MaxDurationReachedEvent,
     RecordingInterruptionEvent,
 } from '@siteed/audio-studio'
 import {
@@ -76,6 +77,12 @@ function formatMs(value?: number | null): string {
 function averageMs(totalMs: number, count: number): string {
     if (count <= 0) return 'n/a'
     return `${Math.round(totalMs / count)} ms`
+}
+
+function formatDurationLimit(value?: number | null): string {
+    if (!value || value <= 0) return 'Off'
+    if (value < 60000) return `${Math.round(value / 1000)}s`
+    return `${Math.round(value / 60000)}m`
 }
 
 function sleep(ms: number): Promise<void> {
@@ -328,7 +335,11 @@ export default function RecordScreen() {
         compression,
         isRecording,
         analysisData,
+        maxDurationMs,
+        maxDurationReached,
     } = useSharedAudioRecorder()
+    const [lastMaxDurationEvent, setLastMaxDurationEvent] =
+        useState<MaxDurationReachedEvent | null>(null)
 
     const liveMelData = useLiveMelSpectrogram(analysisData)
 
@@ -374,6 +385,21 @@ export default function RecordScreen() {
             duration: 3000,
         })
     }, [show])
+
+    const handleMaxDurationReached = useCallback(
+        (event: MaxDurationReachedEvent) => {
+            logger.warn('Recording max duration reached', event)
+            setLastMaxDurationEvent(event)
+            show({
+                type: event.autoStopped ? 'success' : 'warning',
+                message: event.autoStopped
+                    ? `Recording stopped at ${formatDurationLimit(event.maxDurationMs)} limit`
+                    : `Recording reached ${formatDurationLimit(event.maxDurationMs)} limit`,
+                duration: 3000,
+            })
+        },
+        [show],
+    )
 
     const requestPermissions = useCallback(async () => {
         try {
@@ -721,6 +747,11 @@ export default function RecordScreen() {
             hasRecordingResult: result != null,
             isRecordScreenProcessing: processing,
             isRecordScreenStopping: stopping,
+            maxDurationMs,
+            maxDurationReached,
+            configuredMaxDurationMs: startRecordingConfig.maxDurationMs ?? 0,
+            autoStopOnMaxDuration: !!startRecordingConfig.autoStopOnMaxDuration,
+            lastMaxDurationEvent,
             enableMoonshineSherpaLive,
             isMoonshineSherpaRecording:
                 enableMoonshineSherpaLive && (isRecording || moonshineSherpaLive.isRecording),
@@ -756,6 +787,11 @@ export default function RecordScreen() {
         result,
         processing,
         stopping,
+        maxDurationMs,
+        maxDurationReached,
+        startRecordingConfig.maxDurationMs,
+        startRecordingConfig.autoStopOnMaxDuration,
+        lastMaxDurationEvent,
         enableMoonshineSherpaLive,
         isRecording,
         moonshineSherpaLive.attributedCommittedLines.length,
@@ -979,6 +1015,7 @@ export default function RecordScreen() {
                 setTranscripts([])
                 setActiveTranscript(null)
                 setResult(null)
+                setLastMaxDurationEvent(null)
                 resetRecordAttributedValidation()
                 moonshineSherpaLive.clear()
 
@@ -992,6 +1029,7 @@ export default function RecordScreen() {
                         await onAudioDataRef.current(event)
                         await moonshineSherpaLive.processAudioEvent(event)
                     },
+                    onMaxDurationReached: handleMaxDurationReached,
                 }
 
                 // The Record tab can have an already-prepared recorder from the
@@ -1124,6 +1162,7 @@ export default function RecordScreen() {
             webAudioChunks.current = new Float32Array(0)
             currentSize.current = 0
             setLiveWebAudio(null)
+            setLastMaxDurationEvent(null)
 
             // Ensure filename has proper extension if provided
             let finalFileName = customFileName
@@ -1157,6 +1196,7 @@ export default function RecordScreen() {
                         })
                     }
                 },
+                onMaxDurationReached: handleMaxDurationReached,
             }
 
             logger.debug('Starting recording with config:', finalConfig)
@@ -1271,6 +1311,7 @@ export default function RecordScreen() {
         transcriptionContext,
         enableMoonshineSherpaLive,
         moonshineSherpaLive,
+        handleMaxDurationReached,
         resetRecordAttributedValidation,
     ])
 
@@ -1593,6 +1634,19 @@ export default function RecordScreen() {
                 device={currentDevice}
             />
 
+            {maxDurationMs ? (
+                <Notice
+                    testID="record-max-duration-status"
+                    type={maxDurationReached ? 'warning' : 'info'}
+                    title="Max Duration"
+                    message={
+                        maxDurationReached
+                            ? `Reached ${formatDurationLimit(maxDurationMs)} active recording limit`
+                            : `${formatDurationLimit(maxDurationMs)} active recording limit${startRecordingConfig.autoStopOnMaxDuration ? ' with auto-stop' : ''}`
+                    }
+                />
+            ) : null}
+
             <DeviceDisconnectionHandler
                 isRecording={isRecording}
                 currentDevice={currentDevice}
@@ -1768,6 +1822,19 @@ style={{
                 compression={compression}
                 device={currentDevice}
             />
+
+            {maxDurationMs ? (
+                <Notice
+                    testID="record-max-duration-status-paused"
+                    type={maxDurationReached ? 'warning' : 'info'}
+                    title="Max Duration"
+                    message={
+                        maxDurationReached
+                            ? `Reached ${formatDurationLimit(maxDurationMs)} active recording limit`
+                            : `${formatDurationLimit(maxDurationMs)} active recording limit paused`
+                    }
+                />
+            ) : null}
 
             <DeviceDisconnectionHandler
                 isRecording={isRecording}
