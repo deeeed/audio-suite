@@ -23,7 +23,6 @@ module.exports = (api) => {
             production: {
                 plugins: [
                     'react-native-paper/babel',
-                    'react-native-worklets/plugin',
                 ],
             },
         },

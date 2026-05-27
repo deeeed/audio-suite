@@ -159,7 +159,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
                 "expo-build-properties",
                 {
                     "ios": {
-                        "deploymentTarget": "15.1"
+                        "deploymentTarget": "16.4"
                     },
                     "android": {
                         "extraProguardRules": "-keep class com.facebook.hermes.unicode.** { *; }\n-dontwarn expo.modules.kotlin.services.FilePermissionService$Permission",

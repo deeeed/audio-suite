@@ -142,7 +142,7 @@
         "@playwright/test": "^1.58.2",
         "@types/jest": "^29.5.12",
         "@types/react": "~19.2.10",
-        "@types/react-test-renderer": "^18.3.0",
+        "@types/react-test-renderer": "^19",
         "babel-plugin-module-resolver": "^5.0.2",
         "babel-plugin-transform-import-meta": "^2.3.2",
         "detox": "patch:detox@npm%3A20.47.0#~/.yarn/patches/detox-npm-20.47.0-75cd917eb6.patch",
