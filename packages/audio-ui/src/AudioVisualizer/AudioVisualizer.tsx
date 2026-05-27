@@ -518,7 +518,17 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
                 triggerUpdate: Date.now(),
             },
         })
-    }, [dispatch])
+    }, [
+        audioData.dataPoints,
+        candleSpace,
+        candleWidth,
+        dispatch,
+        logger,
+        maxDisplayedItems,
+        mode,
+        referenceLineX,
+        translateX,
+    ])
 
     const handleCenter = useCallback(() => {
         const currentTranslateX = translateX.value

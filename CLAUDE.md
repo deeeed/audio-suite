@@ -91,17 +91,18 @@ Each returns `{ op, status: 'pending' }` immediately. Poll `getLastResult()` for
 
 ## Dependency Strategy (Expo / React Native)
 
-This monorepo uses Yarn 4 with `nodeLinker: node-modules` and `nmHoistingLimits: workspaces`. Each workspace gets its own `node_modules`, which makes it easy for nested packages to ship duplicate copies of `react`, `react-native`, or `@react-navigation/*`. Two copies of any of these in one bundle = silent context Symbol mismatch and a `<Stack>` / `<SceneView>` "Element type is invalid" crash that points at an unrelated provider in the stack trace.
+This monorepo uses Yarn 4 with `nodeLinker: node-modules` and `nmHoistingLimits: workspaces`. Each workspace gets its own `node_modules`, which makes it easy for nested packages to ship duplicate copies of singleton runtime packages such as `react`, `react-native`, or React Navigation packages. Two copies of any singleton in one bundle = silent context Symbol mismatch and a `<Stack>` / `<SceneView>` "Element type is invalid" crash that points at an unrelated provider in the stack trace.
 
 Guard rails in place:
-- Root `package.json` `resolutions` pins `react`, `react-dom`, `@react-navigation/{native,native-stack,bottom-tabs}` to one version per name.
-- Each app's `@react-navigation/*` pins are tight enough that only one version satisfies them (no loose `^7.0.0` ranges).
+- Root `package.json` `resolutions` pins `react` and `react-dom` to one version per name.
+- Expo Router SDK 56 bundles its React Navigation internals; app code should import router-owned entrypoints such as `expo-router/react-navigation`, `expo-router/js-tabs`, and `expo-router/stack` instead of direct `@react-navigation/*` packages.
+- Apps may still provide `@react-navigation/native` only when a non-router library declares it as an external peer, for example `@siteed/design-system`; do not use that package for app-code navigation imports.
 - `apps/playground/metro.config.cjs` force-resolves `react`, `react-dom`, and `react/jsx-{,dev-}runtime` to the playground copy via `resolveRequest`, and lists every nested workspace under `packageRoots` so blacklisted duplicates are excluded.
 - `yarn check:deps` (`scripts/check-runtime-deps.sh`) walks `node_modules` and fails if any singleton package has more than one copy inside a workspace. Run after every dep change and before merging upgrade PRs.
 
 When bumping Expo or React Native:
 1. Run `yarn expo install --check` and apply the recommended versions.
-2. Tighten `@react-navigation/*` pins to expo-router's required floor (see `node_modules/expo-router/package.json` dependencies).
+2. Remove app-code direct `@react-navigation/*` imports and use Expo Router's SDK-specific entrypoints.
 3. Re-run `yarn install` and `yarn check:deps`.
 4. If `check:deps` fails, add the offending package to root `resolutions` and reinstall.
 
