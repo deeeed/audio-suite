@@ -8289,6 +8289,7 @@ __metadata:
     "@react-native-community/cli": "npm:^20.1.3"
     "@react-native/babel-preset": "npm:0.85.3"
     "@react-native/eslint-config": "npm:^0.73.1"
+    "@react-native/jest-preset": "npm:0.85.3"
     "@siteed/publisher": "npm:^0.6.0"
     "@types/adm-zip": "npm:^0"
     "@types/babel__core": "npm:^7"
