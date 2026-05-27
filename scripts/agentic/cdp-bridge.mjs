@@ -488,7 +488,8 @@ async function discoverAllTargets(port, WebSocketImpl, deviceFilter) {
 
 /**
  * Resolve WebSocket implementation once.
- * Prefer ws so native Metro/Hermes inspector connections can include Origin.
+ * Prefer the direct root ws dependency so native Metro/Hermes inspector
+ * connections can include Origin.
  * Expo 56 rejects inspector websocket upgrades with an undefined Origin.
  */
 async function resolveWebSocket() {
