@@ -8,17 +8,15 @@
 
 > **useAudioDevices**(): `object`
 
-Defined in: [src/hooks/useAudioDevices.ts:9](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/hooks/useAudioDevices.ts#L9)
+Defined in: [src/hooks/useAudioDevices.ts:9](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/hooks/useAudioDevices.ts#L9)
 
 React hook for managing audio input devices
 
 ## Returns
 
-`object`
-
 ### currentDevice
 
-> **currentDevice**: `null` \| [`AudioDevice`](../interfaces/AudioDevice.md)
+> **currentDevice**: [`AudioDevice`](../interfaces/AudioDevice.md) \| `null`
 
 ### devices
 
@@ -26,11 +24,14 @@ React hook for managing audio input devices
 
 ### error
 
-> **error**: `null` \| `Error`
+> **error**: `Error` \| `null`
 
-### initializeDeviceDetection()
+### initializeDeviceDetection
 
 > **initializeDeviceDetection**: () => `void`
+
+Initialize device detection
+Useful for restarting device detection if it failed initially
 
 #### Returns
 
@@ -40,25 +41,33 @@ React hook for managing audio input devices
 
 > **loading**: `boolean`
 
-### refreshDevices()
+### refreshDevices
 
 > **refreshDevices**: () => `Promise`\<[`AudioDevice`](../interfaces/AudioDevice.md)[]\>
+
+Refresh the list of available devices
 
 #### Returns
 
 `Promise`\<[`AudioDevice`](../interfaces/AudioDevice.md)[]\>
 
-### resetToDefaultDevice()
+### resetToDefaultDevice
 
 > **resetToDefaultDevice**: () => `Promise`\<`boolean`\>
+
+Reset to the default audio input device
 
 #### Returns
 
 `Promise`\<`boolean`\>
 
-### selectDevice()
+Promise resolving to a boolean indicating success
+
+### selectDevice
 
 > **selectDevice**: (`deviceId`) => `Promise`\<`boolean`\>
+
+Select a specific audio input device
 
 #### Parameters
 
@@ -66,6 +75,10 @@ React hook for managing audio input devices
 
 `string`
 
+The ID of the device to select
+
 #### Returns
 
 `Promise`\<`boolean`\>
+
+Promise resolving to a boolean indicating success

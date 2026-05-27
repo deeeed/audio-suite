@@ -6,7 +6,7 @@
 
 # Interface: OutputConfig
 
-Defined in: [src/AudioStudio.types.ts:350](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L350)
+Defined in: [src/AudioStudio.types.ts:367](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L367)
 
 Configuration for audio output files during recording
 
@@ -14,27 +14,27 @@ Configuration for audio output files during recording
 
 ### compressed?
 
-> `optional` **compressed**: `object`
+> `optional` **compressed?**: `object`
 
-Defined in: [src/AudioStudio.types.ts:364](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L364)
+Defined in: [src/AudioStudio.types.ts:381](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L381)
 
 Configuration for the compressed output file
 
 #### bitrate?
 
-> `optional` **bitrate**: `number`
+> `optional` **bitrate?**: `number`
 
 Bitrate for compression in bits per second (default: 128000)
 
 #### enabled?
 
-> `optional` **enabled**: `boolean`
+> `optional` **enabled?**: `boolean`
 
 Whether to create a compressed output file (default: false)
 
 #### format?
 
-> `optional` **format**: `"aac"` \| `"opus"`
+> `optional` **format?**: `"aac"` \| `"opus"`
 
 Format for compression
 - 'aac': Advanced Audio Coding - supported on all platforms
@@ -42,7 +42,7 @@ Format for compression
 
 #### preferRawStream?
 
-> `optional` **preferRawStream**: `boolean`
+> `optional` **preferRawStream?**: `boolean`
 
 Prefer raw stream over container format (Android only)
 - true: Use raw AAC stream (.aac files) like in v2.10.6
@@ -53,20 +53,20 @@ Note: iOS always produces M4A containers and ignores this flag
 
 ### primary?
 
-> `optional` **primary**: `object`
+> `optional` **primary?**: `object`
 
-Defined in: [src/AudioStudio.types.ts:354](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L354)
+Defined in: [src/AudioStudio.types.ts:371](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L371)
 
 Configuration for the primary (uncompressed) output file
 
 #### enabled?
 
-> `optional` **enabled**: `boolean`
+> `optional` **enabled?**: `boolean`
 
 Whether to create the primary output file (default: true)
 
 #### format?
 
-> `optional` **format**: `"wav"`
+> `optional` **format?**: `"wav"`
 
 Format for the primary output (currently only 'wav' is supported)

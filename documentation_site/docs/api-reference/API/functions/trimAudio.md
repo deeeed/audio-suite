@@ -6,9 +6,9 @@
 
 # Function: trimAudio()
 
-> **trimAudio**(`options`, `progressCallback`?): `Promise`\<[`TrimAudioResult`](../interfaces/TrimAudioResult.md)\>
+> **trimAudio**(`options`, `progressCallback?`): `Promise`\<[`TrimAudioResult`](../interfaces/TrimAudioResult.md)\>
 
-Defined in: [src/trimAudio.ts:74](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/trimAudio.ts#L74)
+Defined in: [src/trimAudio.ts:74](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/trimAudio.ts#L74)
 
 **`Experimental`**
 

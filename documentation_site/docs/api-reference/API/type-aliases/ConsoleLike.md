@@ -6,15 +6,17 @@
 
 # Type Alias: ConsoleLike
 
-> **ConsoleLike**: `object`
+> **ConsoleLike** = `object`
 
-Defined in: [src/AudioStudio.types.ts:107](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L107)
+Defined in: [src/AudioStudio.types.ts:111](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L111)
 
-## Type declaration
+## Properties
 
-### debug()
+### debug
 
 > **debug**: (`message`, ...`args`) => `void`
+
+Defined in: [src/AudioStudio.types.ts:115](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L115)
 
 Logs a debug message with optional arguments
 
@@ -32,9 +34,13 @@ Logs a debug message with optional arguments
 
 `void`
 
-### error()
+***
+
+### error
 
 > **error**: (`message`, ...`args`) => `void`
+
+Defined in: [src/AudioStudio.types.ts:121](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L121)
 
 Logs an error message with optional arguments
 
@@ -52,9 +58,13 @@ Logs an error message with optional arguments
 
 `void`
 
-### info()
+***
+
+### info
 
 > **info**: (`message`, ...`args`) => `void`
+
+Defined in: [src/AudioStudio.types.ts:117](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L117)
 
 Logs an info message with optional arguments
 
@@ -72,9 +82,13 @@ Logs an info message with optional arguments
 
 `void`
 
-### log()
+***
+
+### log
 
 > **log**: (`message`, ...`args`) => `void`
+
+Defined in: [src/AudioStudio.types.ts:113](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L113)
 
 Logs a message with optional arguments
 
@@ -92,9 +106,13 @@ Logs a message with optional arguments
 
 `void`
 
-### warn()
+***
+
+### warn
 
 > **warn**: (`message`, ...`args`) => `void`
+
+Defined in: [src/AudioStudio.types.ts:119](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L119)
 
 Logs a warning message with optional arguments
 

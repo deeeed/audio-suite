@@ -8,7 +8,7 @@
 
 > **isEncodingSupported**(`encoding`): `boolean`
 
-Defined in: [src/constants/platformLimitations.ts:49](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/constants/platformLimitations.ts#L49)
+Defined in: [src/constants/platformLimitations.ts:49](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/constants/platformLimitations.ts#L49)
 
 Check if a specific encoding is supported on the current platform
 

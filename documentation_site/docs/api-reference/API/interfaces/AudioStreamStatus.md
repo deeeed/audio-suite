@@ -6,15 +6,15 @@
 
 # Interface: AudioStreamStatus
 
-Defined in: [src/AudioStudio.types.ts:22](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L22)
+Defined in: [src/AudioStudio.types.ts:22](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L22)
 
 ## Properties
 
 ### compression?
 
-> `optional` **compression**: [`CompressionInfo`](CompressionInfo.md)
+> `optional` **compression?**: [`CompressionInfo`](CompressionInfo.md)
 
-Defined in: [src/AudioStudio.types.ts:38](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L38)
+Defined in: [src/AudioStudio.types.ts:38](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L38)
 
 Information about audio compression if enabled
 
@@ -24,7 +24,7 @@ Information about audio compression if enabled
 
 > **durationMs**: `number`
 
-Defined in: [src/AudioStudio.types.ts:28](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L28)
+Defined in: [src/AudioStudio.types.ts:28](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L28)
 
 Duration of the current recording in milliseconds
 
@@ -34,7 +34,7 @@ Duration of the current recording in milliseconds
 
 > **interval**: `number`
 
-Defined in: [src/AudioStudio.types.ts:32](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L32)
+Defined in: [src/AudioStudio.types.ts:32](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L32)
 
 Interval in milliseconds at which recording data is emitted
 
@@ -44,7 +44,7 @@ Interval in milliseconds at which recording data is emitted
 
 > **intervalAnalysis**: `number`
 
-Defined in: [src/AudioStudio.types.ts:34](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L34)
+Defined in: [src/AudioStudio.types.ts:34](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L34)
 
 Interval in milliseconds at which analysis data is emitted
 
@@ -54,7 +54,7 @@ Interval in milliseconds at which analysis data is emitted
 
 > **isPaused**: `boolean`
 
-Defined in: [src/AudioStudio.types.ts:26](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L26)
+Defined in: [src/AudioStudio.types.ts:26](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L26)
 
 Indicates whether recording is in a paused state
 
@@ -64,9 +64,29 @@ Indicates whether recording is in a paused state
 
 > **isRecording**: `boolean`
 
-Defined in: [src/AudioStudio.types.ts:24](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L24)
+Defined in: [src/AudioStudio.types.ts:24](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L24)
 
 Indicates whether audio recording is currently active
+
+***
+
+### maxDurationMs?
+
+> `optional` **maxDurationMs?**: `number`
+
+Defined in: [src/AudioStudio.types.ts:40](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L40)
+
+Configured maximum active recording duration in milliseconds, if enabled
+
+***
+
+### maxDurationReached?
+
+> `optional` **maxDurationReached?**: `boolean`
+
+Defined in: [src/AudioStudio.types.ts:42](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L42)
+
+Whether the current recording session has reached the configured maximum duration
 
 ***
 
@@ -74,7 +94,7 @@ Indicates whether audio recording is currently active
 
 > **mimeType**: `string`
 
-Defined in: [src/AudioStudio.types.ts:36](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L36)
+Defined in: [src/AudioStudio.types.ts:36](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L36)
 
 MIME type of the recorded audio (e.g., 'audio/wav')
 
@@ -84,6 +104,6 @@ MIME type of the recorded audio (e.g., 'audio/wav')
 
 > **size**: `number`
 
-Defined in: [src/AudioStudio.types.ts:30](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L30)
+Defined in: [src/AudioStudio.types.ts:30](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L30)
 
 Size of the recorded audio data in bytes

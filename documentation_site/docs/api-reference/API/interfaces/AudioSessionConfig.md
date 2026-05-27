@@ -6,15 +6,15 @@
 
 # Interface: AudioSessionConfig
 
-Defined in: [src/AudioStudio.types.ts:193](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L193)
+Defined in: [src/AudioStudio.types.ts:210](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L210)
 
 ## Properties
 
 ### category?
 
-> `optional` **category**: `"Ambient"` \| `"SoloAmbient"` \| `"Playback"` \| `"Record"` \| `"PlayAndRecord"` \| `"MultiRoute"`
+> `optional` **category?**: `"Ambient"` \| `"SoloAmbient"` \| `"Playback"` \| `"Record"` \| `"PlayAndRecord"` \| `"MultiRoute"`
 
-Defined in: [src/AudioStudio.types.ts:203](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L203)
+Defined in: [src/AudioStudio.types.ts:220](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L220)
 
 Audio session category that defines the audio behavior
 - 'Ambient': Audio continues with silent switch, mixes with other audio
@@ -28,9 +28,9 @@ Audio session category that defines the audio behavior
 
 ### categoryOptions?
 
-> `optional` **categoryOptions**: (`"MixWithOthers"` \| `"DuckOthers"` \| `"InterruptSpokenAudioAndMixWithOthers"` \| `"AllowBluetooth"` \| `"AllowBluetoothA2DP"` \| `"AllowAirPlay"` \| `"DefaultToSpeaker"`)[]
+> `optional` **categoryOptions?**: (`"MixWithOthers"` \| `"DuckOthers"` \| `"InterruptSpokenAudioAndMixWithOthers"` \| `"AllowBluetooth"` \| `"AllowBluetoothA2DP"` \| `"AllowAirPlay"` \| `"DefaultToSpeaker"`)[]
 
-Defined in: [src/AudioStudio.types.ts:240](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L240)
+Defined in: [src/AudioStudio.types.ts:257](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L257)
 
 Options that modify the behavior of the audio session category
 - 'MixWithOthers': Allows mixing with other active audio sessions
@@ -45,9 +45,9 @@ Options that modify the behavior of the audio session category
 
 ### mode?
 
-> `optional` **mode**: `"Default"` \| `"VoiceChat"` \| `"VideoChat"` \| `"GameChat"` \| `"VideoRecording"` \| `"Measurement"` \| `"MoviePlayback"` \| `"SpokenAudio"`
+> `optional` **mode?**: `"Default"` \| `"VoiceChat"` \| `"VideoChat"` \| `"GameChat"` \| `"VideoRecording"` \| `"Measurement"` \| `"MoviePlayback"` \| `"SpokenAudio"`
 
-Defined in: [src/AudioStudio.types.ts:221](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L221)
+Defined in: [src/AudioStudio.types.ts:238](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L238)
 
 Audio session mode that defines the behavior for specific use cases
 - 'Default': Standard audio behavior

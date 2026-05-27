@@ -6,15 +6,15 @@
 
 # Interface: WaveformConfig
 
-Defined in: [src/AudioStudio.types.ts:589](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L589)
+Defined in: [src/AudioStudio.types.ts:630](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L630)
 
 ## Properties
 
 ### color?
 
-> `optional` **color**: `string`
+> `optional` **color?**: `string`
 
-Defined in: [src/AudioStudio.types.ts:591](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L591)
+Defined in: [src/AudioStudio.types.ts:632](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L632)
 
 The color of the waveform (e.g., "#FFFFFF" for white)
 
@@ -22,9 +22,9 @@ The color of the waveform (e.g., "#FFFFFF" for white)
 
 ### height?
 
-> `optional` **height**: `number`
+> `optional` **height?**: `number`
 
-Defined in: [src/AudioStudio.types.ts:601](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L601)
+Defined in: [src/AudioStudio.types.ts:642](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L642)
 
 Height of the waveform view in dp (default: 64)
 
@@ -32,9 +32,9 @@ Height of the waveform view in dp (default: 64)
 
 ### mirror?
 
-> `optional` **mirror**: `boolean`
+> `optional` **mirror?**: `boolean`
 
-Defined in: [src/AudioStudio.types.ts:599](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L599)
+Defined in: [src/AudioStudio.types.ts:640](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L640)
 
 Whether to mirror the waveform (symmetrical display)
 
@@ -42,9 +42,9 @@ Whether to mirror the waveform (symmetrical display)
 
 ### opacity?
 
-> `optional` **opacity**: `number`
+> `optional` **opacity?**: `number`
 
-Defined in: [src/AudioStudio.types.ts:593](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L593)
+Defined in: [src/AudioStudio.types.ts:634](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L634)
 
 Opacity of the waveform (0.0 - 1.0)
 
@@ -52,9 +52,9 @@ Opacity of the waveform (0.0 - 1.0)
 
 ### strokeWidth?
 
-> `optional` **strokeWidth**: `number`
+> `optional` **strokeWidth?**: `number`
 
-Defined in: [src/AudioStudio.types.ts:595](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L595)
+Defined in: [src/AudioStudio.types.ts:636](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L636)
 
 Width of the waveform line (default: 1.5)
 
@@ -62,8 +62,8 @@ Width of the waveform line (default: 1.5)
 
 ### style?
 
-> `optional` **style**: `"fill"` \| `"stroke"`
+> `optional` **style?**: `"fill"` \| `"stroke"`
 
-Defined in: [src/AudioStudio.types.ts:597](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L597)
+Defined in: [src/AudioStudio.types.ts:638](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L638)
 
 Drawing style: "stroke" for outline, "fill" for solid

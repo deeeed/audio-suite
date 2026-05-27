@@ -1,0 +1,65 @@
+[**@siteed/audio-studio**](../README.md)
+
+***
+
+[@siteed/audio-studio](../README.md) / AudioStreamErrorPayload
+
+# Interface: AudioStreamErrorPayload
+
+Defined in: [src/errors/AudioStreamError.ts:16](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L16)
+
+## Properties
+
+### code
+
+> **code**: [`AudioStreamErrorCode`](../type-aliases/AudioStreamErrorCode.md)
+
+Defined in: [src/errors/AudioStreamError.ts:17](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L17)
+
+***
+
+### fileUri?
+
+> `optional` **fileUri?**: `string`
+
+Defined in: [src/errors/AudioStreamError.ts:20](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L20)
+
+***
+
+### message
+
+> **message**: `string`
+
+Defined in: [src/errors/AudioStreamError.ts:18](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L18)
+
+***
+
+### nativeCode?
+
+> `optional` **nativeCode?**: `string`
+
+Defined in: [src/errors/AudioStreamError.ts:22](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L22)
+
+***
+
+### nativeMessage?
+
+> `optional` **nativeMessage?**: `string`
+
+Defined in: [src/errors/AudioStreamError.ts:23](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L23)
+
+***
+
+### platform?
+
+> `optional` **platform?**: `string`
+
+Defined in: [src/errors/AudioStreamError.ts:21](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L21)
+
+***
+
+### recoverable
+
+> **recoverable**: `boolean`
+
+Defined in: [src/errors/AudioStreamError.ts:19](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L19)

@@ -517,7 +517,12 @@ export interface RecordingConfig {
      */
     autoStopOnMaxDuration?: boolean
 
-    /** Optional callback invoked when maxDurationMs is reached */
+    /**
+     * Optional callback invoked when maxDurationMs is reached.
+     *
+     * If autoStopOnMaxDuration is true, this callback is invoked before the
+     * recorder finishes stopping. The final stop result is not passed here.
+     */
     onMaxDurationReached?: (_: MaxDurationReachedEvent) => void
 
     /** Optional directory path where output files will be saved */

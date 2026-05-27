@@ -36,7 +36,7 @@ Cross-platform audio recording, analysis, and processing for React Native and Ex
 
 ## Features
 
-- **Recording** — real-time streaming, dual-stream (raw PCM + compressed), background recording, zero-latency start via `prepareRecording`
+- **Recording** — real-time streaming, dual-stream (raw PCM + compressed), max active duration limits, background recording, zero-latency start via `prepareRecording`
 - **Device management** — list/select input devices (Bluetooth, USB, wired), automatic fallback
 - **Interruption handling** — auto pause/resume during phone calls
 - **Audio analysis** — MFCC, spectral features, mel spectrogram, tempo, pitch, waveform preview
@@ -115,6 +115,35 @@ await startRecording({
     },
 })
 ```
+
+### Max Active Recording Duration
+
+Use `maxDurationMs` to cap cumulative active recording time. Paused time does
+not count toward the limit. By default, the recorder emits
+`onMaxDurationReached` and continues recording so your app can decide what to
+do next. Set `autoStopOnMaxDuration: true` to stop automatically.
+
+```typescript
+const {
+    startRecording,
+    maxDurationMs,
+    maxDurationReached,
+} = useAudioRecorder()
+
+await startRecording({
+    sampleRate: 16000,
+    channels: 1,
+    maxDurationMs: 60_000,
+    autoStopOnMaxDuration: true,
+    onMaxDurationReached: (event) => {
+        console.log('Reached recording limit:', event.maxDurationMs)
+    },
+})
+```
+
+When auto-stop is enabled, the max-duration event is emitted before the stop
+finishes. Use the event and stream callbacks for immediate UI updates, then use
+normal recording state to observe that the recorder has stopped.
 
 ## Audio Analysis
 

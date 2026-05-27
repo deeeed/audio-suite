@@ -7,6 +7,8 @@
 ## Classes
 
 - [AudioDeviceManager](classes/AudioDeviceManager.md)
+- [AudioExtractionError](classes/AudioExtractionError.md)
+- [AudioStreamError](classes/AudioStreamError.md)
 
 ## Interfaces
 
@@ -14,14 +16,17 @@
 - [AudioAnalysis](interfaces/AudioAnalysis.md)
 - [AudioDataEventFloat32](interfaces/AudioDataEventFloat32.md)
 - [AudioDataEventRaw](interfaces/AudioDataEventRaw.md)
+- [AudioDecodeCapabilities](interfaces/AudioDecodeCapabilities.md)
 - [AudioDevice](interfaces/AudioDevice.md)
 - [AudioDeviceCapabilities](interfaces/AudioDeviceCapabilities.md)
+- [AudioExtractionErrorPayload](interfaces/AudioExtractionErrorPayload.md)
 - [AudioFeatures](interfaces/AudioFeatures.md)
 - [AudioFeaturesOptions](interfaces/AudioFeaturesOptions.md)
 - [AudioFeaturesWasmResult](interfaces/AudioFeaturesWasmResult.md)
 - [AudioRangeOptions](interfaces/AudioRangeOptions.md)
 - [AudioRecording](interfaces/AudioRecording.md)
 - [AudioSessionConfig](interfaces/AudioSessionConfig.md)
+- [AudioStreamErrorPayload](interfaces/AudioStreamErrorPayload.md)
 - [AudioStreamStatus](interfaces/AudioStreamStatus.md)
 - [Chunk](interfaces/Chunk.md)
 - [CompressionInfo](interfaces/CompressionInfo.md)
@@ -31,16 +36,25 @@
 - [ExtractedAudioData](interfaces/ExtractedAudioData.md)
 - [ExtractMelSpectrogramOptions](interfaces/ExtractMelSpectrogramOptions.md)
 - [IOSConfig](interfaces/IOSConfig.md)
+- [MaxDurationReachedEvent](interfaces/MaxDurationReachedEvent.md)
 - [MelSpectrogram](interfaces/MelSpectrogram.md)
 - [NotificationAction](interfaces/NotificationAction.md)
 - [NotificationConfig](interfaces/NotificationConfig.md)
 - [OutputConfig](interfaces/OutputConfig.md)
 - [PlatformCapabilities](interfaces/PlatformCapabilities.md)
+- [PreviewBar](interfaces/PreviewBar.md)
+- [PreviewBarsOptions](interfaces/PreviewBarsOptions.md)
+- [PreviewBarsResult](interfaces/PreviewBarsResult.md)
 - [PreviewOptions](interfaces/PreviewOptions.md)
 - [RecordingConfig](interfaces/RecordingConfig.md)
 - [RecordingInterruptionEvent](interfaces/RecordingInterruptionEvent.md)
 - [SpeechFeatures](interfaces/SpeechFeatures.md)
 - [StartRecordingResult](interfaces/StartRecordingResult.md)
+- [StreamAudioDataCallbacks](interfaces/StreamAudioDataCallbacks.md)
+- [StreamAudioDataChunk](interfaces/StreamAudioDataChunk.md)
+- [StreamAudioDataOptions](interfaces/StreamAudioDataOptions.md)
+- [StreamAudioDataProgress](interfaces/StreamAudioDataProgress.md)
+- [StreamAudioDataResult](interfaces/StreamAudioDataResult.md)
 - [TimeRange](interfaces/TimeRange.md)
 - [TranscriberData](interfaces/TranscriberData.md)
 - [TrimAudioOptions](interfaces/TrimAudioOptions.md)
@@ -55,6 +69,8 @@
 ## Type Aliases
 
 - [AudioDataEvent](type-aliases/AudioDataEvent.md)
+- [AudioExtractionErrorCode](type-aliases/AudioExtractionErrorCode.md)
+- [AudioStreamErrorCode](type-aliases/AudioStreamErrorCode.md)
 - [BitDepth](type-aliases/BitDepth.md)
 - [ConsoleLike](type-aliases/ConsoleLike.md)
 - [DeviceDisconnectionBehaviorType](type-aliases/DeviceDisconnectionBehaviorType.md)
@@ -66,6 +82,7 @@
 ## Variables
 
 - [audioDeviceManager](variables/audioDeviceManager.md)
+- [AudioRecorderProvider](variables/AudioRecorderProvider.md)
 - [AudioStudioModule](variables/AudioStudioModule.md)
 - [DeviceDisconnectionBehavior](variables/DeviceDisconnectionBehavior.md)
 - [~~ExpoAudioStreamModule~~](variables/ExpoAudioStreamModule.md)
@@ -74,14 +91,16 @@
 
 ## Functions
 
-- [AudioRecorderProvider](functions/AudioRecorderProvider.md)
+- [addMaxDurationReachedListener](functions/addMaxDurationReachedListener.md)
 - [computeMelFrameWasm](functions/computeMelFrameWasm.md)
 - [convertPCMToFloat32](functions/convertPCMToFloat32.md)
 - [extractAudioAnalysis](functions/extractAudioAnalysis.md)
 - [extractAudioData](functions/extractAudioData.md)
 - [extractMelSpectrogram](functions/extractMelSpectrogram.md)
 - [extractPreview](functions/extractPreview.md)
+- [extractPreviewBars](functions/extractPreviewBars.md)
 - [extractRawWavAnalysis](functions/extractRawWavAnalysis.md)
+- [getAudioDecodeCapabilities](functions/getAudioDecodeCapabilities.md)
 - [getFallbackBitDepth](functions/getFallbackBitDepth.md)
 - [getFallbackEncoding](functions/getFallbackEncoding.md)
 - [getPlatformCapabilities](functions/getPlatformCapabilities.md)
@@ -89,7 +108,10 @@
 - [initMelStreamingWasm](functions/initMelStreamingWasm.md)
 - [isBitDepthSupported](functions/isBitDepthSupported.md)
 - [isEncodingSupported](functions/isEncodingSupported.md)
+- [mapExtractionError](functions/mapExtractionError.md)
+- [mapStreamError](functions/mapStreamError.md)
 - [setMelSpectrogramWasmUrl](functions/setMelSpectrogramWasmUrl.md)
+- [streamAudioData](functions/streamAudioData.md)
 - [trimAudio](functions/trimAudio.md)
 - [useAudioDevices](functions/useAudioDevices.md)
 - [useAudioRecorder](functions/useAudioRecorder.md)

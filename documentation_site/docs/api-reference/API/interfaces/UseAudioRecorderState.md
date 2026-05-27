@@ -6,15 +6,15 @@
 
 # Interface: UseAudioRecorderState
 
-Defined in: [src/AudioStudio.types.ts:654](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L654)
+Defined in: [src/AudioStudio.types.ts:695](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L695)
 
 ## Properties
 
 ### analysisData?
 
-> `optional` **analysisData**: [`AudioAnalysis`](AudioAnalysis.md)
+> `optional` **analysisData?**: [`AudioAnalysis`](AudioAnalysis.md)
 
-Defined in: [src/AudioStudio.types.ts:714](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L714)
+Defined in: [src/AudioStudio.types.ts:759](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L759)
 
 Analysis data for the recording if processing was enabled
 
@@ -22,9 +22,9 @@ Analysis data for the recording if processing was enabled
 
 ### compression?
 
-> `optional` **compression**: [`CompressionInfo`](CompressionInfo.md)
+> `optional` **compression?**: [`CompressionInfo`](CompressionInfo.md)
 
-Defined in: [src/AudioStudio.types.ts:712](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L712)
+Defined in: [src/AudioStudio.types.ts:753](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L753)
 
 Information about compression if enabled
 
@@ -34,7 +34,7 @@ Information about compression if enabled
 
 > **durationMs**: `number`
 
-Defined in: [src/AudioStudio.types.ts:708](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L708)
+Defined in: [src/AudioStudio.types.ts:749](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L749)
 
 Duration of the current recording in milliseconds
 
@@ -44,7 +44,7 @@ Duration of the current recording in milliseconds
 
 > **isPaused**: `boolean`
 
-Defined in: [src/AudioStudio.types.ts:706](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L706)
+Defined in: [src/AudioStudio.types.ts:747](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L747)
 
 Indicates whether recording is in a paused state
 
@@ -54,17 +54,57 @@ Indicates whether recording is in a paused state
 
 > **isRecording**: `boolean`
 
-Defined in: [src/AudioStudio.types.ts:704](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L704)
+Defined in: [src/AudioStudio.types.ts:745](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L745)
 
 Indicates whether recording is currently active
 
 ***
 
-### onRecordingInterrupted()?
+### maxDurationMs?
 
-> `optional` **onRecordingInterrupted**: (`_`) => `void`
+> `optional` **maxDurationMs?**: `number`
 
-Defined in: [src/AudioStudio.types.ts:716](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L716)
+Defined in: [src/AudioStudio.types.ts:755](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L755)
+
+Configured maximum active recording duration in milliseconds, if enabled
+
+***
+
+### maxDurationReached?
+
+> `optional` **maxDurationReached?**: `boolean`
+
+Defined in: [src/AudioStudio.types.ts:757](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L757)
+
+Whether the current recording session has reached the configured maximum duration
+
+***
+
+### onMaxDurationReached?
+
+> `optional` **onMaxDurationReached?**: (`_`) => `void`
+
+Defined in: [src/AudioStudio.types.ts:763](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L763)
+
+Optional callback invoked when maxDurationMs is reached
+
+#### Parameters
+
+##### \_
+
+[`MaxDurationReachedEvent`](MaxDurationReachedEvent.md)
+
+#### Returns
+
+`void`
+
+***
+
+### onRecordingInterrupted?
+
+> `optional` **onRecordingInterrupted?**: (`_`) => `void`
+
+Defined in: [src/AudioStudio.types.ts:761](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L761)
 
 Optional callback to handle recording interruptions
 
@@ -80,11 +120,11 @@ Optional callback to handle recording interruptions
 
 ***
 
-### pauseRecording()
+### pauseRecording
 
 > **pauseRecording**: () => `Promise`\<`void`\>
 
-Defined in: [src/AudioStudio.types.ts:700](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L700)
+Defined in: [src/AudioStudio.types.ts:741](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L741)
 
 Pauses the current recording
 
@@ -94,11 +134,11 @@ Pauses the current recording
 
 ***
 
-### prepareRecording()
+### prepareRecording
 
 > **prepareRecording**: (`_`) => `Promise`\<`void`\>
 
-Defined in: [src/AudioStudio.types.ts:694](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L694)
+Defined in: [src/AudioStudio.types.ts:735](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L735)
 
 Prepares recording with the specified configuration without starting it.
 
@@ -152,11 +192,11 @@ const handleRecordPress = () => startRecording({
 
 ***
 
-### resumeRecording()
+### resumeRecording
 
 > **resumeRecording**: () => `Promise`\<`void`\>
 
-Defined in: [src/AudioStudio.types.ts:702](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L702)
+Defined in: [src/AudioStudio.types.ts:743](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L743)
 
 Resumes a paused recording
 
@@ -170,17 +210,17 @@ Resumes a paused recording
 
 > **size**: `number`
 
-Defined in: [src/AudioStudio.types.ts:710](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L710)
+Defined in: [src/AudioStudio.types.ts:751](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L751)
 
 Size of the recorded audio in bytes
 
 ***
 
-### startRecording()
+### startRecording
 
 > **startRecording**: (`_`) => `Promise`\<[`StartRecordingResult`](StartRecordingResult.md)\>
 
-Defined in: [src/AudioStudio.types.ts:696](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L696)
+Defined in: [src/AudioStudio.types.ts:737](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L737)
 
 Starts recording with the specified configuration
 
@@ -196,14 +236,14 @@ Starts recording with the specified configuration
 
 ***
 
-### stopRecording()
+### stopRecording
 
-> **stopRecording**: () => `Promise`\<`null` \| [`AudioRecording`](AudioRecording.md)\>
+> **stopRecording**: () => `Promise`\<[`AudioRecording`](AudioRecording.md) \| `null`\>
 
-Defined in: [src/AudioStudio.types.ts:698](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L698)
+Defined in: [src/AudioStudio.types.ts:739](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L739)
 
 Stops the current recording and returns the recording data
 
 #### Returns
 
-`Promise`\<`null` \| [`AudioRecording`](AudioRecording.md)\>
+`Promise`\<[`AudioRecording`](AudioRecording.md) \| `null`\>

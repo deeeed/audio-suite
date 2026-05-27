@@ -6,14 +6,14 @@
 
 # Interface: IOSConfig
 
-Defined in: [src/AudioStudio.types.ts:251](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L251)
+Defined in: [src/AudioStudio.types.ts:268](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L268)
 
 ## Properties
 
 ### audioSession?
 
-> `optional` **audioSession**: [`AudioSessionConfig`](AudioSessionConfig.md)
+> `optional` **audioSession?**: [`AudioSessionConfig`](AudioSessionConfig.md)
 
-Defined in: [src/AudioStudio.types.ts:253](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L253)
+Defined in: [src/AudioStudio.types.ts:270](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L270)
 
 Configuration for the iOS audio session

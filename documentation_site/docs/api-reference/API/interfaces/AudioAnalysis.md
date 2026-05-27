@@ -6,7 +6,7 @@
 
 # Interface: AudioAnalysis
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:108](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L108)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:114](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L114)
 
 Represents the complete data from the audio analysis.
 
@@ -16,7 +16,7 @@ Represents the complete data from the audio analysis.
 
 > **amplitudeRange**: `object`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:130](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L130)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:136](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L136)
 
 #### max
 
@@ -32,7 +32,7 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:130](https://github.com/de
 
 > **bitDepth**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:125](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L125)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:131](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L131)
 
 Bit depth used for audio analysis processing.
 
@@ -53,7 +53,7 @@ The actual recorded file will maintain the requested bit depth (8, 16, or 32).
 
 > **dataPoints**: [`DataPoint`](DataPoint.md)[]
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:129](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L129)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:135](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L135)
 
 ***
 
@@ -61,7 +61,7 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:129](https://github.com/de
 
 > **durationMs**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:110](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L110)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:116](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L116)
 
 ***
 
@@ -69,7 +69,7 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:110](https://github.com/de
 
 > **extractionTimeMs**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:138](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L138)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:144](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L144)
 
 ***
 
@@ -77,7 +77,7 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:138](https://github.com/de
 
 > **numberOfChannels**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:127](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L127)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:133](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L133)
 
 ***
 
@@ -85,7 +85,7 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:127](https://github.com/de
 
 > **rmsRange**: `object`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:134](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L134)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:140](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L140)
 
 #### max
 
@@ -101,7 +101,7 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:134](https://github.com/de
 
 > **sampleRate**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:128](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L128)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:134](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L134)
 
 ***
 
@@ -109,7 +109,7 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:128](https://github.com/de
 
 > **samples**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:126](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L126)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:132](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L132)
 
 ***
 
@@ -117,15 +117,15 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:126](https://github.com/de
 
 > **segmentDurationMs**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:109](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L109)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:115](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L115)
 
 ***
 
 ### speechAnalysis?
 
-> `optional` **speechAnalysis**: `object`
+> `optional` **speechAnalysis?**: `object`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:140](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L140)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:146](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L146)
 
 #### speakerChanges
 

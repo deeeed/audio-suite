@@ -53,6 +53,11 @@ export interface RecordingConfig {
     autoResumeAfterInterruption?: boolean // Whether to automatically resume after interruption
     onRecordingInterrupted?: (_: RecordingInterruptionEvent) => void // Callback for interruption events
 
+    // Active recording duration limit
+    maxDurationMs?: number // Maximum cumulative active recording duration in milliseconds. Paused time does not count.
+    autoStopOnMaxDuration?: boolean // Whether to stop automatically when maxDurationMs is reached (default is false)
+    onMaxDurationReached?: (_: MaxDurationReachedEvent) => void // Callback for max-duration events
+
     // Callback functions
     onAudioStream?: (_: AudioDataEvent) => Promise<void> // Callback function to handle audio stream
     onAudioAnalysis?: (_: AudioAnalysisEvent) => Promise<void> // Callback function to handle audio features
@@ -119,6 +124,40 @@ const realtimeConfig = {
   }
 };
 ```
+
+## Max Active Recording Duration {#max-active-recording-duration}
+
+Use `maxDurationMs` to define a cumulative active recording limit. The timer
+pauses when recording is paused, so interruption pauses and manual pauses do not
+consume the limit.
+
+```tsx
+await startRecording({
+  sampleRate: 16000,
+  channels: 1,
+  maxDurationMs: 60_000,
+  autoStopOnMaxDuration: true,
+  onMaxDurationReached: (event) => {
+    console.log('Recording limit reached', {
+      durationMs: event.durationMs,
+      maxDurationMs: event.maxDurationMs,
+      overrunMs: event.overrunMs,
+      autoStopped: event.autoStopped,
+    })
+  },
+})
+```
+
+Behavior:
+
+1. `maxDurationMs` set to `undefined`, `0`, or a negative value disables the limit.
+2. `autoStopOnMaxDuration: false` emits `onMaxDurationReached` and keeps recording.
+3. `autoStopOnMaxDuration: true` emits `onMaxDurationReached` and then stops recording automatically.
+4. `maxDurationMs` and `maxDurationReached` remain available in hook/status state after stop so UI can explain why recording ended.
+
+When auto-stop is enabled, the automatic stop result is not passed to
+`onMaxDurationReached`. Use the event for immediate UI updates and the normal
+recording state/results flow to observe the stopped state.
 
 ## Live Analysis Retention {#live-analysis-retention}
 

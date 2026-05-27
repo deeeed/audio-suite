@@ -6,7 +6,7 @@
 
 # Interface: AudioFeaturesOptions
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:61](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L61)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:67](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L67)
 
 Options to specify which audio features to extract.
 Note: Advanced features (spectral features, chromagram, pitch, etc.) are experimental,
@@ -16,126 +16,126 @@ especially during live recording, due to high processing requirements.
 
 ### chromagram?
 
-> `optional` **chromagram**: `boolean`
+> `optional` **chromagram?**: `boolean`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:73](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L73)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:79](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L79)
 
 ***
 
 ### crc32?
 
-> `optional` **crc32**: `boolean`
+> `optional` **crc32?**: `boolean`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:82](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L82)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:88](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L88)
 
 ***
 
 ### energy?
 
-> `optional` **energy**: `boolean`
+> `optional` **energy?**: `boolean`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:63](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L63)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:69](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L69)
 
 ***
 
 ### hnr?
 
-> `optional` **hnr**: `boolean`
+> `optional` **hnr?**: `boolean`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:75](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L75)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:81](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L81)
 
 ***
 
 ### melSpectrogram?
 
-> `optional` **melSpectrogram**: `boolean`
+> `optional` **melSpectrogram?**: `boolean`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:76](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L76)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:82](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L82)
 
 ***
 
 ### mfcc?
 
-> `optional` **mfcc**: `boolean`
+> `optional` **mfcc?**: `boolean`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:68](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L68)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:74](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L74)
 
 ***
 
 ### pitch?
 
-> `optional` **pitch**: `boolean`
+> `optional` **pitch?**: `boolean`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:79](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L79)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:85](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L85)
 
 ***
 
 ### rms?
 
-> `optional` **rms**: `boolean`
+> `optional` **rms?**: `boolean`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:64](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L64)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:70](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L70)
 
 ***
 
 ### spectralBandwidth?
 
-> `optional` **spectralBandwidth**: `boolean`
+> `optional` **spectralBandwidth?**: `boolean`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:72](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L72)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:78](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L78)
 
 ***
 
 ### spectralCentroid?
 
-> `optional` **spectralCentroid**: `boolean`
+> `optional` **spectralCentroid?**: `boolean`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:69](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L69)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:75](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L75)
 
 ***
 
 ### spectralContrast?
 
-> `optional` **spectralContrast**: `boolean`
+> `optional` **spectralContrast?**: `boolean`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:77](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L77)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:83](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L83)
 
 ***
 
 ### spectralFlatness?
 
-> `optional` **spectralFlatness**: `boolean`
+> `optional` **spectralFlatness?**: `boolean`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:70](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L70)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:76](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L76)
 
 ***
 
 ### spectralRolloff?
 
-> `optional` **spectralRolloff**: `boolean`
+> `optional` **spectralRolloff?**: `boolean`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:71](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L71)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:77](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L77)
 
 ***
 
 ### tempo?
 
-> `optional` **tempo**: `boolean`
+> `optional` **tempo?**: `boolean`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:74](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L74)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:80](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L80)
 
 ***
 
 ### tonnetz?
 
-> `optional` **tonnetz**: `boolean`
+> `optional` **tonnetz?**: `boolean`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:78](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L78)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:84](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L84)
 
 ***
 
 ### zcr?
 
-> `optional` **zcr**: `boolean`
+> `optional` **zcr?**: `boolean`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:65](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L65)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:71](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L71)
