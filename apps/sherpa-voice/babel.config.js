@@ -3,11 +3,9 @@ module.exports = function (api) {
   return {
     presets: ['babel-preset-expo'],
     plugins: [
-      'react-native-worklets/plugin',
       [
         'module-resolver',
         {
-          root: ['./'],
           alias: {
             '@assets': './assets',
             'react-native-vector-icons': '@expo/vector-icons',
@@ -18,12 +16,5 @@ module.exports = function (api) {
       // plugin for transformerjs and worker support
       'babel-plugin-transform-import-meta',
     ],
-    env: {
-      production: {
-        plugins: [
-          'react-native-worklets/plugin',
-        ],
-      },
-    },
   };
-}; 
+};

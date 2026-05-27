@@ -3,11 +3,9 @@ module.exports = (api) => {
     return {
         presets: ['babel-preset-expo'],
         plugins: [
-            'react-native-worklets/plugin',
             [
                 'module-resolver',
                 {
-                    root: ['./'],
                     alias: {
                         '@assets': './assets',
                         'react-native-vector-icons': '@expo/vector-icons',
@@ -24,7 +22,6 @@ module.exports = (api) => {
             production: {
                 plugins: [
                     'react-native-paper/babel',
-                    'react-native-worklets/plugin',
                 ],
             },
         },

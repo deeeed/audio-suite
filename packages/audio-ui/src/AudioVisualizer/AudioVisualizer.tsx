@@ -256,7 +256,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         dispatch({
             type: 'UPDATE_STATE',
             state: {
-                triggerUpdate: triggerUpdate + 1,
+                triggerUpdate: Date.now(),
                 selectedCandle: null,
                 selectedIndex: -1,
             },
@@ -328,7 +328,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
 
                 dispatch({
                     type: 'UPDATE_STATE',
-                    state: { triggerUpdate: triggerUpdate + 1 },
+                    state: { triggerUpdate: Date.now() },
                 })
             }
         }
@@ -377,36 +377,49 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         },
         [
             audioData.dataPoints,
-            maxDisplayedItems,
-            referenceLineX,
-            mode,
-            candleWidth,
             candleSpace,
+            candleWidth,
             dispatch,
+            maxDisplayedItems,
+            mode,
+            referenceLineX,
         ]
     )
 
     const handleDragChange = useCallback(
         ({ newTranslateX }: { newTranslateX: number }) => {
-            onSeekPreview?.(timeForTranslateX(newTranslateX))
+            if (audioData.durationMs && maxTranslateX > 0) {
+                onSeekPreview?.(timeForTranslateX(newTranslateX))
+            }
             refreshActivePointsForTranslateX(newTranslateX)
         },
-        [onSeekPreview, refreshActivePointsForTranslateX, timeForTranslateX]
+        [
+            audioData.durationMs,
+            maxTranslateX,
+            onSeekPreview,
+            refreshActivePointsForTranslateX,
+            timeForTranslateX,
+        ]
     )
 
     const handleDragEnd = useCallback(
         ({ newTranslateX }: { newTranslateX: number }) => {
-            logger?.log(
-                `handleDragEnd newTranslateX=${newTranslateX} disableTapSelection=${disableTapSelection}`
-            )
-            const newTime = timeForTranslateX(newTranslateX)
-            onSeekPreview?.(newTime)
-            onSeekEnd?.(newTime)
+            logger?.log(`handleDragEnd newTranslateX=${newTranslateX}`)
+            // No seek position exists until at least one point can be translated.
+            if (audioData.durationMs && maxTranslateX > 0) {
+                const newTime = timeForTranslateX(newTranslateX)
+                onSeekPreview?.(newTime)
+                onSeekEnd?.(newTime)
+            }
+
             onTranslateXChange?.(newTranslateX)
+
             refreshActivePointsForTranslateX(newTranslateX)
         },
         [
-            disableTapSelection,
+            audioData.durationMs,
+            logger,
+            maxTranslateX,
             onSeekEnd,
             onSeekPreview,
             onTranslateXChange,
@@ -510,7 +523,16 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
                 triggerUpdate: Date.now(),
             },
         })
-    }, [dispatch])
+    }, [
+        audioData.dataPoints,
+        candleSpace,
+        candleWidth,
+        dispatch,
+        logger,
+        maxDisplayedItems,
+        mode,
+        referenceLineX,
+    ])
 
     const handleCenter = useCallback(() => {
         const currentTranslateX = translateX.value

@@ -85,11 +85,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         icon: IS_PRODUCTION ? "./assets/icon.png" : "./assets/icon-dev.png",
         userInterfaceStyle: "light",
         scheme: APP_SCHEME,
-        splash: {
-            image: "./assets/splash-icon.png",
-            resizeMode: "contain",
-            backgroundColor: IS_PRODUCTION ? '#1a73e8' : '#ffffff',
-        },
         assetBundlePatterns: [
             "**/*"
         ],
@@ -140,6 +135,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
             "./plugins/withProguardRules.cjs",
             "expo-router",
             [
+                "expo-splash-screen",
+                {
+                    image: "./assets/splash-icon.png",
+                    resizeMode: "contain",
+                    backgroundColor: IS_PRODUCTION ? '#1a73e8' : '#ffffff',
+                }
+            ],
+            [
                 "expo-audio",
                 {
                     "microphonePermission": "$(PRODUCT_NAME) uses the microphone to capture your voice for on-device speech recognition, speaker identification, and audio analysis. For example, you can speak into the mic to get a real-time transcription of your speech.",
@@ -159,7 +162,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
                 "expo-build-properties",
                 {
                     "ios": {
-                        "deploymentTarget": "15.1"
+                        "deploymentTarget": "16.4"
                     },
                     "android": {
                         "extraProguardRules": "-keep class com.facebook.hermes.unicode.** { *; }\n-dontwarn expo.modules.kotlin.services.FilePermissionService$Permission",

@@ -114,7 +114,7 @@ class OpusRangeDecodeRegressionInstrumentedTest {
                 latch.countDown()
             }
 
-            override fun reject(code: String, message: String?, cause: Throwable?) {
+            override fun reject(code: String?, message: String?, cause: Throwable?) {
                 rejected = "$code - $message"
                 latch.countDown()
             }
@@ -137,7 +137,7 @@ class OpusRangeDecodeRegressionInstrumentedTest {
                 latch.countDown()
             }
 
-            override fun reject(code: String, message: String?, cause: Throwable?) {
+            override fun reject(code: String?, message: String?, cause: Throwable?) {
                 rejected = "$code - $message"
                 latch.countDown()
             }

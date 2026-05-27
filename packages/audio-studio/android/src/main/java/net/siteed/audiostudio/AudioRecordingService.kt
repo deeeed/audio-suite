@@ -101,7 +101,7 @@ class AudioRecordingService : Service() {
                         Log.d(Constants.TAG, "Successfully stopped recording on task removed")
                         cleanup()
                     }
-                    override fun reject(code: String, message: String?, cause: Throwable?) {
+                    override fun reject(code: String?, message: String?, cause: Throwable?) {
                         Log.e(Constants.TAG, "Failed to stop recording on task removed: $message")
                         cleanup()
                     }

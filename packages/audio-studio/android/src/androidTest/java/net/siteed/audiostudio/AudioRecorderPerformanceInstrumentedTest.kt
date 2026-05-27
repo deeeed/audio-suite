@@ -77,7 +77,7 @@ class AudioRecorderPerformanceInstrumentedTest {
         if (audioRecorderManager.isRecording) {
             val promise = object : Promise {
                 override fun resolve(value: Any?) {}
-                override fun reject(code: String, message: String?, cause: Throwable?) {}
+                override fun reject(code: String?, message: String?, cause: Throwable?) {}
             }
             audioRecorderManager.stopRecording(promise)
         }
@@ -165,7 +165,7 @@ class AudioRecorderPerformanceInstrumentedTest {
             override fun resolve(value: Any?) {
                 startLatch.countDown()
             }
-            override fun reject(code: String, message: String?, cause: Throwable?) {
+            override fun reject(code: String?, message: String?, cause: Throwable?) {
                 fail("Start recording failed: $message")
             }
         })
@@ -197,7 +197,7 @@ class AudioRecorderPerformanceInstrumentedTest {
                     }
                     stopLatch.countDown()
                 }
-                override fun reject(code: String, message: String?, cause: Throwable?) {
+                override fun reject(code: String?, message: String?, cause: Throwable?) {
                     fail("Stop recording failed: $message")
                 }
             })

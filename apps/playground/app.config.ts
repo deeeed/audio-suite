@@ -109,12 +109,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         icon: './assets/icon.png',
         userInterfaceStyle: 'light',
         scheme: APP_SCHEME,
-        splash: {
-            image: './assets/splash.png',
-            resizeMode: 'contain',
-            backgroundColor:
-                validatedEnv.APP_VARIANT === 'production' ? '#98c1d9' : '#ffffff',
-        },
         assetBundlePatterns: ['**/*', 'assets/audio_samples/*', 'public/audioStorage.worker.js', 'assets/silero_vad.onnx', 'assets/silero_vad_v5.onnx'],
         ios: {
             supportsTablet: true,
@@ -175,6 +169,15 @@ export default ({ config }: ConfigContext): ExpoConfig => {
                 },
             ],
             [
+                'expo-splash-screen',
+                {
+                    image: './assets/splash.png',
+                    resizeMode: 'contain',
+                    backgroundColor:
+                        validatedEnv.APP_VARIANT === 'production' ? '#98c1d9' : '#ffffff',
+                },
+            ],
+            [
                 // We need to force use the cjs version on local monorepo plugin development since expo 53
                 '../../packages/audio-studio/app.plugin.cjs',
                 // '@siteed/audio-studio',
@@ -202,7 +205,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
                 'expo-build-properties',
                 {
                     ios: {
-                        deploymentTarget: "15.1",
+                        deploymentTarget: "16.4",
                         infoPlist: {
                             ITSAppUsesNonExemptEncryption: false,
                             LSApplicationCategoryType: "public.app-category.utilities"

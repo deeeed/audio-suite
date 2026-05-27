@@ -1,10 +1,10 @@
 // playground/src/app/_layout.tsx
 import { useEffect } from 'react'
 
-import { DefaultTheme, ThemeProvider } from '@react-navigation/native'
 import Constants from 'expo-constants'
 import { requireNativeModule } from 'expo-modules-core'
 import { Platform } from 'react-native'
+import { DefaultTheme, ThemeProvider } from 'expo-router/react-navigation'
 import { Stack } from 'expo-router/stack'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { SystemBars } from 'react-native-edge-to-edge'

@@ -4,6 +4,7 @@
         "outDir": "./dist/",
         "baseUrl": "./",
         "declaration": true,
+        "ignoreDeprecations": "6.0",
         "declarationMap": true,
         "sourceMap": true,
         "allowUnreachableCode": false,

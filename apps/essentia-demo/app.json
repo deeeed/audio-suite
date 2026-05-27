@@ -36,14 +36,25 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "16.4"
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
     },
     "autolinking": {
       "nativeModulesDir": "../../packages/",
-      "exclude": ["@siteed/moonshine.rn", "@siteed/sherpa-onnx.rn"]
+      "exclude": [
+        "@siteed/moonshine.rn",
+        "@siteed/sherpa-onnx.rn"
+      ]
     }
   }
 }

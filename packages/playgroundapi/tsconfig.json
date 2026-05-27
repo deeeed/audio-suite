@@ -3,7 +3,8 @@
       "target": "es2016",
       "module": "commonjs",
       "declaration": true,
-      "jsx": "react-jsx", 
+      "jsx": "react-jsx",
+      "rootDir": "./src",
       "outDir": "./build",
       "esModuleInterop": true,
       "forceConsistentCasingInFileNames": true,
@@ -25,4 +26,4 @@
       }
     },
     "include": ["src/**/*"]
-  } 
+  }

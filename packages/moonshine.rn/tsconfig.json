@@ -8,6 +8,7 @@
     "allowUnusedLabels": false,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
+    "ignoreDeprecations": "6.0",
     "jsx": "react",
     "lib": ["esnext", "dom"],
     "module": "esnext",
@@ -22,7 +23,8 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "strict": true,
-    "target": "esnext"
+    "target": "esnext",
+    "types": ["jest"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "lib"]

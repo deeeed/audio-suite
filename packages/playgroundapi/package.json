@@ -19,10 +19,10 @@
   },
   "devDependencies": {
     "@types/react": "^19.1.0",
-    "expo": "^54.0.0",
-    "react": "19.2.0",
-    "react-native": "0.83.6",
-    "typescript": "^5.8.2"
+    "expo": "^56.0.5",
+    "react": "19.2.3",
+    "react-native": "0.85.3",
+    "typescript": "~6.0.3"
   },
   "dependencies": {
     "@siteed/audio-studio": "workspace:^",

@@ -10,7 +10,7 @@ Pod::Spec.new do |s|
   s.license      = package["license"]
   s.authors      = package["author"]
 
-  s.platforms    = { :ios => "13.4" }
+  s.platforms    = { :ios => "16.4" }
   s.source       = { :git => "https://github.com/deeeed/audiolab.git", :tag => "#{s.version}" }
 
   # Source files (new architecture only)

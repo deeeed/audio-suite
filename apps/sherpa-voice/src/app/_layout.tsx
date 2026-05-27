@@ -1,7 +1,7 @@
 import 'intl-pluralrules';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
-import { DefaultTheme, DarkTheme, ThemeProvider } from '@react-navigation/native';
+import { DefaultTheme, DarkTheme, ThemeProvider } from 'expo-router/react-navigation';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
