@@ -6,7 +6,7 @@
 
 # Interface: AudioFeaturesWasmResult
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:217](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L217)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:299](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L299)
 
 Result type for WASM-based audio feature extraction.
 
@@ -16,7 +16,7 @@ Result type for WASM-based audio feature extraction.
 
 > **chromagram**: `number`[]
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:223](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L223)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:305](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L305)
 
 ***
 
@@ -24,7 +24,7 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:223](https://github.com/de
 
 > **mfcc**: `number`[]
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:222](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L222)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:304](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L304)
 
 ***
 
@@ -32,7 +32,7 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:222](https://github.com/de
 
 > **spectralBandwidth**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:221](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L221)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:303](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L303)
 
 ***
 
@@ -40,7 +40,7 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:221](https://github.com/de
 
 > **spectralCentroid**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:218](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L218)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:300](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L300)
 
 ***
 
@@ -48,7 +48,7 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:218](https://github.com/de
 
 > **spectralFlatness**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:219](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L219)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:301](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L301)
 
 ***
 
@@ -56,4 +56,4 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:219](https://github.com/de
 
 > **spectralRolloff**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:220](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L220)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:302](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L302)

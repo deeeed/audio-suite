@@ -10,7 +10,12 @@ if (Platform.OS === 'web') {
     let instance: AudioStudioWeb | null = null
 
     AudioStudioModule = (webProps: AudioStudioWebProps) => {
-        instance ??= new AudioStudioWeb(webProps)
+        instance ??= new AudioStudioWeb({
+            ...webProps,
+            emitEvent: (eventName, params) => {
+                AudioStudioModule.sendEvent(eventName, params)
+            },
+        })
         return instance
     }
     AudioStudioModule.requestPermissionsAsync = async () => {

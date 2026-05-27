@@ -35,6 +35,8 @@ export default function App() {
         size,
         analysisData,
         compression,
+        maxDurationMs,
+        maxDurationReached,
     } = useAudioRecorder({
         logger: console,
     })
@@ -73,6 +75,13 @@ export default function App() {
                 
                 // Optional: Auto-resume after interruption
                 autoResumeAfterInterruption: false,
+
+                // Optional: Limit cumulative active recording time
+                maxDurationMs: 60_000,
+                autoStopOnMaxDuration: true,
+                onMaxDurationReached: (event) => {
+                    console.log(`Reached ${event.maxDurationMs}ms limit`)
+                },
             }
             
             await startRecording(config)
@@ -90,6 +99,12 @@ export default function App() {
             {isRecording ? (
                 <View>
                     <Text>Duration: {durationMs / 1000} seconds</Text>
+                    {maxDurationMs && (
+                        <Text>
+                            Limit: {maxDurationMs / 1000} seconds
+                            {maxDurationReached ? ' reached' : ''}
+                        </Text>
+                    )}
                     <Text>Size: {size} bytes</Text>
                     <Button title="Pause Recording" onPress={pauseRecording} />
                     <Button title="Stop Recording" onPress={handleStop} />
@@ -140,6 +155,8 @@ The `useAudioRecorder` hook returns an object with the following properties:
 - **durationMs**: `number` - Duration of the recording in milliseconds.
 - **size**: `number` - Size of the recorded audio in bytes.
 - **compression**: `CompressionInfo | undefined` - Information about compression if enabled.
+- **maxDurationMs**: `number | undefined` - Configured maximum active recording duration in milliseconds, if enabled.
+- **maxDurationReached**: `boolean | undefined` - Whether the current recording session reached the configured maximum duration.
 - **analysisData**: `AudioAnalysis | undefined` - Recent live analysis data for the recording. Only available if `enableProcessing` is set to `true` in the `startRecording` configuration.
 
 ## RecordingConfig Options
@@ -160,6 +177,38 @@ The `startRecording` function accepts a configuration object with the following 
 | `onAudioAnalysis` | `(analysisEvent: AudioAnalysisEvent) => Promise<void>` | Callback for audio analysis data |
 | `onRecordingInterrupted` | `(event: RecordingInterruptionEvent) => void` | Callback for recording interruptions |
 | `autoResumeAfterInterruption` | `boolean` | Whether to automatically resume recording after an interruption |
+| `maxDurationMs` | `number` | Maximum cumulative active recording duration in milliseconds. Paused time does not count. `undefined`, `0`, or a negative value disables the limit. |
+| `autoStopOnMaxDuration` | `boolean` | Whether to stop automatically when `maxDurationMs` is reached. Defaults to `false`. |
+| `onMaxDurationReached` | `(event: MaxDurationReachedEvent) => void` | Callback invoked when the active recording duration reaches `maxDurationMs`. |
+
+### Max Active Recording Duration
+
+Use `maxDurationMs` when a recording workflow needs a hard or soft active-time
+limit. The timer counts only active recording time; paused time and interruption
+pauses are excluded.
+
+```tsx
+await startRecording({
+    sampleRate: 16000,
+    channels: 1,
+    maxDurationMs: 30_000,
+    autoStopOnMaxDuration: true,
+    onMaxDurationReached: (event) => {
+        console.log({
+            durationMs: event.durationMs,
+            maxDurationMs: event.maxDurationMs,
+            overrunMs: event.overrunMs,
+            autoStopped: event.autoStopped,
+        })
+    },
+})
+```
+
+With `autoStopOnMaxDuration: false`, the event is a notification and recording
+continues until you call `stopRecording()`. With `autoStopOnMaxDuration: true`,
+the event is emitted before the automatic stop completes. The automatic stop
+result is not passed to `onMaxDurationReached`; use hook state and stream
+callbacks for immediate UI updates.
 
 ### Long-Running Analysis Retention
 
@@ -213,4 +262,3 @@ When disabled:
 - Can be used to improve privacy by not requesting phone state permissions
 
 For more detailed examples, see the [Standalone Recording](../usage/standalone-recording.md) documentation.
-

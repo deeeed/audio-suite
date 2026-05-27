@@ -8,4 +8,4 @@
 
 > `const` **WAV\_HEADER\_SIZE**: `44` = `44`
 
-Defined in: [src/utils/convertPCMToFloat32.ts:6](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/utils/convertPCMToFloat32.ts#L6)
+Defined in: [src/utils/convertPCMToFloat32.ts:6](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/utils/convertPCMToFloat32.ts#L6)

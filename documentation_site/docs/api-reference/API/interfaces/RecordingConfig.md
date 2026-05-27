@@ -6,15 +6,15 @@
 
 # Interface: RecordingConfig
 
-Defined in: [src/AudioStudio.types.ts:393](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L393)
+Defined in: [src/AudioStudio.types.ts:410](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L410)
 
 ## Properties
 
 ### android?
 
-> `optional` **android**: [`AndroidConfig`](AndroidConfig.md)
+> `optional` **android?**: [`AndroidConfig`](AndroidConfig.md)
 
-Defined in: [src/AudioStudio.types.ts:453](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L453)
+Defined in: [src/AudioStudio.types.ts:470](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L470)
 
 Android-specific configuration
 
@@ -22,19 +22,33 @@ Android-specific configuration
 
 ### autoResumeAfterInterruption?
 
-> `optional` **autoResumeAfterInterruption**: `boolean`
+> `optional` **autoResumeAfterInterruption?**: `boolean`
 
-Defined in: [src/AudioStudio.types.ts:482](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L482)
+Defined in: [src/AudioStudio.types.ts:499](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L499)
 
 Whether to automatically resume recording after an interruption (default is false)
 
 ***
 
+### autoStopOnMaxDuration?
+
+> `optional` **autoStopOnMaxDuration?**: `boolean`
+
+Defined in: [src/AudioStudio.types.ts:518](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L518)
+
+Stop recording automatically when maxDurationMs is reached.
+
+Defaults to false. The MaxDurationReached event is emitted before the stop request.
+The automatic stop result is not returned to onMaxDurationReached; use the
+event and stream callbacks for immediate UI updates.
+
+***
+
 ### bufferDurationSeconds?
 
-> `optional` **bufferDurationSeconds**: `number`
+> `optional` **bufferDurationSeconds?**: `number`
 
-Defined in: [src/AudioStudio.types.ts:512](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L512)
+Defined in: [src/AudioStudio.types.ts:553](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L553)
 
 Buffer duration in seconds. Controls the size of audio buffers
 used during recording. Smaller values reduce latency but increase
@@ -53,9 +67,9 @@ Optimal iOS: >= 0.1 seconds
 
 ### channels?
 
-> `optional` **channels**: `1` \| `2`
+> `optional` **channels?**: `1` \| `2`
 
-Defined in: [src/AudioStudio.types.ts:398](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L398)
+Defined in: [src/AudioStudio.types.ts:415](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L415)
 
 Number of audio channels (1 for mono, 2 for stereo)
 
@@ -63,9 +77,9 @@ Number of audio channels (1 for mono, 2 for stereo)
 
 ### deviceDisconnectionBehavior?
 
-> `optional` **deviceDisconnectionBehavior**: [`DeviceDisconnectionBehaviorType`](../type-aliases/DeviceDisconnectionBehaviorType.md)
+> `optional` **deviceDisconnectionBehavior?**: [`DeviceDisconnectionBehaviorType`](../type-aliases/DeviceDisconnectionBehaviorType.md)
 
-Defined in: [src/AudioStudio.types.ts:496](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L496)
+Defined in: [src/AudioStudio.types.ts:537](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L537)
 
 How to handle device disconnection during recording
 
@@ -73,9 +87,9 @@ How to handle device disconnection during recording
 
 ### deviceId?
 
-> `optional` **deviceId**: `string`
+> `optional` **deviceId?**: `string`
 
-Defined in: [src/AudioStudio.types.ts:493](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L493)
+Defined in: [src/AudioStudio.types.ts:534](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L534)
 
 ID of the device to use for recording (if not specified, uses default)
 
@@ -83,9 +97,9 @@ ID of the device to use for recording (if not specified, uses default)
 
 ### enableProcessing?
 
-> `optional` **enableProcessing**: `boolean`
+> `optional` **enableProcessing?**: `boolean`
 
-Defined in: [src/AudioStudio.types.ts:436](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L436)
+Defined in: [src/AudioStudio.types.ts:453](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L453)
 
 Enable audio processing (default is false)
 
@@ -93,9 +107,9 @@ Enable audio processing (default is false)
 
 ### encoding?
 
-> `optional` **encoding**: [`EncodingType`](../type-aliases/EncodingType.md)
+> `optional` **encoding?**: [`EncodingType`](../type-aliases/EncodingType.md)
 
-Defined in: [src/AudioStudio.types.ts:415](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L415)
+Defined in: [src/AudioStudio.types.ts:432](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L432)
 
 Encoding type for the recording.
 
@@ -122,9 +136,9 @@ platform capabilities. A warning will be logged if fallback is required.
 
 ### features?
 
-> `optional` **features**: [`AudioFeaturesOptions`](AudioFeaturesOptions.md)
+> `optional` **features?**: [`AudioFeaturesOptions`](AudioFeaturesOptions.md)
 
-Defined in: [src/AudioStudio.types.ts:462](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L462)
+Defined in: [src/AudioStudio.types.ts:479](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L479)
 
 Feature options to extract during audio processing
 
@@ -132,9 +146,9 @@ Feature options to extract during audio processing
 
 ### filename?
 
-> `optional` **filename**: `string`
+> `optional` **filename?**: `string`
 
-Defined in: [src/AudioStudio.types.ts:490](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L490)
+Defined in: [src/AudioStudio.types.ts:531](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L531)
 
 Optional filename for the recording (uses UUID if not provided)
 
@@ -142,9 +156,9 @@ Optional filename for the recording (uses UUID if not provided)
 
 ### interval?
 
-> `optional` **interval**: `number`
+> `optional` **interval?**: `number`
 
-Defined in: [src/AudioStudio.types.ts:418](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L418)
+Defined in: [src/AudioStudio.types.ts:435](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L435)
 
 Interval in milliseconds at which to emit recording data (minimum: 10ms)
 
@@ -152,9 +166,9 @@ Interval in milliseconds at which to emit recording data (minimum: 10ms)
 
 ### intervalAnalysis?
 
-> `optional` **intervalAnalysis**: `number`
+> `optional` **intervalAnalysis?**: `number`
 
-Defined in: [src/AudioStudio.types.ts:421](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L421)
+Defined in: [src/AudioStudio.types.ts:438](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L438)
 
 Interval in milliseconds at which to emit analysis data (minimum: 10ms)
 
@@ -162,9 +176,9 @@ Interval in milliseconds at which to emit analysis data (minimum: 10ms)
 
 ### ios?
 
-> `optional` **ios**: [`IOSConfig`](IOSConfig.md)
+> `optional` **ios?**: [`IOSConfig`](IOSConfig.md)
 
-Defined in: [src/AudioStudio.types.ts:450](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L450)
+Defined in: [src/AudioStudio.types.ts:467](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L467)
 
 iOS-specific configuration
 
@@ -172,9 +186,9 @@ iOS-specific configuration
 
 ### keepAwake?
 
-> `optional` **keepAwake**: `boolean`
+> `optional` **keepAwake?**: `boolean`
 
-Defined in: [src/AudioStudio.types.ts:424](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L424)
+Defined in: [src/AudioStudio.types.ts:441](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L441)
 
 Keep the device awake while recording (default is false)
 
@@ -182,9 +196,9 @@ Keep the device awake while recording (default is false)
 
 ### keepFullAnalysis?
 
-> `optional` **keepFullAnalysis**: `boolean`
+> `optional` **keepFullAnalysis?**: `boolean`
 
-Defined in: [src/AudioStudio.types.ts:447](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L447)
+Defined in: [src/AudioStudio.types.ts:464](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L464)
 
 Whether `useAudioRecorder` should retain every audio-analysis data point
 and attach the full history to `stopRecording().analysisData`.
@@ -196,21 +210,33 @@ growth in the hook without disabling native analysis processing.
 
 ***
 
+### maxDurationMs?
+
+> `optional` **maxDurationMs?**: `number`
+
+Defined in: [src/AudioStudio.types.ts:509](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L509)
+
+Maximum cumulative active recording duration, in milliseconds.
+
+Paused time does not count. Set to undefined, 0, or a negative value to disable.
+
+***
+
 ### notification?
 
-> `optional` **notification**: [`NotificationConfig`](NotificationConfig.md)
+> `optional` **notification?**: [`NotificationConfig`](NotificationConfig.md)
 
-Defined in: [src/AudioStudio.types.ts:433](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L433)
+Defined in: [src/AudioStudio.types.ts:450](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L450)
 
 Configuration for the notification
 
 ***
 
-### onAudioAnalysis()?
+### onAudioAnalysis?
 
-> `optional` **onAudioAnalysis**: (`_`) => `Promise`\<`void`\>
+> `optional` **onAudioAnalysis?**: (`_`) => `Promise`\<`void`\>
 
-Defined in: [src/AudioStudio.types.ts:468](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L468)
+Defined in: [src/AudioStudio.types.ts:485](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L485)
 
 Callback function to handle audio features extraction results
 
@@ -226,11 +252,11 @@ Callback function to handle audio features extraction results
 
 ***
 
-### onAudioStream()?
+### onAudioStream?
 
-> `optional` **onAudioStream**: (`_`) => `Promise`\<`void`\>
+> `optional` **onAudioStream?**: (`_`) => `Promise`\<`void`\>
 
-Defined in: [src/AudioStudio.types.ts:465](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L465)
+Defined in: [src/AudioStudio.types.ts:482](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L482)
 
 Callback function to handle audio stream data
 
@@ -246,11 +272,34 @@ Callback function to handle audio stream data
 
 ***
 
-### onRecordingInterrupted()?
+### onMaxDurationReached?
 
-> `optional` **onRecordingInterrupted**: (`_`) => `void`
+> `optional` **onMaxDurationReached?**: (`_`) => `void`
 
-Defined in: [src/AudioStudio.types.ts:485](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L485)
+Defined in: [src/AudioStudio.types.ts:526](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L526)
+
+Optional callback invoked when maxDurationMs is reached.
+
+If autoStopOnMaxDuration is true, this callback is invoked before the
+recorder finishes stopping. The final stop result is not passed here.
+
+#### Parameters
+
+##### \_
+
+[`MaxDurationReachedEvent`](MaxDurationReachedEvent.md)
+
+#### Returns
+
+`void`
+
+***
+
+### onRecordingInterrupted?
+
+> `optional` **onRecordingInterrupted?**: (`_`) => `void`
+
+Defined in: [src/AudioStudio.types.ts:502](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L502)
 
 Optional callback to handle recording interruptions
 
@@ -268,9 +317,9 @@ Optional callback to handle recording interruptions
 
 ### output?
 
-> `optional` **output**: [`OutputConfig`](OutputConfig.md)
+> `optional` **output?**: [`OutputConfig`](OutputConfig.md)
 
-Defined in: [src/AudioStudio.types.ts:479](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L479)
+Defined in: [src/AudioStudio.types.ts:496](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L496)
 
 Configuration for audio output files
 
@@ -284,9 +333,9 @@ Examples:
 
 ### outputDirectory?
 
-> `optional` **outputDirectory**: `string`
+> `optional` **outputDirectory?**: `string`
 
-Defined in: [src/AudioStudio.types.ts:488](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L488)
+Defined in: [src/AudioStudio.types.ts:529](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L529)
 
 Optional directory path where output files will be saved
 
@@ -294,9 +343,9 @@ Optional directory path where output files will be saved
 
 ### sampleRate?
 
-> `optional` **sampleRate**: [`SampleRate`](../type-aliases/SampleRate.md)
+> `optional` **sampleRate?**: [`SampleRate`](../type-aliases/SampleRate.md)
 
-Defined in: [src/AudioStudio.types.ts:395](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L395)
+Defined in: [src/AudioStudio.types.ts:412](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L412)
 
 Sample rate for recording in Hz (16000, 44100, or 48000)
 
@@ -304,9 +353,9 @@ Sample rate for recording in Hz (16000, 44100, or 48000)
 
 ### segmentDurationMs?
 
-> `optional` **segmentDurationMs**: `number`
+> `optional` **segmentDurationMs?**: `number`
 
-Defined in: [src/AudioStudio.types.ts:459](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L459)
+Defined in: [src/AudioStudio.types.ts:476](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L476)
 
 Duration of each segment in milliseconds for analysis (default: 100)
 
@@ -314,9 +363,9 @@ Duration of each segment in milliseconds for analysis (default: 100)
 
 ### showNotification?
 
-> `optional` **showNotification**: `boolean`
+> `optional` **showNotification?**: `boolean`
 
-Defined in: [src/AudioStudio.types.ts:427](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L427)
+Defined in: [src/AudioStudio.types.ts:444](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L444)
 
 Show a notification during recording (default is false)
 
@@ -324,9 +373,9 @@ Show a notification during recording (default is false)
 
 ### showWaveformInNotification?
 
-> `optional` **showWaveformInNotification**: `boolean`
+> `optional` **showWaveformInNotification?**: `boolean`
 
-Defined in: [src/AudioStudio.types.ts:430](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L430)
+Defined in: [src/AudioStudio.types.ts:447](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L447)
 
 Show waveform in the notification (Android only, when showNotification is true)
 
@@ -334,9 +383,9 @@ Show waveform in the notification (Android only, when showNotification is true)
 
 ### streamFormat?
 
-> `optional` **streamFormat**: `"float32"` \| `"raw"`
+> `optional` **streamFormat?**: `"float32"` \| `"raw"`
 
-Defined in: [src/AudioStudio.types.ts:525](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L525)
+Defined in: [src/AudioStudio.types.ts:566](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L566)
 
 Format for the audio stream data delivered to `onAudioStream`.
 
@@ -356,8 +405,8 @@ Format for the audio stream data delivered to `onAudioStream`.
 
 ### web?
 
-> `optional` **web**: [`WebConfig`](WebConfig.md)
+> `optional` **web?**: [`WebConfig`](WebConfig.md)
 
-Defined in: [src/AudioStudio.types.ts:456](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L456)
+Defined in: [src/AudioStudio.types.ts:473](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L473)
 
 Web-specific configuration options

@@ -6,10 +6,9 @@
 
 # Interface: PreviewOptions
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:166](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L166)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:235](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L235)
 
-Options for generating a quick preview of audio waveform.
-This is optimized for UI rendering with a specified number of points.
+Options for specifying a time range within an audio file.
 
 ## Extends
 
@@ -19,9 +18,9 @@ This is optimized for UI rendering with a specified number of points.
 
 ### decodingOptions?
 
-> `optional` **decodingOptions**: [`DecodingConfig`](DecodingConfig.md)
+> `optional` **decodingOptions?**: [`DecodingConfig`](DecodingConfig.md)
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:186](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L186)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:255](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L255)
 
 Optional configuration for decoding the audio file.
 Defaults to:
@@ -34,9 +33,9 @@ Defaults to:
 
 ### endTimeMs?
 
-> `optional` **endTimeMs**: `number`
+> `optional` **endTimeMs?**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:159](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L159)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:165](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L165)
 
 End time in milliseconds
 
@@ -50,7 +49,7 @@ End time in milliseconds
 
 > **fileUri**: `string`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:168](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L168)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:237](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L237)
 
 URI of the audio file to analyze
 
@@ -58,9 +57,9 @@ URI of the audio file to analyze
 
 ### logger?
 
-> `optional` **logger**: [`ConsoleLike`](../type-aliases/ConsoleLike.md)
+> `optional` **logger?**: [`ConsoleLike`](../type-aliases/ConsoleLike.md)
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:177](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L177)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:246](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L246)
 
 Optional logger for debugging.
 
@@ -68,9 +67,9 @@ Optional logger for debugging.
 
 ### numberOfPoints?
 
-> `optional` **numberOfPoints**: `number`
+> `optional` **numberOfPoints?**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:173](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L173)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:242](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L242)
 
 Total number of points to generate for the preview.
 
@@ -82,11 +81,54 @@ Total number of points to generate for the preview.
 
 ***
 
+### onPointReady?
+
+> `optional` **onPointReady?**: (`point`, `index`, `total`) => `void`
+
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:262](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L262)
+
+Optional callback fired once per data point as the preview becomes available.
+Today the native module returns the full analysis in one shot; the points are then
+micro-batched on the JS side so consumers can render bars incrementally.
+Native progressive streaming is a future enhancement.
+
+#### Parameters
+
+##### point
+
+[`DataPoint`](DataPoint.md)
+
+##### index
+
+`number`
+
+##### total
+
+`number`
+
+#### Returns
+
+`void`
+
+***
+
+### signal?
+
+> `optional` **signal?**: `AbortSignal`
+
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:268](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L268)
+
+Optional cancellation signal for JS-side progressive point emission.
+Aborting does not cancel native extraction after it has started, but it
+stops any queued `onPointReady` callbacks from an older request.
+
+***
+
 ### startTimeMs?
 
-> `optional` **startTimeMs**: `number`
+> `optional` **startTimeMs?**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:157](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L157)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:163](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L163)
 
 Start time in milliseconds
 

@@ -5,9 +5,9 @@ import { SegmentedButtons } from 'react-native-paper'
 
 import type { AppTheme } from '@siteed/design-system'
 import { Text, useTheme, LabelSwitch, EditableInfoCard } from '@siteed/design-system'
-import type { 
-  RecordingConfig, 
-  SampleRate, 
+import type {
+  RecordingConfig,
+  SampleRate,
   AudioDevice,
   NotificationConfig,
   DeviceDisconnectionBehaviorType,
@@ -26,6 +26,13 @@ import type { SegmentDuration } from './SegmentDurationSelector'
 // Import WhisperSampleRate from config
 
 const DEFAULT_BITRATE = Platform.OS === 'ios' ? 32000 : 24000
+const MAX_DURATION_OPTIONS = [
+  { value: '0', label: 'Off' },
+  { value: '10000', label: '10s' },
+  { value: '30000', label: '30s' },
+  { value: '60000', label: '1m' },
+  { value: '300000', label: '5m' },
+]
 
 const getStyles = (_theme: AppTheme) => StyleSheet.create({
   container: {
@@ -71,7 +78,7 @@ export function RecordingSettings({
 }: RecordingSettingsProps) {
   const theme = useTheme()
   const styles = useMemo(() => getStyles(theme), [theme])
-  
+
   const [notificationEnabled, setNotificationEnabled] = useState(
     config.showNotification ?? true
   )
@@ -95,7 +102,7 @@ export function RecordingSettings({
   const [androidSettings, setAndroidSettings] = useState<RecordingConfig['android']>(
     config.android
   )
-  
+
   const handleConfigUpdate = (updates: Partial<RecordingConfig>) => {
     const updatedConfig = {
       ...config,
@@ -156,9 +163,9 @@ export function RecordingSettings({
           ]}
         />
       </View>
-      
+
       <View
-        style={{ 
+        style={{
           backgroundColor: theme.colors.surfaceVariant,
           borderRadius: 8,
           padding: 12,
@@ -166,7 +173,7 @@ export function RecordingSettings({
         }}
       >
         <Text variant="titleMedium" style={{ marginBottom: 12 }}>Output Configuration</Text>
-        
+
         <LabelSwitch
           label="Primary Output (WAV)"
           value={config.output?.primary?.enabled ?? true}
@@ -185,7 +192,7 @@ export function RecordingSettings({
           }}
           disabled={isDisabled}
         />
-        
+
         <Text variant="bodySmall" style={{ marginTop: 4, marginBottom: 12, color: theme.colors.outline }}>
           Creates uncompressed WAV file. Disable for streaming-only or compressed-only recording.
         </Text>
@@ -253,7 +260,7 @@ export function RecordingSettings({
                 />
               )}
             </View>
-            
+
             <View style={{ marginTop: 12 }}>
               <Text variant="titleSmall" style={{ marginBottom: 8 }}>Bitrate</Text>
               <SegmentedButtons
@@ -279,7 +286,7 @@ export function RecordingSettings({
                 ]}
               />
             </View>
-            
+
             <Text variant="bodySmall" style={{ marginTop: 12, color: theme.colors.outline }}>
               Compression reduces file size but may affect audio quality. Higher bitrates preserve more detail.
             </Text>
@@ -288,7 +295,7 @@ export function RecordingSettings({
 
         {/* Show warning if both outputs are disabled */}
         {!config.output?.primary?.enabled && !config.output?.compressed?.enabled && (
-          <View style={{ 
+          <View style={{
             backgroundColor: theme.colors.errorContainer,
             borderRadius: 4,
             padding: 8,
@@ -300,7 +307,7 @@ export function RecordingSettings({
           </View>
         )}
       </View>
-      
+
       <SegmentDurationSelector
         testID="segment-duration-selector"
         value={(config.segmentDurationMs ?? 100) as SegmentDuration}
@@ -314,7 +321,46 @@ export function RecordingSettings({
         maxDurationMs={1000}
         skipConfirmation
       />
-      
+
+      <View
+        style={{
+          backgroundColor: theme.colors.surfaceVariant,
+          borderRadius: 8,
+          padding: 12,
+          marginVertical: 8,
+        }}
+      >
+        <Text variant="titleMedium" style={{ marginBottom: 12 }}>Max Duration</Text>
+        <View testID="record-max-duration-selector">
+          <SegmentedButtons
+            value={String(config.maxDurationMs ?? 0)}
+            onValueChange={(value) => {
+              const maxDurationMs = parseInt(value, 10)
+              handleConfigUpdate({
+                maxDurationMs: maxDurationMs > 0 ? maxDurationMs : undefined,
+                autoStopOnMaxDuration:
+                  maxDurationMs > 0 ? config.autoStopOnMaxDuration : false,
+              })
+            }}
+            buttons={MAX_DURATION_OPTIONS.map((option) => ({
+              ...option,
+              disabled: isDisabled,
+            }))}
+          />
+        </View>
+        <LabelSwitch
+          testID="record-auto-stop-max-duration"
+          label="Auto-stop at limit"
+          value={!!config.autoStopOnMaxDuration}
+          onValueChange={(enabled) => {
+            handleConfigUpdate({
+              autoStopOnMaxDuration: enabled,
+            })
+          }}
+          disabled={isDisabled || !(config.maxDurationMs && config.maxDurationMs > 0)}
+        />
+      </View>
+
       <LabelSwitch
         label="Keep Recording in Background"
         value={config.keepAwake ?? true}
@@ -327,9 +373,9 @@ export function RecordingSettings({
         }}
         disabled={isDisabled}
       />
-      
 
-      
+
+
       {Platform.OS !== 'web' && (
         <NativeNotificationConfig
           enabled={notificationEnabled}
@@ -344,7 +390,7 @@ export function RecordingSettings({
           }}
         />
       )}
-      
+
       {Platform.OS === 'ios' && (
         <>
           <LabelSwitch
@@ -426,4 +472,4 @@ export function RecordingSettings({
       />
     </View>
   )
-} 
+}

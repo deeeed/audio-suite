@@ -8,7 +8,7 @@
 
 > **extractAudioAnalysis**(`props`): `Promise`\<[`AudioAnalysis`](../interfaces/AudioAnalysis.md)\>
 
-Defined in: [src/AudioAnalysis/extractAudioAnalysis.ts:107](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/extractAudioAnalysis.ts#L107)
+Defined in: [src/AudioAnalysis/extractAudioAnalysis.ts:107](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/extractAudioAnalysis.ts#L107)
 
 Extracts detailed audio analysis from the specified audio file or buffer.
 Supports either time-based or byte-based ranges for flexibility in analysis.

@@ -6,9 +6,9 @@
 
 # Function: computeMelFrameWasm()
 
-> **computeMelFrameWasm**(`_samples`): `null` \| `number`[]
+> **computeMelFrameWasm**(`_samples`): `number`[] \| `null`
 
-Defined in: [src/AudioAnalysis/melSpectrogramWasm.ts:16](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/melSpectrogramWasm.ts#L16)
+Defined in: [src/AudioAnalysis/melSpectrogramWasm.ts:16](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/melSpectrogramWasm.ts#L16)
 
 ## Parameters
 
@@ -18,4 +18,4 @@ Defined in: [src/AudioAnalysis/melSpectrogramWasm.ts:16](https://github.com/deee
 
 ## Returns
 
-`null` \| `number`[]
+`number`[] \| `null`

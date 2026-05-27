@@ -12252,7 +12252,7 @@ __metadata:
     babel-plugin-react-native-web: "npm:^0.20.0"
     babel-plugin-transform-import-meta: "npm:^2.2.1"
     buffer: "npm:^6.0.3"
-    canvaskit-wasm: "npm:^0.40.0"
+    canvaskit-wasm: "npm:0.41.0"
     crc-32: "npm:^1.2.2"
     debug: "npm:^4.3.4"
     detox: "patch:detox@npm%3A20.47.0#~/.yarn/patches/detox-npm-20.47.0-75cd917eb6.patch"
@@ -13718,7 +13718,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"canvaskit-wasm@npm:0.40.0, canvaskit-wasm@npm:^0.40.0":
+"canvaskit-wasm@npm:0.40.0":
   version: 0.40.0
   resolution: "canvaskit-wasm@npm:0.40.0"
   dependencies:

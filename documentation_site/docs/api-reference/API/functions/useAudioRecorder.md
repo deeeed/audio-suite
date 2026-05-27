@@ -6,13 +6,13 @@
 
 # Function: useAudioRecorder()
 
-> **useAudioRecorder**(`__namedParameters`): `UseAudioRecorderState`
+> **useAudioRecorder**(`__namedParameters?`): `UseAudioRecorderState`
 
-Defined in: [src/useAudioRecorder.tsx:163](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/useAudioRecorder.tsx#L163)
+Defined in: [src/useAudioRecorder.tsx:187](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/useAudioRecorder.tsx#L187)
 
 ## Parameters
 
-### \_\_namedParameters
+### \_\_namedParameters?
 
 `UseAudioRecorderProps` = `{}`
 

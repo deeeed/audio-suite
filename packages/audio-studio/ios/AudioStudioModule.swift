@@ -6,6 +6,7 @@ import AVFoundation
 private let audioDataEvent: String = "AudioData"
 private let audioAnalysisEvent: String = "AudioAnalysis"
 private let recordingInterruptedEvent: String = "onRecordingInterrupted"
+private let maxDurationReachedEvent: String = "MaxDurationReached"
 private let deviceChangedEvent: String = "deviceChangedEvent"
 private let trimProgressEvent: String = "TrimProgress"
 private let errorEvent: String = "error"
@@ -48,6 +49,7 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             audioDataEvent,
             audioAnalysisEvent,
             recordingInterruptedEvent,
+            maxDurationReachedEvent,
             deviceChangedEvent,
             trimProgressEvent,
             errorEvent,
@@ -1121,6 +1123,10 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             "isPaused": isPaused,
             "timestamp": Date().timeIntervalSince1970 * 1000
         ])
+    }
+
+    func audioStreamManager(_ manager: AudioStreamManager, didReachMaxDuration info: [String: Any]) {
+        sendEvent(maxDurationReachedEvent, info)
     }
     
     func audioStreamManager(_ manager: AudioStreamManager, didPauseRecording pauseTime: Date) {

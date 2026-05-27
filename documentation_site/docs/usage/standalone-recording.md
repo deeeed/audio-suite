@@ -99,6 +99,14 @@ export default function App() {
         
         // Optional: Auto-resume after interruption
         autoResumeAfterInterruption: false,
+
+        // Optional: Limit cumulative active recording time.
+        // Paused time does not count toward this limit.
+        maxDurationMs: 60_000,
+        autoStopOnMaxDuration: true,
+        onMaxDurationReached: (event) => {
+            console.log(`Recording reached ${event.maxDurationMs}ms limit`)
+        },
         
         // Optional: Audio focus strategy (Android only)
         audioFocusStrategy: 'background', // 'background', 'interactive', 'communication', or 'none'
@@ -215,4 +223,6 @@ const recorder = useAudioRecorder(options?: UseAudioRecorderProps)
 | `durationMs` | `number` | Duration of the current recording in milliseconds |
 | `size` | `number` | Size of the recorded audio in bytes |
 | `compression` | `CompressionInfo \| undefined` | Information about compression if enabled |
+| `maxDurationMs` | `number \| undefined` | Configured maximum active recording duration in milliseconds, if enabled |
+| `maxDurationReached` | `boolean \| undefined` | Whether the recording reached the configured maximum duration |
 | `analysisData` | `AudioAnalysis \| undefined` | Recent live analysis data for the recording if processing was enabled |

@@ -327,6 +327,10 @@ class TestAudioStreamDelegate: AudioStreamManagerDelegate {
     func audioStreamManager(_ manager: AudioStreamManager, didReceiveInterruption info: [String: Any]) {
         // Optional: Handle interruption
     }
+
+    func audioStreamManager(_ manager: AudioStreamManager, didReachMaxDuration info: [String: Any]) {
+        // Optional: Handle max duration
+    }
     
     func audioStreamManager(_ manager: AudioStreamManager, didFailWithError error: String) {
         onError?(error)

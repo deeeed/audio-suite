@@ -6,7 +6,7 @@
 
 # Interface: TrimAudioResult
 
-Defined in: [src/AudioStudio.types.ts:843](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L843)
+Defined in: [src/AudioStudio.types.ts:890](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L890)
 
 Result of the audio trimming operation.
 
@@ -16,7 +16,7 @@ Result of the audio trimming operation.
 
 > **bitDepth**: `number`
 
-Defined in: [src/AudioStudio.types.ts:877](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L877)
+Defined in: [src/AudioStudio.types.ts:924](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L924)
 
 The bit depth of the trimmed audio, applicable to PCM formats like `'wav'`.
 
@@ -26,7 +26,7 @@ The bit depth of the trimmed audio, applicable to PCM formats like `'wav'`.
 
 > **channels**: `number`
 
-Defined in: [src/AudioStudio.types.ts:872](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L872)
+Defined in: [src/AudioStudio.types.ts:919](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L919)
 
 The number of channels in the trimmed audio (e.g., 1 for mono, 2 for stereo).
 
@@ -34,9 +34,9 @@ The number of channels in the trimmed audio (e.g., 1 for mono, 2 for stereo).
 
 ### compression?
 
-> `optional` **compression**: `object`
+> `optional` **compression?**: `object`
 
-Defined in: [src/AudioStudio.types.ts:887](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L887)
+Defined in: [src/AudioStudio.types.ts:934](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L934)
 
 Information about compression if the output format is compressed.
 
@@ -64,7 +64,7 @@ The size of the compressed audio file in bytes.
 
 > **durationMs**: `number`
 
-Defined in: [src/AudioStudio.types.ts:857](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L857)
+Defined in: [src/AudioStudio.types.ts:904](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L904)
 
 The duration of the trimmed audio in milliseconds.
 
@@ -74,7 +74,7 @@ The duration of the trimmed audio in milliseconds.
 
 > **filename**: `string`
 
-Defined in: [src/AudioStudio.types.ts:852](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L852)
+Defined in: [src/AudioStudio.types.ts:899](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L899)
 
 The filename of the trimmed audio file.
 
@@ -84,7 +84,7 @@ The filename of the trimmed audio file.
 
 > **mimeType**: `string`
 
-Defined in: [src/AudioStudio.types.ts:882](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L882)
+Defined in: [src/AudioStudio.types.ts:929](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L929)
 
 The MIME type of the trimmed audio file (e.g., `'audio/wav'`, `'audio/mpeg'`).
 
@@ -92,9 +92,9 @@ The MIME type of the trimmed audio file (e.g., `'audio/wav'`, `'audio/mpeg'`).
 
 ### processingInfo?
 
-> `optional` **processingInfo**: `object`
+> `optional` **processingInfo?**: `object`
 
-Defined in: [src/AudioStudio.types.ts:907](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L907)
+Defined in: [src/AudioStudio.types.ts:954](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L954)
 
 Information about the processing time.
 
@@ -110,7 +110,7 @@ The time it took to process the audio in milliseconds.
 
 > **sampleRate**: `number`
 
-Defined in: [src/AudioStudio.types.ts:867](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L867)
+Defined in: [src/AudioStudio.types.ts:914](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L914)
 
 The sample rate of the trimmed audio in Hertz (Hz).
 
@@ -120,7 +120,7 @@ The sample rate of the trimmed audio in Hertz (Hz).
 
 > **size**: `number`
 
-Defined in: [src/AudioStudio.types.ts:862](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L862)
+Defined in: [src/AudioStudio.types.ts:909](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L909)
 
 The size of the trimmed audio file in bytes.
 
@@ -130,6 +130,6 @@ The size of the trimmed audio file in bytes.
 
 > **uri**: `string`
 
-Defined in: [src/AudioStudio.types.ts:847](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L847)
+Defined in: [src/AudioStudio.types.ts:894](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L894)
 
 The URI of the trimmed audio file.

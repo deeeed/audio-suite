@@ -4,7 +4,7 @@ import {
     AudioFeaturesOptions,
     DecodingConfig,
 } from './AudioAnalysis/AudioAnalysis.types'
-import { AudioAnalysisEvent } from './events'
+import type { AudioAnalysisEvent } from './events'
 
 export interface CompressionInfo {
     /** Size of the compressed audio data in bytes */
@@ -36,6 +36,10 @@ export interface AudioStreamStatus {
     mimeType: string
     /** Information about audio compression if enabled */
     compression?: CompressionInfo
+    /** Configured maximum active recording duration in milliseconds, if enabled */
+    maxDurationMs?: number
+    /** Whether the current recording session has reached the configured maximum duration */
+    maxDurationReached?: boolean
 }
 
 interface AudioDataEventBase {
@@ -188,6 +192,19 @@ export interface StartRecordingResult {
         /** URI to the compressed audio file */
         compressedFileUri: string
     }
+}
+
+export interface MaxDurationReachedEvent {
+    /** Active recording duration that triggered the event, in milliseconds */
+    durationMs: number
+    /** Configured active recording duration limit, in milliseconds */
+    maxDurationMs: number
+    /** Amount by which timer delivery exceeded the limit, in milliseconds */
+    overrunMs: number
+    /** Active stream identifier when available */
+    streamUuid?: string
+    /** Whether the recorder was configured to stop automatically after this event */
+    autoStopped: boolean
 }
 
 export interface AudioSessionConfig {
@@ -484,6 +501,30 @@ export interface RecordingConfig {
     /** Optional callback to handle recording interruptions */
     onRecordingInterrupted?: (_: RecordingInterruptionEvent) => void
 
+    /**
+     * Maximum cumulative active recording duration, in milliseconds.
+     *
+     * Paused time does not count. Set to undefined, 0, or a negative value to disable.
+     */
+    maxDurationMs?: number
+
+    /**
+     * Stop recording automatically when maxDurationMs is reached.
+     *
+     * Defaults to false. The MaxDurationReached event is emitted before the stop request.
+     * The automatic stop result is not returned to onMaxDurationReached; use the
+     * event and stream callbacks for immediate UI updates.
+     */
+    autoStopOnMaxDuration?: boolean
+
+    /**
+     * Optional callback invoked when maxDurationMs is reached.
+     *
+     * If autoStopOnMaxDuration is true, this callback is invoked before the
+     * recorder finishes stopping. The final stop result is not passed here.
+     */
+    onMaxDurationReached?: (_: MaxDurationReachedEvent) => void
+
     /** Optional directory path where output files will be saved */
     outputDirectory?: string // If not provided, uses default app directory
     /** Optional filename for the recording (uses UUID if not provided) */
@@ -710,10 +751,16 @@ export interface UseAudioRecorderState {
     size: number // Size in bytes of the recorded audio
     /** Information about compression if enabled */
     compression?: CompressionInfo
+    /** Configured maximum active recording duration in milliseconds, if enabled */
+    maxDurationMs?: number
+    /** Whether the current recording session has reached the configured maximum duration */
+    maxDurationReached?: boolean
     /** Analysis data for the recording if processing was enabled */
     analysisData?: AudioAnalysis // Analysis data for the recording depending on enableProcessing flag
     /** Optional callback to handle recording interruptions */
     onRecordingInterrupted?: (_: RecordingInterruptionEvent) => void
+    /** Optional callback invoked when maxDurationMs is reached */
+    onMaxDurationReached?: (_: MaxDurationReachedEvent) => void
 }
 
 /**

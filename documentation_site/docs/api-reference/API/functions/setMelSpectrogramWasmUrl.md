@@ -8,7 +8,7 @@
 
 > **setMelSpectrogramWasmUrl**(`url`): `void`
 
-Defined in: [src/AudioAnalysis/wasmConfig.ts:17](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioAnalysis/wasmConfig.ts#L17)
+Defined in: [src/AudioAnalysis/wasmConfig.ts:17](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/wasmConfig.ts#L17)
 
 ## Parameters
 

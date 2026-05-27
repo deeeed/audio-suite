@@ -4,11 +4,11 @@
 
 [@siteed/audio-studio](../README.md) / PCMFormat
 
-# Type Alias: ~~PCMFormat~~
+# ~~Type Alias: PCMFormat~~
 
-> **PCMFormat**: `` `pcm_${BitDepth}bit` ``
+> **PCMFormat** = `` `pcm_${BitDepth}bit` ``
 
-Defined in: [src/AudioStudio.types.ts:105](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L105)
+Defined in: [src/AudioStudio.types.ts:109](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L109)
 
 PCM format string representation.
 

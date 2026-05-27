@@ -90,6 +90,7 @@ class AudioStudioModule : Module(), EventSender, AudioStreamDecoderDelegate {
             Constants.AUDIO_EVENT_NAME,
             Constants.AUDIO_ANALYSIS_EVENT_NAME,
             Constants.RECORDING_INTERRUPTED_EVENT_NAME,
+            Constants.MAX_DURATION_REACHED_EVENT_NAME,
             Constants.TRIM_PROGRESS_EVENT,
             Constants.DEVICE_CHANGED_EVENT, // Add device changed event name
             Constants.AUDIO_STREAM_CHUNK_EVENT,

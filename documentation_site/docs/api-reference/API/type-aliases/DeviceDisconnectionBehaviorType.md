@@ -6,8 +6,8 @@
 
 # Type Alias: DeviceDisconnectionBehaviorType
 
-> **DeviceDisconnectionBehaviorType**: *typeof* [`DeviceDisconnectionBehavior`](../variables/DeviceDisconnectionBehavior.md)\[keyof *typeof* [`DeviceDisconnectionBehavior`](../variables/DeviceDisconnectionBehavior.md)\]
+> **DeviceDisconnectionBehaviorType** = *typeof* [`DeviceDisconnectionBehavior`](../variables/DeviceDisconnectionBehavior.md)\[keyof *typeof* [`DeviceDisconnectionBehavior`](../variables/DeviceDisconnectionBehavior.md)\]
 
-Defined in: [src/AudioStudio.types.ts:344](https://github.com/deeeed/audiolab/blob/786b292627cf65fad3559f4751e78bbcedee512a/packages/audio-studio/src/AudioStudio.types.ts#L344)
+Defined in: [src/AudioStudio.types.ts:361](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L361)
 
 Type for DeviceDisconnectionBehavior values

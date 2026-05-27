@@ -15,6 +15,7 @@ sidebar_label: Features
 - **Dual-stream recording** with simultaneous raw PCM and [compressed formats](api-reference/recording-config.md#output-configuration) (OPUS/AAC)
 - **Audio device detection and selection** for choosing specific microphones or input sources
 - **Intelligent interruption handling** with automatic pause/resume during phone calls
+- **Max active recording duration** with notify-only or automatic stop behavior across iOS, Android, and web
 - **Background recording** support with keep-awake functionality
 - **Rich notification system** with live waveform visualization (Android) and media controls
 
