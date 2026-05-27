@@ -48,7 +48,6 @@
     },
     "devDependencies": {
         "@babel/core": "^7.25.2",
-        "@react-native-community/cli": "^16.0.0",
         "@types/gh-pages": "^6",
         "@types/jest": "^29.5.12",
         "@types/react": "~19.2.10",
