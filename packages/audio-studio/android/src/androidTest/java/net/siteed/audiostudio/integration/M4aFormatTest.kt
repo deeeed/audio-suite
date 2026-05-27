@@ -260,7 +260,7 @@ class M4aFormatTest {
                 startLatch.countDown()
             }
             
-            override fun reject(code: String, message: String?, cause: Throwable?) {
+            override fun reject(code: String?, message: String?, cause: Throwable?) {
                 fail("Recording start failed: $code - $message")
             }
         })
@@ -288,7 +288,7 @@ class M4aFormatTest {
                 stopLatch.countDown()
             }
             
-            override fun reject(code: String, message: String?, cause: Throwable?) {
+            override fun reject(code: String?, message: String?, cause: Throwable?) {
                 fail("Recording stop failed: $code - $message")
             }
         })

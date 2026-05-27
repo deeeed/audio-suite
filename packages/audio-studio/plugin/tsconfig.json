@@ -3,7 +3,8 @@
     "compilerOptions": {
         "outDir": "build",
         "lib": ["es2023", "dom"],
-        "rootDir": "src"
+        "rootDir": "src",
+        "types": ["node"]
     },
     "include": ["./src"],
     "exclude": ["**/__mocks__/*", "**/__tests__/*"]

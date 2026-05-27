@@ -132,7 +132,7 @@ class AudioRecorderInstrumentedTest {
                 startLatch.countDown()
             }
             
-            override fun reject(code: String, message: String?, cause: Throwable?) {
+            override fun reject(code: String?, message: String?, cause: Throwable?) {
                 fail("Recording start failed: $code - $message")
             }
         })
@@ -248,7 +248,7 @@ class AudioRecorderInstrumentedTest {
                 pauseLatch.countDown()
             }
             
-            override fun reject(code: String, message: String?, cause: Throwable?) {
+            override fun reject(code: String?, message: String?, cause: Throwable?) {
                 fail("Pause failed: $code - $message")
             }
         })
@@ -273,7 +273,7 @@ class AudioRecorderInstrumentedTest {
                 resumeLatch.countDown()
             }
             
-            override fun reject(code: String, message: String?, cause: Throwable?) {
+            override fun reject(code: String?, message: String?, cause: Throwable?) {
                 fail("Resume failed: $code - $message")
             }
         })
@@ -422,7 +422,7 @@ class AudioRecorderInstrumentedTest {
                 latch.countDown()
             }
             
-            override fun reject(code: String, message: String?, cause: Throwable?) {
+            override fun reject(code: String?, message: String?, cause: Throwable?) {
                 fail("Recording start failed: $code - $message")
             }
         })
@@ -452,7 +452,7 @@ class AudioRecorderInstrumentedTest {
                 latch.countDown()
             }
             
-            override fun reject(code: String, message: String?, cause: Throwable?) {
+            override fun reject(code: String?, message: String?, cause: Throwable?) {
                 fail("Recording stop failed: $code - $message")
             }
         })
