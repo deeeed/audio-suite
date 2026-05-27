@@ -90,6 +90,9 @@ export interface AudioVisualizerProps {
     // TODO: remove this prop once the visualization types are implemented
     _visualizationType?: CanvasContainerProps['visualizationType']
     playing?: boolean
+    /** Called continuously during drag/inertia with preview time in seconds. */
+    onSeekPreview?: (newTime: number) => void
+    /** Called once when drag/inertia commits with final time in seconds. */
     onSeekEnd?: (newTime: number) => void
     theme?: Partial<AudioVisualizerTheme>
     NavigationControls?: React.ComponentType<NavigationControlsProps>
@@ -123,6 +126,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     showSelectedCandle = true,
     showReferenceLine = true,
     logger,
+    onSeekPreview,
     onSeekEnd,
     onSelection,
     font,
@@ -330,20 +334,20 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         }
     }, [playing, currentTime, audioData.durationMs, canvasWidth, translateX])
 
-    const handleDragEnd = useCallback(
-        ({ newTranslateX }: { newTranslateX: number }) => {
-            logger?.log(
-                `handleDragEnd newTranslateX=${newTranslateX} disableTapSelection=${disableTapSelection}`
+    const timeForTranslateX = useCallback(
+        (newTranslateX: number) => {
+            if (!audioData.durationMs || maxTranslateX <= 0) return 0
+            const progressRatio = Math.max(
+                0,
+                Math.min(1, -newTranslateX / maxTranslateX)
             )
-            if (audioData.durationMs && onSeekEnd) {
-                const allowedTranslateX = maxTranslateX
-                const progressRatio = -newTranslateX / allowedTranslateX
-                const newTime = (progressRatio * audioData.durationMs) / 1000
-                onSeekEnd(newTime)
-            }
+            return (progressRatio * audioData.durationMs) / 1000
+        },
+        [audioData.durationMs, maxTranslateX]
+    )
 
-            onTranslateXChange?.(newTranslateX)
-
+    const refreshActivePointsForTranslateX = useCallback(
+        (newTranslateX: number) => {
             const {
                 activePoints: updatedActivePoints,
                 range: updatedRange,
@@ -366,13 +370,49 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
                 range: updatedRange,
                 lastUpdatedTranslateX: updatedLastUpdatedTranslateX,
             }
-
             dispatch({
                 type: 'UPDATE_STATE',
-                state: { triggerUpdate: triggerUpdate + 1 },
+                state: { triggerUpdate: Date.now() },
             })
         },
-        [onSeekEnd, audioData.dataPoints, maxDisplayedItems, onTranslateXChange]
+        [
+            audioData.dataPoints,
+            maxDisplayedItems,
+            referenceLineX,
+            mode,
+            candleWidth,
+            candleSpace,
+            dispatch,
+        ]
+    )
+
+    const handleDragChange = useCallback(
+        ({ newTranslateX }: { newTranslateX: number }) => {
+            onSeekPreview?.(timeForTranslateX(newTranslateX))
+            refreshActivePointsForTranslateX(newTranslateX)
+        },
+        [onSeekPreview, refreshActivePointsForTranslateX, timeForTranslateX]
+    )
+
+    const handleDragEnd = useCallback(
+        ({ newTranslateX }: { newTranslateX: number }) => {
+            logger?.log(
+                `handleDragEnd newTranslateX=${newTranslateX} disableTapSelection=${disableTapSelection}`
+            )
+            const newTime = timeForTranslateX(newTranslateX)
+            onSeekPreview?.(newTime)
+            onSeekEnd?.(newTime)
+            onTranslateXChange?.(newTranslateX)
+            refreshActivePointsForTranslateX(newTranslateX)
+        },
+        [
+            disableTapSelection,
+            onSeekEnd,
+            onSeekPreview,
+            onTranslateXChange,
+            refreshActivePointsForTranslateX,
+            timeForTranslateX,
+        ]
     )
 
     const handleSelectionChange = useCallback(
@@ -614,6 +654,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
                 totalCandleWidth={totalCandleWidth}
                 activePoints={updateActivePointsResult.current.activePoints}
                 onDragEnd={handleDragEnd}
+                onDragChange={handleDragChange}
                 onSelection={handleSelectionChange}
                 enableInertia={enableInertia}
             >

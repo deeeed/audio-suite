@@ -25,6 +25,7 @@ export interface GestureHandlerProps {
     activePoints: CandleData[]
     onSelection: (dataPoint: WaveformBar) => void
     onDragEnd: (params: { newTranslateX: number }) => void
+    onDragChange?: (params: { newTranslateX: number }) => void
     children: React.ReactNode
     enableInertia?: boolean
     disableTapSelection?: boolean
@@ -41,6 +42,7 @@ export const GestureHandler: React.FC<GestureHandlerProps> = ({
     totalCandleWidth,
     activePoints,
     onDragEnd,
+    onDragChange,
     onSelection,
     children,
     enableInertia = false,
@@ -48,6 +50,7 @@ export const GestureHandler: React.FC<GestureHandlerProps> = ({
 }) => {
     const velocity = useSharedValue(0)
     const isDecelerating = useSharedValue(false)
+    const lastDragNotifyX = useSharedValue(0)
 
     // Inertia deceleration loop — runs on the UI thread via useFrameCallback
     // (requestAnimationFrame is not available in Reanimated worklets on Android/Hermes)
@@ -65,6 +68,14 @@ export const GestureHandler: React.FC<GestureHandlerProps> = ({
         }
 
         translateX.value = Math.max(-maxTranslateX, Math.min(0, newTranslateX))
+        const notifyThreshold = Math.max(candleWidth + candleSpace, canvasWidth / 2)
+        if (
+            onDragChange &&
+            Math.abs(translateX.value - lastDragNotifyX.value) >= notifyThreshold
+        ) {
+            lastDragNotifyX.value = translateX.value
+            runOnJS(onDragChange)({ newTranslateX: translateX.value })
+        }
     })
 
     if (playing || mode === 'live') {
@@ -77,6 +88,7 @@ export const GestureHandler: React.FC<GestureHandlerProps> = ({
             cancelAnimation(translateX)
             velocity.value = 0
             isDecelerating.value = false
+            lastDragNotifyX.value = translateX.value
         })
         .onChange((e) => {
             'worklet'
@@ -86,6 +98,18 @@ export const GestureHandler: React.FC<GestureHandlerProps> = ({
                 Math.min(0, newTranslateX)
             )
             velocity.value = e.velocityX
+            const notifyThreshold = Math.max(
+                candleWidth + candleSpace,
+                canvasWidth / 2
+            )
+            if (
+                onDragChange &&
+                Math.abs(translateX.value - lastDragNotifyX.value) >=
+                    notifyThreshold
+            ) {
+                lastDragNotifyX.value = translateX.value
+                runOnJS(onDragChange)({ newTranslateX: translateX.value })
+            }
         })
         .onEnd(() => {
             'worklet'
