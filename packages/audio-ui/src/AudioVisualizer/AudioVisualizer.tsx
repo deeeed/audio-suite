@@ -532,7 +532,6 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         maxDisplayedItems,
         mode,
         referenceLineX,
-        translateX,
     ])
 
     const handleCenter = useCallback(() => {
