@@ -42,16 +42,16 @@ Pod::Spec.new do |s|
     FALLBACK_SLICE="$PACKAGE_ROOT/#{device_slice}"
     INSTALLER_SCRIPT="$PACKAGE_ROOT/scripts/ensure-ios-artifacts.sh"
 
-    if [ ! -d "$DEFAULT_SLICE" ] || [ ! -d "$FALLBACK_SLICE" ]; then
+    if [ ! -f "$DEFAULT_SLICE/libmoonshine.a" ] || [ ! -f "$FALLBACK_SLICE/libmoonshine.a" ]; then
       bash "$INSTALLER_SCRIPT"
     fi
 
     mkdir -p "$CURRENT_DIR"
-    if [ -d "$DEFAULT_SLICE" ]; then
+    if [ -f "$DEFAULT_SLICE/libmoonshine.a" ]; then
       rsync -a --delete --exclude 'libmoonshine.a' "$DEFAULT_SLICE/" "$CURRENT_DIR/"
       cp "$DEFAULT_SLICE/libmoonshine.a" "$CURRENT_DIR/libmoonshine_core.a"
       rm -f "$CURRENT_DIR/libmoonshine.a"
-    elif [ -d "$FALLBACK_SLICE" ]; then
+    elif [ -f "$FALLBACK_SLICE/libmoonshine.a" ]; then
       rsync -a --delete --exclude 'libmoonshine.a' "$FALLBACK_SLICE/" "$CURRENT_DIR/"
       cp "$FALLBACK_SLICE/libmoonshine.a" "$CURRENT_DIR/libmoonshine_core.a"
       rm -f "$CURRENT_DIR/libmoonshine.a"
@@ -75,12 +75,12 @@ Pod::Spec.new do |s|
         *) SELECTED_SLICE="$XCFRAMEWORK_DIR/ios-arm64" ;;
       esac
 
-      if [ ! -d "$SELECTED_SLICE" ]; then
+      if [ ! -f "$SELECTED_SLICE/libmoonshine.a" ]; then
         bash "${PODS_TARGET_SRCROOT}/scripts/ensure-ios-artifacts.sh"
       fi
 
-      if [ ! -d "$SELECTED_SLICE" ]; then
-        echo "Moonshine iOS slice missing: $SELECTED_SLICE" >&2
+      if [ ! -f "$SELECTED_SLICE/libmoonshine.a" ]; then
+        echo "Moonshine iOS static library missing: $SELECTED_SLICE/libmoonshine.a" >&2
         exit 1
       fi
 

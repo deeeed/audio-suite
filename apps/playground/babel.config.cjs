@@ -7,7 +7,6 @@ module.exports = (api) => {
             [
                 'module-resolver',
                 {
-                    root: ['./'],
                     alias: {
                         '@assets': './assets',
                         'react-native-vector-icons': '@expo/vector-icons',

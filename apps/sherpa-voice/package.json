@@ -148,7 +148,7 @@
         "detox": "patch:detox@npm%3A20.47.0#~/.yarn/patches/detox-npm-20.47.0-75cd917eb6.patch",
         "dotenv-flow": "^4.1.0",
         "eslint": "^9.0.0",
-        "eslint-config-expo": "~55.0.0",
+        "eslint-config-expo": "~56.0.4",
         "expo-dev-client": "~56.0.16",
         "gh-pages": "^6.3.0",
         "jest": "^29.2.1",

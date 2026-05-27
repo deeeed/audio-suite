@@ -9,7 +9,7 @@ DEVICE_SLICE="$XCFRAMEWORK_DIR/ios-arm64"
 SIMULATOR_SLICE="$XCFRAMEWORK_DIR/ios-arm64_x86_64-simulator"
 NODE_BINARY="${NODE_BINARY:-node}"
 
-if [[ -d "$DEVICE_SLICE" ]] && [[ -d "$SIMULATOR_SLICE" ]]; then
+if [[ -f "$DEVICE_SLICE/libmoonshine.a" ]] && [[ -f "$SIMULATOR_SLICE/libmoonshine.a" ]]; then
   exit 0
 fi
 

@@ -488,18 +488,16 @@ async function discoverAllTargets(port, WebSocketImpl, deviceFilter) {
 
 /**
  * Resolve WebSocket implementation once.
- * Node 22+ has a built-in WebSocket; for older versions we use the ws package
- * that ships with React Native / Metro dev dependencies.
+ * Prefer ws so native Metro/Hermes inspector connections can include Origin.
+ * Expo 56 rejects inspector websocket upgrades with an undefined Origin.
  */
 async function resolveWebSocket() {
-  if (typeof globalThis.WebSocket === 'function') return globalThis.WebSocket;
   try {
     const { default: WS } = await import('ws');
     return WS;
   } catch {
-    throw new Error(
-      'WebSocket not available. Install "ws" package or use Node >= 22.'
-    );
+    if (typeof globalThis.WebSocket === 'function') return globalThis.WebSocket;
+    throw new Error('WebSocket not available. Install "ws" package or use Node >= 22.');
   }
 }
 
@@ -508,7 +506,22 @@ async function resolveWebSocket() {
  */
 function createWSClient(wsUrl, timeout, WebSocketImpl) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocketImpl(wsUrl);
+    const origin = process.env.CDP_ORIGIN || (() => {
+      try {
+        const parsed = new URL(wsUrl);
+        if (!parsed.pathname.startsWith('/inspector/')) return undefined;
+        parsed.protocol = parsed.protocol === 'wss:' ? 'https:' : 'http:';
+        parsed.pathname = '';
+        parsed.search = '';
+        parsed.hash = '';
+        return parsed.toString().replace(/\/$/, '');
+      } catch {
+        return undefined;
+      }
+    })();
+    const ws = origin
+      ? new WebSocketImpl(wsUrl, undefined, { headers: { Origin: origin } })
+      : new WebSocketImpl(wsUrl);
     let msgId = 0;
     const pending = new Map();
 

@@ -14,6 +14,11 @@
             "../../node_modules/@types",
         ]
     },
+    "ts-node": {
+        "compilerOptions": {
+            "rootDir": "."
+        }
+    },
     "include": ["./src"],
     "exclude": ["**/__mocks__/*", "**/__tests__/*"]
 }
