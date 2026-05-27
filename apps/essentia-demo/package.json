@@ -23,6 +23,7 @@
     "@siteed/react-native-essentia": "workspace:^",
     "expo": "^56.0.5",
     "expo-blur": "~56.0.3",
+    "expo-build-properties": "~56.0.15",
     "expo-constants": "~56.0.16",
     "expo-font": "~56.0.5",
     "expo-haptics": "~56.0.3",

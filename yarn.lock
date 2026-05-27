@@ -18341,6 +18341,7 @@ __metadata:
     "@types/react-test-renderer": "npm:^19"
     expo: "npm:^56.0.5"
     expo-blur: "npm:~56.0.3"
+    expo-build-properties: "npm:~56.0.15"
     expo-constants: "npm:~56.0.16"
     expo-font: "npm:~56.0.5"
     expo-haptics: "npm:~56.0.3"
