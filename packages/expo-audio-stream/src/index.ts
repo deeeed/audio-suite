@@ -1,22 +1,22 @@
  /**
  * @siteed/expo-audio-stream
  * 
- * DEPRECATED: This package has been renamed to @siteed/expo-audio-studio
+ * DEPRECATED: This package has been renamed to @siteed/audio-studio
  * This file serves as a compatibility wrapper that re-exports everything from the new package.
  * 
- * Please update your imports to use @siteed/expo-audio-studio directly.
+ * Please update your imports to use @siteed/audio-studio directly.
  */
 
-import * as ExpoAudioStudio from '@siteed/expo-audio-studio';
+import * as AudioStudio from '@siteed/audio-studio';
 
 // Display deprecation warning
 console.warn(
   '@siteed/expo-audio-stream is deprecated and will be removed in a future version. ' +
-  'Please migrate to @siteed/expo-audio-studio, which provides the same functionality with additional features.'
+  'Please migrate to @siteed/audio-studio, which provides the same functionality with additional features.'
 );
 
 // Re-export everything from the new package
-export * from '@siteed/expo-audio-studio';
+export * from '@siteed/audio-studio';
 
 // For backward compatibility with default imports
-export default ExpoAudioStudio;
+export default AudioStudio;

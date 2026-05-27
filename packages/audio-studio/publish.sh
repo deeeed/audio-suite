@@ -47,13 +47,14 @@ echo -e "${BLUE}GitHub release fallback (attach mel-spectrogram.js as asset):${N
 echo -e "  https://github.com/deeeed/audiolab/releases/download/@siteed/audio-studio@${version}/mel-spectrogram.js"
 
 # Ask about publishing the compatibility shim
-read -p "$(echo -e ${YELLOW}Do you want to publish the @siteed/expo-audio-studio shim? [Y/n]: ${NC})" publish_shim
-if [[ ! $publish_shim =~ ^[Nn]$ ]]; then
+read -p "$(echo -e ${YELLOW}Do you need to publish the deprecated @siteed/expo-audio-studio shim? [y/N]: ${NC})" publish_shim
+if [[ $publish_shim =~ ^[Yy]$ ]]; then
     echo -e "${YELLOW}Publishing compatibility shim @siteed/expo-audio-studio...${NC}"
     cd "$SCRIPT_DIR/../../packages/expo-audio-studio"
     # Sync shim version to match audio-studio
     node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('package.json')); p.version='$version'; fs.writeFileSync('package.json', JSON.stringify(p, null, 4));"
     npm publish --access public
+    npm deprecate "@siteed/expo-audio-studio@$version" "Deprecated: use @siteed/audio-studio instead. This compatibility shim only re-exports @siteed/audio-studio."
     cd "$SCRIPT_DIR"
     echo -e "${GREEN}Shim published successfully!${NC}"
 fi

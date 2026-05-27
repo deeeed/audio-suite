@@ -8075,7 +8075,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@siteed/expo-audio-stream@workspace:packages/expo-audio-stream"
   dependencies:
-    "@siteed/expo-audio-studio": "npm:2.3.0"
+    "@siteed/audio-studio": "npm:3.2.0"
     typescript: "npm:~6.0.3"
   peerDependencies:
     expo: "*"
@@ -8104,22 +8104,6 @@ __metadata:
     ws: "npm:^8.19.0"
   languageName: unknown
   linkType: soft
-
-"@siteed/expo-audio-studio@npm:2.3.0":
-  version: 2.3.0
-  resolution: "@siteed/expo-audio-studio@npm:2.3.0"
-  dependencies:
-    expo-modules-core: "npm:~2.1.4"
-  peerDependencies:
-    expo: "*"
-    react: "*"
-    react-native: "*"
-  peerDependenciesMeta:
-    crc-32:
-      optional: true
-  checksum: 10/5ee71150a291837d739019821b4e0a33564b7bfe2becebbd8e3dff2a57eb7bad23426bb0cc691202e5b91c7efb9a60fb531d0e66e94ab644ec7200ddfe40908c
-  languageName: node
-  linkType: hard
 
 "@siteed/expo-audio-studio@workspace:packages/expo-audio-studio":
   version: 0.0.0-use.local
@@ -18732,15 +18716,6 @@ __metadata:
   bin:
     expo-modules-autolinking: bin/expo-modules-autolinking.js
   checksum: 10/f84daf6d2f590f3ff875fa4b1dce94aeb982c97b595bda70a69dec22c37637cc1ddef343b799417cf83570d6913cb91c3f24cb44c64c08767fb5da15e29cc389
-  languageName: node
-  linkType: hard
-
-"expo-modules-core@npm:~2.1.4":
-  version: 2.1.4
-  resolution: "expo-modules-core@npm:2.1.4"
-  dependencies:
-    invariant: "npm:^2.2.4"
-  checksum: 10/ce6c139fa6f1ee1cdc77bc4b2f2daa65b3b77c36da56a52764a2a8a5bcb9d8f0d31826332a752424fb1270b904147e8f511dc335631c863492f78a5a62653e5d
   languageName: node
   linkType: hard
 
