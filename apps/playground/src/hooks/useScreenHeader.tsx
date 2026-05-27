@@ -20,6 +20,7 @@ interface UseScreenHeaderProps {
 }
 
 interface ScreenHeaderOptions {
+  // Keep this local to the header options this hook sets; Expo Router does not export this narrow subset.
   headerShown: boolean;
   title: string;
   headerRight?: () => React.ReactNode;

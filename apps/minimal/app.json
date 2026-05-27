@@ -7,11 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "audio-minimal",
     "userInterfaceStyle": "automatic",
-    "splash": {
-      "image": "./assets/images/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "net.siteed.audiominimal",
@@ -31,6 +26,14 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ],
       "../../packages/audio-studio/app.plugin.cjs",
       "expo-audio",
       "expo-font",
