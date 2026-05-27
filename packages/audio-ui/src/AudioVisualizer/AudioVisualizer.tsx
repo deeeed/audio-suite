@@ -256,7 +256,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         dispatch({
             type: 'UPDATE_STATE',
             state: {
-                triggerUpdate: triggerUpdate + 1,
+                triggerUpdate: Date.now(),
                 selectedCandle: null,
                 selectedIndex: -1,
             },
@@ -328,7 +328,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
 
                 dispatch({
                     type: 'UPDATE_STATE',
-                    state: { triggerUpdate: triggerUpdate + 1 },
+                    state: { triggerUpdate: Date.now() },
                 })
             }
         }
@@ -377,12 +377,12 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         },
         [
             audioData.dataPoints,
-            maxDisplayedItems,
-            referenceLineX,
-            mode,
-            candleWidth,
             candleSpace,
+            candleWidth,
             dispatch,
+            maxDisplayedItems,
+            mode,
+            referenceLineX,
         ]
     )
 
@@ -399,14 +399,22 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
             logger?.log(
                 `handleDragEnd newTranslateX=${newTranslateX} disableTapSelection=${disableTapSelection}`
             )
-            const newTime = timeForTranslateX(newTranslateX)
-            onSeekPreview?.(newTime)
-            onSeekEnd?.(newTime)
+            // No seek position exists until at least one point can be translated.
+            if (audioData.durationMs && maxTranslateX > 0) {
+                const newTime = timeForTranslateX(newTranslateX)
+                onSeekPreview?.(newTime)
+                onSeekEnd?.(newTime)
+            }
+
             onTranslateXChange?.(newTranslateX)
+
             refreshActivePointsForTranslateX(newTranslateX)
         },
         [
+            audioData.durationMs,
             disableTapSelection,
+            logger,
+            maxTranslateX,
             onSeekEnd,
             onSeekPreview,
             onTranslateXChange,
