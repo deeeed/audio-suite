@@ -9,11 +9,7 @@ import { useEffect } from 'react'
 
 import { useSharedAudioRecorder } from '@siteed/audio-studio'
 
-import {
-    setAgenticAudioState,
-    setAgenticRecorder,
-    setAgenticRouteInfo,
-} from '../agentic-bridge'
+import { setAgenticAudioState, setAgenticRecorder, setAgenticRouteInfo } from '../agentic-bridge'
 
 export function AgenticBridgeSync() {
     if (!__DEV__) return null
@@ -30,10 +26,10 @@ function AgenticBridgeSyncInner() {
         isPaused,
         durationMs,
         size,
-        analysisData,
         compression,
         maxDurationMs,
         maxDurationReached,
+        lastRecordingReason,
     } = recorder
 
     // Wire the recorder instance into the bridge on mount
@@ -51,20 +47,20 @@ function AgenticBridgeSyncInner() {
             isPaused,
             durationMs,
             size,
-            analysisData,
             compression,
             maxDurationMs,
             maxDurationReached,
+            lastRecordingReason,
         })
     }, [
         isRecording,
         isPaused,
         durationMs,
         size,
-        analysisData,
         compression,
         maxDurationMs,
         maxDurationReached,
+        lastRecordingReason,
     ])
 
     return null

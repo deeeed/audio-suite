@@ -8,7 +8,7 @@
 
 > `const` **ExpoAudioStreamModule**: `any` = `AudioStudioModule`
 
-Defined in: [src/index.ts:104](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/index.ts#L104)
+Defined in: [src/index.ts:104](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/index.ts#L104)
 
 ## Deprecated
 

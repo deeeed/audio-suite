@@ -8,7 +8,7 @@
 
 > **extractRawWavAnalysis**(`props`): `Promise`\<[`AudioAnalysis`](../interfaces/AudioAnalysis.md)\>
 
-Defined in: [src/AudioAnalysis/extractAudioAnalysis.ts:241](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/extractAudioAnalysis.ts#L241)
+Defined in: [src/AudioAnalysis/extractAudioAnalysis.ts:241](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/extractAudioAnalysis.ts#L241)
 
 Analyzes WAV files without decoding, preserving original PCM values.
 Use this function when you need to ensure the analysis matches other software by avoiding any transformations.

@@ -6,7 +6,7 @@
 
 # Interface: WavFileInfo
 
-Defined in: [src/utils/getWavFileInfo.ts:26](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/utils/getWavFileInfo.ts#L26)
+Defined in: [src/utils/getWavFileInfo.ts:26](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/utils/getWavFileInfo.ts#L26)
 
 Interface representing the metadata of a WAV file.
 
@@ -16,7 +16,7 @@ Interface representing the metadata of a WAV file.
 
 > **audioFormatDescription**: `string`
 
-Defined in: [src/utils/getWavFileInfo.ts:32](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/utils/getWavFileInfo.ts#L32)
+Defined in: [src/utils/getWavFileInfo.ts:32](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/utils/getWavFileInfo.ts#L32)
 
 ***
 
@@ -24,7 +24,7 @@ Defined in: [src/utils/getWavFileInfo.ts:32](https://github.com/deeeed/audiolab/
 
 > **bitDepth**: [`BitDepth`](../type-aliases/BitDepth.md)
 
-Defined in: [src/utils/getWavFileInfo.ts:29](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/utils/getWavFileInfo.ts#L29)
+Defined in: [src/utils/getWavFileInfo.ts:29](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/utils/getWavFileInfo.ts#L29)
 
 ***
 
@@ -32,7 +32,7 @@ Defined in: [src/utils/getWavFileInfo.ts:29](https://github.com/deeeed/audiolab/
 
 > **blockAlign**: `number`
 
-Defined in: [src/utils/getWavFileInfo.ts:34](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/utils/getWavFileInfo.ts#L34)
+Defined in: [src/utils/getWavFileInfo.ts:34](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/utils/getWavFileInfo.ts#L34)
 
 ***
 
@@ -40,7 +40,7 @@ Defined in: [src/utils/getWavFileInfo.ts:34](https://github.com/deeeed/audiolab/
 
 > **byteRate**: `number`
 
-Defined in: [src/utils/getWavFileInfo.ts:33](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/utils/getWavFileInfo.ts#L33)
+Defined in: [src/utils/getWavFileInfo.ts:33](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/utils/getWavFileInfo.ts#L33)
 
 ***
 
@@ -48,7 +48,7 @@ Defined in: [src/utils/getWavFileInfo.ts:33](https://github.com/deeeed/audiolab/
 
 > `optional` **comments?**: `string`
 
-Defined in: [src/utils/getWavFileInfo.ts:36](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/utils/getWavFileInfo.ts#L36)
+Defined in: [src/utils/getWavFileInfo.ts:36](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/utils/getWavFileInfo.ts#L36)
 
 ***
 
@@ -56,7 +56,7 @@ Defined in: [src/utils/getWavFileInfo.ts:36](https://github.com/deeeed/audiolab/
 
 > `optional` **compressionType?**: `string`
 
-Defined in: [src/utils/getWavFileInfo.ts:37](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/utils/getWavFileInfo.ts#L37)
+Defined in: [src/utils/getWavFileInfo.ts:37](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/utils/getWavFileInfo.ts#L37)
 
 ***
 
@@ -64,7 +64,7 @@ Defined in: [src/utils/getWavFileInfo.ts:37](https://github.com/deeeed/audiolab/
 
 > `optional` **creationDateTime?**: `string`
 
-Defined in: [src/utils/getWavFileInfo.ts:35](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/utils/getWavFileInfo.ts#L35)
+Defined in: [src/utils/getWavFileInfo.ts:35](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/utils/getWavFileInfo.ts#L35)
 
 ***
 
@@ -72,7 +72,7 @@ Defined in: [src/utils/getWavFileInfo.ts:35](https://github.com/deeeed/audiolab/
 
 > **dataChunkOffset**: `number`
 
-Defined in: [src/utils/getWavFileInfo.ts:38](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/utils/getWavFileInfo.ts#L38)
+Defined in: [src/utils/getWavFileInfo.ts:38](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/utils/getWavFileInfo.ts#L38)
 
 ***
 
@@ -80,7 +80,7 @@ Defined in: [src/utils/getWavFileInfo.ts:38](https://github.com/deeeed/audiolab/
 
 > **durationMs**: `number`
 
-Defined in: [src/utils/getWavFileInfo.ts:31](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/utils/getWavFileInfo.ts#L31)
+Defined in: [src/utils/getWavFileInfo.ts:31](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/utils/getWavFileInfo.ts#L31)
 
 ***
 
@@ -88,7 +88,7 @@ Defined in: [src/utils/getWavFileInfo.ts:31](https://github.com/deeeed/audiolab/
 
 > **numChannels**: `number`
 
-Defined in: [src/utils/getWavFileInfo.ts:28](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/utils/getWavFileInfo.ts#L28)
+Defined in: [src/utils/getWavFileInfo.ts:28](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/utils/getWavFileInfo.ts#L28)
 
 ***
 
@@ -96,7 +96,7 @@ Defined in: [src/utils/getWavFileInfo.ts:28](https://github.com/deeeed/audiolab/
 
 > **sampleRate**: [`SampleRate`](../type-aliases/SampleRate.md)
 
-Defined in: [src/utils/getWavFileInfo.ts:27](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/utils/getWavFileInfo.ts#L27)
+Defined in: [src/utils/getWavFileInfo.ts:27](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/utils/getWavFileInfo.ts#L27)
 
 ***
 
@@ -104,4 +104,4 @@ Defined in: [src/utils/getWavFileInfo.ts:27](https://github.com/deeeed/audiolab/
 
 > **size**: `number`
 
-Defined in: [src/utils/getWavFileInfo.ts:30](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/utils/getWavFileInfo.ts#L30)
+Defined in: [src/utils/getWavFileInfo.ts:30](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/utils/getWavFileInfo.ts#L30)

@@ -6,7 +6,7 @@
 
 # Interface: CompressionInfo
 
-Defined in: [src/AudioStudio.types.ts:9](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L9)
+Defined in: [src/AudioStudio.types.ts:9](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L9)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [src/AudioStudio.types.ts:9](https://github.com/deeeed/audiolab/blob
 
 > **bitrate**: `number`
 
-Defined in: [src/AudioStudio.types.ts:15](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L15)
+Defined in: [src/AudioStudio.types.ts:15](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L15)
 
 Bitrate of the compressed audio in bits per second
 
@@ -24,7 +24,7 @@ Bitrate of the compressed audio in bits per second
 
 > `optional` **compressedFileUri?**: `string`
 
-Defined in: [src/AudioStudio.types.ts:19](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L19)
+Defined in: [src/AudioStudio.types.ts:19](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L19)
 
 URI to the compressed audio file if available
 
@@ -34,7 +34,7 @@ URI to the compressed audio file if available
 
 > **format**: `string`
 
-Defined in: [src/AudioStudio.types.ts:17](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L17)
+Defined in: [src/AudioStudio.types.ts:17](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L17)
 
 Format of the compression (e.g., 'aac', 'opus')
 
@@ -44,7 +44,7 @@ Format of the compression (e.g., 'aac', 'opus')
 
 > **mimeType**: `string`
 
-Defined in: [src/AudioStudio.types.ts:13](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L13)
+Defined in: [src/AudioStudio.types.ts:13](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L13)
 
 MIME type of the compressed audio (e.g., 'audio/aac', 'audio/opus')
 
@@ -54,6 +54,6 @@ MIME type of the compressed audio (e.g., 'audio/aac', 'audio/opus')
 
 > **size**: `number`
 
-Defined in: [src/AudioStudio.types.ts:11](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L11)
+Defined in: [src/AudioStudio.types.ts:11](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L11)
 
 Size of the compressed audio data in bytes

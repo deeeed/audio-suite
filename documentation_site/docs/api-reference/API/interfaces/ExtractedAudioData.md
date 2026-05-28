@@ -6,7 +6,7 @@
 
 # Interface: ExtractedAudioData
 
-Defined in: [src/AudioStudio.types.ts:670](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L670)
+Defined in: [src/AudioStudio.types.ts:686](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L686)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [src/AudioStudio.types.ts:670](https://github.com/deeeed/audiolab/bl
 
 > `optional` **base64Data?**: `string`
 
-Defined in: [src/AudioStudio.types.ts:676](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L676)
+Defined in: [src/AudioStudio.types.ts:692](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L692)
 
 Base64 encoded string representation of the audio data (when includeBase64Data is true)
 
@@ -24,7 +24,7 @@ Base64 encoded string representation of the audio data (when includeBase64Data i
 
 > **bitDepth**: [`BitDepth`](../type-aliases/BitDepth.md)
 
-Defined in: [src/AudioStudio.types.ts:682](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L682)
+Defined in: [src/AudioStudio.types.ts:698](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L698)
 
 Bits per sample (8, 16, or 32)
 
@@ -34,7 +34,7 @@ Bits per sample (8, 16, or 32)
 
 > **channels**: `number`
 
-Defined in: [src/AudioStudio.types.ts:680](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L680)
+Defined in: [src/AudioStudio.types.ts:696](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L696)
 
 Number of audio channels (1 for mono, 2 for stereo)
 
@@ -44,7 +44,7 @@ Number of audio channels (1 for mono, 2 for stereo)
 
 > `optional` **checksum?**: `number`
 
-Defined in: [src/AudioStudio.types.ts:692](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L692)
+Defined in: [src/AudioStudio.types.ts:708](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L708)
 
 CRC32 Checksum of PCM data
 
@@ -54,7 +54,7 @@ CRC32 Checksum of PCM data
 
 > **durationMs**: `number`
 
-Defined in: [src/AudioStudio.types.ts:684](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L684)
+Defined in: [src/AudioStudio.types.ts:700](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L700)
 
 Duration of the audio in milliseconds
 
@@ -64,7 +64,7 @@ Duration of the audio in milliseconds
 
 > **format**: `"pcm_32bit"` \| `"pcm_16bit"` \| `"pcm_8bit"`
 
-Defined in: [src/AudioStudio.types.ts:686](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L686)
+Defined in: [src/AudioStudio.types.ts:702](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L702)
 
 PCM format identifier (e.g., "pcm_16bit")
 
@@ -74,7 +74,7 @@ PCM format identifier (e.g., "pcm_16bit")
 
 > `optional` **hasWavHeader?**: `boolean`
 
-Defined in: [src/AudioStudio.types.ts:690](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L690)
+Defined in: [src/AudioStudio.types.ts:706](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L706)
 
 Whether the pcmData includes a WAV header
 
@@ -84,7 +84,7 @@ Whether the pcmData includes a WAV header
 
 > `optional` **normalizedData?**: `Float32Array`\<`ArrayBufferLike`\>
 
-Defined in: [src/AudioStudio.types.ts:674](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L674)
+Defined in: [src/AudioStudio.types.ts:690](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L690)
 
 Normalized audio data in [-1, 1] range (when includeNormalizedData is true)
 
@@ -94,7 +94,7 @@ Normalized audio data in [-1, 1] range (when includeNormalizedData is true)
 
 > **pcmData**: `Uint8Array`
 
-Defined in: [src/AudioStudio.types.ts:672](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L672)
+Defined in: [src/AudioStudio.types.ts:688](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L688)
 
 Raw PCM audio data
 
@@ -104,7 +104,7 @@ Raw PCM audio data
 
 > **sampleRate**: `number`
 
-Defined in: [src/AudioStudio.types.ts:678](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L678)
+Defined in: [src/AudioStudio.types.ts:694](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L694)
 
 Sample rate in Hz (e.g., 44100, 48000)
 
@@ -114,6 +114,6 @@ Sample rate in Hz (e.g., 44100, 48000)
 
 > **samples**: `number`
 
-Defined in: [src/AudioStudio.types.ts:688](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L688)
+Defined in: [src/AudioStudio.types.ts:704](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L704)
 
 Total number of audio samples per channel

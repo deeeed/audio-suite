@@ -6,7 +6,7 @@
 
 # Interface: PreviewBar
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:172](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L172)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:172](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L172)
 
 Options for generating a quick preview of audio waveform.
 This is optimized for UI rendering with a specified number of points.
@@ -17,7 +17,7 @@ This is optimized for UI rendering with a specified number of points.
 
 > **amplitude**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:176](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L176)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:176](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L176)
 
 Peak amplitude for this bar, normalized to 0..1.
 
@@ -27,7 +27,7 @@ Peak amplitude for this bar, normalized to 0..1.
 
 > **endTimeMs**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:184](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L184)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:184](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L184)
 
 Bar end time in milliseconds from the extracted range start.
 
@@ -37,7 +37,7 @@ Bar end time in milliseconds from the extracted range start.
 
 > **id**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:174](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L174)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:174](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L174)
 
 Stable zero-based bar identifier.
 
@@ -47,7 +47,7 @@ Stable zero-based bar identifier.
 
 > **rms**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:178](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L178)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:178](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L178)
 
 Root mean square amplitude for this bar, normalized to 0..1.
 
@@ -57,7 +57,7 @@ Root mean square amplitude for this bar, normalized to 0..1.
 
 > **silent**: `boolean`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:180](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L180)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:180](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L180)
 
 Whether this bar is below the configured silence RMS threshold.
 
@@ -67,6 +67,6 @@ Whether this bar is below the configured silence RMS threshold.
 
 > **startTimeMs**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:182](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L182)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:182](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L182)
 
 Bar start time in milliseconds from the extracted range start.

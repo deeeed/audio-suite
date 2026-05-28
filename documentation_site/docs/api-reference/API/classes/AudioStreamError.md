@@ -6,7 +6,7 @@
 
 # Class: AudioStreamError
 
-Defined in: [src/errors/AudioStreamError.ts:33](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L33)
+Defined in: [src/errors/AudioStreamError.ts:33](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioStreamError.ts#L33)
 
 ## Extends
 
@@ -18,7 +18,7 @@ Defined in: [src/errors/AudioStreamError.ts:33](https://github.com/deeeed/audiol
 
 > **new AudioStreamError**(`payload`): `AudioStreamError`
 
-Defined in: [src/errors/AudioStreamError.ts:41](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L41)
+Defined in: [src/errors/AudioStreamError.ts:41](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioStreamError.ts#L41)
 
 #### Parameters
 
@@ -52,7 +52,7 @@ Defined in: node\_modules/typescript/lib/lib.es2022.error.d.ts:24
 
 > `readonly` **code**: [`AudioStreamErrorCode`](../type-aliases/AudioStreamErrorCode.md)
 
-Defined in: [src/errors/AudioStreamError.ts:34](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L34)
+Defined in: [src/errors/AudioStreamError.ts:34](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioStreamError.ts#L34)
 
 ***
 
@@ -60,7 +60,7 @@ Defined in: [src/errors/AudioStreamError.ts:34](https://github.com/deeeed/audiol
 
 > `readonly` `optional` **fileUri?**: `string`
 
-Defined in: [src/errors/AudioStreamError.ts:36](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L36)
+Defined in: [src/errors/AudioStreamError.ts:36](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioStreamError.ts#L36)
 
 ***
 
@@ -92,7 +92,7 @@ Defined in: node\_modules/typescript/lib/lib.es5.d.ts:1074
 
 > `readonly` `optional` **nativeCode?**: `string`
 
-Defined in: [src/errors/AudioStreamError.ts:38](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L38)
+Defined in: [src/errors/AudioStreamError.ts:38](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioStreamError.ts#L38)
 
 ***
 
@@ -100,7 +100,7 @@ Defined in: [src/errors/AudioStreamError.ts:38](https://github.com/deeeed/audiol
 
 > `readonly` `optional` **nativeMessage?**: `string`
 
-Defined in: [src/errors/AudioStreamError.ts:39](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L39)
+Defined in: [src/errors/AudioStreamError.ts:39](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioStreamError.ts#L39)
 
 ***
 
@@ -108,7 +108,7 @@ Defined in: [src/errors/AudioStreamError.ts:39](https://github.com/deeeed/audiol
 
 > `readonly` `optional` **platform?**: `string`
 
-Defined in: [src/errors/AudioStreamError.ts:37](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L37)
+Defined in: [src/errors/AudioStreamError.ts:37](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioStreamError.ts#L37)
 
 ***
 
@@ -116,7 +116,7 @@ Defined in: [src/errors/AudioStreamError.ts:37](https://github.com/deeeed/audiol
 
 > `readonly` **recoverable**: `boolean`
 
-Defined in: [src/errors/AudioStreamError.ts:35](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L35)
+Defined in: [src/errors/AudioStreamError.ts:35](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioStreamError.ts#L35)
 
 ***
 
@@ -158,7 +158,7 @@ not capture any frames.
 
 > **toJSON**(): [`AudioStreamErrorPayload`](../interfaces/AudioStreamErrorPayload.md)
 
-Defined in: [src/errors/AudioStreamError.ts:52](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L52)
+Defined in: [src/errors/AudioStreamError.ts:52](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioStreamError.ts#L52)
 
 #### Returns
 

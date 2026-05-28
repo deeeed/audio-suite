@@ -8,7 +8,7 @@
 
 > **extractPreviewBars**(`__namedParameters`): `Promise`\<[`PreviewBarsResult`](../interfaces/PreviewBarsResult.md)\>
 
-Defined in: [src/AudioAnalysis/extractPreviewBars.ts:133](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/extractPreviewBars.ts#L133)
+Defined in: [src/AudioAnalysis/extractPreviewBars.ts:133](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/extractPreviewBars.ts#L133)
 
 Extracts compact waveform preview bars for UI rendering.
 

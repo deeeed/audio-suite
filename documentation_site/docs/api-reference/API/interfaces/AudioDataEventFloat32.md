@@ -6,7 +6,7 @@
 
 # Interface: AudioDataEventFloat32
 
-Defined in: [src/AudioStudio.types.ts:67](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L67)
+Defined in: [src/AudioStudio.types.ts:67](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L67)
 
 ## Extends
 
@@ -18,7 +18,7 @@ Defined in: [src/AudioStudio.types.ts:67](https://github.com/deeeed/audiolab/blo
 
 > `optional` **compression?**: [`CompressionInfo`](CompressionInfo.md) & `object`
 
-Defined in: [src/AudioStudio.types.ts:55](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L55)
+Defined in: [src/AudioStudio.types.ts:55](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L55)
 
 Information about compression if enabled, including the compressed data chunk
 
@@ -40,7 +40,7 @@ Base64 (native) or Blob (web) encoded compressed data chunk
 
 > **data**: `Float32Array`
 
-Defined in: [src/AudioStudio.types.ts:69](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L69)
+Defined in: [src/AudioStudio.types.ts:69](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L69)
 
 Audio data as Float32Array with samples in [-1, 1] range
 
@@ -50,7 +50,7 @@ Audio data as Float32Array with samples in [-1, 1] range
 
 > **eventDataSize**: `number`
 
-Defined in: [src/AudioStudio.types.ts:51](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L51)
+Defined in: [src/AudioStudio.types.ts:51](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L51)
 
 Size of the current data chunk in bytes
 
@@ -64,7 +64,7 @@ Size of the current data chunk in bytes
 
 > **fileUri**: `string`
 
-Defined in: [src/AudioStudio.types.ts:49](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L49)
+Defined in: [src/AudioStudio.types.ts:49](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L49)
 
 URI to the file being recorded
 
@@ -78,7 +78,7 @@ URI to the file being recorded
 
 > **position**: `number`
 
-Defined in: [src/AudioStudio.types.ts:47](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L47)
+Defined in: [src/AudioStudio.types.ts:47](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L47)
 
 Current position in the audio stream in bytes
 
@@ -92,7 +92,7 @@ Current position in the audio stream in bytes
 
 > **streamFormat**: `"float32"`
 
-Defined in: [src/AudioStudio.types.ts:70](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L70)
+Defined in: [src/AudioStudio.types.ts:70](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L70)
 
 ***
 
@@ -100,7 +100,7 @@ Defined in: [src/AudioStudio.types.ts:70](https://github.com/deeeed/audiolab/blo
 
 > **totalSize**: `number`
 
-Defined in: [src/AudioStudio.types.ts:53](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L53)
+Defined in: [src/AudioStudio.types.ts:53](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L53)
 
 Total size of the recording so far in bytes
 

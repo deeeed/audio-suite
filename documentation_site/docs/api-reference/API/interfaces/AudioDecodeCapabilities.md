@@ -6,7 +6,7 @@
 
 # Interface: AudioDecodeCapabilities
 
-Defined in: [src/streamAudioData.ts:108](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L108)
+Defined in: [src/streamAudioData.ts:108](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L108)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [src/streamAudioData.ts:108](https://github.com/deeeed/audiolab/blob
 
 > `optional` **knownLimitations?**: `string`[]
 
-Defined in: [src/streamAudioData.ts:117](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L117)
+Defined in: [src/streamAudioData.ts:117](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L117)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [src/streamAudioData.ts:117](https://github.com/deeeed/audiolab/blob
 
 > **platform**: `"ios"` \| `"android"` \| `"web"`
 
-Defined in: [src/streamAudioData.ts:109](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L109)
+Defined in: [src/streamAudioData.ts:109](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L109)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [src/streamAudioData.ts:109](https://github.com/deeeed/audiolab/blob
 
 > **supportedInputFormats**: `string`[]
 
-Defined in: [src/streamAudioData.ts:110](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L110)
+Defined in: [src/streamAudioData.ts:110](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L110)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [src/streamAudioData.ts:110](https://github.com/deeeed/audiolab/blob
 
 > **supportedOutputFormats**: `"float32"`[]
 
-Defined in: [src/streamAudioData.ts:111](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L111)
+Defined in: [src/streamAudioData.ts:111](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L111)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [src/streamAudioData.ts:111](https://github.com/deeeed/audiolab/blob
 
 > **supportsBackpressure**: `boolean`
 
-Defined in: [src/streamAudioData.ts:113](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L113)
+Defined in: [src/streamAudioData.ts:113](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L113)
 
 ***
 
@@ -54,7 +54,7 @@ Defined in: [src/streamAudioData.ts:113](https://github.com/deeeed/audiolab/blob
 
 > **supportsCancellation**: `boolean`
 
-Defined in: [src/streamAudioData.ts:112](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L112)
+Defined in: [src/streamAudioData.ts:112](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L112)
 
 ***
 
@@ -62,7 +62,7 @@ Defined in: [src/streamAudioData.ts:112](https://github.com/deeeed/audiolab/blob
 
 > **supportsChannelMixing**: `boolean`
 
-Defined in: [src/streamAudioData.ts:116](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L116)
+Defined in: [src/streamAudioData.ts:116](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L116)
 
 ***
 
@@ -70,7 +70,7 @@ Defined in: [src/streamAudioData.ts:116](https://github.com/deeeed/audiolab/blob
 
 > **supportsTargetSampleRate**: `boolean`
 
-Defined in: [src/streamAudioData.ts:115](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L115)
+Defined in: [src/streamAudioData.ts:115](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L115)
 
 ***
 
@@ -78,4 +78,4 @@ Defined in: [src/streamAudioData.ts:115](https://github.com/deeeed/audiolab/blob
 
 > **supportsTimeRange**: `boolean`
 
-Defined in: [src/streamAudioData.ts:114](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L114)
+Defined in: [src/streamAudioData.ts:114](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L114)

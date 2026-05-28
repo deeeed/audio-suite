@@ -107,6 +107,11 @@ export default function App() {
         onMaxDurationReached: (event) => {
             console.log(`Recording reached ${event.maxDurationMs}ms limit`)
         },
+        onRecordingStopped: (recording, reason) => {
+            if (reason === 'maxDuration') {
+                console.log(`Auto-stopped recording saved at ${recording.fileUri}`)
+            }
+        },
         
         // Optional: Audio focus strategy (Android only)
         audioFocusStrategy: 'background', // 'background', 'interactive', 'communication', or 'none'
@@ -226,3 +231,4 @@ const recorder = useAudioRecorder(options?: UseAudioRecorderProps)
 | `maxDurationMs` | `number \| undefined` | Configured maximum active recording duration in milliseconds, if enabled |
 | `maxDurationReached` | `boolean \| undefined` | Whether the recording reached the configured maximum duration |
 | `analysisData` | `AudioAnalysis \| undefined` | Recent live analysis data for the recording if processing was enabled |
+| `lastRecordingReason` | `'manual' \| 'maxDuration' \| undefined` | Why the last completed recording stopped |

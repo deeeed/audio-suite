@@ -6,7 +6,7 @@
 
 # Interface: AudioRangeOptions
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:161](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L161)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:161](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L161)
 
 Options for specifying a time range within an audio file.
 
@@ -21,7 +21,7 @@ Options for specifying a time range within an audio file.
 
 > `optional` **endTimeMs?**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:165](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L165)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:165](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L165)
 
 End time in milliseconds
 
@@ -31,6 +31,6 @@ End time in milliseconds
 
 > `optional` **startTimeMs?**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:163](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L163)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:163](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L163)
 
 Start time in milliseconds

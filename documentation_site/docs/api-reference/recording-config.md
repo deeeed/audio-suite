@@ -57,6 +57,7 @@ export interface RecordingConfig {
     maxDurationMs?: number // Maximum cumulative active recording duration in milliseconds. Paused time does not count.
     autoStopOnMaxDuration?: boolean // Whether to stop automatically when maxDurationMs is reached (default is false)
     onMaxDurationReached?: (_: MaxDurationReachedEvent) => void // Callback for max-duration events
+    onRecordingStopped?: (recording: AudioRecording, reason: 'manual' | 'maxDuration') => void | Promise<void> // Callback after final stop result is available
 
     // Callback functions
     onAudioStream?: (_: AudioDataEvent) => Promise<void> // Callback function to handle audio stream
@@ -145,6 +146,12 @@ await startRecording({
       autoStopped: event.autoStopped,
     })
   },
+  onRecordingStopped: (recording, reason) => {
+    if (reason === 'maxDuration') {
+      console.log('Final auto-stopped recording', recording.fileUri)
+      console.log('Analysis points', recording.analysisData?.dataPoints.length ?? 0)
+    }
+  },
 })
 ```
 
@@ -154,10 +161,11 @@ Behavior:
 2. `autoStopOnMaxDuration: false` emits `onMaxDurationReached` and keeps recording.
 3. `autoStopOnMaxDuration: true` emits `onMaxDurationReached` and then stops recording automatically.
 4. `maxDurationMs` and `maxDurationReached` remain available in hook/status state after stop so UI can explain why recording ended.
+5. `onRecordingStopped(recording, 'maxDuration')` exposes the final `AudioRecording` result after auto-stop completes, while `lastRecordingReason` records why the session ended.
 
 When auto-stop is enabled, the automatic stop result is not passed to
-`onMaxDurationReached`. Use the event for immediate UI updates and the normal
-recording state/results flow to observe the stopped state.
+`onMaxDurationReached`. Use the event for immediate UI updates, then use
+`onRecordingStopped` for the final file/compression/analysis result.
 
 ## Live Analysis Retention {#live-analysis-retention}
 
