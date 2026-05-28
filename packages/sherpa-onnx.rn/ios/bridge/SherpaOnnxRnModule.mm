@@ -27,10 +27,13 @@
 
 RCT_EXPORT_MODULE(SherpaOnnx)
 
-// This allows running off main thread
-- (dispatch_queue_t)methodQueue {
-    return dispatch_get_main_queue();
-}
+// Intentionally do not override methodQueue. Returning the main queue here
+// dispatches every RCT_EXPORT_METHOD body onto the iOS UI thread, which makes
+// long-running ONNX inference (ASR/TTS/SpeakerId/AudioTagging) block the main
+// thread and trigger App Hang reports. Each handler section below installs its
+// own serial dispatch queue and wraps its method bodies in dispatch_async, in
+// line with the pattern already used by KWS/VAD/LanguageId/Punctuation/
+// Diarization/Denoising/OnnxInference in this file.
 
 // Initializer
 - (instancetype)init {
@@ -291,6 +294,16 @@ RCT_EXPORT_METHOD(extractTarBz2:(NSString *)sourcePath
 
 // MARK: - ASR Methods
 
+static dispatch_queue_t _asrSerialQueue;
+static dispatch_once_t _asrQueueOnce;
+
+static dispatch_queue_t asrSerialQueue(void) {
+    dispatch_once(&_asrQueueOnce, ^{
+        _asrSerialQueue = dispatch_queue_create("com.sherpaonnx.asr", DISPATCH_QUEUE_SERIAL);
+    });
+    return _asrSerialQueue;
+}
+
 // Initialize ASR with the provided configuration
 RCT_EXPORT_METHOD(initAsr:(JS::NativeSherpaOnnxSpec::SpecInitAsrConfig &)config
                  resolve:(RCTPromiseResolveBlock)resolve
@@ -375,16 +388,18 @@ RCT_EXPORT_METHOD(initAsr:(JS::NativeSherpaOnnxSpec::SpecInitAsrConfig &)config
     if (modelFileTokenizer) [modelFiles setObject:modelFileTokenizer forKey:@"tokenizer"];
     if (modelFiles.count > 0) [configDict setObject:modelFiles forKey:@"modelFiles"];
 
-    @try {
-        NSDictionary *result = [self.asrHandler initAsr:configDict];
-        if ([result[@"success"] boolValue]) {
-            resolve(result);
-        } else {
-            reject(@"ERR_ASR_INIT", result[@"error"], nil);
+    dispatch_async(asrSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.asrHandler initAsr:configDict];
+            if ([result[@"success"] boolValue]) {
+                resolve(result);
+            } else {
+                reject(@"ERR_ASR_INIT", result[@"error"], nil);
+            }
+        } @catch (NSException *exception) {
+            reject(@"ERR_ASR_INIT", exception.reason, nil);
         }
-    } @catch (NSException *exception) {
-        reject(@"ERR_ASR_INIT", exception.reason, nil);
-    }
+    });
 }
 
 // Recognize speech from audio samples
@@ -393,16 +408,18 @@ RCT_EXPORT_METHOD(recognizeFromSamples:(double)sampleRate
                           resolve:(RCTPromiseResolveBlock)resolve
                           reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.asrHandler recognizeFromSamples:(int)sampleRate samples:samples];
-        if ([result[@"success"] boolValue]) {
-            resolve(result);
-        } else {
-            reject(@"ERR_ASR_RECOGNIZE", result[@"error"], nil);
+    dispatch_async(asrSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.asrHandler recognizeFromSamples:(int)sampleRate samples:samples];
+            if ([result[@"success"] boolValue]) {
+                resolve(result);
+            } else {
+                reject(@"ERR_ASR_RECOGNIZE", result[@"error"], nil);
+            }
+        } @catch (NSException *exception) {
+            reject(@"ERR_ASR_RECOGNIZE", exception.reason, nil);
         }
-    } @catch (NSException *exception) {
-        reject(@"ERR_ASR_RECOGNIZE", exception.reason, nil);
-    }
+    });
 }
 
 // Recognize speech from an audio file
@@ -410,28 +427,32 @@ RCT_EXPORT_METHOD(recognizeFromFile:(NSString *)filePath
                        resolve:(RCTPromiseResolveBlock)resolve
                        reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.asrHandler recognizeFromFile:filePath];
-        if ([result[@"success"] boolValue]) {
-            resolve(result);
-        } else {
-            reject(@"ERR_ASR_RECOGNIZE_FILE", result[@"error"], nil);
+    dispatch_async(asrSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.asrHandler recognizeFromFile:filePath];
+            if ([result[@"success"] boolValue]) {
+                resolve(result);
+            } else {
+                reject(@"ERR_ASR_RECOGNIZE_FILE", result[@"error"], nil);
+            }
+        } @catch (NSException *exception) {
+            reject(@"ERR_ASR_RECOGNIZE_FILE", exception.reason, nil);
         }
-    } @catch (NSException *exception) {
-        reject(@"ERR_ASR_RECOGNIZE_FILE", exception.reason, nil);
-    }
+    });
 }
 
 // Release ASR resources
 RCT_EXPORT_METHOD(releaseAsr:(RCTPromiseResolveBlock)resolve
                 reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.asrHandler releaseResources];
-        resolve(result);
-    } @catch (NSException *exception) {
-        reject(@"ERR_ASR_RELEASE", exception.reason, nil);
-    }
+    dispatch_async(asrSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.asrHandler releaseResources];
+            resolve(result);
+        } @catch (NSException *exception) {
+            reject(@"ERR_ASR_RELEASE", exception.reason, nil);
+        }
+    });
 }
 
 // MARK: - ASR Online Streaming Methods
@@ -439,16 +460,18 @@ RCT_EXPORT_METHOD(releaseAsr:(RCTPromiseResolveBlock)resolve
 RCT_EXPORT_METHOD(createAsrOnlineStream:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.asrHandler createAsrOnlineStream];
-        if ([result[@"success"] boolValue]) {
-            resolve(result);
-        } else {
-            reject(@"ERR_ASR_STREAM", result[@"error"], nil);
+    dispatch_async(asrSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.asrHandler createAsrOnlineStream];
+            if ([result[@"success"] boolValue]) {
+                resolve(result);
+            } else {
+                reject(@"ERR_ASR_STREAM", result[@"error"], nil);
+            }
+        } @catch (NSException *exception) {
+            reject(@"ERR_ASR_STREAM", exception.reason, nil);
         }
-    } @catch (NSException *exception) {
-        reject(@"ERR_ASR_STREAM", exception.reason, nil);
-    }
+    });
 }
 
 RCT_EXPORT_METHOD(acceptAsrOnlineWaveform:(double)sampleRate
@@ -456,71 +479,91 @@ RCT_EXPORT_METHOD(acceptAsrOnlineWaveform:(double)sampleRate
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.asrHandler acceptAsrOnlineWaveform:(int)sampleRate samples:samples];
-        if ([result[@"success"] boolValue]) {
-            resolve(result);
-        } else {
-            reject(@"ERR_ASR_WAVEFORM", result[@"error"], nil);
+    dispatch_async(asrSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.asrHandler acceptAsrOnlineWaveform:(int)sampleRate samples:samples];
+            if ([result[@"success"] boolValue]) {
+                resolve(result);
+            } else {
+                reject(@"ERR_ASR_WAVEFORM", result[@"error"], nil);
+            }
+        } @catch (NSException *exception) {
+            reject(@"ERR_ASR_WAVEFORM", exception.reason, nil);
         }
-    } @catch (NSException *exception) {
-        reject(@"ERR_ASR_WAVEFORM", exception.reason, nil);
-    }
+    });
 }
 
 RCT_EXPORT_METHOD(isAsrOnlineEndpoint:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.asrHandler isAsrOnlineEndpoint];
-        resolve(result);
-    } @catch (NSException *exception) {
-        reject(@"ERR_ASR_ENDPOINT", exception.reason, nil);
-    }
+    dispatch_async(asrSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.asrHandler isAsrOnlineEndpoint];
+            resolve(result);
+        } @catch (NSException *exception) {
+            reject(@"ERR_ASR_ENDPOINT", exception.reason, nil);
+        }
+    });
 }
 
 RCT_EXPORT_METHOD(getAsrOnlineResult:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.asrHandler getAsrOnlineResult];
-        resolve(result);
-    } @catch (NSException *exception) {
-        reject(@"ERR_ASR_RESULT", exception.reason, nil);
-    }
+    dispatch_async(asrSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.asrHandler getAsrOnlineResult];
+            resolve(result);
+        } @catch (NSException *exception) {
+            reject(@"ERR_ASR_RESULT", exception.reason, nil);
+        }
+    });
 }
 
 RCT_EXPORT_METHOD(finishAsrOnlineInput:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.asrHandler finishAsrOnlineInput];
-        if ([result[@"success"] boolValue]) {
-            resolve(result);
-        } else {
-            reject(@"ERR_ASR_FINISH", result[@"error"], nil);
+    dispatch_async(asrSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.asrHandler finishAsrOnlineInput];
+            if ([result[@"success"] boolValue]) {
+                resolve(result);
+            } else {
+                reject(@"ERR_ASR_FINISH", result[@"error"], nil);
+            }
+        } @catch (NSException *exception) {
+            reject(@"ERR_ASR_FINISH", exception.reason, nil);
         }
-    } @catch (NSException *exception) {
-        reject(@"ERR_ASR_FINISH", exception.reason, nil);
-    }
+    });
 }
 
 RCT_EXPORT_METHOD(resetAsrOnlineStream:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.asrHandler resetAsrOnlineStream];
-        if ([result[@"success"] boolValue]) {
-            resolve(result);
-        } else {
-            reject(@"ERR_ASR_RESET", result[@"error"], nil);
+    dispatch_async(asrSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.asrHandler resetAsrOnlineStream];
+            if ([result[@"success"] boolValue]) {
+                resolve(result);
+            } else {
+                reject(@"ERR_ASR_RESET", result[@"error"], nil);
+            }
+        } @catch (NSException *exception) {
+            reject(@"ERR_ASR_RESET", exception.reason, nil);
         }
-    } @catch (NSException *exception) {
-        reject(@"ERR_ASR_RESET", exception.reason, nil);
-    }
+    });
 }
 
 // MARK: - TTS Methods
+
+static dispatch_queue_t _ttsSerialQueue;
+static dispatch_once_t _ttsQueueOnce;
+
+static dispatch_queue_t ttsSerialQueue(void) {
+    dispatch_once(&_ttsQueueOnce, ^{
+        _ttsSerialQueue = dispatch_queue_create("com.sherpaonnx.tts", DISPATCH_QUEUE_SERIAL);
+    });
+    return _ttsSerialQueue;
+}
 
 
 RCT_EXPORT_METHOD(initTts:(JS::NativeSherpaOnnxSpec::SpecInitTtsConfig &)config
@@ -566,18 +609,20 @@ RCT_EXPORT_METHOD(initTts:(JS::NativeSherpaOnnxSpec::SpecInitTtsConfig &)config
     if (lengthScale) [configDict setObject:@(*lengthScale) forKey:@"lengthScale"];
     if (lang) [configDict setObject:lang forKey:@"lang"];
     RCTLogInfo(@"[SherpaOnnxRnModule.mm] initTts entered.");
-    @try {
-        RCTLogInfo(@"[SherpaOnnxRnModule.mm] Calling Swift ttsHandler.initTts...");
-        NSDictionary *result = [self.ttsHandler initTts:configDict]; // Directly pass the dictionary
-        RCTLogInfo(@"[SherpaOnnxRnModule.mm] Swift ttsHandler.initTts returned: %@", result);
-        if ([result[@"success"] boolValue]) {
-            resolve(result);
-        } else {
-            reject(@"ERR_TTS_INIT", result[@"error"], nil);
+    dispatch_async(ttsSerialQueue(), ^{
+        @try {
+            RCTLogInfo(@"[SherpaOnnxRnModule.mm] Calling Swift ttsHandler.initTts...");
+            NSDictionary *result = [self.ttsHandler initTts:configDict]; // Directly pass the dictionary
+            RCTLogInfo(@"[SherpaOnnxRnModule.mm] Swift ttsHandler.initTts returned: %@", result);
+            if ([result[@"success"] boolValue]) {
+                resolve(result);
+            } else {
+                reject(@"ERR_TTS_INIT", result[@"error"], nil);
+            }
+        } @catch (NSException *exception) {
+            reject(@"ERR_TTS_INIT", exception.reason, nil);
         }
-    } @catch (NSException *exception) {
-        reject(@"ERR_TTS_INIT", exception.reason, nil);
-    }
+    });
 }
 
 RCT_EXPORT_METHOD(generateTts:(JS::NativeSherpaOnnxSpec::SpecGenerateTtsConfig &)config
@@ -602,40 +647,46 @@ RCT_EXPORT_METHOD(generateTts:(JS::NativeSherpaOnnxSpec::SpecGenerateTtsConfig &
     if (lengthScale) [configDict setObject:@(*lengthScale) forKey:@"lengthScale"];
     if (noiseScale) [configDict setObject:@(*noiseScale) forKey:@"noiseScale"];
     if (noiseScaleW) [configDict setObject:@(*noiseScaleW) forKey:@"noiseScaleW"];
-    @try {
-        NSDictionary *result = [self.ttsHandler generateTts:configDict]; // Directly pass dict
-        if ([result[@"success"] boolValue]) {
-            resolve(result);
-        } else {
-            reject(@"ERR_TTS_GENERATE", result[@"error"], nil);
+    dispatch_async(ttsSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.ttsHandler generateTts:configDict]; // Directly pass dict
+            if ([result[@"success"] boolValue]) {
+                resolve(result);
+            } else {
+                reject(@"ERR_TTS_GENERATE", result[@"error"], nil);
+            }
+        } @catch (NSException *exception) {
+            reject(@"ERR_TTS_GENERATE", exception.reason, nil);
         }
-    } @catch (NSException *exception) {
-        reject(@"ERR_TTS_GENERATE", exception.reason, nil);
-    }
+    });
 }
 
 // Stop TTS playback
 RCT_EXPORT_METHOD(stopTts:(RCTPromiseResolveBlock)resolve
                reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.ttsHandler stopTts];
-        resolve(result);
-    } @catch (NSException *exception) {
-        reject(@"ERR_TTS_STOP", exception.reason, nil);
-    }
+    dispatch_async(ttsSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.ttsHandler stopTts];
+            resolve(result);
+        } @catch (NSException *exception) {
+            reject(@"ERR_TTS_STOP", exception.reason, nil);
+        }
+    });
 }
 
 // Release TTS resources
 RCT_EXPORT_METHOD(releaseTts:(RCTPromiseResolveBlock)resolve
                 reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.ttsHandler releaseTts];
-        resolve(result);
-    } @catch (NSException *exception) {
-        reject(@"ERR_TTS_RELEASE", exception.reason, nil);
-    }
+    dispatch_async(ttsSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.ttsHandler releaseTts];
+            resolve(result);
+        } @catch (NSException *exception) {
+            reject(@"ERR_TTS_RELEASE", exception.reason, nil);
+        }
+    });
 }
 
 // Implementation of getTurboModule for TurboModule support
@@ -645,6 +696,16 @@ RCT_EXPORT_METHOD(releaseTts:(RCTPromiseResolveBlock)resolve
 }
 
 // MARK: - Audio Tagging Methods
+
+static dispatch_queue_t _audioTaggingSerialQueue;
+static dispatch_once_t _audioTaggingQueueOnce;
+
+static dispatch_queue_t audioTaggingSerialQueue(void) {
+    dispatch_once(&_audioTaggingQueueOnce, ^{
+        _audioTaggingSerialQueue = dispatch_queue_create("com.sherpaonnx.audiotagging", DISPATCH_QUEUE_SERIAL);
+    });
+    return _audioTaggingSerialQueue;
+}
 
 RCT_EXPORT_METHOD(initAudioTagging:(JS::NativeSherpaOnnxSpec::SpecInitAudioTaggingConfig &)config
                  resolve:(RCTPromiseResolveBlock)resolve
@@ -667,32 +728,36 @@ RCT_EXPORT_METHOD(initAudioTagging:(JS::NativeSherpaOnnxSpec::SpecInitAudioTaggi
     if (topK) [configDict setObject:@(*topK) forKey:@"topK"];
     if (debug) [configDict setObject:@(*debug) forKey:@"debug"];
 
-    @try {
-        NSDictionary *result = [self.audioTaggingHandler initAudioTagging:configDict];
-        if ([result[@"success"] boolValue]) {
-            resolve(result);
-        } else {
-            reject(@"ERR_AUDIO_TAGGING_INIT", result[@"error"], nil);
+    dispatch_async(audioTaggingSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.audioTaggingHandler initAudioTagging:configDict];
+            if ([result[@"success"] boolValue]) {
+                resolve(result);
+            } else {
+                reject(@"ERR_AUDIO_TAGGING_INIT", result[@"error"], nil);
+            }
+        } @catch (NSException *exception) {
+            reject(@"ERR_AUDIO_TAGGING_INIT", exception.reason, nil);
         }
-    } @catch (NSException *exception) {
-        reject(@"ERR_AUDIO_TAGGING_INIT", exception.reason, nil);
-    }
+    });
 }
 
 RCT_EXPORT_METHOD(processAndComputeAudioTagging:(NSString *)filePath
                               resolve:(RCTPromiseResolveBlock)resolve
                                reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.audioTaggingHandler processAndComputeFile:filePath];
-        if ([result[@"success"] boolValue]) {
-            resolve(result);
-        } else {
-            reject(@"ERR_AUDIO_TAGGING_COMPUTE", result[@"error"], nil);
+    dispatch_async(audioTaggingSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.audioTaggingHandler processAndComputeFile:filePath];
+            if ([result[@"success"] boolValue]) {
+                resolve(result);
+            } else {
+                reject(@"ERR_AUDIO_TAGGING_COMPUTE", result[@"error"], nil);
+            }
+        } @catch (NSException *exception) {
+            reject(@"ERR_AUDIO_TAGGING_COMPUTE", exception.reason, nil);
         }
-    } @catch (NSException *exception) {
-        reject(@"ERR_AUDIO_TAGGING_COMPUTE", exception.reason, nil);
-    }
+    });
 }
 
 RCT_EXPORT_METHOD(processAndComputeAudioSamples:(double)sampleRate
@@ -700,30 +765,44 @@ RCT_EXPORT_METHOD(processAndComputeAudioSamples:(double)sampleRate
                               resolve:(RCTPromiseResolveBlock)resolve
                                reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.audioTaggingHandler processAndComputeSamples:(int)sampleRate samples:samples];
-        if ([result[@"success"] boolValue]) {
-            resolve(result);
-        } else {
-            reject(@"ERR_AUDIO_TAGGING_COMPUTE", result[@"error"], nil);
+    dispatch_async(audioTaggingSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.audioTaggingHandler processAndComputeSamples:(int)sampleRate samples:samples];
+            if ([result[@"success"] boolValue]) {
+                resolve(result);
+            } else {
+                reject(@"ERR_AUDIO_TAGGING_COMPUTE", result[@"error"], nil);
+            }
+        } @catch (NSException *exception) {
+            reject(@"ERR_AUDIO_TAGGING_COMPUTE", exception.reason, nil);
         }
-    } @catch (NSException *exception) {
-        reject(@"ERR_AUDIO_TAGGING_COMPUTE", exception.reason, nil);
-    }
+    });
 }
 
 RCT_EXPORT_METHOD(releaseAudioTagging:(RCTPromiseResolveBlock)resolve
                      reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.audioTaggingHandler releaseResources];
-        resolve(result);
-    } @catch (NSException *exception) {
-        reject(@"ERR_AUDIO_TAGGING_RELEASE", exception.reason, nil);
-    }
+    dispatch_async(audioTaggingSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.audioTaggingHandler releaseResources];
+            resolve(result);
+        } @catch (NSException *exception) {
+            reject(@"ERR_AUDIO_TAGGING_RELEASE", exception.reason, nil);
+        }
+    });
 }
 
 // MARK: - Speaker ID Methods
+
+static dispatch_queue_t _speakerIdSerialQueue;
+static dispatch_once_t _speakerIdQueueOnce;
+
+static dispatch_queue_t speakerIdSerialQueue(void) {
+    dispatch_once(&_speakerIdQueueOnce, ^{
+        _speakerIdSerialQueue = dispatch_queue_create("com.sherpaonnx.speakerid", DISPATCH_QUEUE_SERIAL);
+    });
+    return _speakerIdSerialQueue;
+}
 
 RCT_EXPORT_METHOD(initSpeakerId:(JS::NativeSherpaOnnxSpec::SpecInitSpeakerIdConfig &)config
               resolve:(RCTPromiseResolveBlock)resolve
@@ -744,16 +823,18 @@ RCT_EXPORT_METHOD(initSpeakerId:(JS::NativeSherpaOnnxSpec::SpecInitSpeakerIdConf
     if (provider) [configDict setObject:provider forKey:@"provider"];
     if (debug) [configDict setObject:@(*debug) forKey:@"debug"];
 
-    @try {
-        NSDictionary *result = [self.speakerIdHandler initSpeakerId:configDict];
-        if ([result[@"success"] boolValue]) {
-            resolve(result);
-        } else {
-            reject(@"ERR_SPEAKER_ID_INIT", result[@"error"], nil);
+    dispatch_async(speakerIdSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.speakerIdHandler initSpeakerId:configDict];
+            if ([result[@"success"] boolValue]) {
+                resolve(result);
+            } else {
+                reject(@"ERR_SPEAKER_ID_INIT", result[@"error"], nil);
+            }
+        } @catch (NSException *exception) {
+            reject(@"ERR_SPEAKER_ID_INIT", exception.reason, nil);
         }
-    } @catch (NSException *exception) {
-        reject(@"ERR_SPEAKER_ID_INIT", exception.reason, nil);
-    }
+    });
 }
 
 RCT_EXPORT_METHOD(processSpeakerIdSamples:(double)sampleRate
@@ -761,46 +842,52 @@ RCT_EXPORT_METHOD(processSpeakerIdSamples:(double)sampleRate
                         resolve:(RCTPromiseResolveBlock)resolve
                          reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.speakerIdHandler processSamples:(int)sampleRate samples:samples];
-        if ([result[@"success"] boolValue]) {
-            resolve(result);
-        } else {
-            reject(@"ERR_SPEAKER_ID_PROCESS", result[@"error"], nil);
+    dispatch_async(speakerIdSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.speakerIdHandler processSamples:(int)sampleRate samples:samples];
+            if ([result[@"success"] boolValue]) {
+                resolve(result);
+            } else {
+                reject(@"ERR_SPEAKER_ID_PROCESS", result[@"error"], nil);
+            }
+        } @catch (NSException *exception) {
+            reject(@"ERR_SPEAKER_ID_PROCESS", exception.reason, nil);
         }
-    } @catch (NSException *exception) {
-        reject(@"ERR_SPEAKER_ID_PROCESS", exception.reason, nil);
-    }
+    });
 }
 
 RCT_EXPORT_METHOD(computeSpeakerEmbedding:(RCTPromiseResolveBlock)resolve
                          reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.speakerIdHandler computeEmbedding];
-        if ([result[@"success"] boolValue]) {
-            resolve(result);
-        } else {
-            reject(@"ERR_SPEAKER_ID_COMPUTE", result[@"error"], nil);
+    dispatch_async(speakerIdSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.speakerIdHandler computeEmbedding];
+            if ([result[@"success"] boolValue]) {
+                resolve(result);
+            } else {
+                reject(@"ERR_SPEAKER_ID_COMPUTE", result[@"error"], nil);
+            }
+        } @catch (NSException *exception) {
+            reject(@"ERR_SPEAKER_ID_COMPUTE", exception.reason, nil);
         }
-    } @catch (NSException *exception) {
-        reject(@"ERR_SPEAKER_ID_COMPUTE", exception.reason, nil);
-    }
+    });
 }
 
 RCT_EXPORT_METHOD(resetSpeakerIdStream:(RCTPromiseResolveBlock)resolve
                          reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.speakerIdHandler resetStream];
-        if ([result[@"success"] boolValue]) {
-            resolve(result);
-        } else {
-            reject(@"ERR_SPEAKER_ID_RESET", result[@"error"], nil);
+    dispatch_async(speakerIdSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.speakerIdHandler resetStream];
+            if ([result[@"success"] boolValue]) {
+                resolve(result);
+            } else {
+                reject(@"ERR_SPEAKER_ID_RESET", result[@"error"], nil);
+            }
+        } @catch (NSException *exception) {
+            reject(@"ERR_SPEAKER_ID_RESET", exception.reason, nil);
         }
-    } @catch (NSException *exception) {
-        reject(@"ERR_SPEAKER_ID_RESET", exception.reason, nil);
-    }
+    });
 }
 
 RCT_EXPORT_METHOD(registerSpeaker:(NSString *)name
@@ -808,43 +895,49 @@ RCT_EXPORT_METHOD(registerSpeaker:(NSString *)name
                 resolve:(RCTPromiseResolveBlock)resolve
                  reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.speakerIdHandler registerSpeaker:name embedding:embedding];
-        if ([result[@"success"] boolValue]) {
-            resolve(result);
-        } else {
-            reject(@"ERR_SPEAKER_ID_REGISTER", result[@"error"], nil);
+    dispatch_async(speakerIdSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.speakerIdHandler registerSpeaker:name embedding:embedding];
+            if ([result[@"success"] boolValue]) {
+                resolve(result);
+            } else {
+                reject(@"ERR_SPEAKER_ID_REGISTER", result[@"error"], nil);
+            }
+        } @catch (NSException *exception) {
+            reject(@"ERR_SPEAKER_ID_REGISTER", exception.reason, nil);
         }
-    } @catch (NSException *exception) {
-        reject(@"ERR_SPEAKER_ID_REGISTER", exception.reason, nil);
-    }
+    });
 }
 
 RCT_EXPORT_METHOD(removeSpeaker:(NSString *)name
               resolve:(RCTPromiseResolveBlock)resolve
                reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.speakerIdHandler removeSpeaker:name];
-        if ([result[@"success"] boolValue]) {
-            resolve(result);
-        } else {
-            reject(@"ERR_SPEAKER_ID_REMOVE", result[@"error"], nil);
+    dispatch_async(speakerIdSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.speakerIdHandler removeSpeaker:name];
+            if ([result[@"success"] boolValue]) {
+                resolve(result);
+            } else {
+                reject(@"ERR_SPEAKER_ID_REMOVE", result[@"error"], nil);
+            }
+        } @catch (NSException *exception) {
+            reject(@"ERR_SPEAKER_ID_REMOVE", exception.reason, nil);
         }
-    } @catch (NSException *exception) {
-        reject(@"ERR_SPEAKER_ID_REMOVE", exception.reason, nil);
-    }
+    });
 }
 
 RCT_EXPORT_METHOD(getSpeakers:(RCTPromiseResolveBlock)resolve
              reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.speakerIdHandler getSpeakers];
-        resolve(result);
-    } @catch (NSException *exception) {
-        reject(@"ERR_SPEAKER_ID_GET_SPEAKERS", exception.reason, nil);
-    }
+    dispatch_async(speakerIdSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.speakerIdHandler getSpeakers];
+            resolve(result);
+        } @catch (NSException *exception) {
+            reject(@"ERR_SPEAKER_ID_GET_SPEAKERS", exception.reason, nil);
+        }
+    });
 }
 
 RCT_EXPORT_METHOD(identifySpeaker:(NSArray *)embedding
@@ -852,12 +945,14 @@ RCT_EXPORT_METHOD(identifySpeaker:(NSArray *)embedding
                 resolve:(RCTPromiseResolveBlock)resolve
                  reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.speakerIdHandler identifySpeaker:embedding threshold:(float)threshold];
-        resolve(result);
-    } @catch (NSException *exception) {
-        reject(@"ERR_SPEAKER_ID_IDENTIFY", exception.reason, nil);
-    }
+    dispatch_async(speakerIdSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.speakerIdHandler identifySpeaker:embedding threshold:(float)threshold];
+            resolve(result);
+        } @catch (NSException *exception) {
+            reject(@"ERR_SPEAKER_ID_IDENTIFY", exception.reason, nil);
+        }
+    });
 }
 
 RCT_EXPORT_METHOD(verifySpeaker:(NSString *)name
@@ -866,28 +961,32 @@ RCT_EXPORT_METHOD(verifySpeaker:(NSString *)name
               resolve:(RCTPromiseResolveBlock)resolve
                reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.speakerIdHandler verifySpeaker:name embedding:embedding threshold:(float)threshold];
-        resolve(result);
-    } @catch (NSException *exception) {
-        reject(@"ERR_SPEAKER_ID_VERIFY", exception.reason, nil);
-    }
+    dispatch_async(speakerIdSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.speakerIdHandler verifySpeaker:name embedding:embedding threshold:(float)threshold];
+            resolve(result);
+        } @catch (NSException *exception) {
+            reject(@"ERR_SPEAKER_ID_VERIFY", exception.reason, nil);
+        }
+    });
 }
 
 RCT_EXPORT_METHOD(processSpeakerIdFile:(NSString *)filePath
                      resolve:(RCTPromiseResolveBlock)resolve
                       reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.speakerIdHandler processFile:filePath];
-        if ([result[@"success"] boolValue]) {
-            resolve(result);
-        } else {
-            reject(@"ERR_SPEAKER_ID_PROCESS_FILE", result[@"error"], nil);
+    dispatch_async(speakerIdSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.speakerIdHandler processFile:filePath];
+            if ([result[@"success"] boolValue]) {
+                resolve(result);
+            } else {
+                reject(@"ERR_SPEAKER_ID_PROCESS_FILE", result[@"error"], nil);
+            }
+        } @catch (NSException *exception) {
+            reject(@"ERR_SPEAKER_ID_PROCESS_FILE", exception.reason, nil);
         }
-    } @catch (NSException *exception) {
-        reject(@"ERR_SPEAKER_ID_PROCESS_FILE", exception.reason, nil);
-    }
+    });
 }
 
 RCT_EXPORT_METHOD(processSpeakerIdFileWindow:(NSString *)filePath
@@ -896,27 +995,31 @@ RCT_EXPORT_METHOD(processSpeakerIdFileWindow:(NSString *)filePath
                       resolve:(RCTPromiseResolveBlock)resolve
                        reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.speakerIdHandler processFileWindow:filePath startTimeMs:startTimeMs durationMs:durationMs];
-        if ([result[@"success"] boolValue]) {
-            resolve(result);
-        } else {
-            reject(@"ERR_SPEAKER_ID_PROCESS_FILE_WINDOW", result[@"error"], nil);
+    dispatch_async(speakerIdSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.speakerIdHandler processFileWindow:filePath startTimeMs:startTimeMs durationMs:durationMs];
+            if ([result[@"success"] boolValue]) {
+                resolve(result);
+            } else {
+                reject(@"ERR_SPEAKER_ID_PROCESS_FILE_WINDOW", result[@"error"], nil);
+            }
+        } @catch (NSException *exception) {
+            reject(@"ERR_SPEAKER_ID_PROCESS_FILE_WINDOW", exception.reason, nil);
         }
-    } @catch (NSException *exception) {
-        reject(@"ERR_SPEAKER_ID_PROCESS_FILE_WINDOW", exception.reason, nil);
-    }
+    });
 }
 
 RCT_EXPORT_METHOD(releaseSpeakerId:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSDictionary *result = [self.speakerIdHandler releaseResources];
-        resolve(result);
-    } @catch (NSException *exception) {
-        reject(@"ERR_SPEAKER_ID_RELEASE", exception.reason, nil);
-    }
+    dispatch_async(speakerIdSerialQueue(), ^{
+        @try {
+            NSDictionary *result = [self.speakerIdHandler releaseResources];
+            resolve(result);
+        } @catch (NSException *exception) {
+            reject(@"ERR_SPEAKER_ID_RELEASE", exception.reason, nil);
+        }
+    });
 }
 
 // MARK: - KWS Methods
