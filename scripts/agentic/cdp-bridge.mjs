@@ -254,6 +254,17 @@ function readMetroHostFile(filePath) {
   }
 }
 
+function isPidAlive(pidText) {
+  const pid = Number.parseInt(pidText || '', 10);
+  if (!Number.isFinite(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function findAppMetroHost() {
   const appsDir = path.join(APP_ROOT, 'apps');
   try {
@@ -267,15 +278,13 @@ function findAppMetroHost() {
         if (!metroHost) return null;
 
         const pidFile = path.join(appsDir, entry.name, '.agent', 'metro.pid');
-        const hasAgentMetadata =
-          readMetroHostFile(pidFile) != null ||
-          fs.existsSync(path.join(appsDir, entry.name, '.agent', 'metro.log'));
+        const hasLivePid = isPidAlive(readMetroHostFile(pidFile));
         const mtimeMs = fs.statSync(metroHostFile).mtimeMs;
-        return { metroHost, mtimeMs, hasAgentMetadata };
+        return { metroHost, mtimeMs, hasLivePid };
       })
       .filter(Boolean)
       .sort((a, b) => {
-        if (a.hasAgentMetadata !== b.hasAgentMetadata) return a.hasAgentMetadata ? -1 : 1;
+        if (a.hasLivePid !== b.hasLivePid) return a.hasLivePid ? -1 : 1;
         return b.mtimeMs - a.mtimeMs;
       });
 
@@ -295,9 +304,12 @@ function getInspectorOrigin(wsUrl) {
     if (!parsed.pathname.startsWith('/inspector/')) return undefined;
 
     const metroPort = parsed.port || loadPort();
-    const metroHost =
-      readMetroHostFile(path.join(AGENT_DIR, 'metro.host')) ||
-      findAppMetroHost();
+    const configuredAppRoot = fs.existsSync(AGENTIC_CONF_FILE);
+    const localMetroHost = readMetroHostFile(path.join(AGENT_DIR, 'metro.host'));
+    const discoveredAppMetroHost = findAppMetroHost();
+    const metroHost = configuredAppRoot
+      ? localMetroHost || discoveredAppMetroHost
+      : discoveredAppMetroHost || localMetroHost;
     if (metroHost) {
       const httpProtocol = parsed.protocol === 'wss:' ? 'https:' : 'http:';
       return `${httpProtocol}//${metroHost}:${metroPort}`;
