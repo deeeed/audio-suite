@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.1-beta.2] - 2026-05-29
+
+Beta release for validating max-duration recording controls after auto-stop result handling fixes.
+
+### Fixed
+
+- Ensured `autoStopOnMaxDuration` uses the same hook finalization path as manual stop so `onRecordingStopped(recording, reason)` receives the final recording with retained analysis data.
+- Preserved immediate `onMaxDurationReached` notifications while exposing `lastRecordingReason` after stop.
+- Avoided passing hook-only recording callbacks/options into native start options.
+
 ## [3.2.0] - 2026-05-15
 
 Stable release of the progressive long-audio decode API introduced in `3.2.0-beta.1`.
@@ -735,7 +745,8 @@ Beta release for client validation of the progressive decode API.
 - Audio features extraction during recording
 - Consistent WAV PCM recording format across all platforms
 
-[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.2.0...HEAD
+[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.2.1-beta.2...HEAD
+[3.2.1-beta.2]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.2.0...@siteed/audio-studio@3.2.1-beta.2
 [3.2.0]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.1.1...@siteed/audio-studio@3.2.0
 [3.1.1]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.1.0...@siteed/audio-studio@3.1.1
 [3.1.0]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.0.5...@siteed/audio-studio@3.1.0
