@@ -37,8 +37,9 @@
  *   CDP_URL         External Chrome CDP URL (e.g. http://192.168.1.5:9222)
  *                   Bypasses .agent/web-browser.json — connects directly
  *   CDP_ORIGIN      Override native inspector WebSocket Origin. By default,
- *                   native CDP uses .agent/metro.host from start-metro.sh
- *                   so physical devices match Metro's LAN-packager origin.
+ *                   native CDP uses app-local .agent/metro.host from
+ *                   start-metro.sh so physical devices match Metro's
+ *                   LAN-packager origin.
  */
 
 import http from 'node:http';
@@ -243,6 +244,47 @@ function rewriteWsHost(wsUrl, targetHost) {
   }
 }
 
+function readMetroHostFile(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    const metroHost = fs.readFileSync(filePath, 'utf8').trim();
+    return metroHost || null;
+  } catch {
+    return null;
+  }
+}
+
+function findAppMetroHost() {
+  const appsDir = path.join(APP_ROOT, 'apps');
+  try {
+    if (!fs.existsSync(appsDir)) return null;
+    const candidates = fs
+      .readdirSync(appsDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => {
+        const metroHostFile = path.join(appsDir, entry.name, '.agent', 'metro.host');
+        const metroHost = readMetroHostFile(metroHostFile);
+        if (!metroHost) return null;
+
+        const pidFile = path.join(appsDir, entry.name, '.agent', 'metro.pid');
+        const hasAgentMetadata =
+          readMetroHostFile(pidFile) != null ||
+          fs.existsSync(path.join(appsDir, entry.name, '.agent', 'metro.log'));
+        const mtimeMs = fs.statSync(metroHostFile).mtimeMs;
+        return { metroHost, mtimeMs, hasAgentMetadata };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        if (a.hasAgentMetadata !== b.hasAgentMetadata) return a.hasAgentMetadata ? -1 : 1;
+        return b.mtimeMs - a.mtimeMs;
+      });
+
+    return candidates[0]?.metroHost || null;
+  } catch {
+    return null;
+  }
+}
+
 function getInspectorOrigin(wsUrl) {
   if (process.env.CDP_ORIGIN !== undefined) {
     return process.env.CDP_ORIGIN || undefined;
@@ -252,14 +294,13 @@ function getInspectorOrigin(wsUrl) {
     const parsed = new URL(wsUrl);
     if (!parsed.pathname.startsWith('/inspector/')) return undefined;
 
-    const metroHostFile = path.join(AGENT_DIR, 'metro.host');
-    if (fs.existsSync(metroHostFile)) {
-      const metroHost = fs.readFileSync(metroHostFile, 'utf8').trim();
-      if (metroHost) {
-        const httpProtocol = parsed.protocol === 'wss:' ? 'https:' : 'http:';
-        const metroPort = parsed.port || loadPort();
-        return `${httpProtocol}//${metroHost}:${metroPort}`;
-      }
+    const metroPort = parsed.port || loadPort();
+    const metroHost =
+      readMetroHostFile(path.join(AGENT_DIR, 'metro.host')) ||
+      findAppMetroHost();
+    if (metroHost) {
+      const httpProtocol = parsed.protocol === 'wss:' ? 'https:' : 'http:';
+      return `${httpProtocol}//${metroHost}:${metroPort}`;
     }
 
     parsed.protocol = parsed.protocol === 'wss:' ? 'https:' : 'http:';
@@ -1409,7 +1450,7 @@ Environment:
   CDP_URL         External Chrome CDP URL (e.g. http://192.168.1.5:9222)
                   Bypasses .agent/web-browser.json — connects directly
   CDP_ORIGIN      Override native inspector WebSocket Origin. By default,
-                  native CDP uses .agent/metro.host from start-metro.sh.`);
+                  native CDP uses app-local .agent/metro.host from start-metro.sh.`);
   process.exit(0);
 }
 
