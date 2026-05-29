@@ -36,6 +36,10 @@
  *                   work like web ASR over slow CDN downloads.
  *   CDP_URL         External Chrome CDP URL (e.g. http://192.168.1.5:9222)
  *                   Bypasses .agent/web-browser.json — connects directly
+ *   CDP_ORIGIN      Override native inspector WebSocket Origin. By default,
+ *                   native CDP uses app-local .agent/metro.host from
+ *                   start-metro.sh so physical devices match Metro's
+ *                   LAN-packager origin.
  */
 
 import http from 'node:http';
@@ -237,6 +241,92 @@ function rewriteWsHost(wsUrl, targetHost) {
     return u.toString();
   } catch {
     return wsUrl;
+  }
+}
+
+function readTextFile(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    const text = fs.readFileSync(filePath, 'utf8').trim();
+    return text || null;
+  } catch {
+    return null;
+  }
+}
+
+function isPidAlive(pidText) {
+  const pid = Number.parseInt(pidText || '', 10);
+  if (!Number.isFinite(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function findAppMetroHost() {
+  const appsDir = path.join(APP_ROOT, 'apps');
+  try {
+    if (!fs.existsSync(appsDir)) return null;
+    const candidates = fs
+      .readdirSync(appsDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => {
+        const metroHostFile = path.join(appsDir, entry.name, '.agent', 'metro.host');
+        const metroHost = readTextFile(metroHostFile);
+        if (!metroHost) return null;
+
+        const pidFile = path.join(appsDir, entry.name, '.agent', 'metro.pid');
+        const hasLivePid = isPidAlive(readTextFile(pidFile));
+        let mtimeMs = 0;
+        try {
+          mtimeMs = fs.statSync(metroHostFile).mtimeMs;
+        } catch {
+          return null;
+        }
+        return { metroHost, mtimeMs, hasLivePid };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        if (a.hasLivePid !== b.hasLivePid) return a.hasLivePid ? -1 : 1;
+        return b.mtimeMs - a.mtimeMs;
+      });
+
+    return candidates[0]?.metroHost || null;
+  } catch {
+    return null;
+  }
+}
+
+function getInspectorOrigin(wsUrl) {
+  if (process.env.CDP_ORIGIN !== undefined) {
+    return process.env.CDP_ORIGIN || undefined;
+  }
+
+  try {
+    const parsed = new URL(wsUrl);
+    if (!parsed.pathname.startsWith('/inspector/')) return undefined;
+
+    const metroPort = parsed.port || loadPort();
+    const configuredAppRoot = fs.existsSync(AGENTIC_CONF_FILE);
+    const localMetroHost = readTextFile(path.join(AGENT_DIR, 'metro.host'));
+    const discoveredAppMetroHost = findAppMetroHost();
+    const metroHost = configuredAppRoot
+      ? localMetroHost || discoveredAppMetroHost
+      : discoveredAppMetroHost || localMetroHost;
+    if (metroHost) {
+      const httpProtocol = parsed.protocol === 'wss:' ? 'https:' : 'http:';
+      return `${httpProtocol}//${metroHost}:${metroPort}`;
+    }
+
+    parsed.protocol = parsed.protocol === 'wss:' ? 'https:' : 'http:';
+    parsed.pathname = '';
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString().replace(/\/$/, '');
+  } catch {
+    return undefined;
   }
 }
 
@@ -507,22 +597,7 @@ async function resolveWebSocket() {
  */
 function createWSClient(wsUrl, timeout, WebSocketImpl) {
   return new Promise((resolve, reject) => {
-    const origin =
-      process.env.CDP_ORIGIN !== undefined
-        ? process.env.CDP_ORIGIN || undefined
-        : (() => {
-            try {
-              const parsed = new URL(wsUrl);
-              if (!parsed.pathname.startsWith('/inspector/')) return undefined;
-              parsed.protocol = parsed.protocol === 'wss:' ? 'https:' : 'http:';
-              parsed.pathname = '';
-              parsed.search = '';
-              parsed.hash = '';
-              return parsed.toString().replace(/\/$/, '');
-            } catch {
-              return undefined;
-            }
-          })();
+    const origin = getInspectorOrigin(wsUrl);
     const ws = origin
       ? new WebSocketImpl(wsUrl, undefined, { headers: { Origin: origin } })
       : new WebSocketImpl(wsUrl);
@@ -1390,7 +1465,9 @@ Environment:
   WATCHER_PORT    Metro port (default: ${DEFAULT_PORT})
   CDP_TIMEOUT     Connection timeout in ms (default: 5000)
   CDP_URL         External Chrome CDP URL (e.g. http://192.168.1.5:9222)
-                  Bypasses .agent/web-browser.json — connects directly`);
+                  Bypasses .agent/web-browser.json — connects directly
+  CDP_ORIGIN      Override native inspector WebSocket Origin. By default,
+                  native CDP uses app-local .agent/metro.host from start-metro.sh.`);
   process.exit(0);
 }
 
