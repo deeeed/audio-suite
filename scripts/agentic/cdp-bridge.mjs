@@ -244,11 +244,11 @@ function rewriteWsHost(wsUrl, targetHost) {
   }
 }
 
-function readMetroHostFile(filePath) {
+function readTextFile(filePath) {
   try {
     if (!fs.existsSync(filePath)) return null;
-    const metroHost = fs.readFileSync(filePath, 'utf8').trim();
-    return metroHost || null;
+    const text = fs.readFileSync(filePath, 'utf8').trim();
+    return text || null;
   } catch {
     return null;
   }
@@ -274,12 +274,17 @@ function findAppMetroHost() {
       .filter((entry) => entry.isDirectory())
       .map((entry) => {
         const metroHostFile = path.join(appsDir, entry.name, '.agent', 'metro.host');
-        const metroHost = readMetroHostFile(metroHostFile);
+        const metroHost = readTextFile(metroHostFile);
         if (!metroHost) return null;
 
         const pidFile = path.join(appsDir, entry.name, '.agent', 'metro.pid');
-        const hasLivePid = isPidAlive(readMetroHostFile(pidFile));
-        const mtimeMs = fs.statSync(metroHostFile).mtimeMs;
+        const hasLivePid = isPidAlive(readTextFile(pidFile));
+        let mtimeMs = 0;
+        try {
+          mtimeMs = fs.statSync(metroHostFile).mtimeMs;
+        } catch {
+          return null;
+        }
         return { metroHost, mtimeMs, hasLivePid };
       })
       .filter(Boolean)
@@ -305,7 +310,7 @@ function getInspectorOrigin(wsUrl) {
 
     const metroPort = parsed.port || loadPort();
     const configuredAppRoot = fs.existsSync(AGENTIC_CONF_FILE);
-    const localMetroHost = readMetroHostFile(path.join(AGENT_DIR, 'metro.host'));
+    const localMetroHost = readTextFile(path.join(AGENT_DIR, 'metro.host'));
     const discoveredAppMetroHost = findAppMetroHost();
     const metroHost = configuredAppRoot
       ? localMetroHost || discoveredAppMetroHost
