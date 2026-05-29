@@ -1246,11 +1246,12 @@ RCT_EXPORT_METHOD(detectLanguageFromFile:(NSString *)filePath
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 {
-    if (!filePath || filePath.length == 0) {
-        resolve(@{@"success": @NO, @"error": @"File path is required"});
-        return;
-    }
     dispatch_async(langIdSerialQueue(), ^{
+        if (!filePath || filePath.length == 0) {
+            resolve(@{@"success": @NO, @"error": @"File path is required"});
+            return;
+        }
+
         @try {
             NSDictionary *result = [self.languageIdHandler detectLanguageFromFile:filePath];
             resolve(result);
