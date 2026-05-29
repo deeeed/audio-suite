@@ -6,7 +6,7 @@
 
 # Class: AudioExtractionError
 
-Defined in: [src/errors/AudioExtractionError.ts:20](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioExtractionError.ts#L20)
+Defined in: [src/errors/AudioExtractionError.ts:20](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioExtractionError.ts#L20)
 
 ## Extends
 
@@ -18,7 +18,7 @@ Defined in: [src/errors/AudioExtractionError.ts:20](https://github.com/deeeed/au
 
 > **new AudioExtractionError**(`payload`): `AudioExtractionError`
 
-Defined in: [src/errors/AudioExtractionError.ts:25](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioExtractionError.ts#L25)
+Defined in: [src/errors/AudioExtractionError.ts:25](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioExtractionError.ts#L25)
 
 #### Parameters
 
@@ -52,7 +52,7 @@ Defined in: node\_modules/typescript/lib/lib.es2022.error.d.ts:24
 
 > `readonly` **code**: [`AudioExtractionErrorCode`](../type-aliases/AudioExtractionErrorCode.md)
 
-Defined in: [src/errors/AudioExtractionError.ts:21](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioExtractionError.ts#L21)
+Defined in: [src/errors/AudioExtractionError.ts:21](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioExtractionError.ts#L21)
 
 ***
 
@@ -60,7 +60,7 @@ Defined in: [src/errors/AudioExtractionError.ts:21](https://github.com/deeeed/au
 
 > `readonly` `optional` **fileUri?**: `string`
 
-Defined in: [src/errors/AudioExtractionError.ts:23](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioExtractionError.ts#L23)
+Defined in: [src/errors/AudioExtractionError.ts:23](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioExtractionError.ts#L23)
 
 ***
 
@@ -92,7 +92,7 @@ Defined in: node\_modules/typescript/lib/lib.es5.d.ts:1074
 
 > `readonly` `optional` **nativeMessage?**: `string`
 
-Defined in: [src/errors/AudioExtractionError.ts:22](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioExtractionError.ts#L22)
+Defined in: [src/errors/AudioExtractionError.ts:22](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioExtractionError.ts#L22)
 
 ***
 
@@ -134,7 +134,7 @@ not capture any frames.
 
 > **toJSON**(): [`AudioExtractionErrorPayload`](../interfaces/AudioExtractionErrorPayload.md)
 
-Defined in: [src/errors/AudioExtractionError.ts:33](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioExtractionError.ts#L33)
+Defined in: [src/errors/AudioExtractionError.ts:33](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioExtractionError.ts#L33)
 
 #### Returns
 

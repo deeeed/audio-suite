@@ -6,7 +6,7 @@
 
 # Interface: AudioExtractionErrorPayload
 
-Defined in: [src/errors/AudioExtractionError.ts:13](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioExtractionError.ts#L13)
+Defined in: [src/errors/AudioExtractionError.ts:13](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioExtractionError.ts#L13)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [src/errors/AudioExtractionError.ts:13](https://github.com/deeeed/au
 
 > **code**: [`AudioExtractionErrorCode`](../type-aliases/AudioExtractionErrorCode.md)
 
-Defined in: [src/errors/AudioExtractionError.ts:14](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioExtractionError.ts#L14)
+Defined in: [src/errors/AudioExtractionError.ts:14](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioExtractionError.ts#L14)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [src/errors/AudioExtractionError.ts:14](https://github.com/deeeed/au
 
 > `optional` **fileUri?**: `string`
 
-Defined in: [src/errors/AudioExtractionError.ts:17](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioExtractionError.ts#L17)
+Defined in: [src/errors/AudioExtractionError.ts:17](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioExtractionError.ts#L17)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [src/errors/AudioExtractionError.ts:17](https://github.com/deeeed/au
 
 > **message**: `string`
 
-Defined in: [src/errors/AudioExtractionError.ts:15](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioExtractionError.ts#L15)
+Defined in: [src/errors/AudioExtractionError.ts:15](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioExtractionError.ts#L15)
 
 ***
 
@@ -38,4 +38,4 @@ Defined in: [src/errors/AudioExtractionError.ts:15](https://github.com/deeeed/au
 
 > `optional` **nativeMessage?**: `string`
 
-Defined in: [src/errors/AudioExtractionError.ts:16](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioExtractionError.ts#L16)
+Defined in: [src/errors/AudioExtractionError.ts:16](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioExtractionError.ts#L16)

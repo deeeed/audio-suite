@@ -6,7 +6,7 @@
 
 # Interface: AudioStreamErrorPayload
 
-Defined in: [src/errors/AudioStreamError.ts:16](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L16)
+Defined in: [src/errors/AudioStreamError.ts:16](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioStreamError.ts#L16)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [src/errors/AudioStreamError.ts:16](https://github.com/deeeed/audiol
 
 > **code**: [`AudioStreamErrorCode`](../type-aliases/AudioStreamErrorCode.md)
 
-Defined in: [src/errors/AudioStreamError.ts:17](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L17)
+Defined in: [src/errors/AudioStreamError.ts:17](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioStreamError.ts#L17)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [src/errors/AudioStreamError.ts:17](https://github.com/deeeed/audiol
 
 > `optional` **fileUri?**: `string`
 
-Defined in: [src/errors/AudioStreamError.ts:20](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L20)
+Defined in: [src/errors/AudioStreamError.ts:20](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioStreamError.ts#L20)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [src/errors/AudioStreamError.ts:20](https://github.com/deeeed/audiol
 
 > **message**: `string`
 
-Defined in: [src/errors/AudioStreamError.ts:18](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L18)
+Defined in: [src/errors/AudioStreamError.ts:18](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioStreamError.ts#L18)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [src/errors/AudioStreamError.ts:18](https://github.com/deeeed/audiol
 
 > `optional` **nativeCode?**: `string`
 
-Defined in: [src/errors/AudioStreamError.ts:22](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L22)
+Defined in: [src/errors/AudioStreamError.ts:22](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioStreamError.ts#L22)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [src/errors/AudioStreamError.ts:22](https://github.com/deeeed/audiol
 
 > `optional` **nativeMessage?**: `string`
 
-Defined in: [src/errors/AudioStreamError.ts:23](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L23)
+Defined in: [src/errors/AudioStreamError.ts:23](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioStreamError.ts#L23)
 
 ***
 
@@ -54,7 +54,7 @@ Defined in: [src/errors/AudioStreamError.ts:23](https://github.com/deeeed/audiol
 
 > `optional` **platform?**: `string`
 
-Defined in: [src/errors/AudioStreamError.ts:21](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L21)
+Defined in: [src/errors/AudioStreamError.ts:21](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioStreamError.ts#L21)
 
 ***
 
@@ -62,4 +62,4 @@ Defined in: [src/errors/AudioStreamError.ts:21](https://github.com/deeeed/audiol
 
 > **recoverable**: `boolean`
 
-Defined in: [src/errors/AudioStreamError.ts:19](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/errors/AudioStreamError.ts#L19)
+Defined in: [src/errors/AudioStreamError.ts:19](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/errors/AudioStreamError.ts#L19)

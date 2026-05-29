@@ -21,7 +21,13 @@ import {
     type AgenticHudStep,
 } from '@siteed/agentic-dev'
 
-import type { UseAudioRecorderState } from '@siteed/audio-studio'
+import type {
+    AudioAnalysis,
+    AudioRecording,
+    RecordingConfig,
+    RecordingStopReason,
+    UseAudioRecorderState,
+} from '@siteed/audio-studio'
 import {
     extractPreview,
     extractAudioData,
@@ -73,6 +79,9 @@ const stepHudStore = createAgenticHudStore()
 
 // Recorder instance wired by AgenticBridgeSync
 let _recorder: UseAudioRecorderState | null = null
+let _lastRecording: AudioRecording | undefined
+let _lastRecordingReason: RecordingStopReason | undefined
+let _lastRecordingAnalysisPointCount = 0
 
 export interface AgenticAudioPlayerProbeState {
     pointsReceived: number
@@ -180,6 +189,27 @@ function stripFunctions(obj: Record<string, unknown>): Record<string, unknown> {
         }
     }
     return clean
+}
+
+function createAgenticAnalysisSnapshot(analysis: AudioAnalysis): AudioAnalysis & {
+    dataPointsCount: number
+} {
+    const dataPoints = Array.isArray(analysis.dataPoints) ? analysis.dataPoints : []
+
+    return {
+        ...analysis,
+        dataPoints: dataPoints.slice(0, 3),
+        dataPointsCount: dataPoints.length,
+    }
+}
+
+function createAgenticRecordingSnapshot(recording: AudioRecording): AudioRecording {
+    const analysisData = recording.analysisData
+
+    return {
+        ...recording,
+        analysisData: analysisData ? createAgenticAnalysisSnapshot(analysisData) : undefined,
+    }
 }
 
 // --- Async result store for fire-and-store pattern (CDP awaitPromise:false) ---
@@ -971,6 +1001,9 @@ if (__DEV__) {
         getState: () => {
             return {
                 ..._audioState,
+                lastRecording: _lastRecording,
+                lastRecordingReason: _lastRecordingReason ?? _audioState.lastRecordingReason,
+                lastRecordingAnalysisPointCount: _lastRecordingAnalysisPointCount,
                 pageState: _pageState,
                 route: _routeInfo.pathname,
                 segments: _routeInfo.segments,
@@ -1024,7 +1057,23 @@ if (__DEV__) {
             }
             try {
                 const safeConfig = stripFunctions(config)
-                const result = await _recorder.startRecording(safeConfig as never)
+                _lastRecording = undefined
+                _lastRecordingReason = undefined
+                _lastRecordingAnalysisPointCount = 0
+
+                const bridgeConfig: RecordingConfig = {
+                    ...(safeConfig as RecordingConfig),
+                    onRecordingStopped: (recording, reason) => {
+                        _lastRecordingReason = reason
+                        _lastRecordingAnalysisPointCount =
+                            recording.analysisData?.dataPoints?.length ?? 0
+                        _lastRecording =
+                            reason === 'maxDuration'
+                                ? createAgenticRecordingSnapshot(recording)
+                                : undefined
+                    },
+                }
+                const result = await _recorder.startRecording(bridgeConfig)
                 return result
             } catch (e) {
                 return { error: String(e) }

@@ -8,7 +8,7 @@
 
 > **EncodingType** = `"pcm_32bit"` \| `"pcm_16bit"` \| `"pcm_8bit"`
 
-Defined in: [src/AudioStudio.types.ts:85](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L85)
+Defined in: [src/AudioStudio.types.ts:85](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L85)
 
 Audio encoding types supported by the library.
 

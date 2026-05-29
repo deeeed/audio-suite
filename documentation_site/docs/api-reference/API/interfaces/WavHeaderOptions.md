@@ -6,7 +6,7 @@
 
 # Interface: WavHeaderOptions
 
-Defined in: [src/utils/writeWavHeader.ts:6](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/utils/writeWavHeader.ts#L6)
+Defined in: [src/utils/writeWavHeader.ts:6](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/utils/writeWavHeader.ts#L6)
 
 Options for creating a WAV header.
 
@@ -16,7 +16,7 @@ Options for creating a WAV header.
 
 > **bitDepth**: `number`
 
-Defined in: [src/utils/writeWavHeader.ts:14](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/utils/writeWavHeader.ts#L14)
+Defined in: [src/utils/writeWavHeader.ts:14](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/utils/writeWavHeader.ts#L14)
 
 The bit depth of the audio (e.g., 16, 24, or 32).
 
@@ -26,7 +26,7 @@ The bit depth of the audio (e.g., 16, 24, or 32).
 
 > `optional` **buffer?**: `ArrayBuffer`
 
-Defined in: [src/utils/writeWavHeader.ts:8](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/utils/writeWavHeader.ts#L8)
+Defined in: [src/utils/writeWavHeader.ts:8](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/utils/writeWavHeader.ts#L8)
 
 Optional buffer containing audio data. If provided, it will be combined with the header.
 
@@ -36,7 +36,7 @@ Optional buffer containing audio data. If provided, it will be combined with the
 
 > `optional` **isFloat?**: `boolean`
 
-Defined in: [src/utils/writeWavHeader.ts:16](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/utils/writeWavHeader.ts#L16)
+Defined in: [src/utils/writeWavHeader.ts:16](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/utils/writeWavHeader.ts#L16)
 
 Whether the audio data is in float format (only applies to 32-bit)
 
@@ -46,7 +46,7 @@ Whether the audio data is in float format (only applies to 32-bit)
 
 > **numChannels**: `number`
 
-Defined in: [src/utils/writeWavHeader.ts:12](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/utils/writeWavHeader.ts#L12)
+Defined in: [src/utils/writeWavHeader.ts:12](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/utils/writeWavHeader.ts#L12)
 
 The number of audio channels (e.g., 1 for mono, 2 for stereo).
 
@@ -56,6 +56,6 @@ The number of audio channels (e.g., 1 for mono, 2 for stereo).
 
 > **sampleRate**: `number`
 
-Defined in: [src/utils/writeWavHeader.ts:10](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/utils/writeWavHeader.ts#L10)
+Defined in: [src/utils/writeWavHeader.ts:10](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/utils/writeWavHeader.ts#L10)
 
 The sample rate of the audio in Hz (e.g., 44100).

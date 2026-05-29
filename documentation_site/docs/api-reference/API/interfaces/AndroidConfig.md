@@ -6,7 +6,7 @@
 
 # Interface: AndroidConfig
 
-Defined in: [src/AudioStudio.types.ts:274](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L274)
+Defined in: [src/AudioStudio.types.ts:276](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L276)
 
 Android platform specific configuration options
 
@@ -16,7 +16,7 @@ Android platform specific configuration options
 
 > `optional` **audioFocusStrategy?**: `"background"` \| `"interactive"` \| `"communication"` \| `"none"`
 
-Defined in: [src/AudioStudio.types.ts:285](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L285)
+Defined in: [src/AudioStudio.types.ts:287](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L287)
 
 Audio focus strategy for handling interruptions and background behavior
 

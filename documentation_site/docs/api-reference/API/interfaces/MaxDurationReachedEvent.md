@@ -6,7 +6,7 @@
 
 # Interface: MaxDurationReachedEvent
 
-Defined in: [src/AudioStudio.types.ts:197](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L197)
+Defined in: [src/AudioStudio.types.ts:197](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L197)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [src/AudioStudio.types.ts:197](https://github.com/deeeed/audiolab/bl
 
 > **autoStopped**: `boolean`
 
-Defined in: [src/AudioStudio.types.ts:207](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L207)
+Defined in: [src/AudioStudio.types.ts:207](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L207)
 
 Whether the recorder was configured to stop automatically after this event
 
@@ -24,7 +24,7 @@ Whether the recorder was configured to stop automatically after this event
 
 > **durationMs**: `number`
 
-Defined in: [src/AudioStudio.types.ts:199](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L199)
+Defined in: [src/AudioStudio.types.ts:199](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L199)
 
 Active recording duration that triggered the event, in milliseconds
 
@@ -34,7 +34,7 @@ Active recording duration that triggered the event, in milliseconds
 
 > **maxDurationMs**: `number`
 
-Defined in: [src/AudioStudio.types.ts:201](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L201)
+Defined in: [src/AudioStudio.types.ts:201](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L201)
 
 Configured active recording duration limit, in milliseconds
 
@@ -44,7 +44,7 @@ Configured active recording duration limit, in milliseconds
 
 > **overrunMs**: `number`
 
-Defined in: [src/AudioStudio.types.ts:203](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L203)
+Defined in: [src/AudioStudio.types.ts:203](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L203)
 
 Amount by which timer delivery exceeded the limit, in milliseconds
 
@@ -54,6 +54,6 @@ Amount by which timer delivery exceeded the limit, in milliseconds
 
 > `optional` **streamUuid?**: `string`
 
-Defined in: [src/AudioStudio.types.ts:205](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioStudio.types.ts#L205)
+Defined in: [src/AudioStudio.types.ts:205](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioStudio.types.ts#L205)
 
 Active stream identifier when available

@@ -207,6 +207,8 @@ export interface MaxDurationReachedEvent {
     autoStopped: boolean
 }
 
+export type RecordingStopReason = 'manual' | 'maxDuration'
+
 export interface AudioSessionConfig {
     /**
      * Audio session category that defines the audio behavior
@@ -511,19 +513,32 @@ export interface RecordingConfig {
     /**
      * Stop recording automatically when maxDurationMs is reached.
      *
-     * Defaults to false. The MaxDurationReached event is emitted before the stop request.
-     * The automatic stop result is not returned to onMaxDurationReached; use the
-     * event and stream callbacks for immediate UI updates.
+     * Defaults to false. When used with `useAudioRecorder`, the
+     * MaxDurationReached event is emitted immediately, then the hook stops the
+     * recorder and exposes the final result through `onRecordingStopped`.
      */
     autoStopOnMaxDuration?: boolean
 
     /**
      * Optional callback invoked when maxDurationMs is reached.
      *
-     * If autoStopOnMaxDuration is true, this callback is invoked before the
-     * recorder finishes stopping. The final stop result is not passed here.
+     * This remains an immediate threshold callback. If
+     * autoStopOnMaxDuration is true, use `onRecordingStopped` for the full
+     * recording result after stop completes.
      */
     onMaxDurationReached?: (_: MaxDurationReachedEvent) => void
+
+    /**
+     * Optional callback invoked after a recording has fully stopped and the
+     * final `AudioRecording` result is available.
+     *
+     * The reason is `manual` when stopped through `stopRecording()` and
+     * `maxDuration` when stopped by `autoStopOnMaxDuration`.
+     */
+    onRecordingStopped?: (
+        recording: AudioRecording,
+        reason: RecordingStopReason
+    ) => void | Promise<void>
 
     /** Optional directory path where output files will be saved */
     outputDirectory?: string // If not provided, uses default app directory
@@ -757,10 +772,17 @@ export interface UseAudioRecorderState {
     maxDurationReached?: boolean
     /** Analysis data for the recording if processing was enabled */
     analysisData?: AudioAnalysis // Analysis data for the recording depending on enableProcessing flag
+    /** Reason associated with the last completed recording */
+    lastRecordingReason?: RecordingStopReason
     /** Optional callback to handle recording interruptions */
     onRecordingInterrupted?: (_: RecordingInterruptionEvent) => void
     /** Optional callback invoked when maxDurationMs is reached */
     onMaxDurationReached?: (_: MaxDurationReachedEvent) => void
+    /** Optional callback invoked when a recording fully stops */
+    onRecordingStopped?: (
+        recording: AudioRecording,
+        reason: RecordingStopReason
+    ) => void | Promise<void>
 }
 
 /**

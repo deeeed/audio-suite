@@ -128,6 +128,7 @@ const {
     startRecording,
     maxDurationMs,
     maxDurationReached,
+    lastRecordingReason,
 } = useAudioRecorder()
 
 await startRecording({
@@ -138,12 +139,22 @@ await startRecording({
     onMaxDurationReached: (event) => {
         console.log('Reached recording limit:', event.maxDurationMs)
     },
+    onRecordingStopped: (recording, reason) => {
+        if (reason === 'maxDuration') {
+            console.log('Auto-stopped recording:', recording.fileUri)
+        }
+    },
 })
 ```
 
 When auto-stop is enabled, the max-duration event is emitted before the stop
 finishes. Use the event and stream callbacks for immediate UI updates, then use
-normal recording state to observe that the recorder has stopped.
+`onRecordingStopped` for the final `AudioRecording`, including `analysisData`
+when full-analysis retention is enabled. `lastRecordingReason` remains in React
+state so UI can explain why recording ended. Because hook auto-stop finalization
+runs after the native max-duration event is delivered to JS, keep the app/runtime
+active for background recording scenarios where the final stop result must be
+observed immediately.
 
 ## Audio Analysis
 

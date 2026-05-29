@@ -6,7 +6,7 @@
 
 # Interface: SpeechFeatures
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:28](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L28)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:28](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L28)
 
 Represents speech-related features extracted from audio.
 
@@ -16,7 +16,7 @@ Represents speech-related features extracted from audio.
 
 > **isActive**: `boolean`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:29](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L29)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:29](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L29)
 
 ***
 
@@ -24,4 +24,4 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:29](https://github.com/dee
 
 > `optional` **speakerId?**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:30](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L30)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:30](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L30)

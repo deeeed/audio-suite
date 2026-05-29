@@ -82,6 +82,11 @@ export default function App() {
                 onMaxDurationReached: (event) => {
                     console.log(`Reached ${event.maxDurationMs}ms limit`)
                 },
+                onRecordingStopped: (recording, reason) => {
+                    if (reason === 'maxDuration') {
+                        console.log(`Saved auto-stopped recording: ${recording.fileUri}`)
+                    }
+                },
             }
             
             await startRecording(config)
@@ -180,6 +185,7 @@ The `startRecording` function accepts a configuration object with the following 
 | `maxDurationMs` | `number` | Maximum cumulative active recording duration in milliseconds. Paused time does not count. `undefined`, `0`, or a negative value disables the limit. |
 | `autoStopOnMaxDuration` | `boolean` | Whether to stop automatically when `maxDurationMs` is reached. Defaults to `false`. |
 | `onMaxDurationReached` | `(event: MaxDurationReachedEvent) => void` | Callback invoked when the active recording duration reaches `maxDurationMs`. |
+| `onRecordingStopped` | `(recording: AudioRecording, reason: 'manual' \| 'maxDuration') => void \| Promise<void>` | Callback invoked after stop completes and the final recording result is available. |
 
 ### Max Active Recording Duration
 
@@ -201,14 +207,22 @@ await startRecording({
             autoStopped: event.autoStopped,
         })
     },
+    onRecordingStopped: (recording, reason) => {
+        if (reason === 'maxDuration') {
+            console.log('Final recording result', recording.fileUri)
+            console.log('Full analysis points', recording.analysisData?.dataPoints.length ?? 0)
+        }
+    },
 })
 ```
 
 With `autoStopOnMaxDuration: false`, the event is a notification and recording
 continues until you call `stopRecording()`. With `autoStopOnMaxDuration: true`,
 the event is emitted before the automatic stop completes. The automatic stop
-result is not passed to `onMaxDurationReached`; use hook state and stream
-callbacks for immediate UI updates.
+result is not passed to `onMaxDurationReached`; use that callback for immediate
+UI updates, then use `onRecordingStopped` for the final `AudioRecording`
+result. The hook's `lastRecordingReason` state remains available so UI can
+explain why recording ended.
 
 ### Long-Running Analysis Retention
 

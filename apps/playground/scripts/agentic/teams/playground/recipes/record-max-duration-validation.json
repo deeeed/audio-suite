@@ -76,7 +76,7 @@
         },
         "start-auto-stop-recording": {
           "action": "eval_async",
-          "expression": "globalThis.__AGENTIC__?.startRecording?.({ interval: 1000, intervalAnalysis: 1000, sampleRate: 16000, encoding: 'pcm_16bit', enableProcessing: false, maxDurationMs: 1200, autoStopOnMaxDuration: true, output: { primary: { enabled: false }, compressed: { enabled: false } } }).then(function(result) { return JSON.stringify(result); })",
+          "expression": "globalThis.__AGENTIC__?.startRecording?.({ interval: 1000, intervalAnalysis: 500, sampleRate: 16000, encoding: 'pcm_16bit', enableProcessing: true, maxDurationMs: 2200, autoStopOnMaxDuration: true, output: { primary: { enabled: false }, compressed: { enabled: false } } }).then(function(result) { return JSON.stringify(result); })",
           "assert": {
             "operator": "falsy",
             "field": "error"
@@ -102,6 +102,30 @@
                 "operator": "eq",
                 "field": "maxDurationReached",
                 "value": true
+              },
+              {
+                "operator": "eq",
+                "field": "lastRecordingReason",
+                "value": "maxDuration"
+              },
+              {
+                "operator": "not_null",
+                "field": "lastRecording"
+              },
+              {
+                "operator": "gt",
+                "field": "lastRecording.durationMs",
+                "value": 0
+              },
+              {
+                "operator": "length_gt",
+                "field": "lastRecording.analysisData.dataPoints",
+                "value": 0
+              },
+              {
+                "operator": "gt",
+                "field": "lastRecordingAnalysisPointCount",
+                "value": 0
               }
             ]
           },

@@ -6,7 +6,7 @@
 
 # Interface: StreamAudioDataCallbacks
 
-Defined in: [src/streamAudioData.ts:97](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L97)
+Defined in: [src/streamAudioData.ts:97](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L97)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [src/streamAudioData.ts:97](https://github.com/deeeed/audiolab/blob/
 
 > **onChunk**: (`chunk`) => `void` \| `Promise`\<`void`\>
 
-Defined in: [src/streamAudioData.ts:103](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L103)
+Defined in: [src/streamAudioData.ts:103](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L103)
 
 Called with each decoded chunk. If this returns a Promise, native decode
 pauses until it resolves (backpressure). Throwing aborts the stream with
@@ -36,7 +36,7 @@ pauses until it resolves (backpressure). Throwing aborts the stream with
 
 > `optional` **onProgress?**: (`progress`) => `void`
 
-Defined in: [src/streamAudioData.ts:105](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L105)
+Defined in: [src/streamAudioData.ts:105](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L105)
 
 Called whenever native reports progress.
 

@@ -8,4 +8,4 @@
 
 > `const` **AudioRecorderProvider**: `React.FC`\<`AudioRecorderProviderProps`\>
 
-Defined in: [src/AudioRecorder.provider.tsx:37](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioRecorder.provider.tsx#L37)
+Defined in: [src/AudioRecorder.provider.tsx:37](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioRecorder.provider.tsx#L37)

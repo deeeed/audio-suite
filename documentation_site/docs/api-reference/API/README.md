@@ -77,6 +77,7 @@
 - [EncodingType](type-aliases/EncodingType.md)
 - [~~PCMFormat~~](type-aliases/PCMFormat.md)
 - [RecordingInterruptionReason](type-aliases/RecordingInterruptionReason.md)
+- [RecordingStopReason](type-aliases/RecordingStopReason.md)
 - [SampleRate](type-aliases/SampleRate.md)
 
 ## Variables

@@ -6,7 +6,7 @@
 
 # Interface: StreamAudioDataChunk
 
-Defined in: [src/streamAudioData.ts:53](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L53)
+Defined in: [src/streamAudioData.ts:53](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L53)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [src/streamAudioData.ts:53](https://github.com/deeeed/audiolab/blob/
 
 > **channels**: `number`
 
-Defined in: [src/streamAudioData.ts:71](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L71)
+Defined in: [src/streamAudioData.ts:71](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L71)
 
 Output channel count.
 
@@ -24,7 +24,7 @@ Output channel count.
 
 > **chunkIndex**: `number`
 
-Defined in: [src/streamAudioData.ts:57](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L57)
+Defined in: [src/streamAudioData.ts:57](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L57)
 
 Zero-based monotonic chunk index.
 
@@ -34,7 +34,7 @@ Zero-based monotonic chunk index.
 
 > **durationMs**: `number`
 
-Defined in: [src/streamAudioData.ts:63](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L63)
+Defined in: [src/streamAudioData.ts:63](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L63)
 
 Duration in ms (`endTimeMs - startTimeMs`).
 
@@ -44,7 +44,7 @@ Duration in ms (`endTimeMs - startTimeMs`).
 
 > **endTimeMs**: `number`
 
-Defined in: [src/streamAudioData.ts:61](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L61)
+Defined in: [src/streamAudioData.ts:61](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L61)
 
 End time in output-rate ms.
 
@@ -54,7 +54,7 @@ End time in output-rate ms.
 
 > **isFinal**: `boolean`
 
-Defined in: [src/streamAudioData.ts:75](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L75)
+Defined in: [src/streamAudioData.ts:75](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L75)
 
 True for the last chunk of a non-cancelled run.
 
@@ -64,7 +64,7 @@ True for the last chunk of a non-cancelled run.
 
 > **requestId**: `string`
 
-Defined in: [src/streamAudioData.ts:55](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L55)
+Defined in: [src/streamAudioData.ts:55](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L55)
 
 Native request id; constant across all chunks of one call.
 
@@ -74,7 +74,7 @@ Native request id; constant across all chunks of one call.
 
 > **sampleCount**: `number`
 
-Defined in: [src/streamAudioData.ts:67](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L67)
+Defined in: [src/streamAudioData.ts:67](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L67)
 
 Sample count in `samples` (interleaved if channels > 1).
 
@@ -84,7 +84,7 @@ Sample count in `samples` (interleaved if channels > 1).
 
 > **sampleRate**: `number`
 
-Defined in: [src/streamAudioData.ts:69](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L69)
+Defined in: [src/streamAudioData.ts:69](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L69)
 
 Output sample rate.
 
@@ -94,7 +94,7 @@ Output sample rate.
 
 > **samples**: `Float32Array`
 
-Defined in: [src/streamAudioData.ts:73](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L73)
+Defined in: [src/streamAudioData.ts:73](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L73)
 
 Interleaved Float32 samples in [-1, 1].
 
@@ -104,7 +104,7 @@ Interleaved Float32 samples in [-1, 1].
 
 > **startSample**: `number`
 
-Defined in: [src/streamAudioData.ts:65](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L65)
+Defined in: [src/streamAudioData.ts:65](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L65)
 
 First sample index in the output timeline.
 
@@ -114,6 +114,6 @@ First sample index in the output timeline.
 
 > **startTimeMs**: `number`
 
-Defined in: [src/streamAudioData.ts:59](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L59)
+Defined in: [src/streamAudioData.ts:59](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L59)
 
 Start time in output-rate ms (rounded to nearest sample).

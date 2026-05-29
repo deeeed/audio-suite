@@ -6,7 +6,7 @@
 
 # Interface: ExtractMelSpectrogramOptions
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:277](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L277)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:277](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L277)
 
 **`Experimental`**
 
@@ -21,7 +21,7 @@ The API may change in future versions.
 
 > `optional` **arrayBuffer?**: `ArrayBuffer`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:279](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L279)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:279](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L279)
 
 **`Experimental`**
 
@@ -31,7 +31,7 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:279](https://github.com/de
 
 > `optional` **decodingOptions?**: [`DecodingConfig`](DecodingConfig.md)
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:288](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L288)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:288](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L288)
 
 **`Experimental`**
 
@@ -41,7 +41,7 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:288](https://github.com/de
 
 > `optional` **endTimeMs?**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:292](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L292)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:292](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L292)
 
 **`Experimental`**
 
@@ -53,7 +53,7 @@ Optional end time in ms. Clamped so that the range does not exceed MAX_DURATION_
 
 > `optional` **fileUri?**: `string`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:278](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L278)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:278](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L278)
 
 **`Experimental`**
 
@@ -63,7 +63,7 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:278](https://github.com/de
 
 > `optional` **fMax?**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:284](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L284)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:284](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L284)
 
 **`Experimental`**
 
@@ -73,7 +73,7 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:284](https://github.com/de
 
 > `optional` **fMin?**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:283](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L283)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:283](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L283)
 
 **`Experimental`**
 
@@ -83,7 +83,7 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:283](https://github.com/de
 
 > **hopLengthMs**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:281](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L281)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:281](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L281)
 
 **`Experimental`**
 
@@ -93,7 +93,7 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:281](https://github.com/de
 
 > `optional` **logger?**: [`ConsoleLike`](../type-aliases/ConsoleLike.md)
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:293](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L293)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:293](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L293)
 
 **`Experimental`**
 
@@ -103,7 +103,7 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:293](https://github.com/de
 
 > `optional` **logScale?**: `boolean`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:287](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L287)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:287](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L287)
 
 **`Experimental`**
 
@@ -113,7 +113,7 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:287](https://github.com/de
 
 > **nMels**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:282](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L282)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:282](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L282)
 
 **`Experimental`**
 
@@ -123,7 +123,7 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:282](https://github.com/de
 
 > `optional` **normalize?**: `boolean`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:286](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L286)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:286](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L286)
 
 **`Experimental`**
 
@@ -133,7 +133,7 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:286](https://github.com/de
 
 > `optional` **startTimeMs?**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:290](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L290)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:290](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L290)
 
 **`Experimental`**
 
@@ -145,7 +145,7 @@ Optional start time in ms. If neither startTimeMs nor endTimeMs is set, defaults
 
 > **windowSizeMs**: `number`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:280](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L280)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:280](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L280)
 
 **`Experimental`**
 
@@ -155,6 +155,6 @@ Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:280](https://github.com/de
 
 > `optional` **windowType?**: `"hann"` \| `"hamming"`
 
-Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:285](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L285)
+Defined in: [src/AudioAnalysis/AudioAnalysis.types.ts:285](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/AudioAnalysis.types.ts#L285)
 
 **`Experimental`**

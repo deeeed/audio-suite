@@ -12,6 +12,7 @@ import {
     ConsoleLike,
     MaxDurationReachedEvent,
     RecordingConfig,
+    RecordingStopReason,
     StartRecordingResult,
 } from './AudioStudio.types'
 import AudioStudioModule from './AudioStudioModule'
@@ -23,7 +24,7 @@ import {
     addMaxDurationReachedListener,
     addRecordingInterruptionListener,
 } from './events'
-import { cleanNativeOptions } from './utils/cleanNativeOptions'
+import { createNativeRecordingOptions } from './utils/nativeRecordingOptions'
 
 export interface UseAudioRecorderProps {
     logger?: ConsoleLike
@@ -45,6 +46,7 @@ export interface UseAudioRecorderState {
     analysisData?: AudioAnalysis
     maxDurationMs?: number
     maxDurationReached?: boolean
+    lastRecordingReason?: RecordingStopReason
 }
 
 interface RecorderReducerState {
@@ -56,10 +58,17 @@ interface RecorderReducerState {
     analysisData?: AudioAnalysis
     maxDurationMs?: number
     maxDurationReached?: boolean
+    lastRecordingReason?: RecordingStopReason
 }
 
 type RecorderAction =
-    | { type: 'START' | 'STOP' | 'PAUSE' | 'RESUME' }
+    | { type: 'START' | 'PAUSE' | 'RESUME' }
+    | {
+          type: 'STOP'
+          payload: {
+              reason: RecordingStopReason
+          }
+      }
     | {
           type: 'UPDATE_RECORDING_STATE'
           payload: {
@@ -102,6 +111,42 @@ const defaultAnalysis: AudioAnalysis = {
     extractionTimeMs: 0,
 }
 
+function finiteOrZero(value: number): number {
+    return Number.isFinite(value) ? value : 0
+}
+
+function sanitizeSerializableValue<T>(value: T): T {
+    if (typeof value === 'number') {
+        return finiteOrZero(value) as T
+    }
+
+    if (Array.isArray(value)) {
+        return value.map((item) => sanitizeSerializableValue(item)) as T
+    }
+
+    if (value && typeof value === 'object') {
+        const sanitized: Record<string, unknown> = {}
+
+        for (const [key, nestedValue] of Object.entries(
+            value as Record<string, unknown>
+        )) {
+            sanitized[key] = sanitizeSerializableValue(nestedValue)
+        }
+
+        return sanitized as T
+    }
+
+    return value
+}
+
+function createSerializableAnalysis(analysis: AudioAnalysis): AudioAnalysis {
+    return sanitizeSerializableValue(analysis)
+}
+
+function createRecordingSnapshot(recording: AudioRecording): AudioRecording {
+    return sanitizeSerializableValue(recording)
+}
+
 function audioRecorderReducer(
     state: RecorderReducerState,
     action: RecorderAction
@@ -118,6 +163,7 @@ function audioRecorderReducer(
                 analysisData: defaultAnalysis,
                 maxDurationMs: undefined,
                 maxDurationReached: false,
+                lastRecordingReason: undefined,
             }
         case 'STOP':
             return {
@@ -128,6 +174,7 @@ function audioRecorderReducer(
                 size: 0,
                 compression: undefined,
                 analysisData: undefined,
+                lastRecordingReason: action.payload.reason,
                 // Preserve max-duration state after stop so UI and agentic
                 // validation can explain why recording ended. START resets it.
             }
@@ -202,6 +249,7 @@ export function useAudioRecorder({
         analysisData: undefined,
         maxDurationMs: undefined,
         maxDurationReached: false,
+        lastRecordingReason: undefined,
     })
 
     const startResultRef = useRef<StartRecordingResult | null>(null)
@@ -240,6 +288,7 @@ export function useAudioRecorder({
 
     const recordingConfigRef = useRef<RecordingConfig | null>(null)
     const maxDurationHandledRef = useRef(false)
+    const stopFinalizationRef = useRef<Promise<AudioRecording> | null>(null)
 
     // Generate unique instance ID for debugging
     const instanceId = useId().replace(/:/g, '').slice(0, 5)
@@ -471,6 +520,83 @@ export function useAudioRecorder({
         []
     )
 
+    const finalizeRecordingStop = useCallback(
+        async (reason: RecordingStopReason) => {
+            if (stopFinalizationRef.current) {
+                return stopFinalizationRef.current
+            }
+
+            const finalizePromise = (async () => {
+                const nativeStopResult: AudioRecording | null =
+                    await audioStudio.stopRecording()
+
+                if (!nativeStopResult) {
+                    throw new Error('Failed to stop recording')
+                }
+
+                const stopResult = createRecordingSnapshot(nativeStopResult)
+
+                if (shouldKeepFullAnalysis(recordingConfigRef.current)) {
+                    stopResult.analysisData = createSerializableAnalysis(
+                        fullAnalysisRef.current
+                    )
+                } else {
+                    // `keepFullAnalysis` is a hook-level retention policy. If a platform
+                    // starts returning native analysisData in the future, keep opt-out
+                    // semantics explicit and avoid leaking a full history here.
+                    delete stopResult.analysisData
+                }
+
+                if (analysisListenerRef.current) {
+                    analysisListenerRef.current.remove()
+                    analysisListenerRef.current = null
+                }
+                onAudioStreamRef.current = null
+
+                stateRef.current.isRecording = false
+                stateRef.current.isPaused = false
+
+                // Note: We deliberately DON'T clear recordingConfigRef here to preserve callbacks.
+                logger?.debug(`recording stopped`, stopResult)
+                maxDurationHandledRef.current = false
+                dispatch({
+                    type: 'STOP',
+                    payload: { reason },
+                })
+
+                const stoppedCallback =
+                    recordingConfigRef.current?.onRecordingStopped
+                if (stoppedCallback) {
+                    try {
+                        void Promise.resolve(
+                            stoppedCallback(stopResult, reason)
+                        ).catch((error) => {
+                            logger?.error(
+                                `Error in recording stopped callback:`,
+                                error
+                            )
+                        })
+                    } catch (error) {
+                        logger?.error(
+                            `Error in recording stopped callback:`,
+                            error
+                        )
+                    }
+                }
+
+                return stopResult
+            })()
+
+            stopFinalizationRef.current = finalizePromise
+            try {
+                return await finalizePromise
+            } finally {
+                stopFinalizationRef.current = null
+            }
+        },
+        [audioStudio, dispatch, logger]
+    )
+
     const handleMaxDurationReached = useCallback(
         async (event: MaxDurationReachedEvent) => {
             if (maxDurationHandledRef.current) {
@@ -498,84 +624,15 @@ export function useAudioRecorder({
                 logger?.error(`Error in max duration callback:`, error)
             }
 
-            const finishStoppedState = () => {
-                if (analysisListenerRef.current) {
-                    analysisListenerRef.current.remove()
-                    analysisListenerRef.current = null
-                }
-                onAudioStreamRef.current = null
-                stateRef.current.isRecording = false
-                stateRef.current.isPaused = false
-                dispatch({ type: 'STOP' })
-            }
-
-            const waitForPlatformAutoStop = async () => {
-                const timeoutMs = 3000
-                const startedAt = Date.now()
-                let lastStatus: AudioStreamStatus | undefined
-
-                while (Date.now() - startedAt < timeoutMs) {
-                    await new Promise((resolve) => setTimeout(resolve, 50))
-                    try {
-                        const currentStatus: AudioStreamStatus =
-                            audioStudio.status()
-                        lastStatus = currentStatus
-                        if (
-                            !currentStatus.isRecording &&
-                            !currentStatus.isPaused
-                        ) {
-                            finishStoppedState()
-                            return
-                        }
-                    } catch (error) {
-                        logger?.warn(
-                            `Error checking status after max duration auto-stop:`,
-                            error
-                        )
-                        break
-                    }
-                }
-
-                if (
-                    lastStatus &&
-                    (lastStatus.isRecording || lastStatus.isPaused)
-                ) {
-                    try {
-                        await audioStudio.stopRecording()
-                    } catch (error) {
-                        logger?.warn(
-                            `Error completing max duration auto-stop fallback:`,
-                            error
-                        )
-                    }
-                }
-                // At this point platform-owned auto-stop did not settle cleanly.
-                // Clear hook state so the UI does not stay stuck as recording.
-                finishStoppedState()
-            }
-
-            // Only the original event tells us whether the platform already
-            // owns auto-stop. Keep stream callbacks alive until status confirms
-            // stop completion so native final audio flushes can still reach JS.
-            if (event.autoStopped && stateRef.current.isRecording) {
-                await waitForPlatformAutoStop()
-                return
-            }
-
-            if (
-                config?.autoStopOnMaxDuration &&
-                !event.autoStopped &&
-                stateRef.current.isRecording
-            ) {
+            if (config?.autoStopOnMaxDuration && stateRef.current.isRecording) {
                 try {
-                    await audioStudio.stopRecording()
-                    finishStoppedState()
+                    await finalizeRecordingStop('maxDuration')
                 } catch (error) {
                     logger?.error(`Error auto-stopping on max duration:`, error)
                 }
             }
         },
-        [audioStudio, dispatch, logger]
+        [dispatch, finalizeRecordingStop, logger]
     )
 
     const checkStatus = useCallback(async () => {
@@ -618,27 +675,38 @@ export function useAudioRecorder({
                 })
             }
 
+            const statusMaxDurationReached = status.maxDurationReached ?? false
+            const preserveStoppedMaxDuration =
+                !status.isRecording &&
+                !status.isPaused &&
+                stateRef.current.maxDurationReached &&
+                !statusMaxDurationReached
+            const nextMaxDurationMs = preserveStoppedMaxDuration
+                ? stateRef.current.maxDurationMs
+                : status.maxDurationMs
+            const nextMaxDurationReached = preserveStoppedMaxDuration
+                ? true
+                : statusMaxDurationReached
+
             if (
                 status.durationMs !== stateRef.current.durationMs ||
                 status.size !== stateRef.current.size ||
-                status.maxDurationMs !== stateRef.current.maxDurationMs ||
-                status.maxDurationReached !==
-                    stateRef.current.maxDurationReached
+                nextMaxDurationMs !== stateRef.current.maxDurationMs ||
+                nextMaxDurationReached !== stateRef.current.maxDurationReached
             ) {
                 stateRef.current.durationMs = status.durationMs
                 stateRef.current.size = status.size
                 stateRef.current.compression = status.compression
-                stateRef.current.maxDurationMs = status.maxDurationMs
-                stateRef.current.maxDurationReached =
-                    status.maxDurationReached ?? false
+                stateRef.current.maxDurationMs = nextMaxDurationMs
+                stateRef.current.maxDurationReached = nextMaxDurationReached
                 dispatch({
                     type: 'UPDATE_STATUS',
                     payload: {
                         durationMs: status.durationMs,
                         size: status.size,
                         compression: status.compression,
-                        maxDurationMs: status.maxDurationMs,
-                        maxDurationReached: status.maxDurationReached,
+                        maxDurationMs: nextMaxDurationMs,
+                        maxDurationReached: nextMaxDurationReached,
                     },
                 })
             }
@@ -697,15 +765,7 @@ export function useAudioRecorder({
 
             analysisRef.current = { ...defaultAnalysis } // Reset analysis data
             fullAnalysisRef.current = { ...defaultAnalysis }
-            const {
-                onAudioStream,
-                onRecordingInterrupted,
-                onMaxDurationReached,
-                onAudioAnalysis,
-                keepFullAnalysis: _keepFullAnalysis,
-                ...options
-            } = validatedOptions
-            const { enableProcessing } = options
+            const { onAudioStream, enableProcessing } = validatedOptions
 
             const maxRecentDataDuration = 10000 // TODO compute maxRecentDataDuration based on screen dimensions
             if (typeof onAudioStream === 'function') {
@@ -714,8 +774,10 @@ export function useAudioRecorder({
                 logger?.warn(`onAudioStream is not a function`, onAudioStream)
                 onAudioStreamRef.current = null
             }
-            // Strip undefined values and functions that can't cross the native bridge
-            const cleanOptions = cleanNativeOptions(options)
+            // Strip hook-only values and undefineds that can't cross the native bridge.
+            // autoStopOnMaxDuration stays hook-owned so finalization can expose
+            // the same AudioRecording result as a manual stop.
+            const cleanOptions = createNativeRecordingOptions(validatedOptions)
             const startResult: StartRecordingResult =
                 await audioStudio.startRecording(cleanOptions)
             dispatch({ type: 'START' })
@@ -755,14 +817,7 @@ export function useAudioRecorder({
 
             analysisRef.current = { ...defaultAnalysis } // Reset analysis data
             fullAnalysisRef.current = { ...defaultAnalysis }
-            const {
-                onAudioStream,
-                onRecordingInterrupted,
-                onMaxDurationReached,
-                onAudioAnalysis,
-                keepFullAnalysis: _keepFullAnalysis,
-                ...options
-            } = recordingOptions
+            const { onAudioStream } = recordingOptions
 
             // Store onAudioStream for later use when recording starts
             if (typeof onAudioStream === 'function') {
@@ -772,8 +827,8 @@ export function useAudioRecorder({
                 onAudioStreamRef.current = null
             }
 
-            // Strip undefined values and functions that can't cross the native bridge
-            const cleanOptions = cleanNativeOptions(options)
+            // Strip hook-only values and undefineds that can't cross the native bridge.
+            const cleanOptions = createNativeRecordingOptions(recordingOptions)
             // Call the native prepareRecording method
             await audioStudio.prepareRecording(cleanOptions)
             logger?.debug(`recording prepared successfully`)
@@ -783,29 +838,8 @@ export function useAudioRecorder({
 
     const stopRecording = useCallback(async () => {
         logger?.debug(`stoping recording`)
-
-        const stopResult: AudioRecording = await audioStudio.stopRecording()
-        if (shouldKeepFullAnalysis(recordingConfigRef.current)) {
-            stopResult.analysisData = fullAnalysisRef.current
-        } else {
-            // `keepFullAnalysis` is a hook-level retention policy. If a platform
-            // starts returning native analysisData in the future, keep opt-out
-            // semantics explicit and avoid leaking a full history here.
-            delete stopResult.analysisData
-        }
-
-        if (analysisListenerRef.current) {
-            analysisListenerRef.current.remove()
-            analysisListenerRef.current = null
-        }
-        onAudioStreamRef.current = null
-
-        // Note: We deliberately DON'T clear recordingConfigRef here to preserve interruption callback
-        logger?.debug(`recording stopped`, stopResult)
-        maxDurationHandledRef.current = false
-        dispatch({ type: 'STOP' })
-        return stopResult
-    }, [dispatch])
+        return finalizeRecordingStop('manual')
+    }, [finalizeRecordingStop, logger])
 
     const pauseRecording = useCallback(async () => {
         logger?.debug(`pause recording`)
@@ -982,5 +1016,6 @@ export function useAudioRecorder({
         analysisData: state.analysisData,
         maxDurationMs: state.maxDurationMs,
         maxDurationReached: state.maxDurationReached,
+        lastRecordingReason: state.lastRecordingReason,
     }
 }

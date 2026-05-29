@@ -6,7 +6,7 @@
 
 # Interface: StreamAudioDataProgress
 
-Defined in: [src/streamAudioData.ts:78](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L78)
+Defined in: [src/streamAudioData.ts:78](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L78)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [src/streamAudioData.ts:78](https://github.com/deeeed/audiolab/blob/
 
 > `optional` **bufferedChunks?**: `number`
 
-Defined in: [src/streamAudioData.ts:84](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L84)
+Defined in: [src/streamAudioData.ts:84](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L84)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [src/streamAudioData.ts:84](https://github.com/deeeed/audiolab/blob/
 
 > **durationMs**: `number`
 
-Defined in: [src/streamAudioData.ts:81](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L81)
+Defined in: [src/streamAudioData.ts:81](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L81)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [src/streamAudioData.ts:81](https://github.com/deeeed/audiolab/blob/
 
 > **emittedChunks**: `number`
 
-Defined in: [src/streamAudioData.ts:83](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L83)
+Defined in: [src/streamAudioData.ts:83](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L83)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [src/streamAudioData.ts:83](https://github.com/deeeed/audiolab/blob/
 
 > **processedMs**: `number`
 
-Defined in: [src/streamAudioData.ts:80](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L80)
+Defined in: [src/streamAudioData.ts:80](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L80)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [src/streamAudioData.ts:80](https://github.com/deeeed/audiolab/blob/
 
 > **progress**: `number`
 
-Defined in: [src/streamAudioData.ts:82](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L82)
+Defined in: [src/streamAudioData.ts:82](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L82)
 
 ***
 
@@ -54,4 +54,4 @@ Defined in: [src/streamAudioData.ts:82](https://github.com/deeeed/audiolab/blob/
 
 > **requestId**: `string`
 
-Defined in: [src/streamAudioData.ts:79](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/streamAudioData.ts#L79)
+Defined in: [src/streamAudioData.ts:79](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/streamAudioData.ts#L79)

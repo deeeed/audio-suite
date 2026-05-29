@@ -8,7 +8,7 @@
 
 > **extractPreview**(`options`): `Promise`\<[`AudioAnalysis`](../interfaces/AudioAnalysis.md)\>
 
-Defined in: [src/AudioAnalysis/extractPreview.ts:88](https://github.com/deeeed/audiolab/blob/aa94a5362218b70425a166d847bf058456071a52/packages/audio-studio/src/AudioAnalysis/extractPreview.ts#L88)
+Defined in: [src/AudioAnalysis/extractPreview.ts:88](https://github.com/deeeed/audiolab/blob/c729585a5bba4d56b2e225795b3b4e8fe3e3cdfe/packages/audio-studio/src/AudioAnalysis/extractPreview.ts#L88)
 
 Generates a simplified preview of the audio waveform for quick visualization.
 Ideal for UI rendering with a specified number of points.
