@@ -1,7 +1,6 @@
 {
   "runner_protocol_version": 1,
   "action_registry_version": 1,
-  "app": "audiolab-playground",
   "supported_official_actions": [
     "wait",
     "end",
@@ -12,22 +11,15 @@
     "ui.screenshot",
     "app.status",
     "app.hud",
-    "device.reload",
-    "device.logs",
     "cdp.target"
-  ],
-  "supported_project_actions": [
-    "audiolab.audio.state",
-    "audiolab.native.extract_preview",
-    "audiolab.native.extract_audio_data",
-    "audiolab.native.trim_audio",
-    "audiolab.asr.last_result",
-    "audiolab.device.list"
   ],
   "action_metadata": {
     "audiolab.native.extract_preview": {
       "description": "Run the app bridge extractPreview probe against the bundled sample file and poll getLastResult().",
-      "example": { "action": "audiolab.native.extract_preview", "timeout_ms": 30000 }
+      "example": {
+        "action": "audiolab.native.extract_preview",
+        "timeout_ms": 30000
+      }
     },
     "audiolab.audio.state": {
       "description": "Read current playground audio recorder state through the CDP bridge."
@@ -35,5 +27,31 @@
     "ui.navigate": {
       "description": "Navigate by Expo Router path through the existing playground CDP bridge."
     }
-  }
+  },
+  "custom_actions": [
+    {
+      "name": "audiolab.audio.state",
+      "owner": "audiolab.audio"
+    },
+    {
+      "name": "audiolab.native.extract_preview",
+      "owner": "audiolab.native"
+    },
+    {
+      "name": "audiolab.native.extract_audio_data",
+      "owner": "audiolab.native"
+    },
+    {
+      "name": "audiolab.native.trim_audio",
+      "owner": "audiolab.native"
+    },
+    {
+      "name": "audiolab.asr.last_result",
+      "owner": "audiolab.asr"
+    },
+    {
+      "name": "audiolab.device.list",
+      "owner": "audiolab.device"
+    }
+  ]
 }

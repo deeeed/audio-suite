@@ -542,23 +542,8 @@ async function discoverAllTargets(port, WebSocketImpl, deviceFilter) {
     }
   }
 
-  // Final fallback: if still no agentic target, use highest page number candidate
-  if (results.length === 0) {
-    const fallbackTarget = shouldAnnotateIOSTarget(candidates[0])
-      ? annotateIOSTarget(candidates[0])
-      : candidates[0];
-    const fallbackName = fallbackTarget.deviceName || '(unnamed)';
-    process.stderr.write(
-      `[cdp-bridge] Warning: No __AGENTIC__ target found after ${DISCOVERY_RETRIES} retries ` +
-      `(${DISCOVERY_RETRIES * DISCOVERY_RETRY_DELAY_MS / 1000}s). ` +
-      `Falling back to best candidate: "${fallbackName}" (${fallbackTarget.webSocketDebuggerUrl})\n`
-    );
-    results.push({
-      ...fallbackTarget,
-      wsUrl: fallbackTarget.webSocketDebuggerUrl,
-      deviceName: fallbackName,
-    });
-  }
+  // Recipe Protocol v1 discovery must fail closed. A visible native debug
+  // target is not a controllable agentic target until __AGENTIC__ responds.
 
   // Also discover web (Chrome) targets — these use a separate CDP port
   const webTargets = await discoverWebTargets(port, WebSocketImpl);
