@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Android Expo plugin foreground-only configuration now removes the recording
+  service and receiver manifest entries when `enableBackgroundAudio` is
+  disabled. Regenerate native projects with Expo prebuild or rebuild Android
+  after changing this option.
+
 ## [3.2.1-beta.2] - 2026-05-29
 
 Beta release for validating max-duration recording controls after auto-stop result handling fixes.

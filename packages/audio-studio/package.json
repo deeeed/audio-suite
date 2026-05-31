@@ -93,6 +93,7 @@
         "lint": "expo-module lint",
         "lint:fix": "expo-module lint --fix",
         "test": "expo-module test",
+        "test:plugin": "jest --runInBand plugin/src/index.test.ts",
         "test:android": "yarn test:android:unit && yarn test:android:instrumented",
         "test:android:unit": "cd ../../apps/playground/android && ./gradlew :siteed-audio-studio:test",
         "test:android:instrumented": "cd ../../apps/playground/android && ./gradlew :siteed-audio-studio:connectedAndroidTest",
