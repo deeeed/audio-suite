@@ -2,7 +2,7 @@
     "extends": "expo-module-scripts/tsconfig.base",
     "compilerOptions": {
         "rootDir": "./src",
-        "ignoreDeprecations": "5.0",
+        "ignoreDeprecations": "6.0",
         "verbatimModuleSyntax": false,
         "noUncheckedIndexedAccess": false,
         "types": ["jest", "node"],
