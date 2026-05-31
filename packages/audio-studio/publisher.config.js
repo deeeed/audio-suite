@@ -1,6 +1,5 @@
-import type { ReleaseConfig, DeepPartial } from '@siteed/publisher'
-
-const config: DeepPartial<ReleaseConfig> = {
+/** @type {import('@siteed/publisher').DeepPartial<import('@siteed/publisher').ReleaseConfig>} */
+const config = {
     packageManager: 'yarn',
     changelogFile: 'CHANGELOG.md',
     conventionalCommits: false,
@@ -36,4 +35,4 @@ const config: DeepPartial<ReleaseConfig> = {
     dependencyUpdateStrategy: 'none',
 }
 
-export default config
+module.exports = config
