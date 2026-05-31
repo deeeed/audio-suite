@@ -1,3 +1,5 @@
+/// <reference types="jest" />
+
 import { __testing } from './index'
 
 describe('audio-studio Expo plugin Android background recording components', () => {

@@ -2,17 +2,14 @@
     "extends": "expo-module-scripts/tsconfig.base",
     "compilerOptions": {
         "rootDir": "./src",
-        "ignoreDeprecations": "6.0",
+        "ignoreDeprecations": "5.0",
         "verbatimModuleSyntax": false,
         "noUncheckedIndexedAccess": false,
         "types": ["jest", "node"],
         "sourceMap": true,
         "declaration": true,
         "declarationMap": true,
-        "typeRoots": [
-            "./node_modules/@types",
-            "../../node_modules/@types",
-        ]
+        "typeRoots": ["./node_modules/@types", "../../node_modules/@types"]
     },
     "ts-node": {
         "compilerOptions": {
