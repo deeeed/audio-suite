@@ -10,6 +10,138 @@ const MICROPHONE_USAGE = 'Allow $(PRODUCT_NAME) to access your microphone'
 const NOTIFICATION_USAGE = 'Show recording notifications and controls'
 const LOG_PREFIX = '[@siteed/expo-audio-studio]'
 
+const AUDIO_STUDIO_ANDROID_PACKAGE = 'net.siteed.audiostudio'
+const RECORDING_ACTION_RECEIVER = `${AUDIO_STUDIO_ANDROID_PACKAGE}.RecordingActionReceiver`
+const AUDIO_RECORDING_SERVICE = `${AUDIO_STUDIO_ANDROID_PACKAGE}.AudioRecordingService`
+const LEGACY_RELATIVE_RECORDING_ACTION_RECEIVER = '.RecordingActionReceiver'
+const LEGACY_RELATIVE_AUDIO_RECORDING_SERVICE = '.AudioRecordingService'
+
+type AndroidComponent = {
+    $?: Record<string, string | boolean>
+    [key: string]: unknown
+}
+
+type AndroidApplication = {
+    receiver?: AndroidComponent[]
+    service?: AndroidComponent[]
+    [key: string]: unknown
+}
+
+function removeComponentsByName(
+    components: AndroidComponent[] | undefined,
+    names: string[]
+): AndroidComponent[] | undefined {
+    if (!components) {
+        return components
+    }
+
+    const filtered = components.filter(
+        (component) => !names.includes(String(component.$?.['android:name']))
+    )
+
+    return filtered.length > 0 ? filtered : undefined
+}
+
+function upsertComponent(
+    components: AndroidComponent[] | undefined,
+    componentConfig: AndroidComponent
+): AndroidComponent[] {
+    const name = String(componentConfig.$?.['android:name'])
+    const nextComponents = (components || []).filter(
+        (component) => String(component.$?.['android:name']) !== name
+    )
+
+    nextComponents.push(componentConfig)
+    return nextComponents
+}
+
+function addAndroidRemovalMarker(
+    components: AndroidComponent[] | undefined,
+    componentName: string
+): AndroidComponent[] {
+    return upsertComponent(components, {
+        $: {
+            'android:name': componentName,
+            'tools:node': 'remove',
+        },
+    })
+}
+
+function configureAndroidBackgroundRecordingComponents(
+    mainApplication: AndroidApplication,
+    enableBackgroundAudio: boolean | undefined
+): void {
+    const receiverNames = [
+        LEGACY_RELATIVE_RECORDING_ACTION_RECEIVER,
+        RECORDING_ACTION_RECEIVER,
+    ]
+    const serviceNames = [
+        LEGACY_RELATIVE_AUDIO_RECORDING_SERVICE,
+        AUDIO_RECORDING_SERVICE,
+    ]
+
+    mainApplication.receiver = removeComponentsByName(
+        mainApplication.receiver,
+        receiverNames
+    )
+    mainApplication.service = removeComponentsByName(
+        mainApplication.service,
+        serviceNames
+    )
+
+    if (enableBackgroundAudio) {
+        const receiverConfig = {
+            $: {
+                'android:name': RECORDING_ACTION_RECEIVER,
+                'android:exported': 'false' as const,
+            },
+            'intent-filter': [
+                {
+                    action: [
+                        { $: { 'android:name': 'PAUSE_RECORDING' } },
+                        { $: { 'android:name': 'RESUME_RECORDING' } },
+                        { $: { 'android:name': 'STOP_RECORDING' } },
+                    ],
+                },
+            ],
+        }
+
+        const serviceConfig = {
+            $: {
+                'android:name': AUDIO_RECORDING_SERVICE,
+                'android:enabled': 'true' as const,
+                'android:exported': 'false' as const,
+                'android:foregroundServiceType': 'microphone',
+            },
+        }
+
+        mainApplication.receiver = upsertComponent(
+            mainApplication.receiver,
+            receiverConfig
+        )
+        mainApplication.service = upsertComponent(
+            mainApplication.service,
+            serviceConfig
+        )
+        return
+    }
+
+    mainApplication.receiver = addAndroidRemovalMarker(
+        mainApplication.receiver,
+        RECORDING_ACTION_RECEIVER
+    )
+    mainApplication.service = addAndroidRemovalMarker(
+        mainApplication.service,
+        AUDIO_RECORDING_SERVICE
+    )
+}
+
+export const __testing = {
+    AUDIO_RECORDING_SERVICE,
+    RECORDING_ACTION_RECEIVER,
+    configureAndroidBackgroundRecordingComponents,
+}
+
 function debugLog(message: string, ...args: unknown[]): void {
     if (process.env.EXPO_DEBUG) {
         console.log(`${LOG_PREFIX} ${message}`, ...args)
@@ -203,71 +335,21 @@ const withRecordingPermission: ConfigPlugin<AudioStreamPluginOptions> = (
             )
         })
 
+        AndroidConfig.Manifest.ensureToolsAvailable(config.modResults)
+
         // Get the main application node
         const mainApplication = config.modResults.manifest.application?.[0]
         if (mainApplication) {
             debugLog('📱 Configuring Android application components...')
-
-            // Add RecordingActionReceiver
-            if (!mainApplication.receiver) {
-                mainApplication.receiver = []
-            }
-
-            const receiverConfig = {
-                $: {
-                    'android:name': '.RecordingActionReceiver',
-                    'android:exported': 'false' as const,
-                },
-                'intent-filter': [
-                    {
-                        action: [
-                            { $: { 'android:name': 'PAUSE_RECORDING' } },
-                            { $: { 'android:name': 'RESUME_RECORDING' } },
-                            { $: { 'android:name': 'STOP_RECORDING' } },
-                        ],
-                    },
-                ],
-            }
-
-            const receiverIndex = mainApplication.receiver.findIndex(
-                (receiver: any) =>
-                    receiver.$?.['android:name'] === '.RecordingActionReceiver'
+            configureAndroidBackgroundRecordingComponents(
+                mainApplication,
+                enableBackgroundAudio
             )
-
-            if (receiverIndex >= 0) {
-                mainApplication.receiver[receiverIndex] = receiverConfig
-            } else {
-                mainApplication.receiver.push(receiverConfig)
-            }
-
-            debugLog('✅ RecordingActionReceiver configured')
-
-            // Add AudioRecordingService
-            if (!mainApplication.service) {
-                mainApplication.service = []
-            }
-
-            const serviceConfig = {
-                $: {
-                    'android:name': '.AudioRecordingService',
-                    'android:enabled': 'true' as const,
-                    'android:exported': 'false' as const,
-                    'android:foregroundServiceType': 'microphone',
-                },
-            }
-
-            const serviceIndex = mainApplication.service.findIndex(
-                (service: any) =>
-                    service.$?.['android:name'] === '.AudioRecordingService'
+            debugLog(
+                enableBackgroundAudio
+                    ? '✅ Android background recording components configured'
+                    : '✅ Android background recording components disabled'
             )
-
-            if (serviceIndex >= 0) {
-                mainApplication.service[serviceIndex] = serviceConfig
-            } else {
-                mainApplication.service.push(serviceConfig)
-            }
-
-            debugLog('✅ AudioRecordingService configured')
         } else {
             console.error(
                 `${LOG_PREFIX} ❌ Main application node not found in Android Manifest`

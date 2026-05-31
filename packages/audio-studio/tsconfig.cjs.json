@@ -5,6 +5,7 @@
         "moduleResolution": "node",
         "outDir": "./build/cjs",
         "declaration": false,
-        "declarationMap": false
+        "declarationMap": false,
+        "ignoreDeprecations": "6.0"
     }
-} 
+}
