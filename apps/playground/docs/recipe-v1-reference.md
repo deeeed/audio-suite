@@ -10,8 +10,8 @@ summary/trace/artifact output.
 | Area | Current evidence | V1 alignment | Follow-up |
 | --- | --- | --- | --- |
 | App bridge | `src/agentic-bridge.ts`, `scripts/agentic/cdp-bridge.mjs` expose navigation, state, HUD, screenshots, and native audio probes. | Reused as the project adapter behind Recipe v1 actions. | Keep bridge probes stable or version them in the manifest. |
-| Official actions | `scripts/agentic/recipe-v1/manifests/audiolab.action-manifest.json` declares `ui.*`, `app.*`, `device.*`, `cdp.target`. | Aligned with Recipe Protocol v1 official vocabulary. | Add official actions only when the bridge can prove them live. |
-| Domain actions | Manifest declares `audiolab.audio.*`, `audiolab.native.*`, `audiolab.asr.*`, `audiolab.device.*`. | Native-module behavior is namespaced and discoverable. | Prefer parameterized native probes over one file per task. |
+| Official actions | `scripts/agentic/recipe-v1/manifests/audiolab.action-manifest.json` declares `ui.*`, `app.*`, `cdp.target`. | Aligned with Recipe Protocol v1 official vocabulary. | Add official actions only when the bridge can prove them live. |
+| Domain actions | Manifest declares `audiolab.audio.*`, `audiolab.native.*`, and `audiolab.asr.*`. | Native-module behavior is namespaced and discoverable. | Prefer parameterized native probes over one file per task. |
 | Recipes | `smoke.navigation.recipe.json`, `audio.native.lifecycle.recipe.json`. | Recipes use `schema_version: 1` and emit `summary.json`, `trace.json`, and `artifact-manifest.json`. | Add ASR long-run recipes separately when model fixtures are available. |
 | Evidence | Runner writes `.agent/recipe-v1-runs/<timestamp>-<recipe>/`. | Reviewer-facing artifacts are separate from app state. | Attach selected artifacts to release/PR evidence. |
 
@@ -43,21 +43,16 @@ done
 Dry-run artifacts prove the runner emits the Recipe v1 evidence package shape:
 `summary.json`, `trace.json`, and `artifact-manifest.json`.
 
-Live web validation completed with AudioLab playground served on Metro port
-`7365` and an isolated Chrome CDP port (`CDP_PORT=9324`) exposing
-`globalThis.__AGENTIC__`:
+Live web validation covers the portable UI smoke recipe with AudioLab playground served on Metro port
+`7365` and an isolated Chrome CDP port exposing `globalThis.__AGENTIC__`:
 
 ```bash
-CDP_PORT=9324 yarn web
+CDP_PORT=<free-port> yarn web
 yarn recipe:v1 run scripts/agentic/recipe-v1/recipes/smoke.navigation.recipe.json \
   --device web \
   --artifacts-dir .agent/recipe-v1-runs/live-smoke-navigation-web
-yarn recipe:v1 run scripts/agentic/recipe-v1/recipes/audio.native.lifecycle.recipe.json \
-  --device web \
-  --artifacts-dir .agent/recipe-v1-runs/live-audio-native-web
 ```
 
-Both live runs passed and emitted `summary.json`, `trace.json`,
-`artifact-manifest.json`, plus screenshot proof entries. The native lifecycle
-recipe exercised the existing app bridge and returned an `extractPreview` result
-with `status: success`, `dataPointCount: 50`, and `durationMs: 10000`.
+Native-module recipes must run against a native Android/iOS target; the runner
+intentionally rejects `--device web` for `audiolab.native.*` actions so native
+proof cannot be satisfied by a browser bridge.

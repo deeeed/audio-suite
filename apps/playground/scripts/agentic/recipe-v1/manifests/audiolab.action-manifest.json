@@ -48,10 +48,6 @@
     {
       "name": "audiolab.asr.last_result",
       "owner": "audiolab.asr"
-    },
-    {
-      "name": "audiolab.device.list",
-      "owner": "audiolab.device"
     }
   ]
 }

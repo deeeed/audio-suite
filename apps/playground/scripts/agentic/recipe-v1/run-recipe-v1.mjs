@@ -280,13 +280,15 @@ function assertCdpTarget(output, ctx) {
   if (matching.length === 0) throw new Error(`cdp.target found devices, but none matched --device ${ctx.device}: ${JSON.stringify(devices)}`);
 }
 
-async function pollLastResult(ctx, expectedOp, timeoutMs) {
+async function pollLastResult(ctx, expectedOp, timeoutMs, previousResult) {
   const deadline = Date.now() + timeoutMs;
+  const previousSerialized = previousResult == null ? '' : JSON.stringify(previousResult);
   let last = null;
   while (Date.now() < deadline) {
     const result = cdp(['eval', 'globalThis.__AGENTIC__?.getLastResult?.()'], ctx, { allowFailure: true, timeoutMs: 10000 }).parsed;
     last = result;
-    if (result && typeof result === 'object' && result.status && result.status !== 'pending') {
+    const isFresh = previousSerialized === '' || JSON.stringify(result) !== previousSerialized;
+    if (isFresh && result && typeof result === 'object' && result.status && result.status !== 'pending') {
       if (expectedOp && result.op && result.op !== expectedOp) throw new Error(`Unexpected async result op: expected ${expectedOp}, got ${result.op}`);
       if (result.status === 'error') throw new Error(result.error || `${expectedOp} failed`);
       return result;
@@ -294,6 +296,17 @@ async function pollLastResult(ctx, expectedOp, timeoutMs) {
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
   throw new Error(`Timed out waiting for ${expectedOp}; last=${JSON.stringify(last)}`);
+}
+
+function requireNativeTarget(ctx, action) {
+  if (!ctx.device || ctx.device.toLowerCase() === 'web') {
+    throw new Error(`${action} requires a native target; pass --device with an Android/iOS device name`);
+  }
+}
+
+function startNativeProbe(ctx, methodName) {
+  const expression = `(() => { const bridge = globalThis.__AGENTIC__; const fn = bridge?.${methodName}; if (typeof fn !== 'function') throw new Error('${methodName} unsupported by this target'); const previous = bridge.getLastResult?.(); const started = fn.call(bridge); return { ok: true, previous, started }; })()`;
+  return cdp(['eval', expression], ctx, { timeoutMs: 10000 }).parsed;
 }
 
 async function executeNode(id, rawNode, ctx) {
@@ -317,7 +330,8 @@ async function executeNode(id, rawNode, ctx) {
       case 'app.status': output = cdp(['get-state'], ctx).parsed; break;
       case 'app.hud': {
         const payload = { id, status: node.status || 'running', intent: node.intent || node.description || id, detail: node.detail || '' };
-        output = cdp(['set-step-hud', JSON.stringify(payload)], ctx, { allowFailure: true }).parsed;
+        output = cdp(['set-step-hud', JSON.stringify(payload)], ctx).parsed;
+        if (output?.supported === false || output?.ok === false) throw new Error(`app.hud failed: ${JSON.stringify(output)}`);
         break;
       }
       case 'ui.navigate': output = cdp(['navigate', node.path || node.route], ctx).parsed; break;
@@ -338,21 +352,23 @@ async function executeNode(id, rawNode, ctx) {
         break;
       }
       case 'wait': await new Promise((resolve) => setTimeout(resolve, Number(node.duration_ms || 1000))); output = { waitedMs: Number(node.duration_ms || 1000) }; break;
-      case 'audiolab.device.list': output = cdp(['list-devices'], ctx).parsed; break;
       case 'audiolab.audio.state': output = cdp(['get-state'], ctx).parsed; break;
       case 'audiolab.native.extract_preview': {
-        cdp(['eval', 'globalThis.__AGENTIC__?.testExtractPreview?.()'], ctx, { timeoutMs: 10000 });
-        output = await pollLastResult(ctx, 'extractPreview', node.timeout_ms || 30000);
+        requireNativeTarget(ctx, node.action);
+        const start = startNativeProbe(ctx, 'testExtractPreview');
+        output = await pollLastResult(ctx, 'extractPreview', node.timeout_ms || 30000, start.previous);
         break;
       }
       case 'audiolab.native.extract_audio_data': {
-        cdp(['eval', 'globalThis.__AGENTIC__?.testExtractAudioData?.()'], ctx, { timeoutMs: 10000 });
-        output = await pollLastResult(ctx, 'extractAudioData', node.timeout_ms || 30000);
+        requireNativeTarget(ctx, node.action);
+        const start = startNativeProbe(ctx, 'testExtractAudioData');
+        output = await pollLastResult(ctx, 'extractAudioData', node.timeout_ms || 30000, start.previous);
         break;
       }
       case 'audiolab.native.trim_audio': {
-        cdp(['eval', 'globalThis.__AGENTIC__?.testTrimAudio?.()'], ctx, { timeoutMs: 10000 });
-        output = await pollLastResult(ctx, 'trimAudio', node.timeout_ms || 45000);
+        requireNativeTarget(ctx, node.action);
+        const start = startNativeProbe(ctx, 'testTrimAudio');
+        output = await pollLastResult(ctx, 'trimAudio', node.timeout_ms || 45000, start.previous);
         break;
       }
       case 'audiolab.asr.last_result': output = cdp(['eval', 'globalThis.__AGENTIC__?.getLastResult?.()'], ctx).parsed; break;
