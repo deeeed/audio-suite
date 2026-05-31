@@ -1479,7 +1479,7 @@ const WebSocketImpl = await resolveWebSocket();
 
 // -- list-devices: safe discovery, queries state from each agentic device --
 if (command === 'list-devices') {
-  const allTargets = await discoverAllTargets(port, WebSocketImpl, null).catch(() => []);
+  const allTargets = await discoverAllTargets(port, WebSocketImpl, deviceFilter).catch(() => []);
   const devices = [];
   for (const target of allTargets) {
     let state = null;

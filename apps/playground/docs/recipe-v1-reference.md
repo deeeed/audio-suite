@@ -43,7 +43,21 @@ done
 Dry-run artifacts prove the runner emits the Recipe v1 evidence package shape:
 `summary.json`, `trace.json`, and `artifact-manifest.json`.
 
-Live validation still requires a running AudioLab playground development runtime.
-The last local probe returned no agentic targets. Use the same recipes without
-`--dry-run` once `yarn ios`, `yarn android`, or `yarn web` has a ready
-`globalThis.__AGENTIC__` target.
+Live web validation completed with AudioLab playground served on Metro port
+`7365` and an isolated Chrome CDP port (`CDP_PORT=9324`) exposing
+`globalThis.__AGENTIC__`:
+
+```bash
+CDP_PORT=9324 yarn web
+yarn recipe:v1 run scripts/agentic/recipe-v1/recipes/smoke.navigation.recipe.json \
+  --device web \
+  --artifacts-dir .agent/recipe-v1-runs/live-smoke-navigation-web
+yarn recipe:v1 run scripts/agentic/recipe-v1/recipes/audio.native.lifecycle.recipe.json \
+  --device web \
+  --artifacts-dir .agent/recipe-v1-runs/live-audio-native-web
+```
+
+Both live runs passed and emitted `summary.json`, `trace.json`,
+`artifact-manifest.json`, plus screenshot proof entries. The native lifecycle
+recipe exercised the existing app bridge and returned an `extractPreview` result
+with `status: success`, `dataPointCount: 50`, and `durationMs: 10000`.
