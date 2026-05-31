@@ -24,6 +24,7 @@
         "recipe:asr-benchmark": "bash scripts/agentic/validate-recipe.sh scripts/agentic/teams/playground/recipes/asr-benchmark-screen-validation.json",
         "recipe:schema": "bash scripts/agentic/validate-flow-schema.sh",
         "recipe:preconditions": "bash scripts/agentic/validate-pre-conditions.sh",
+        "recipe:v1": "node scripts/agentic/recipe-v1/run-recipe-v1.mjs",
         "benchmark:moonshine:longform": "BENCHMARK_PRESET=moonshine-longform node scripts/agentic/direct-asr-benchmark.mjs",
         "reload": "bash scripts/agentic/device-cmd.sh reload",
         "wake": "bash scripts/agentic/wake-devices.sh",

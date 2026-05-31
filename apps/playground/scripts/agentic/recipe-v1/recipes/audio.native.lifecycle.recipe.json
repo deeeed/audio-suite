@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "title": "AudioLab Recipe v1 native audio lifecycle",
+  "description": "Runs a native audio extraction probe through the existing app bridge, polls the async result, and records UI evidence.",
+  "proofTargets": [
+    { "id": "native", "claim": "Recipe v1 can drive AudioLab native-module probes through a namespaced action." },
+    { "id": "evidence", "claim": "The runner emits summary, trace, artifact manifest, and screenshot evidence." }
+  ],
+  "validate": {
+    "workflow": {
+      "entry": "status",
+      "nodes": {
+        "status": { "action": "audiolab.audio.state", "description": "Read initial recorder state.", "next": "record" },
+        "record": { "action": "ui.navigate", "path": "/(tabs)/record", "description": "Open the Record tab before native probe.", "next": "extractPreview" },
+        "extractPreview": { "action": "audiolab.native.extract_preview", "description": "Run extractPreview against the bundled sample audio and wait for success.", "timeout_ms": 30000, "assert": { "path": "status", "operator": "eq", "value": "success" }, "next": "proof", "proofTarget": "native" },
+        "proof": { "action": "ui.screenshot", "label": "audiolab-native-audio-v1", "description": "Capture native audio lifecycle proof.", "next": "done", "proofTarget": "evidence", "record": "proof_window" },
+        "done": { "action": "end", "status": "pass" }
+      }
+    }
+  }
+}
