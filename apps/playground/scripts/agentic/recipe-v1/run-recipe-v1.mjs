@@ -285,7 +285,7 @@ async function pollLastResult(ctx, expectedOp, timeoutMs, previousResult) {
   const previousSerialized = previousResult == null ? '' : JSON.stringify(previousResult);
   let last = null;
   while (Date.now() < deadline) {
-    const result = cdp(['eval', 'globalThis.__AGENTIC__?.getLastResult?.()'], ctx, { allowFailure: true, timeoutMs: 10000 }).parsed;
+    const result = cdp(['eval', `(() => { const bridge = globalThis.__AGENTIC__; if (typeof bridge?.getLastResult !== 'function') throw new Error('getLastResult unsupported by this target'); return bridge.getLastResult(); })()`], ctx, { timeoutMs: 10000 }).parsed;
     last = result;
     const isFresh = previousSerialized === '' || JSON.stringify(result) !== previousSerialized;
     if (isFresh && result && typeof result === 'object' && result.status && result.status !== 'pending') {
@@ -305,7 +305,7 @@ function requireNativeTarget(ctx, action) {
 }
 
 function startNativeProbe(ctx, methodName) {
-  const expression = `(() => { const bridge = globalThis.__AGENTIC__; const fn = bridge?.${methodName}; if (typeof fn !== 'function') throw new Error('${methodName} unsupported by this target'); const previous = bridge.getLastResult?.(); const started = fn.call(bridge); return { ok: true, previous, started }; })()`;
+  const expression = `(() => { const bridge = globalThis.__AGENTIC__; const fn = bridge?.${methodName}; const getLastResult = bridge?.getLastResult; if (typeof fn !== 'function') throw new Error('${methodName} unsupported by this target'); if (typeof getLastResult !== 'function') throw new Error('getLastResult unsupported by this target'); const previous = getLastResult.call(bridge); const started = fn.call(bridge); return { ok: true, previous, started }; })()`;
   return cdp(['eval', expression], ctx, { timeoutMs: 10000 }).parsed;
 }
 
@@ -371,7 +371,7 @@ async function executeNode(id, rawNode, ctx) {
         output = await pollLastResult(ctx, 'trimAudio', node.timeout_ms || 45000, start.previous);
         break;
       }
-      case 'audiolab.asr.last_result': output = cdp(['eval', 'globalThis.__AGENTIC__?.getLastResult?.()'], ctx).parsed; break;
+      case 'audiolab.asr.last_result': output = cdp(['eval', `(() => { const bridge = globalThis.__AGENTIC__; if (typeof bridge?.getLastResult !== 'function') throw new Error('getLastResult unsupported by this target'); return bridge.getLastResult(); })()`], ctx).parsed; break;
       case 'end': output = { status: node.status || 'pass' }; break;
       default: throw new Error(`Unsupported action: ${node.action}`);
     }
