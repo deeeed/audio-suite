@@ -16,14 +16,14 @@ describe('PunctuationService', () => {
     const service = new PunctuationService(api as unknown as ApiInterface);
 
     await service.init({
-      modelDir: '/tmp/punct-models/ct-transformer',
+      modelDir: '/models/punct/ct-transformer',
       model: 'model.int8.onnx',
     });
 
     expect(api.initPunctuation).toHaveBeenCalledTimes(1);
     const forwarded = api.initPunctuation.mock.calls[0]![0] as unknown as Record<string, unknown>;
     expect(forwarded.model).toBe('model.int8.onnx');
-    expect(forwarded.modelDir).toBe('/tmp/punct-models/ct-transformer');
+    expect(forwarded.modelDir).toBe('/models/punct/ct-transformer');
   });
 
   it('omits `model` from the native config when not provided (online CNN-BiLSTM path)', async () => {
@@ -31,7 +31,7 @@ describe('PunctuationService', () => {
     const service = new PunctuationService(api as unknown as ApiInterface);
 
     await service.init({
-      modelDir: '/tmp/punct-models/cnn-bilstm',
+      modelDir: '/models/punct/cnn-bilstm',
       cnnBilstm: 'model.onnx',
       bpeVocab: 'bpe.vocab',
     });
