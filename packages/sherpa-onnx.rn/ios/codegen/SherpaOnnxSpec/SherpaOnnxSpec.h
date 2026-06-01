@@ -279,6 +279,7 @@ namespace JS {
     struct SpecInitPunctuationConfig {
       NSString *modelDir() const;
       NSString *cnnBilstm() const;
+      NSString *model() const;
       NSString *bpeVocab() const;
       std::optional<double> numThreads() const;
       std::optional<bool> debug() const;
@@ -1118,6 +1119,11 @@ inline NSString *JS::NativeSherpaOnnxSpec::SpecInitPunctuationConfig::modelDir()
 inline NSString *JS::NativeSherpaOnnxSpec::SpecInitPunctuationConfig::cnnBilstm() const
 {
   id const p = _v[@"cnnBilstm"];
+  return RCTBridgingToOptionalString(p);
+}
+inline NSString *JS::NativeSherpaOnnxSpec::SpecInitPunctuationConfig::model() const
+{
+  id const p = _v[@"model"];
   return RCTBridgingToOptionalString(p);
 }
 inline NSString *JS::NativeSherpaOnnxSpec::SpecInitPunctuationConfig::bpeVocab() const

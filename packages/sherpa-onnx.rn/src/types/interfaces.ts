@@ -1647,6 +1647,13 @@ export interface LanguageIdResult {
 export interface PunctuationModelConfig {
   modelDir: string;
   cnnBilstm?: string;
+  /**
+   * Offline (CT-Transformer) model file name, e.g. `model.onnx` or
+   * `model.int8.onnx`. When set, native code uses the offline engine
+   * (`sherpa-onnx-punct-ct-transformer-*`) instead of the online
+   * (CNN-BiLSTM) engine and `cnnBilstm` / `bpeVocab` are ignored.
+   */
+  model?: string;
   bpeVocab?: string;
   numThreads?: number;
   debug?: boolean;

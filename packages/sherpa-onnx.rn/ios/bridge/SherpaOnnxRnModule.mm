@@ -1188,6 +1188,9 @@ RCT_EXPORT_METHOD(initPunctuation:(JS::NativeSherpaOnnxSpec::SpecInitPunctuation
     NSMutableDictionary *configDict = [NSMutableDictionary dictionary];
     if (config.modelDir()) configDict[@"modelDir"] = config.modelDir();
     if (config.cnnBilstm()) configDict[@"cnnBilstm"] = config.cnnBilstm();
+    if (config.model() != nil) {
+        configDict[@"model"] = config.model();
+    }
     if (config.bpeVocab()) configDict[@"bpeVocab"] = config.bpeVocab();
     if (config.numThreads()) configDict[@"numThreads"] = @((int)*config.numThreads());
     if (config.debug()) configDict[@"debug"] = @(*config.debug());
