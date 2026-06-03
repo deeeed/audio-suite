@@ -4872,6 +4872,38 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@farmslot/expo-recipe@npm:0.1.1":
+  version: 0.1.1
+  resolution: "@farmslot/expo-recipe@npm:0.1.1"
+  dependencies:
+    "@farmslot/protocol": "npm:0.6.0"
+    "@farmslot/recipe-harness": "npm:0.2.0"
+  bin:
+    farmslot-expo-recipe: ./bin/farmslot-expo-recipe.mjs
+  checksum: 10/ad8ec6772ce188f304f9f027a21208ceea538ce5f3f53432f20c3d0938c7f9356c94775a85386921b322d2f43794a831778f427a15782d528c85c600d132ac90
+  languageName: node
+  linkType: hard
+
+"@farmslot/protocol@npm:0.6.0":
+  version: 0.6.0
+  resolution: "@farmslot/protocol@npm:0.6.0"
+  checksum: 10/93d3c51506f50e2dad42c8d0c684ff01804fb7139578a97b839289b25810b448035613eb1f629bbbb57dec55e4302602137ebd9cebc3509b4a4fb536e835375b
+  languageName: node
+  linkType: hard
+
+"@farmslot/recipe-harness@npm:0.2.0":
+  version: 0.2.0
+  resolution: "@farmslot/recipe-harness@npm:0.2.0"
+  dependencies:
+    "@farmslot/protocol": "npm:0.6.0"
+    commander: "npm:^12.0.0"
+    ws: "npm:^8.18.0"
+  bin:
+    farmslot-recipe: ./bin/farmslot-recipe.mjs
+  checksum: 10/0ccaf42909e17849c31b1e457a0e417d010e2679def0282594d86fe5ff1519161fa3327ca1851bb00987e6edbd4dbf5fc0f20ed410fcf80816a30417ca95e9c2
+  languageName: node
+  linkType: hard
+
 "@flatten-js/interval-tree@npm:^1.1.2":
   version: 1.1.3
   resolution: "@flatten-js/interval-tree@npm:1.1.3"
@@ -7920,7 +7952,19 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@siteed/audio-studio@npm:3.2.0, @siteed/audio-studio@workspace:^, @siteed/audio-studio@workspace:packages/audio-studio":
+"@siteed/audio-studio@npm:3.2.0":
+  version: 3.2.0
+  resolution: "@siteed/audio-studio@npm:3.2.0"
+  peerDependencies:
+    "@expo/config-plugins": ">=7.0.0"
+    expo: ">=52.0.0"
+    react: "*"
+    react-native: "*"
+  checksum: 10/13512b217a4212451a0a091671624d4cc7e677cf3e432122d2b27bca72fcb32763141b5255b26b60a224be70322d4479b9ac97430b844a9b22f4d215bce38c2b
+  languageName: node
+  linkType: hard
+
+"@siteed/audio-studio@workspace:^, @siteed/audio-studio@workspace:packages/audio-studio":
   version: 0.0.0-use.local
   resolution: "@siteed/audio-studio@workspace:packages/audio-studio"
   dependencies:
@@ -8310,6 +8354,7 @@ __metadata:
     "@babel/plugin-proposal-decorators": "npm:^7.25.9"
     "@config-plugins/detox": "npm:^9.0.0"
     "@expo/vector-icons": "npm:^15.0.3"
+    "@farmslot/expo-recipe": "npm:0.1.1"
     "@gorhom/bottom-sheet": "npm:^5.2.8"
     "@gorhom/portal": "npm:^1.0.14"
     "@playwright/test": "npm:^1.58.2"
@@ -12207,6 +12252,7 @@ __metadata:
     "@expo/config-plugins": "npm:~56.0.8"
     "@expo/metro-runtime": "npm:~56.0.13"
     "@expo/vector-icons": "npm:^15.0.3"
+    "@farmslot/expo-recipe": "npm:0.1.1"
     "@gorhom/bottom-sheet": "npm:^5.2.8"
     "@gorhom/portal": "npm:^1.0.14"
     "@playwright/test": "npm:^1.50.0"

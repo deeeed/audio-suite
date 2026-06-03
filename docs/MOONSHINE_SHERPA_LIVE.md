@@ -20,7 +20,7 @@ yarn workspace audio-playground recipe:schema \
   scripts/agentic/teams/playground/recipes/moonshine-sherpa-live-validation.json
 
 ADB_SERIAL=<adb-serial> yarn workspace audio-playground android:device:launch
-ADB_SERIAL=<adb-serial> yarn workspace audio-playground recipe:run \
+ADB_SERIAL=<adb-serial> yarn workspace audio-playground recipe:agentic:run \
   scripts/agentic/teams/playground/recipes/moonshine-sherpa-live-validation.json \
   --device "<agentic-device-name>"
 

@@ -76,9 +76,8 @@ function parseMaybeJson(text) {
   const start = Math.min(...starts);
   try {
     return JSON.parse(raw.slice(start));
-  } catch (error) {
-    // Bridge commands may print warnings before/after JSON; return raw text when it is not parseable.
-    void error;
+  } catch {
+    // Bridge commands may print warnings before/after JSON; raw text is the expected fallback.
     return raw;
   }
 }
@@ -102,7 +101,9 @@ function script(scriptPath, args, ctx, options = {}) {
 function valueAt(root, selector) {
   if (!selector) return root;
   const raw = String(selector).trim();
-  const normalized = raw === '$' ? '' : raw.startsWith('$.') ? raw.slice(2) : raw;
+  let normalized = raw;
+  if (raw === '$') normalized = '';
+  else if (raw.startsWith('$.')) normalized = raw.slice(2);
   if (!normalized) return root;
   return normalized.split('.').reduce((value, part) => {
     if (value == null) return undefined;
@@ -124,32 +125,39 @@ function interpolate(value, ctx) {
   return value;
 }
 
-function compareAssertion(actual, assertion) {
-  const op = assertion.operator || 'truthy';
-  const expected = assertion.value;
-  if (op === 'exists') return actual !== undefined;
-  if (op === 'not_null') return actual !== null && actual !== undefined;
-  if (op === 'truthy') return Boolean(actual);
-  if (op === 'falsy') return !actual;
-  if (op === 'eq') return actual === expected;
-  if (op === 'neq') return actual !== expected;
-  if (op === 'deep_eq') return JSON.stringify(actual) === JSON.stringify(expected);
-  if (op === 'contains') return String(actual ?? '').includes(String(expected));
-  if (op === 'not_contains') return !String(actual ?? '').includes(String(expected));
-  if (op === 'matches') return new RegExp(String(expected)).test(String(actual ?? ''));
-  if (op === 'one_of') return Array.isArray(expected) && expected.includes(actual);
-  if (op === 'gt') return Number(actual) > Number(expected);
-  if (op === 'gte') return Number(actual) >= Number(expected);
-  if (op === 'lt') return Number(actual) < Number(expected);
-  if (op === 'lte') return Number(actual) <= Number(expected);
-  if (op === 'length_eq') return (Array.isArray(actual) || typeof actual === 'string') && actual.length === Number(expected);
-  if (op === 'length_gt') return (Array.isArray(actual) || typeof actual === 'string') && actual.length > Number(expected);
-  if (op === 'length_gte') return (Array.isArray(actual) || typeof actual === 'string') && actual.length >= Number(expected);
-  if (op === 'length_lt') return (Array.isArray(actual) || typeof actual === 'string') && actual.length < Number(expected);
-  if (op === 'length_lte') return (Array.isArray(actual) || typeof actual === 'string') && actual.length <= Number(expected);
-  throw new Error(`Unsupported assertion operator: ${op}`);
+const ASSERTION_OPERATORS = {
+  exists: (actual) => actual !== undefined,
+  not_null: (actual) => actual !== null && actual !== undefined,
+  truthy: (actual) => Boolean(actual),
+  falsy: (actual) => !actual,
+  eq: (actual, expected) => actual === expected,
+  neq: (actual, expected) => actual !== expected,
+  deep_eq: (actual, expected) => JSON.stringify(actual) === JSON.stringify(expected),
+  contains: (actual, expected) => String(actual ?? '').includes(String(expected)),
+  not_contains: (actual, expected) => !String(actual ?? '').includes(String(expected)),
+  matches: (actual, expected) => new RegExp(String(expected)).test(String(actual ?? '')),
+  one_of: (actual, expected) => Array.isArray(expected) && expected.includes(actual),
+  gt: (actual, expected) => Number(actual) > Number(expected),
+  gte: (actual, expected) => Number(actual) >= Number(expected),
+  lt: (actual, expected) => Number(actual) < Number(expected),
+  lte: (actual, expected) => Number(actual) <= Number(expected),
+  length_eq: (actual, expected) => hasLength(actual) && actual.length === Number(expected),
+  length_gt: (actual, expected) => hasLength(actual) && actual.length > Number(expected),
+  length_gte: (actual, expected) => hasLength(actual) && actual.length >= Number(expected),
+  length_lt: (actual, expected) => hasLength(actual) && actual.length < Number(expected),
+  length_lte: (actual, expected) => hasLength(actual) && actual.length <= Number(expected),
+};
+
+function hasLength(value) {
+  return Array.isArray(value) || typeof value === 'string';
 }
 
+function compareAssertion(actual, assertion) {
+  const op = assertion.operator || 'truthy';
+  const compare = ASSERTION_OPERATORS[op];
+  if (!compare) throw new Error(`Unsupported assertion operator: ${op}`);
+  return compare(actual, assertion.value);
+}
 function evaluateAssertion(output, assertion) {
   try {
     assertValue(output, assertion);
@@ -183,32 +191,59 @@ function assertValue(output, assertion) {
   }
 }
 
-function validateManifest(manifest) {
+function validateOfficialActions(manifest, declared) {
   const errors = [];
-  if (manifest.runner_protocol_version !== 1) errors.push('manifest.runner_protocol_version must be 1');
-  if (manifest.action_registry_version !== 1) errors.push('manifest.action_registry_version must be 1');
-  if (!Array.isArray(manifest.supported_official_actions) || manifest.supported_official_actions.length === 0) errors.push('manifest.supported_official_actions must be non-empty');
-  const declared = new Set();
-  for (const action of manifest.supported_official_actions || []) {
+  const actions = manifest.supported_official_actions;
+  if (!Array.isArray(actions) || actions.length === 0) {
+    errors.push('manifest.supported_official_actions must be non-empty');
+    return errors;
+  }
+  for (const action of actions) {
     if (!OFFICIAL_ACTIONS.has(action)) errors.push(`manifest declares unknown official action: ${action}`);
     if (declared.has(action)) errors.push(`manifest declares duplicate action: ${action}`);
     declared.add(action);
   }
-  if (manifest.custom_actions != null && !Array.isArray(manifest.custom_actions)) errors.push('manifest.custom_actions must be an array');
-  for (const entry of manifest.custom_actions || []) {
-    if (!entry || typeof entry !== 'object' || typeof entry.name !== 'string' || !entry.name) errors.push('manifest.custom_actions entries must have name');
-    else {
-      if (OFFICIAL_ACTIONS.has(entry.name)) errors.push(`custom action overlaps official action: ${entry.name}`);
-      if (declared.has(entry.name)) errors.push(`manifest declares duplicate action: ${entry.name}`);
-      declared.add(entry.name);
-    }
-  }
-  for (const action of Object.keys(manifest.action_metadata || {})) {
-    if (!declared.has(action)) errors.push(`action_metadata references undeclared action: ${action}`);
-  }
-  return { errors, declared };
+  return errors;
 }
 
+function validateCustomAction(entry, declared) {
+  const errors = [];
+  if (!entry || typeof entry !== 'object' || typeof entry.name !== 'string' || !entry.name) {
+    return ['manifest.custom_actions entries must have name'];
+  }
+  if (OFFICIAL_ACTIONS.has(entry.name)) errors.push(`custom action overlaps official action: ${entry.name}`);
+  if (declared.has(entry.name)) errors.push(`manifest declares duplicate action: ${entry.name}`);
+  if (typeof entry.owner !== 'string' || !entry.owner) errors.push(`custom action missing owner: ${entry.name}`);
+  if (typeof entry.description !== 'string' || !entry.description) errors.push(`custom action missing description: ${entry.name}`);
+  if (!entry.schema || typeof entry.schema !== 'object' || Array.isArray(entry.schema)) errors.push(`custom action missing schema: ${entry.name}`);
+  if (!Array.isArray(entry.examples) || entry.examples.length === 0) errors.push(`custom action missing examples: ${entry.name}`);
+  declared.add(entry.name);
+  return errors;
+}
+
+function validateCustomActions(manifest, declared) {
+  if (manifest.custom_actions == null) return [];
+  if (!Array.isArray(manifest.custom_actions)) return ['manifest.custom_actions must be an array'];
+  return manifest.custom_actions.flatMap((entry) => validateCustomAction(entry, declared));
+}
+
+function validateActionMetadata(manifest, declared) {
+  return Object.keys(manifest.action_metadata || {})
+    .filter((action) => !declared.has(action))
+    .map((action) => `action_metadata references undeclared action: ${action}`);
+}
+
+function validateManifest(manifest) {
+  const declared = new Set();
+  const errors = [
+    ...(manifest.runner_protocol_version === 1 ? [] : ['manifest.runner_protocol_version must be 1']),
+    ...(manifest.action_registry_version === 1 ? [] : ['manifest.action_registry_version must be 1']),
+    ...validateOfficialActions(manifest, declared),
+    ...validateCustomActions(manifest, declared),
+    ...validateActionMetadata(manifest, declared),
+  ];
+  return { errors, declared };
+}
 function validateLifecycleArray(value, pathName, declared) {
   const errors = [];
   if (value == null) return errors;
@@ -222,6 +257,8 @@ function validateNode(id, node, nodes, declared, { lifecycle = false } = {}) {
   if (!node || typeof node !== 'object' || Array.isArray(node)) return [`${id}: node must be an object`];
   if (!node.action) errors.push(`${id}: action is required`);
   else if (!declared.has(node.action)) errors.push(`${id}: action is not declared by manifest: ${node.action}`);
+  if (!lifecycle && node.action !== 'end' && typeof node.intent !== 'string') errors.push(`${id}: intent is required for non-terminal executable nodes`);
+  else if (!lifecycle && node.action !== 'end' && node.intent.trim().length === 0) errors.push(`${id}: intent is required for non-terminal executable nodes`);
   if (node.when || node.unless) errors.push(`${id}: when/unless predicates are not supported by this reference runner yet`);
   if (node.params && node.action !== 'call') errors.push(`${id}: params is reserved for call nodes in Recipe v1`);
   if (!lifecycle && node.action !== 'end' && node.action !== 'switch' && !node.next) errors.push(`${id}: next is required for non-terminal nodes`);
@@ -231,26 +268,27 @@ function validateNode(id, node, nodes, declared, { lifecycle = false } = {}) {
 }
 
 function validateRecipe(recipe, manifest) {
-  const { errors, declared } = validateManifest(manifest);
-  if (recipe.schema_version !== 1) errors.push('schema_version must be 1');
-  if (!recipe.title) errors.push('title is required');
-  if (!recipe.description) errors.push('description is required');
-  if (recipe.startState) errors.push('startState/call flow execution is not supported by this reference runner yet');
-  if (recipe.uses) errors.push('uses/call flow catalogs are not supported by this reference runner yet');
+  const { errors: manifestErrors, declared } = validateManifest(manifest);
   const workflow = recipe.validate?.workflow;
-  if (!workflow?.entry) errors.push('validate.workflow.entry is required');
-  if (!workflow?.nodes || typeof workflow.nodes !== 'object' || Array.isArray(workflow.nodes)) errors.push('validate.workflow.nodes is required');
-  if (workflow?.pre_conditions?.length) errors.push('pre_conditions are not supported by this reference runner yet');
   const nodes = workflow?.nodes || {};
-  if (workflow?.entry && !nodes[workflow.entry]) errors.push(`entry node not found: ${workflow.entry}`);
-  errors.push(...validateLifecycleArray(workflow?.setup, 'validate.workflow.setup', declared));
-  errors.push(...validateLifecycleArray(workflow?.teardown, 'validate.workflow.teardown', declared));
-  for (const [id, node] of Object.entries(nodes)) {
-    errors.push(...validateNode(id, node, nodes, declared));
-  }
-  return errors;
+  const recipeErrors = [
+    ...(recipe.schema_version === 1 ? [] : ['schema_version must be 1']),
+    ...(recipe.title ? [] : ['title is required']),
+    ...(recipe.description ? [] : ['description is required']),
+    ...(recipe.startState ? ['startState/call flow execution is not supported by this reference runner yet'] : []),
+    ...(recipe.uses ? ['uses/call flow catalogs are not supported by this reference runner yet'] : []),
+    ...(workflow?.entry ? [] : ['validate.workflow.entry is required']),
+    ...(!workflow?.nodes || typeof workflow.nodes !== 'object' || Array.isArray(workflow.nodes)
+      ? ['validate.workflow.nodes is required']
+      : []),
+    ...(workflow?.pre_conditions?.length ? ['pre_conditions are not supported by this reference runner yet'] : []),
+    ...(workflow?.entry && !nodes[workflow.entry] ? [`entry node not found: ${workflow.entry}`] : []),
+    ...validateLifecycleArray(workflow?.setup, 'validate.workflow.setup', declared),
+    ...validateLifecycleArray(workflow?.teardown, 'validate.workflow.teardown', declared),
+    ...Object.entries(nodes).flatMap(([id, node]) => validateNode(id, node, nodes, declared)),
+  ];
+  return [...manifestErrors, ...recipeErrors];
 }
-
 function relativeArtifactPath(absolutePath, artifactsDir) {
   return path.relative(artifactsDir, absolutePath).split(path.sep).join('/');
 }
@@ -280,15 +318,16 @@ function assertCdpTarget(output, ctx) {
   if (matching.length === 0) throw new Error(`cdp.target found devices, but none matched --device ${ctx.device}: ${JSON.stringify(devices)}`);
 }
 
-async function pollLastResult(ctx, expectedOp, timeoutMs, previousResult) {
+async function pollLastResult(ctx, expectedOp, timeoutMs, previousResult, options = {}) {
   const deadline = Date.now() + timeoutMs;
   const previousSerialized = previousResult == null ? '' : JSON.stringify(previousResult);
+  const acceptSameFinalResult = options.acceptSameFinalResult === true;
   let last = null;
   while (Date.now() < deadline) {
     const result = cdp(['eval', `(() => { const bridge = globalThis.__AGENTIC__; if (typeof bridge?.getLastResult !== 'function') throw new Error('getLastResult unsupported by this target'); return bridge.getLastResult(); })()`], ctx, { timeoutMs: 10000 }).parsed;
     last = result;
     const isFresh = previousSerialized === '' || JSON.stringify(result) !== previousSerialized;
-    if (isFresh && result && typeof result === 'object' && result.status && result.status !== 'pending') {
+    if ((isFresh || acceptSameFinalResult) && result && typeof result === 'object' && result.status && result.status !== 'pending') {
       if (expectedOp && result.op && result.op !== expectedOp) throw new Error(`Unexpected async result op: expected ${expectedOp}, got ${result.op}`);
       if (result.status === 'error') throw new Error(result.error || `${expectedOp} failed`);
       return result;
@@ -309,19 +348,62 @@ function startNativeProbe(ctx, methodName) {
   return cdp(['eval', expression], ctx, { timeoutMs: 10000 }).parsed;
 }
 
+function hudPayload(id, node, status, error) {
+  return {
+    id,
+    status,
+    intent: node.intent || node.description || id,
+    detail: node.detail || node.description || '',
+    error,
+  };
+}
+
+function publishHud(ctx, id, node, status, error) {
+  if (ctx.dryRun || !ctx.declaredActions.has('app.hud')) return null;
+  const payload = hudPayload(id, node, status, error);
+  const command = { command: 'hud', nodeId: id, payload };
+  const legacyStep = { ...payload, nodeId: id };
+  const expression = `(async () => {
+    const farmslotBridge = globalThis.__FARMSLOT_RECIPE_BRIDGE__;
+    if (typeof farmslotBridge?.handleCommand === 'function') {
+      return await farmslotBridge.handleCommand(${JSON.stringify(command)});
+    }
+    const agenticBridge = globalThis.__AGENTIC__;
+    if (typeof agenticBridge?.setStepHud === 'function') {
+      return agenticBridge.setStepHud(${JSON.stringify(legacyStep)});
+    }
+    return { ok: false, supported: false };
+  })()`;
+  return cdp(['eval', expression], ctx, { timeoutMs: 10000 }).parsed;
+}
+
+function publishHudBestEffort(ctx, id, node, status, error) {
+  try {
+    return publishHud(ctx, id, node, status, error);
+  } catch (hudError) {
+    const rawMessage = hudError instanceof Error ? hudError.message : String(hudError);
+    const message = rawMessage.split('\n').find((line) => line.includes('ERROR:')) || rawMessage;
+    process.stderr.write(`[recipe-v1] app.hud ${status} update failed for ${id}: ${message}\n`);
+    return null;
+  }
+}
+
 async function executeNode(id, rawNode, ctx) {
   const node = interpolate(rawNode, ctx);
   const startedAtMs = Date.now();
   const startedAt = new Date(startedAtMs).toISOString();
   if (ctx.dryRun) {
-    const output = { dryRun: true, action: node.action, description: node.description || '' };
+    const output = { dryRun: true, action: node.action, intent: node.intent || '', description: node.description || '' };
     ctx.outputs[id] = output;
     const endedAtMs = Date.now();
-    ctx.trace.push({ nodeId: id, action: node.action, ok: true, status: 'skipped', dryRun: true, startedAt, endedAt: new Date(endedAtMs).toISOString(), durationMs: endedAtMs - startedAtMs, next: node.next, description: node.description || '', output });
+    ctx.trace.push({ nodeId: id, action: node.action, ok: true, status: 'skipped', dryRun: true, startedAt, endedAt: new Date(endedAtMs).toISOString(), durationMs: endedAtMs - startedAtMs, next: node.next, intent: node.intent || '', description: node.description || '', output });
     return { next: node.next, terminal: node.action === 'end', status: node.status || 'unknown' };
   }
   try {
     let output;
+    if (node.action !== 'app.hud' && node.action !== 'end' && node.action !== 'cdp.target') {
+      publishHudBestEffort(ctx, id, node, 'running');
+    }
     switch (node.action) {
       case 'cdp.target':
         output = cdp(['list-devices'], ctx).parsed;
@@ -329,8 +411,7 @@ async function executeNode(id, rawNode, ctx) {
         break;
       case 'app.status': output = cdp(['get-state'], ctx).parsed; break;
       case 'app.hud': {
-        const payload = { id, status: node.status || 'running', intent: node.intent || node.description || id, detail: node.detail || '' };
-        output = cdp(['set-step-hud', JSON.stringify(payload)], ctx).parsed;
+        output = publishHud(ctx, id, node, node.status || 'running');
         if (output?.supported === false || output?.ok === false) throw new Error(`app.hud failed: ${JSON.stringify(output)}`);
         break;
       }
@@ -356,19 +437,22 @@ async function executeNode(id, rawNode, ctx) {
       case 'audiolab.native.extract_preview': {
         requireNativeTarget(ctx, node.action);
         const start = startNativeProbe(ctx, 'testExtractPreview');
-        output = await pollLastResult(ctx, 'extractPreview', node.timeout_ms || 30000, start.previous);
+        await new Promise((resolve) => setTimeout(resolve, Number(node.poll_settle_ms || 1500)));
+        output = await pollLastResult(ctx, 'extractPreview', node.timeout_ms || 30000, start.previous, { acceptSameFinalResult: start.started?.status === 'pending' });
         break;
       }
       case 'audiolab.native.extract_audio_data': {
         requireNativeTarget(ctx, node.action);
         const start = startNativeProbe(ctx, 'testExtractAudioData');
-        output = await pollLastResult(ctx, 'extractAudioData', node.timeout_ms || 30000, start.previous);
+        await new Promise((resolve) => setTimeout(resolve, Number(node.poll_settle_ms || 1500)));
+        output = await pollLastResult(ctx, 'extractAudioData', node.timeout_ms || 30000, start.previous, { acceptSameFinalResult: start.started?.status === 'pending' });
         break;
       }
       case 'audiolab.native.trim_audio': {
         requireNativeTarget(ctx, node.action);
         const start = startNativeProbe(ctx, 'testTrimAudio');
-        output = await pollLastResult(ctx, 'trimAudio', node.timeout_ms || 45000, start.previous);
+        await new Promise((resolve) => setTimeout(resolve, Number(node.poll_settle_ms || 1500)));
+        output = await pollLastResult(ctx, 'trimAudio', node.timeout_ms || 45000, start.previous, { acceptSameFinalResult: start.started?.status === 'pending' });
         break;
       }
       case 'audiolab.asr.last_result': output = cdp(['eval', `(() => { const bridge = globalThis.__AGENTIC__; if (typeof bridge?.getLastResult !== 'function') throw new Error('getLastResult unsupported by this target'); return bridge.getLastResult(); })()`], ctx).parsed; break;
@@ -378,13 +462,19 @@ async function executeNode(id, rawNode, ctx) {
     assertValue(output, node.assert);
     ctx.outputs[id] = output;
     const endedAtMs = Date.now();
-    ctx.trace.push({ nodeId: id, action: node.action, ok: true, startedAt, endedAt: new Date(endedAtMs).toISOString(), durationMs: endedAtMs - startedAtMs, next: node.next, description: node.description || '', output });
+    ctx.trace.push({ nodeId: id, action: node.action, ok: true, startedAt, endedAt: new Date(endedAtMs).toISOString(), durationMs: endedAtMs - startedAtMs, next: node.next, intent: node.intent || '', description: node.description || '', output });
+    if (node.action !== 'app.hud' && node.action !== 'end' && node.action !== 'cdp.target') {
+      publishHudBestEffort(ctx, id, node, 'pass');
+    }
     return { next: node.next, terminal: node.action === 'end', status: node.status || 'pass' };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     ctx.outputs[id] = { error: message };
     const endedAtMs = Date.now();
-    ctx.trace.push({ nodeId: id, action: node.action, ok: false, startedAt, endedAt: new Date(endedAtMs).toISOString(), durationMs: endedAtMs - startedAtMs, next: node.next, description: node.description || '', error: message });
+    ctx.trace.push({ nodeId: id, action: node.action, ok: false, startedAt, endedAt: new Date(endedAtMs).toISOString(), durationMs: endedAtMs - startedAtMs, next: node.next, intent: node.intent || '', description: node.description || '', error: message });
+    if (node.action !== 'app.hud' && node.action !== 'cdp.target') {
+      publishHudBestEffort(ctx, id, node, 'fail', message);
+    }
     throw error;
   }
 }
@@ -403,7 +493,8 @@ async function runRecipe(recipePath, options) {
   if (validationErrors.length) throw new Error(`Recipe validation failed:\n- ${validationErrors.join('\n- ')}`);
   const artifactsDir = path.resolve(options.artifactsDir || path.join(DEFAULT_ARTIFACT_ROOT, `${nowStamp()}-${slug(path.basename(recipePath, path.extname(recipePath)))}`));
   fs.mkdirSync(artifactsDir, { recursive: true });
-  const ctx = { device: options.device, dryRun: options.dryRun, artifactsDir, trace: [], outputs: {}, artifacts: [] };
+  const { declared } = validateManifest(manifest);
+  const ctx = { device: options.device, dryRun: options.dryRun, artifactsDir, trace: [], outputs: {}, artifacts: [], declaredActions: declared };
   const runStartedAt = new Date().toISOString();
   let status = 'pass';
   let errorMessage = '';

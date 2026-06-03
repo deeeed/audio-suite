@@ -21,7 +21,7 @@
         "open:ios": "open -a Xcode ios/SherpaVoiceDev.xcworkspace 2>/dev/null || open -a Xcode ios/SherpaVoice.xcworkspace",
         "devices": "node scripts/agentic/cdp-bridge.mjs list-devices",
         "status": "node scripts/agentic/cdp-bridge.mjs list-devices",
-        "recipe:run": "bash scripts/agentic/validate-recipe.sh",
+        "recipe:run": "farmslot-expo-recipe run",
         "recipe:matrix": "bash scripts/agentic/validate-recipe.sh --matrix",
         "recipe:schema": "bash scripts/agentic/validate-flow-schema.sh",
         "recipe:preconditions": "bash scripts/agentic/validate-pre-conditions.sh",
@@ -80,7 +80,13 @@
         "ios:device:eas-build-install:dry-run": "DRY_RUN=1 node scripts/agentic/eas-ios-dev-client-build-install.mjs",
         "ios:credentials": "APP_VARIANT=development APPLE_TEAM_ID=${APPLE_TEAM_ID:-G5DZE7G2V4} yarn dlx eas-cli credentials -p ios",
         "diarization:verify-long-goal": "node scripts/agentic/verify-long-diarization-goal.mjs",
-        "ios:signing:doctor": "node scripts/agentic/ios-physical-signing-doctor.mjs"
+        "ios:signing:doctor": "node scripts/agentic/ios-physical-signing-doctor.mjs",
+        "recipe": "farmslot-expo-recipe",
+        "recipe:manifest": "farmslot-expo-recipe manifest",
+        "recipe:doctor": "farmslot-expo-recipe doctor",
+        "recipe:validate": "farmslot-expo-recipe validate",
+        "recipe:dry-run": "farmslot-expo-recipe run --dry-run",
+        "recipe:agentic:run": "bash scripts/agentic/validate-recipe.sh"
     },
     "jest": {
         "preset": "jest-expo"
@@ -137,6 +143,7 @@
         "@babel/core": "^7.25.2",
         "@babel/plugin-proposal-decorators": "^7.25.9",
         "@config-plugins/detox": "^9.0.0",
+        "@farmslot/expo-recipe": "0.1.1",
         "@playwright/test": "^1.58.2",
         "@types/jest": "^29.5.12",
         "@types/react": "~19.2.10",

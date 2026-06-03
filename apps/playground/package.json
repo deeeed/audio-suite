@@ -19,7 +19,7 @@
         "web": "NODE_ENV=development APP_VARIANT=development bash scripts/agentic/start-metro.sh && node scripts/agentic/web-browser.mjs launch",
         "devices": "node scripts/agentic/cdp-bridge.mjs list-devices",
         "status": "node scripts/agentic/cdp-bridge.mjs list-devices",
-        "recipe:run": "bash scripts/agentic/validate-recipe.sh",
+        "recipe:run": "farmslot-expo-recipe run",
         "recipe:matrix": "bash scripts/agentic/validate-recipe.sh --matrix",
         "recipe:asr-benchmark": "bash scripts/agentic/validate-recipe.sh scripts/agentic/teams/playground/recipes/asr-benchmark-screen-validation.json",
         "recipe:schema": "bash scripts/agentic/validate-flow-schema.sh",
@@ -113,7 +113,13 @@
         "android:device": "APP_VARIANT=development PLATFORM=android ANDROID_DEVICE= EMULATOR_PORT= REBUILD=1 bash scripts/agentic/preflight.sh",
         "android:device:launch": "APP_VARIANT=development PLATFORM=android ANDROID_DEVICE= EMULATOR_PORT= SKIP_BUILD=1 bash scripts/agentic/preflight.sh",
         "ios:device": "APP_VARIANT=development PLATFORM=ios IOS_SIMULATOR= REBUILD=1 bash scripts/agentic/preflight.sh",
-        "ios:device:launch": "APP_VARIANT=development PLATFORM=ios IOS_SIMULATOR= SKIP_BUILD=1 bash scripts/agentic/preflight.sh"
+        "ios:device:launch": "APP_VARIANT=development PLATFORM=ios IOS_SIMULATOR= SKIP_BUILD=1 bash scripts/agentic/preflight.sh",
+        "recipe": "farmslot-expo-recipe",
+        "recipe:manifest": "farmslot-expo-recipe manifest",
+        "recipe:doctor": "farmslot-expo-recipe doctor",
+        "recipe:validate": "farmslot-expo-recipe validate",
+        "recipe:dry-run": "farmslot-expo-recipe run --dry-run",
+        "recipe:agentic:run": "bash scripts/agentic/validate-recipe.sh"
     },
     "dependencies": {
         "@expo/metro-runtime": "~56.0.13",
@@ -196,6 +202,7 @@
         "@config-plugins/detox": "^9.0.0",
         "@expo/config": "~56.0.9",
         "@expo/config-plugins": "~56.0.8",
+        "@farmslot/expo-recipe": "0.1.1",
         "@playwright/test": "^1.50.0",
         "@storybook/addon-links": "^9.0.9",
         "@storybook/addon-ondevice-actions": "^9.0.6",

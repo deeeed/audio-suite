@@ -299,7 +299,7 @@ async function main() {
 
   run(
     'yarn',
-    ['recipe:run', RECIPE, ...(deviceName ? ['--device', deviceName] : []), '--artifacts-dir', artifactsDir],
+    ['recipe:agentic:run', RECIPE, ...(deviceName ? ['--device', deviceName] : []), '--artifacts-dir', artifactsDir],
     { cwd: APP_ROOT, maxBuffer: 50 * 1024 * 1024 }
   );
 

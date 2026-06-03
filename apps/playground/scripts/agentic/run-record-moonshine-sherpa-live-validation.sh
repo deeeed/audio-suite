@@ -95,9 +95,9 @@ SPEECH_WATCHER_PID=$!
 
 set +e
 if [ -n "$ADB_SERIAL" ]; then
-  ADB_SERIAL="$ADB_SERIAL" yarn recipe:run "$RECIPE" --device "$DEVICE_NAME" --artifacts-dir "$ARTIFACTS_DIR"
+  ADB_SERIAL="$ADB_SERIAL" yarn recipe:agentic:run "$RECIPE" --device "$DEVICE_NAME" --artifacts-dir "$ARTIFACTS_DIR"
 else
-  yarn recipe:run "$RECIPE" --device "$DEVICE_NAME" --artifacts-dir "$ARTIFACTS_DIR"
+  yarn recipe:agentic:run "$RECIPE" --device "$DEVICE_NAME" --artifacts-dir "$ARTIFACTS_DIR"
 fi
 STATUS=$?
 set -e

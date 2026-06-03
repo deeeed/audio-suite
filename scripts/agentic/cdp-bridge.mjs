@@ -44,6 +44,7 @@
 
 import http from 'node:http';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -1084,12 +1085,17 @@ const COMMANDS = {
       // iOS: distinguish simulator vs physical device
       const iosDevice = resolveIOSDevice(deviceName);
       if (iosDevice.type === 'simulator') {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'audiolab-screenshot-'));
+        const tempPath = path.join(tempDir, filename);
         try {
-          execSync(`xcrun simctl io "${iosDevice.udid}" screenshot "${filepath}"`, {
+          execSync(`xcrun simctl io "${iosDevice.udid}" screenshot "${tempPath}"`, {
             stdio: ['ignore', 'ignore', 'pipe'],
           });
+          fs.copyFileSync(tempPath, filepath);
         } catch (e) {
           throw new Error(`xcrun simctl screenshot failed: ${e.message}`);
+        } finally {
+          fs.rmSync(tempDir, { recursive: true, force: true });
         }
       } else {
         // Physical iOS device — no reliable CLI screenshot tool available.

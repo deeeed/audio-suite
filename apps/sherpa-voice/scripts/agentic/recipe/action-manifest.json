@@ -1,0 +1,28 @@
+{
+  "runner_protocol_version": 1,
+  "action_registry_version": 1,
+  "supported_official_actions": [
+    "command",
+    "assert_output",
+    "wait",
+    "end",
+    "app.status",
+    "app.hud",
+    "app.trace"
+  ],
+  "action_metadata": {
+    "command": {
+      "description": "Run a project-local command during setup, diagnostics, or headless proof. Prefer UI actions only when the recipe must prove visible interaction."
+    },
+    "app.status": {
+      "description": "Query the dev-only Farmslot Expo bridge to confirm the app is reachable."
+    },
+    "app.hud": {
+      "description": "Display one concise human intent line from the current recipe node."
+    },
+    "app.trace": {
+      "description": "Emit a lightweight bridge trace event for recipe timeline observability."
+    }
+  },
+  "custom_actions": []
+}

@@ -221,6 +221,7 @@ function spawnBridge(appRoot, bridgeArgs, options = {}) {
   const bridgePath = path.join(appRoot, '..', '..', 'scripts', 'agentic', 'cdp-bridge.mjs');
   const absoluteBridgePath = path.resolve(appRoot, '../../scripts/agentic/cdp-bridge.mjs');
   const finalBridgePath = fs.existsSync(absoluteBridgePath) ? absoluteBridgePath : bridgePath;
+  const config = loadAgenticConfig(appRoot);
 
   const args = [finalBridgePath];
   if (options.device) {
@@ -233,6 +234,8 @@ function spawnBridge(appRoot, bridgeArgs, options = {}) {
     env: {
       ...process.env,
       APP_ROOT: appRoot,
+      WATCHER_PORT: process.env.WATCHER_PORT || config.AGENTIC_PORT,
+      CDP_PORT: process.env.CDP_PORT || config.AGENTIC_CDP_PORT,
     },
     encoding: 'utf8',
   });
