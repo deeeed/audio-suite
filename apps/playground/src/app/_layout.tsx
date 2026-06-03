@@ -20,6 +20,7 @@ import { TranscriptionProvider } from '../context/TranscriptionProvider'
 import { WebAppBanner } from '../components/WebAppBanner'
 import { AgentStepHud } from '../components/AgentStepHud'
 import { AgenticBridgeSync } from '../components/AgenticBridgeSync'
+import { RecipeBridgeProvider } from '../farmslot'
 
 // Install the __AGENTIC__ bridge on globalThis in dev mode
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -87,51 +88,53 @@ export default function RootLayout() {
 
     return (
         <SafeAreaProvider>
-            <ApplicationContextProvider debugMode>
-                <TranscriptionProvider>
-                    <AudioRecorderProvider
-                        config={{
-                            logger: getLogger('AudioRecorderProvider'),
-                            // audioWorkletUrl: config.audioWorkletUrl,
-                            // featuresExtratorUrl: config.featuresExtratorUrl,
-                        }}
-                    >
-                        <AudioFilesProvider>
-                            <MoonshinePreloadProvider>
-                            <ThemeProvider value={navigationTheme}>
-                                {/* Use SystemBars to manage system bars styling */}
-                                <SystemBars style={theme.dark ? 'light' : 'dark'} />
+            <RecipeBridgeProvider bridgeName="@siteed/audio-playground">
+                <ApplicationContextProvider debugMode>
+                    <TranscriptionProvider>
+                        <AudioRecorderProvider
+                            config={{
+                                logger: getLogger('AudioRecorderProvider'),
+                                // audioWorkletUrl: config.audioWorkletUrl,
+                                // featuresExtratorUrl: config.featuresExtratorUrl,
+                            }}
+                        >
+                            <AudioFilesProvider>
+                                <MoonshinePreloadProvider>
+                                    <ThemeProvider value={navigationTheme}>
+                                        {/* Use SystemBars to manage system bars styling */}
+                                        <SystemBars style={theme.dark ? 'light' : 'dark'} />
 
-                                {/* WebAppBanner appears above all content on web platform */}
-                                <WebAppBanner />
-                                <AgenticBridgeSync />
-                                <AgentStepHud />
+                                        {/* WebAppBanner appears above all content on web platform */}
+                                        <WebAppBanner />
+                                        <AgenticBridgeSync />
+                                        <AgentStepHud />
 
-                                <Stack
-                                    screenOptions={{
-                                        headerBackButtonMenuEnabled: false,
-                                        headerStyle: {
-                                            backgroundColor: theme.colors.background,
-                                        },
-                                        headerTintColor: theme.colors.text,
-                                        // Configure for proper edge-to-edge display
-                                        contentStyle: {
-                                            backgroundColor: theme.colors.background,
-                                        },
-                                    }}
-                                >
-                                    <Stack.Screen
-                                        name="(tabs)"
-                                        options={{ headerShown: false }}
-                                    />
-                                    {/* <Stack.Screen name="playbug" /> */}
-                                </Stack>
-                            </ThemeProvider>
-                            </MoonshinePreloadProvider>
-                        </AudioFilesProvider>
-                    </AudioRecorderProvider>
-                </TranscriptionProvider>
-            </ApplicationContextProvider>
+                                        <Stack
+                                            screenOptions={{
+                                                headerBackButtonMenuEnabled: false,
+                                                headerStyle: {
+                                                    backgroundColor: theme.colors.background,
+                                                },
+                                                headerTintColor: theme.colors.text,
+                                                // Configure for proper edge-to-edge display
+                                                contentStyle: {
+                                                    backgroundColor: theme.colors.background,
+                                                },
+                                            }}
+                                        >
+                                            <Stack.Screen
+                                                name="(tabs)"
+                                                options={{ headerShown: false }}
+                                            />
+                                            {/* <Stack.Screen name="playbug" /> */}
+                                        </Stack>
+                                    </ThemeProvider>
+                                </MoonshinePreloadProvider>
+                            </AudioFilesProvider>
+                        </AudioRecorderProvider>
+                    </TranscriptionProvider>
+                </ApplicationContextProvider>
+            </RecipeBridgeProvider>
         </SafeAreaProvider>
     )
 }

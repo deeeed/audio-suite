@@ -11,6 +11,7 @@ import { ModelManagementProvider } from '../contexts/ModelManagement';
 import { AgenticBridgeSync } from '../components/AgenticBridgeSync';
 import { AgentStepHud } from '../components/AgentStepHud';
 import { WebAppBanner } from '../components/WebAppBanner';
+import { RecipeBridgeProvider } from '../farmslot';
 import { setLoggerConfig } from '@siteed/react-native-logger';
 import '../agentic-bridge';
 
@@ -79,14 +80,16 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <UIProvider
-        preferences={preferences}
-        actions={{ savePreferences }}
-      >
-        <ModelManagementProvider>
-          <AppContent />
-        </ModelManagementProvider>
-      </UIProvider>
+      <RecipeBridgeProvider bridgeName="@siteed/sherpa-voice">
+        <UIProvider
+          preferences={preferences}
+          actions={{ savePreferences }}
+        >
+          <ModelManagementProvider>
+            <AppContent />
+          </ModelManagementProvider>
+        </UIProvider>
+      </RecipeBridgeProvider>
     </SafeAreaProvider>
   );
 }

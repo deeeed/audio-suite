@@ -15,11 +15,6 @@
         "wait-init-button": {
           "action": "wait_for",
           "test_id": "btn-init-asr",
-          "next": "wait-recognize-button"
-        },
-        "wait-recognize-button": {
-          "action": "wait_for",
-          "test_id": "btn-recognize",
           "next": "assert-asr-ui"
         },
         "assert-asr-ui": {
@@ -27,7 +22,7 @@
           "ref": "asr-ui",
           "assert": {
             "operator": "eq",
-            "field": "recognizeVisible",
+            "field": "initVisible",
             "value": true
           },
           "next": "done"

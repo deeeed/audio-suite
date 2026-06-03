@@ -44,6 +44,7 @@
 
 import http from 'node:http';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -542,23 +543,8 @@ async function discoverAllTargets(port, WebSocketImpl, deviceFilter) {
     }
   }
 
-  // Final fallback: if still no agentic target, use highest page number candidate
-  if (results.length === 0) {
-    const fallbackTarget = shouldAnnotateIOSTarget(candidates[0])
-      ? annotateIOSTarget(candidates[0])
-      : candidates[0];
-    const fallbackName = fallbackTarget.deviceName || '(unnamed)';
-    process.stderr.write(
-      `[cdp-bridge] Warning: No __AGENTIC__ target found after ${DISCOVERY_RETRIES} retries ` +
-      `(${DISCOVERY_RETRIES * DISCOVERY_RETRY_DELAY_MS / 1000}s). ` +
-      `Falling back to best candidate: "${fallbackName}" (${fallbackTarget.webSocketDebuggerUrl})\n`
-    );
-    results.push({
-      ...fallbackTarget,
-      wsUrl: fallbackTarget.webSocketDebuggerUrl,
-      deviceName: fallbackName,
-    });
-  }
+  // Recipe Protocol v1 discovery must fail closed. A visible native debug
+  // target is not a controllable agentic target until __AGENTIC__ responds.
 
   // Also discover web (Chrome) targets — these use a separate CDP port
   const webTargets = await discoverWebTargets(port, WebSocketImpl);
@@ -1099,12 +1085,17 @@ const COMMANDS = {
       // iOS: distinguish simulator vs physical device
       const iosDevice = resolveIOSDevice(deviceName);
       if (iosDevice.type === 'simulator') {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'audiolab-screenshot-'));
+        const tempPath = path.join(tempDir, filename);
         try {
-          execSync(`xcrun simctl io "${iosDevice.udid}" screenshot "${filepath}"`, {
+          execSync(`xcrun simctl io "${iosDevice.udid}" screenshot "${tempPath}"`, {
             stdio: ['ignore', 'ignore', 'pipe'],
           });
+          fs.copyFileSync(tempPath, filepath);
         } catch (e) {
           throw new Error(`xcrun simctl screenshot failed: ${e.message}`);
+        } finally {
+          fs.rmSync(tempDir, { recursive: true, force: true });
         }
       } else {
         // Physical iOS device — no reliable CLI screenshot tool available.
@@ -1479,7 +1470,7 @@ const WebSocketImpl = await resolveWebSocket();
 
 // -- list-devices: safe discovery, queries state from each agentic device --
 if (command === 'list-devices') {
-  const allTargets = await discoverAllTargets(port, WebSocketImpl, null).catch(() => []);
+  const allTargets = await discoverAllTargets(port, WebSocketImpl, deviceFilter).catch(() => []);
   const devices = [];
   for (const target of allTargets) {
     let state = null;
