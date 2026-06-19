@@ -644,10 +644,14 @@ class ASRHandler(private val reactContext: ReactApplicationContext) {
                 files.add(modelConfig.nemo.model)
             }
             "moonshine" -> {
-                files.add(modelConfig.moonshine.preprocessor)
                 files.add(modelConfig.moonshine.encoder)
-                files.add(modelConfig.moonshine.uncachedDecoder)
-                files.add(modelConfig.moonshine.cachedDecoder)
+                if (modelConfig.moonshine.mergedDecoder.isNotBlank()) {
+                    files.add(modelConfig.moonshine.mergedDecoder)
+                } else {
+                    files.add(modelConfig.moonshine.preprocessor)
+                    files.add(modelConfig.moonshine.uncachedDecoder)
+                    files.add(modelConfig.moonshine.cachedDecoder)
+                }
             }
             "sense_voice" -> {
                 files.add(modelConfig.senseVoice.model)

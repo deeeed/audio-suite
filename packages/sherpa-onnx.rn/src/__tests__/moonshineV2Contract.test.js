@@ -14,6 +14,9 @@ describe('Moonshine v2 bridge contract', () => {
     expect(read('android/src/main/kotlin/net/siteed/sherpaonnx/handlers/ASRHandler.kt')).toContain(
       '"modelFileMergedDecoder" to "mergedDecoder"'
     );
+    expect(read('android/src/main/kotlin/net/siteed/sherpaonnx/handlers/ASRHandler.kt')).toContain(
+      'if (modelConfig.moonshine.mergedDecoder.isNotBlank())'
+    );
     expect(read('ios/handlers/SherpaOnnxASRHandler.swift')).toContain(
       'mergedDecoder: (modelDir as NSString).appendingPathComponent(mergedDecoderFile)'
     );
