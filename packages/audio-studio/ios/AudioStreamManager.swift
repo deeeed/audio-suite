@@ -503,7 +503,14 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             // Now restart the engine if it was paused due to background
             do {
                 // Reinstall tap with hardware format to ensure we have good input
-                _ = installTapWithHardwareFormat()
+                let tapInstall = installTapWithHardwareFormat()
+                guard tapInstall.installed else {
+                    throw NSError(
+                        domain: "AudioStreamManager",
+                        code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: "Failed to install audio tap after returning from background"]
+                    )
+                }
                 // Restart the engine
                 try audioEngine.start()
                 Logger.debug("AudioStreamManager", "Successfully restarted audio engine after returning from background")
@@ -1091,6 +1098,8 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             // Use our shared tap installation method
             let tapInstall = installTapWithHardwareFormat()
             guard tapInstall.installed else {
+                isPrepared = true
+                cleanupPreparation()
                 return false
             }
             let tapFormat = tapInstall.format
@@ -1433,7 +1442,12 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         
         do {
             // Check and reinstall tap with hardware format
-            _ = installTapWithHardwareFormat()
+            let tapInstall = installTapWithHardwareFormat()
+            guard tapInstall.installed else {
+                Logger.debug("Failed to install recording tap for resume")
+                currentPauseStart = Date()
+                return
+            }
             Logger.debug("Tap reinstalled for resume")
             
             // Try to restart the engine
@@ -1888,7 +1902,14 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             try AVAudioSession.sharedInstance().setPreferredInput(port)
             Thread.sleep(forTimeInterval: 0.15)
             audioEngine.reset()
-            _ = installTapWithHardwareFormat()
+            let tapInstall = installTapWithHardwareFormat()
+            guard tapInstall.installed else {
+                throw NSError(
+                    domain: "AudioStreamManager",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Failed to install audio tap after device switch"]
+                )
+            }
             if wasRunning {
                 audioEngine.prepare()
                 try audioEngine.start()
@@ -1900,7 +1921,14 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             Logger.debug("AudioStreamManager", "Device switch failed: \(error.localizedDescription)")
             if wasRunning {
                 do {
-                    _ = installTapWithHardwareFormat()  // Bug 2 fix: reinstall tap in recovery path
+                    let tapInstall = installTapWithHardwareFormat()  // Bug 2 fix: reinstall tap in recovery path
+                    guard tapInstall.installed else {
+                        throw NSError(
+                            domain: "AudioStreamManager",
+                            code: 1,
+                            userInfo: [NSLocalizedDescriptionKey: "Failed to install audio tap during device-switch recovery"]
+                        )
+                    }
                     audioEngine.prepare()
                     try audioEngine.start()
                     Logger.debug("AudioStreamManager", "Engine recovery after device switch succeeded")
@@ -2339,7 +2367,12 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             }
             
             // Use our shared tap installation method with the custom block
-            _ = installTapWithHardwareFormat(customTapBlock: fallbackTapBlock)
+            let tapInstall = installTapWithHardwareFormat(customTapBlock: fallbackTapBlock)
+            guard tapInstall.installed else {
+                Logger.debug("Fallback failed: Could not install audio tap. Pausing.")
+                performPauseAction(reason: .deviceSwitchFailed)
+                return
+            }
             Logger.debug("Fallback: Re-installed tap with simplified emission handling")
             
             // Force prepare engine again to ensure it's ready
