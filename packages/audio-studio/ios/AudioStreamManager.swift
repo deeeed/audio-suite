@@ -895,7 +895,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
     private func installTapWithHardwareFormat(
         customTapBlock: ((AVAudioPCMBuffer, AVAudioTime) -> Void)? = nil,
         prepareEngine: Bool = true
-    ) -> AVAudioFormat {
+    ) -> (format: AVAudioFormat, installed: Bool) {
         // Get the hardware input format
         let inputNode = audioEngine.inputNode
         let inputHardwareFormat = inputNode.inputFormat(forBus: 0)
@@ -944,11 +944,13 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             channelCount: inputHardwareFormat.channelCount,
             sampleRate: inputHardwareFormat.sampleRate
         ) {
-            Logger.debug("AudioStreamManager", "Invalid hardware format: channels=\(inputHardwareFormat.channelCount), sampleRate=\(inputHardwareFormat.sampleRate). Skipping tap install to avoid format mismatch crash.")
+            let message = "Invalid hardware format: channels=\(inputHardwareFormat.channelCount), sampleRate=\(inputHardwareFormat.sampleRate). Skipping tap install to avoid format mismatch crash."
+            Logger.debug("AudioStreamManager", message)
+            delegate?.audioStreamManager(self, didFailWithError: message)
             if prepareEngine {
                 audioEngine.prepare()
             }
-            return inputHardwareFormat
+            return (inputHardwareFormat, false)
         }
 
         // Install the tap with hardware format
@@ -961,7 +963,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             Logger.debug("AudioStreamManager", "Engine prepared after tap installation")
         }
         
-        return inputHardwareFormat
+        return (inputHardwareFormat, true)
     }
     
     /// Prepares the audio recording with the specified settings without starting it.
@@ -1087,7 +1089,11 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             Logger.debug("AudioStreamManager", "  - compression enabled: \(settings.output.compressed.enabled)")
 
             // Use our shared tap installation method
-            let tapFormat = installTapWithHardwareFormat()
+            let tapInstall = installTapWithHardwareFormat()
+            guard tapInstall.installed else {
+                return false
+            }
+            let tapFormat = tapInstall.format
 
             // Log tap configuration
             Logger.debug("AudioStreamManager", "Final Tap Configuration (Using Hardware Format):")
@@ -1213,7 +1219,12 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             Logger.debug("Using prepared recording state")
             
             // Install tap with hardware format
-            _ = installTapWithHardwareFormat()
+            let tapInstall = installTapWithHardwareFormat()
+            guard tapInstall.installed else {
+                Logger.debug("Failed to install recording tap")
+                cleanupPreparation()
+                return nil
+            }
             Logger.debug("Tap was reinstalled during recording start")
         } else {
             // If not prepared, prepare now

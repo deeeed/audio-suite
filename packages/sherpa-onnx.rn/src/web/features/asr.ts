@@ -98,7 +98,7 @@ interface OfflineAsrFile { url: string; fsPath: string; optional?: boolean }
  * model-type-specific logic stays in TypeScript on the main thread.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function buildOfflineAsrPlan(
+export function buildOfflineAsrPlan(
   fetchBase: string,
   modelDir: string,
   rawType: string,
