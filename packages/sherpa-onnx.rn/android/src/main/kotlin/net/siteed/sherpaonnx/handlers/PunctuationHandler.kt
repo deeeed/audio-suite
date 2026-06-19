@@ -14,7 +14,8 @@ import java.util.concurrent.Executors
 class PunctuationHandler(private val reactContext: ReactApplicationContext) {
 
     private val executor = Executors.newSingleThreadExecutor()
-    private var punct: OnlinePunctuation? = null
+    private var onlinePunct: OnlinePunctuation? = null
+    private var offlinePunct: OfflinePunctuation? = null
 
     companion object {
         private const val TAG = "SherpaOnnxPunctuation"
@@ -31,8 +32,6 @@ class PunctuationHandler(private val reactContext: ReactApplicationContext) {
                 Log.i(TAG, "Initializing Punctuation with config: ${config.toHashMap()}")
 
                 val modelDir = AssetUtils.cleanFilePath(config.getString("modelDir") ?: "")
-                val cnnBilstm = config.getString("cnnBilstm") ?: "model.onnx"
-                val bpeVocab = config.getString("bpeVocab") ?: "bpe.vocab"
                 val numThreads = if (config.hasKey("numThreads")) config.getInt("numThreads") else 1
                 val debug = if (config.hasKey("debug")) config.getBoolean("debug") else false
                 val provider = config.getString("provider") ?: "cpu"
@@ -50,36 +49,60 @@ class PunctuationHandler(private val reactContext: ReactApplicationContext) {
                     modelDir
                 }
 
-                val cnnBilstmPath = File(actualModelDir, cnnBilstm).absolutePath
-                val bpeVocabPath = File(actualModelDir, bpeVocab).absolutePath
+                releaseCurrentPunctuation()
 
-                Log.i(TAG, "cnnBilstm: $cnnBilstmPath (exists: ${File(cnnBilstmPath).exists()})")
-                Log.i(TAG, "bpeVocab: $bpeVocabPath (exists: ${File(bpeVocabPath).exists()})")
+                val offlineModel = if (config.hasKey("model")) config.getString("model") else null
+                if (!offlineModel.isNullOrBlank()) {
+                    val modelPath = File(actualModelDir, offlineModel).absolutePath
+                    Log.i(TAG, "offline model: $modelPath (exists: ${File(modelPath).exists()})")
 
-                if (!File(cnnBilstmPath).exists()) {
-                    throw Exception("cnnBilstm file not found: $cnnBilstmPath")
+                    if (!File(modelPath).exists()) {
+                        throw Exception("model file not found: $modelPath")
+                    }
+
+                    offlinePunct = OfflinePunctuation(
+                        config = OfflinePunctuationConfig(
+                            model = OfflinePunctuationModelConfig(
+                                ctTransformer = modelPath,
+                                numThreads = numThreads,
+                                debug = debug,
+                                provider = provider,
+                            ),
+                        ),
+                    )
+
+                    Log.i(TAG, "Offline punctuation initialized successfully")
+                } else {
+                    val cnnBilstm = config.getString("cnnBilstm") ?: "model.onnx"
+                    val bpeVocab = config.getString("bpeVocab") ?: "bpe.vocab"
+
+                    val cnnBilstmPath = File(actualModelDir, cnnBilstm).absolutePath
+                    val bpeVocabPath = File(actualModelDir, bpeVocab).absolutePath
+
+                    Log.i(TAG, "cnnBilstm: $cnnBilstmPath (exists: ${File(cnnBilstmPath).exists()})")
+                    Log.i(TAG, "bpeVocab: $bpeVocabPath (exists: ${File(bpeVocabPath).exists()})")
+
+                    if (!File(cnnBilstmPath).exists()) {
+                        throw Exception("cnnBilstm file not found: $cnnBilstmPath")
+                    }
+                    if (!File(bpeVocabPath).exists()) {
+                        throw Exception("bpeVocab file not found: $bpeVocabPath")
+                    }
+
+                    val punctConfig = OnlinePunctuationConfig(
+                        model = OnlinePunctuationModelConfig(
+                            cnnBilstm = cnnBilstmPath,
+                            bpeVocab = bpeVocabPath,
+                            numThreads = numThreads,
+                            debug = debug,
+                            provider = provider,
+                        ),
+                    )
+
+                    onlinePunct = OnlinePunctuation(null, punctConfig)
+
+                    Log.i(TAG, "Online punctuation initialized successfully")
                 }
-                if (!File(bpeVocabPath).exists()) {
-                    throw Exception("bpeVocab file not found: $bpeVocabPath")
-                }
-
-                // Release previous instance
-                punct?.release()
-                punct = null
-
-                val punctConfig = OnlinePunctuationConfig(
-                    model = OnlinePunctuationModelConfig(
-                        cnnBilstm = cnnBilstmPath,
-                        bpeVocab = bpeVocabPath,
-                        numThreads = numThreads,
-                        debug = debug,
-                        provider = provider,
-                    ),
-                )
-
-                punct = OnlinePunctuation(null, punctConfig)
-
-                Log.i(TAG, "Punctuation initialized successfully")
 
                 val resultMap = Arguments.createMap()
                 resultMap.putBoolean("success", true)
@@ -87,7 +110,7 @@ class PunctuationHandler(private val reactContext: ReactApplicationContext) {
             } catch (e: Exception) {
                 Log.e(TAG, "Error initializing Punctuation: ${e.message}")
                 e.printStackTrace()
-                punct = null
+                releaseCurrentPunctuation()
                 reactContext.runOnUiQueueThread {
                     promise.reject("ERR_PUNCTUATION_INIT", "Failed to initialize Punctuation: ${e.message}")
                 }
@@ -98,13 +121,14 @@ class PunctuationHandler(private val reactContext: ReactApplicationContext) {
     fun addPunctuation(text: String, promise: Promise) {
         executor.execute {
             try {
-                val currentPunct = punct
-                    ?: throw Exception("Punctuation not initialized")
-
                 Log.d(TAG, "Adding punctuation to: $text")
 
                 val startTime = System.currentTimeMillis()
-                val result = currentPunct.addPunctuation(text)
+                val result = when {
+                    offlinePunct != null -> offlinePunct!!.addPunctuation(text)
+                    onlinePunct != null -> onlinePunct!!.addPunctuation(text)
+                    else -> throw Exception("Punctuation not initialized")
+                }
                 val durationMs = System.currentTimeMillis() - startTime
 
                 Log.i(TAG, "Punctuated text: $result in ${durationMs}ms")
@@ -127,8 +151,7 @@ class PunctuationHandler(private val reactContext: ReactApplicationContext) {
     fun release(promise: Promise) {
         executor.execute {
             try {
-                punct?.release()
-                punct = null
+                releaseCurrentPunctuation()
                 Log.i(TAG, "Punctuation released")
 
                 val resultMap = Arguments.createMap()
@@ -141,5 +164,12 @@ class PunctuationHandler(private val reactContext: ReactApplicationContext) {
                 }
             }
         }
+    }
+
+    private fun releaseCurrentPunctuation() {
+        onlinePunct?.release()
+        onlinePunct = null
+        offlinePunct?.release()
+        offlinePunct = null
     }
 }

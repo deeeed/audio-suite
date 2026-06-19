@@ -275,57 +275,55 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             
         case .ended:
             Logger.debug("AudioStreamManager", "Audio session interruption ended - autoResume: \(autoResumeAfterInterruption), wasSuspended: \(wasSuspended)")
-            if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {
-                let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-                Logger.debug("AudioStreamManager", "Interruption options - shouldResume: \(options.contains(.shouldResume))")
+            let options = InterruptionOptionsPolicy.options(from: userInfo)
+            Logger.debug("AudioStreamManager", "Interruption options - shouldResume: \(options.contains(.shouldResume))")
 
-                // Auto-resume only if this interruption paused the recording.
-                // If the user had already paused, preserve that intent.
-                // Keep currentPauseStart active until the actual resume so duration accounting
-                // excludes the full paused interval, including any post-interruption delay.
-                if AutoResumePolicy.shouldAutoResume(
-                    autoResumeAfterInterruption: autoResumeAfterInterruption,
-                    isRecording: isRecording,
-                    isPaused: isPaused,
-                    pausedBySystemInterruption: pausedBySystemInterruption
-                ) {
-                    // Add a longer delay for phone calls and ensure proper session setup
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-                        guard let self = self else { return }
-                        Logger.debug("AudioStreamManager", "Attempting to auto-resume recording after phone call")
-                        
-                        // Configure audio session
-                        do {
-                            let session = AVAudioSession.sharedInstance()
-                            let resumeOptions: AVAudioSession.CategoryOptions = self.recordingSettings?.ios?.audioSession?.categoryOptions ?? [.allowBluetooth, .mixWithOthers]
-                            try session.setCategory(.playAndRecord, mode: .default, options: resumeOptions)
-                            try session.setActive(true, options: .notifyOthersOnDeactivation)
-                            
-                            // Resume if we're still recording and paused
-                            if self.isRecording && self.isPaused {
-                                Logger.debug("AudioStreamManager", "Resuming recording after phone call interruption")
-                                self.audioEngine.prepare() 
-                                self.resumeRecording()
-                            } else {
-                                Logger.debug("AudioStreamManager", "Cannot resume - recording state invalid: isRecording=\(self.isRecording), isPaused=\(self.isPaused)")
-                            }
-                        } catch {
-                            Logger.debug("AudioStreamManager", "Failed to reactivate audio session: \(error)")
-                            self.delegate?.audioStreamManager(self, didFailWithError: "Failed to auto-resume: \(error.localizedDescription)")
+            // Auto-resume only if this interruption paused the recording.
+            // If the user had already paused, preserve that intent.
+            // Keep currentPauseStart active until the actual resume so duration accounting
+            // excludes the full paused interval, including any post-interruption delay.
+            if AutoResumePolicy.shouldAutoResume(
+                autoResumeAfterInterruption: autoResumeAfterInterruption,
+                isRecording: isRecording,
+                isPaused: isPaused,
+                pausedBySystemInterruption: pausedBySystemInterruption
+            ) {
+                // Add a longer delay for phone calls and ensure proper session setup
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                    guard let self = self else { return }
+                    Logger.debug("AudioStreamManager", "Attempting to auto-resume recording after phone call")
+
+                    // Configure audio session
+                    do {
+                        let session = AVAudioSession.sharedInstance()
+                        let resumeOptions: AVAudioSession.CategoryOptions = self.recordingSettings?.ios?.audioSession?.categoryOptions ?? [.allowBluetooth, .mixWithOthers]
+                        try session.setCategory(.playAndRecord, mode: .default, options: resumeOptions)
+                        try session.setActive(true, options: .notifyOthersOnDeactivation)
+
+                        // Resume if we're still recording and paused
+                        if self.isRecording && self.isPaused {
+                            Logger.debug("AudioStreamManager", "Resuming recording after phone call interruption")
+                            self.audioEngine.prepare()
+                            self.resumeRecording()
+                        } else {
+                            Logger.debug("AudioStreamManager", "Cannot resume - recording state invalid: isRecording=\(self.isRecording), isPaused=\(self.isPaused)")
                         }
+                    } catch {
+                        Logger.debug("AudioStreamManager", "Failed to reactivate audio session: \(error)")
+                        self.delegate?.audioStreamManager(self, didFailWithError: "Failed to auto-resume: \(error.localizedDescription)")
                     }
                 }
-                
-                // Always notify delegate of interruption end
-                delegate?.audioStreamManager(
-                    self,
-                    didReceiveInterruption: [
-                        "type": "ended",
-                        "wasSuspended": wasSuspended,
-                        "shouldResume": options.contains(.shouldResume)
-                    ]
-                )
             }
+
+            // Always notify delegate of interruption end
+            delegate?.audioStreamManager(
+                self,
+                didReceiveInterruption: [
+                    "type": "ended",
+                    "wasSuspended": wasSuspended,
+                    "shouldResume": options.contains(.shouldResume)
+                ]
+            )
         @unknown default:
             break
         }
@@ -942,20 +940,15 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         }
         
         // Validate hardware format before installing tap (#223)
-        if inputHardwareFormat.channelCount == 0 || inputHardwareFormat.sampleRate == 0 {
-            Logger.debug("AudioStreamManager", "Invalid hardware format: channels=\(inputHardwareFormat.channelCount), sampleRate=\(inputHardwareFormat.sampleRate). Using fallback.")
-            let fallbackSampleRate = Double(recordingSettings?.sampleRate ?? 16000)
-            let fallbackChannels = AVAudioChannelCount(recordingSettings?.numberOfChannels ?? 1)
-            guard let fallbackFormat = AVAudioFormat(standardFormatWithSampleRate: fallbackSampleRate, channels: fallbackChannels) else {
-                Logger.debug("AudioStreamManager", "Failed to create fallback format")
-                return inputHardwareFormat
-            }
-            inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: fallbackFormat, block: tapBlock)
-            Logger.debug("AudioStreamManager", "Tap installed with fallback format")
+        if !AudioTapInstallPolicy.shouldInstallTap(
+            channelCount: inputHardwareFormat.channelCount,
+            sampleRate: inputHardwareFormat.sampleRate
+        ) {
+            Logger.debug("AudioStreamManager", "Invalid hardware format: channels=\(inputHardwareFormat.channelCount), sampleRate=\(inputHardwareFormat.sampleRate). Skipping tap install to avoid format mismatch crash.")
             if prepareEngine {
                 audioEngine.prepare()
             }
-            return fallbackFormat
+            return inputHardwareFormat
         }
 
         // Install the tap with hardware format
@@ -2507,6 +2500,28 @@ internal struct AutoResumePolicy {
             isRecording &&
             isPaused &&
             pausedBySystemInterruption
+    }
+}
+
+internal struct InterruptionOptionsPolicy {
+    static func options(from userInfo: [AnyHashable: Any]) -> AVAudioSession.InterruptionOptions {
+        guard let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt else {
+            // Some background call-decline paths omit this key. Treat it as
+            // "no explicit shouldResume hint" instead of skipping ended
+            // handling entirely.
+            return []
+        }
+
+        return AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+    }
+}
+
+internal struct AudioTapInstallPolicy {
+    static func shouldInstallTap(
+        channelCount: AVAudioChannelCount,
+        sampleRate: Double
+    ) -> Bool {
+        channelCount > 0 && sampleRate > 0
     }
 }
 

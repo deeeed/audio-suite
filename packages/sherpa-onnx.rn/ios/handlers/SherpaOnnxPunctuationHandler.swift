@@ -2,7 +2,13 @@ import Foundation
 import CSherpaOnnx
 
 @objc public class SherpaOnnxPunctuationHandler: NSObject {
+    private enum Engine {
+        case online
+        case offline
+    }
+
     private var punctPtr: OpaquePointer?
+    private var engine: Engine = .online
 
     private static let TAG = "[SherpaOnnxPunctuation]"
 
@@ -23,8 +29,6 @@ import CSherpaOnnx
             return ["success": false, "error": "modelDir is required"]
         }
 
-        let cnnBilstm = config["cnnBilstm"] as? String ?? "model.onnx"
-        let bpeVocab = config["bpeVocab"] as? String ?? "bpe.vocab"
         let numThreads = config["numThreads"] as? Int ?? 1
         let debug = config["debug"] as? Bool ?? false
         let provider = config["provider"] as? String ?? "cpu"
@@ -42,6 +46,44 @@ import CSherpaOnnx
                 actualModelDir = (modelDir as NSString).appendingPathComponent(subdirs[0])
             }
         }
+
+        if let model = config["model"] as? String, !model.isEmpty {
+            let modelPath = (actualModelDir as NSString).appendingPathComponent(model)
+            if !fm.fileExists(atPath: modelPath) {
+                return ["success": false, "error": "model file not found: \(modelPath)"]
+            }
+
+            cleanupResources()
+
+            let modelC = strdup(modelPath)!
+            let providerC = strdup(provider)!
+
+            var modelConfig = SherpaOnnxOfflinePunctuationModelConfig(
+                ct_transformer: modelC,
+                num_threads: Int32(numThreads),
+                debug: debug ? 1 : 0,
+                provider: providerC
+            )
+
+            var punctConfig = SherpaOnnxOfflinePunctuationConfig(model: modelConfig)
+            let ptr = SherpaOnnxCreateOfflinePunctuation(&punctConfig)
+
+            free(modelC)
+            free(providerC)
+
+            guard ptr != nil else {
+                return ["success": false, "error": "Failed to create OfflinePunctuation instance"]
+            }
+
+            punctPtr = ptr
+            engine = .offline
+
+            NSLog("%@ Offline punctuation initialized successfully", SherpaOnnxPunctuationHandler.TAG)
+            return ["success": true]
+        }
+
+        let cnnBilstm = config["cnnBilstm"] as? String ?? "model.onnx"
+        let bpeVocab = config["bpeVocab"] as? String ?? "bpe.vocab"
 
         let cnnBilstmPath = (actualModelDir as NSString).appendingPathComponent(cnnBilstm)
         let bpeVocabPath = (actualModelDir as NSString).appendingPathComponent(bpeVocab)
@@ -82,8 +124,9 @@ import CSherpaOnnx
         }
 
         punctPtr = ptr
+        engine = .online
 
-        NSLog("%@ Punctuation initialized successfully", SherpaOnnxPunctuationHandler.TAG)
+        NSLog("%@ Online punctuation initialized successfully", SherpaOnnxPunctuationHandler.TAG)
         return ["success": true]
     }
 
@@ -96,14 +139,23 @@ import CSherpaOnnx
 
         let startTime = CFAbsoluteTimeGetCurrent()
 
-        let resultPtr = SherpaOnnxOnlinePunctuationAddPunct(punct, text)
-        let durationMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000.0
-
         var punctuated = ""
-        if let resultPtr = resultPtr {
-            punctuated = String(cString: resultPtr)
-            SherpaOnnxOnlinePunctuationFreeText(resultPtr)
+        switch engine {
+        case .online:
+            let resultPtr = SherpaOnnxOnlinePunctuationAddPunct(punct, text)
+            if let resultPtr = resultPtr {
+                punctuated = String(cString: resultPtr)
+                SherpaOnnxOnlinePunctuationFreeText(resultPtr)
+            }
+        case .offline:
+            let resultPtr = SherpaOfflinePunctuationAddPunct(punct, text)
+            if let resultPtr = resultPtr {
+                punctuated = String(cString: resultPtr)
+                SherpaOfflinePunctuationFreeText(resultPtr)
+            }
         }
+
+        let durationMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000.0
 
         NSLog("%@ Punctuated text: %@ in %.0fms", SherpaOnnxPunctuationHandler.TAG, punctuated, durationMs)
 
@@ -123,9 +175,15 @@ import CSherpaOnnx
 
     private func cleanupResources() {
         if let ptr = punctPtr {
-            SherpaOnnxDestroyOnlinePunctuation(ptr)
+            switch engine {
+            case .online:
+                SherpaOnnxDestroyOnlinePunctuation(ptr)
+            case .offline:
+                SherpaOnnxDestroyOfflinePunctuation(ptr)
+            }
             punctPtr = nil
         }
+        engine = .online
         NSLog("%@ Punctuation resources released", SherpaOnnxPunctuationHandler.TAG)
     }
 }

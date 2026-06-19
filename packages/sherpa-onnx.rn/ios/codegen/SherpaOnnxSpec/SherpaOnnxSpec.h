@@ -121,6 +121,7 @@ namespace JS {
       NSString *modelFilePreprocessor() const;
       NSString *modelFileUncachedDecoder() const;
       NSString *modelFileCachedDecoder() const;
+      NSString *modelFileMergedDecoder() const;
       NSString *modelFileConvFrontend() const;
       NSString *modelFileTokenizer() const;
 
@@ -279,6 +280,7 @@ namespace JS {
     struct SpecInitPunctuationConfig {
       NSString *modelDir() const;
       NSString *cnnBilstm() const;
+      NSString *model() const;
       NSString *bpeVocab() const;
       std::optional<double> numThreads() const;
       std::optional<bool> debug() const;
@@ -820,6 +822,11 @@ inline NSString *JS::NativeSherpaOnnxSpec::SpecInitAsrConfig::modelFileCachedDec
   id const p = _v[@"modelFileCachedDecoder"];
   return RCTBridgingToOptionalString(p);
 }
+inline NSString *JS::NativeSherpaOnnxSpec::SpecInitAsrConfig::modelFileMergedDecoder() const
+{
+  id const p = _v[@"modelFileMergedDecoder"];
+  return RCTBridgingToOptionalString(p);
+}
 inline NSString *JS::NativeSherpaOnnxSpec::SpecInitAsrConfig::modelFileConvFrontend() const
 {
   id const p = _v[@"modelFileConvFrontend"];
@@ -1118,6 +1125,11 @@ inline NSString *JS::NativeSherpaOnnxSpec::SpecInitPunctuationConfig::modelDir()
 inline NSString *JS::NativeSherpaOnnxSpec::SpecInitPunctuationConfig::cnnBilstm() const
 {
   id const p = _v[@"cnnBilstm"];
+  return RCTBridgingToOptionalString(p);
+}
+inline NSString *JS::NativeSherpaOnnxSpec::SpecInitPunctuationConfig::model() const
+{
+  id const p = _v[@"model"];
   return RCTBridgingToOptionalString(p);
 }
 inline NSString *JS::NativeSherpaOnnxSpec::SpecInitPunctuationConfig::bpeVocab() const
