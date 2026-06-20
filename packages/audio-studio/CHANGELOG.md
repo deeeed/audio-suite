@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.1] - 2026-06-20
+
+Stable release of the 3.2.1 beta fixes plus recent release-blocker validation.
+
+### Fixed
+
+- iOS interruption-ended handling now resumes eligible system-paused recordings even when iOS omits interruption options.
+- iOS recording preparation/start now fails when hardware exposes an invalid input format instead of installing a synthetic fallback tap that can silently record no buffers.
+- Android Expo plugin foreground-only configuration removes recording service and receiver manifest entries when `enableBackgroundAudio` is disabled.
+- Max-duration auto-stop uses the normal hook finalization path so `onRecordingStopped(recording, reason)` receives the final recording with retained analysis data.
+
 ## [3.2.1-beta.3] - 2026-05-31
 
 ### Fixed
@@ -754,7 +765,8 @@ Beta release for client validation of the progressive decode API.
 - Audio features extraction during recording
 - Consistent WAV PCM recording format across all platforms
 
-[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.2.1-beta.3...HEAD
+[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.2.1...HEAD
+[3.2.1]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.2.0...@siteed/audio-studio@3.2.1
 [3.2.1-beta.3]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.2.1-beta.2...@siteed/audio-studio@3.2.1-beta.3
 [3.2.1-beta.2]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.2.0...@siteed/audio-studio@3.2.1-beta.2
 [3.2.0]: https://github.com/deeeed/audiolab/compare/@siteed/audio-studio@3.1.1...@siteed/audio-studio@3.2.0

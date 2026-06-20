@@ -7952,19 +7952,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@siteed/audio-studio@npm:3.2.0":
-  version: 3.2.0
-  resolution: "@siteed/audio-studio@npm:3.2.0"
-  peerDependencies:
-    "@expo/config-plugins": ">=7.0.0"
-    expo: ">=52.0.0"
-    react: "*"
-    react-native: "*"
-  checksum: 10/13512b217a4212451a0a091671624d4cc7e677cf3e432122d2b27bca72fcb32763141b5255b26b60a224be70322d4479b9ac97430b844a9b22f4d215bce38c2b
-  languageName: node
-  linkType: hard
-
-"@siteed/audio-studio@workspace:^, @siteed/audio-studio@workspace:packages/audio-studio":
+"@siteed/audio-studio@npm:3.2.1, @siteed/audio-studio@workspace:^, @siteed/audio-studio@workspace:packages/audio-studio":
   version: 0.0.0-use.local
   resolution: "@siteed/audio-studio@workspace:packages/audio-studio"
   dependencies:
@@ -8119,7 +8107,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@siteed/expo-audio-stream@workspace:packages/expo-audio-stream"
   dependencies:
-    "@siteed/audio-studio": "npm:3.2.0"
+    "@siteed/audio-studio": "npm:3.2.1"
     typescript: "npm:~6.0.3"
   peerDependencies:
     expo: "*"
@@ -8153,7 +8141,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@siteed/expo-audio-studio@workspace:packages/expo-audio-studio"
   dependencies:
-    "@siteed/audio-studio": "npm:3.2.0"
+    "@siteed/audio-studio": "npm:3.2.1"
   languageName: unknown
   linkType: soft
 

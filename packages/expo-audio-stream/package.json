@@ -1,6 +1,6 @@
 {
     "name": "@siteed/expo-audio-stream",
-    "version": "2.2.0",
+    "version": "2.2.1",
     "description": "DEPRECATED: Use @siteed/audio-studio instead. This package now serves as a compatibility wrapper.",
     "license": "MIT",
     "main": "build/index.js",
@@ -42,7 +42,7 @@
         "registry": "https://registry.npmjs.org"
     },
     "dependencies": {
-        "@siteed/audio-studio": "3.2.0"
+        "@siteed/audio-studio": "3.2.1"
     },
     "devDependencies": {
         "typescript": "~6.0.3"

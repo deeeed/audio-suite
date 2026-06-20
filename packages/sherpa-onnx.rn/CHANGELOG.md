@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-06-20
+
+### Added
+
+- Offline CT-Transformer punctuation support across the TypeScript API, Android, and iOS native paths while preserving the existing online CNN-BiLSTM behavior.
+
+### Fixed
+
+- Android offline speech denoiser JNI configuration now includes the `dpdfnet` native field expected by the upstream struct.
+- Moonshine v2 web/native configuration now wires `decoder_model_merged.ort` through `mergedDecoder` for merged-decoder models.
+- Web punctuation now warns clearly when callers request an offline punctuation model because the web runtime remains online-CNN-BiLSTM-only.
+
 ## [1.3.0] - 2026-05-18
 
 ### Added
@@ -155,7 +167,8 @@ First stable release — production-proven via the [Sherpa Voice](https://deeeed
 ## [0.1.0] - 2025-03-04
 - Initial development release
 
-[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/sherpa-onnx.rn@1.3.0...HEAD
+[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/sherpa-onnx.rn@1.3.1...HEAD
+[1.3.1]: https://github.com/deeeed/audiolab/compare/@siteed/sherpa-onnx.rn@1.3.0...@siteed/sherpa-onnx.rn@1.3.1
 [1.3.0]: https://github.com/deeeed/audiolab/compare/@siteed/sherpa-onnx.rn@1.2.0...@siteed/sherpa-onnx.rn@1.3.0
 [1.2.0]: https://github.com/deeeed/audiolab/compare/@siteed/sherpa-onnx.rn@1.1.2...@siteed/sherpa-onnx.rn@1.2.0
 [1.1.2]: https://github.com/deeeed/audiolab/compare/@siteed/sherpa-onnx.rn@1.1.1...@siteed/sherpa-onnx.rn@1.1.2
