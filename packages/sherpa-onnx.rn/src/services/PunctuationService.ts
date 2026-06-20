@@ -32,6 +32,7 @@ export class PunctuationService {
       const nativeConfig: Record<string, unknown> = {
         modelDir: cleanFilePath(config.modelDir),
         cnnBilstm: config.cnnBilstm,
+        ...(config.model ? { model: config.model } : {}),
         bpeVocab: config.bpeVocab,
         numThreads: config.numThreads ?? 1,
         debug: config.debug ?? false,

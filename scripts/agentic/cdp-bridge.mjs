@@ -310,18 +310,18 @@ function getInspectorOrigin(wsUrl) {
     if (!parsed.pathname.startsWith('/inspector/')) return undefined;
 
     const metroPort = parsed.port || loadPort();
-    const configuredAppRoot = fs.existsSync(AGENTIC_CONF_FILE);
-    const localMetroHost = readTextFile(path.join(AGENT_DIR, 'metro.host'));
-    const discoveredAppMetroHost = findAppMetroHost();
-    const metroHost = configuredAppRoot
-      ? localMetroHost || discoveredAppMetroHost
-      : discoveredAppMetroHost || localMetroHost;
-    if (metroHost) {
-      const httpProtocol = parsed.protocol === 'wss:' ? 'https:' : 'http:';
-      return `${httpProtocol}//${metroHost}:${metroPort}`;
+    const httpProtocol = parsed.protocol === 'wss:' ? 'https:' : 'http:';
+
+    // Native targets are discovered through this local Metro process
+    // (`http://localhost:<port>/json/list`) and Expo validates the WebSocket
+    // Origin against that local host.  Using the LAN packager host recorded for
+    // physical-device launch causes Expo 56 to reject the inspector connection
+    // even though the app is already running.
+    if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+      return `${httpProtocol}//127.0.0.1:${metroPort}`;
     }
 
-    parsed.protocol = parsed.protocol === 'wss:' ? 'https:' : 'http:';
+    parsed.protocol = httpProtocol;
     parsed.pathname = '';
     parsed.search = '';
     parsed.hash = '';

@@ -20,6 +20,12 @@ export function PunctuationMixin<TBase extends Constructor>(Base: TBase) {
         const debug = config?.debug ? 1 : 0;
         const numThreads = 1; // WASM is single-threaded
 
+        if (config?.model) {
+          console.warn(
+            '[Punctuation] Offline CT-Transformer punctuation is not supported on web; using online CNN-BiLSTM instead.'
+          );
+        }
+
         console.log(
           `[Punctuation] Loading model (threads=${numThreads}, debug=${debug})...`
         );

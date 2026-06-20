@@ -512,6 +512,8 @@ export interface AsrModelConfig {
     preprocessor?: string;
     uncachedDecoder?: string;
     cachedDecoder?: string;
+    /** Moonshine v2 merged decoder. When set, omit v1 preprocessor/decoder files. */
+    mergedDecoder?: string;
     /** Qwen3-ASR: filename of conv frontend onnx (default `conv_frontend.onnx`). */
     convFrontend?: string;
     /** Qwen3-ASR: directory name (relative to `modelDir`) holding the tokenizer files. */
@@ -1647,6 +1649,12 @@ export interface LanguageIdResult {
 export interface PunctuationModelConfig {
   modelDir: string;
   cnnBilstm?: string;
+  /**
+   * Offline CT-Transformer model filename, for example `model.onnx` or
+   * `model.int8.onnx`. When set, native platforms use the offline
+   * punctuation engine and ignore `cnnBilstm` / `bpeVocab`.
+   */
+  model?: string;
   bpeVocab?: string;
   numThreads?: number;
   debug?: boolean;

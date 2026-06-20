@@ -345,6 +345,7 @@ RCT_EXPORT_METHOD(initAsr:(JS::NativeSherpaOnnxSpec::SpecInitAsrConfig &)config
     NSString *modelFilePreprocessor = config.modelFilePreprocessor();
     NSString *modelFileUncachedDecoder = config.modelFileUncachedDecoder();
     NSString *modelFileCachedDecoder = config.modelFileCachedDecoder();
+    NSString *modelFileMergedDecoder = config.modelFileMergedDecoder();
     NSString *modelFileConvFrontend = config.modelFileConvFrontend();
     NSString *modelFileTokenizer = config.modelFileTokenizer();
 
@@ -384,6 +385,7 @@ RCT_EXPORT_METHOD(initAsr:(JS::NativeSherpaOnnxSpec::SpecInitAsrConfig &)config
     if (modelFilePreprocessor) [modelFiles setObject:modelFilePreprocessor forKey:@"preprocessor"];
     if (modelFileUncachedDecoder) [modelFiles setObject:modelFileUncachedDecoder forKey:@"uncachedDecoder"];
     if (modelFileCachedDecoder) [modelFiles setObject:modelFileCachedDecoder forKey:@"cachedDecoder"];
+    if (modelFileMergedDecoder) [modelFiles setObject:modelFileMergedDecoder forKey:@"mergedDecoder"];
     if (modelFileConvFrontend) [modelFiles setObject:modelFileConvFrontend forKey:@"convFrontend"];
     if (modelFileTokenizer) [modelFiles setObject:modelFileTokenizer forKey:@"tokenizer"];
     if (modelFiles.count > 0) [configDict setObject:modelFiles forKey:@"modelFiles"];
@@ -1292,6 +1294,7 @@ RCT_EXPORT_METHOD(initPunctuation:(JS::NativeSherpaOnnxSpec::SpecInitPunctuation
     NSMutableDictionary *configDict = [NSMutableDictionary dictionary];
     if (config.modelDir()) configDict[@"modelDir"] = config.modelDir();
     if (config.cnnBilstm()) configDict[@"cnnBilstm"] = config.cnnBilstm();
+    if (config.model()) configDict[@"model"] = config.model();
     if (config.bpeVocab()) configDict[@"bpeVocab"] = config.bpeVocab();
     if (config.numThreads()) configDict[@"numThreads"] = @((int)*config.numThreads());
     if (config.debug()) configDict[@"debug"] = @(*config.debug());

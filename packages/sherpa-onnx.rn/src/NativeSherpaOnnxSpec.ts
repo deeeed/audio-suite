@@ -170,6 +170,7 @@ export interface Spec extends TurboModule {
     modelFilePreprocessor?: string;
     modelFileUncachedDecoder?: string;
     modelFileCachedDecoder?: string;
+    modelFileMergedDecoder?: string;
     modelFileConvFrontend?: string;
     modelFileTokenizer?: string;
   }): Promise<{
@@ -528,6 +529,7 @@ export interface Spec extends TurboModule {
   initPunctuation(config: {
     modelDir: string;
     cnnBilstm?: string;
+    model?: string;
     bpeVocab?: string;
     numThreads?: number;
     debug?: boolean;

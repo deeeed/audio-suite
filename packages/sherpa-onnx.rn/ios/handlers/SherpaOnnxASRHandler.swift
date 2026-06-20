@@ -261,16 +261,24 @@ import AVFoundation
             )
 
         case "moonshine":
-            let preprocessorFile = modelFiles["preprocessor"] ?? "preprocess.onnx"
             let encoderFile = modelFiles["encoder"] ?? "encode.onnx"
-            let uncachedDecoderFile = modelFiles["uncachedDecoder"] ?? "uncached_decode.onnx"
-            let cachedDecoderFile = modelFiles["cachedDecoder"] ?? "cached_decode.onnx"
-            moonshineConfig = sherpaOnnxOfflineMoonshineModelConfig(
-                preprocessor: (modelDir as NSString).appendingPathComponent(preprocessorFile),
-                encoder: (modelDir as NSString).appendingPathComponent(encoderFile),
-                uncachedDecoder: (modelDir as NSString).appendingPathComponent(uncachedDecoderFile),
-                cachedDecoder: (modelDir as NSString).appendingPathComponent(cachedDecoderFile)
-            )
+            let encoderPath = (modelDir as NSString).appendingPathComponent(encoderFile)
+            if let mergedDecoderFile = modelFiles["mergedDecoder"] {
+                moonshineConfig = sherpaOnnxOfflineMoonshineModelConfig(
+                    encoder: encoderPath,
+                    mergedDecoder: (modelDir as NSString).appendingPathComponent(mergedDecoderFile)
+                )
+            } else {
+                let preprocessorFile = modelFiles["preprocessor"] ?? "preprocess.onnx"
+                let uncachedDecoderFile = modelFiles["uncachedDecoder"] ?? "uncached_decode.onnx"
+                let cachedDecoderFile = modelFiles["cachedDecoder"] ?? "cached_decode.onnx"
+                moonshineConfig = sherpaOnnxOfflineMoonshineModelConfig(
+                    preprocessor: (modelDir as NSString).appendingPathComponent(preprocessorFile),
+                    encoder: encoderPath,
+                    uncachedDecoder: (modelDir as NSString).appendingPathComponent(uncachedDecoderFile),
+                    cachedDecoder: (modelDir as NSString).appendingPathComponent(cachedDecoderFile)
+                )
+            }
 
         case "sense_voice":
             let modelFile = modelFiles["model"] ?? "model.onnx"

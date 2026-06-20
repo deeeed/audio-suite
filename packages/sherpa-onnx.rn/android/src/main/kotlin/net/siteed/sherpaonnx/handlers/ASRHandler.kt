@@ -142,6 +142,7 @@ class ASRHandler(private val reactContext: ReactApplicationContext) {
                     "modelFilePreprocessor" to "preprocessor",
                     "modelFileUncachedDecoder" to "uncachedDecoder",
                     "modelFileCachedDecoder" to "cachedDecoder",
+                    "modelFileMergedDecoder" to "mergedDecoder",
                     "modelFileConvFrontend" to "convFrontend",
                     "modelFileTokenizer" to "tokenizer"
                 )
@@ -491,26 +492,31 @@ class ASRHandler(private val reactContext: ReactApplicationContext) {
             }
             "moonshine" -> {
                 Log.i(TAG, "Setting up Moonshine model")
-                val preprocessorFile = modelFiles["preprocessor"] ?: "preprocess.onnx"
                 val encoderFile = modelFiles["encoder"] ?: "encode.onnx"
-                val uncachedDecoderFile = modelFiles["uncachedDecoder"] ?: "uncached_decode.onnx"
-                val cachedDecoderFile = modelFiles["cachedDecoder"] ?: "cached_decode.onnx"
-                
-                val preprocessorPath = File(modelDir, preprocessorFile).absolutePath
                 val encoderPath = File(modelDir, encoderFile).absolutePath
-                val uncachedDecoderPath = File(modelDir, uncachedDecoderFile).absolutePath
-                val cachedDecoderPath = File(modelDir, cachedDecoderFile).absolutePath
-                
-                Log.i(TAG, "Using preprocessor: $preprocessorPath")
                 Log.i(TAG, "Using encoder: $encoderPath")
-                Log.i(TAG, "Using uncachedDecoder: $uncachedDecoderPath")
-                Log.i(TAG, "Using cachedDecoder: $cachedDecoderPath")
-                
                 val moonshineConfig = OfflineMoonshineModelConfig()
-                moonshineConfig.preprocessor = preprocessorPath
                 moonshineConfig.encoder = encoderPath
-                moonshineConfig.uncachedDecoder = uncachedDecoderPath
-                moonshineConfig.cachedDecoder = cachedDecoderPath
+
+                val mergedDecoderFile = modelFiles["mergedDecoder"]
+                if (mergedDecoderFile != null) {
+                    val mergedDecoderPath = File(modelDir, mergedDecoderFile).absolutePath
+                    Log.i(TAG, "Using mergedDecoder: $mergedDecoderPath")
+                    moonshineConfig.mergedDecoder = mergedDecoderPath
+                } else {
+                    val preprocessorFile = modelFiles["preprocessor"] ?: "preprocess.onnx"
+                    val uncachedDecoderFile = modelFiles["uncachedDecoder"] ?: "uncached_decode.onnx"
+                    val cachedDecoderFile = modelFiles["cachedDecoder"] ?: "cached_decode.onnx"
+                    val preprocessorPath = File(modelDir, preprocessorFile).absolutePath
+                    val uncachedDecoderPath = File(modelDir, uncachedDecoderFile).absolutePath
+                    val cachedDecoderPath = File(modelDir, cachedDecoderFile).absolutePath
+                    Log.i(TAG, "Using preprocessor: $preprocessorPath")
+                    Log.i(TAG, "Using uncachedDecoder: $uncachedDecoderPath")
+                    Log.i(TAG, "Using cachedDecoder: $cachedDecoderPath")
+                    moonshineConfig.preprocessor = preprocessorPath
+                    moonshineConfig.uncachedDecoder = uncachedDecoderPath
+                    moonshineConfig.cachedDecoder = cachedDecoderPath
+                }
                 
                 modelConfig.moonshine = moonshineConfig
             }
@@ -638,10 +644,14 @@ class ASRHandler(private val reactContext: ReactApplicationContext) {
                 files.add(modelConfig.nemo.model)
             }
             "moonshine" -> {
-                files.add(modelConfig.moonshine.preprocessor)
                 files.add(modelConfig.moonshine.encoder)
-                files.add(modelConfig.moonshine.uncachedDecoder)
-                files.add(modelConfig.moonshine.cachedDecoder)
+                if (modelConfig.moonshine.mergedDecoder.isNotBlank()) {
+                    files.add(modelConfig.moonshine.mergedDecoder)
+                } else {
+                    files.add(modelConfig.moonshine.preprocessor)
+                    files.add(modelConfig.moonshine.uncachedDecoder)
+                    files.add(modelConfig.moonshine.cachedDecoder)
+                }
             }
             "sense_voice" -> {
                 files.add(modelConfig.senseVoice.model)

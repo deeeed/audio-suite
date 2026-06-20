@@ -98,7 +98,7 @@ interface OfflineAsrFile { url: string; fsPath: string; optional?: boolean }
  * model-type-specific logic stays in TypeScript on the main thread.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function buildOfflineAsrPlan(
+export function buildOfflineAsrPlan(
   fetchBase: string,
   modelDir: string,
   rawType: string,
@@ -151,7 +151,22 @@ function buildOfflineAsrPlan(
       };
       break;
     case 'moonshine':
-      mc.moonshine = { preprocessor: f('preprocessor', 'preprocessor.onnx'), encoder: f('encoder', 'encoder.onnx'), uncachedDecoder: f('uncachedDecoder', 'uncached_decoder.onnx'), cachedDecoder: f('cachedDecoder', 'cached_decoder.onnx') };
+      if (mf?.mergedDecoder) {
+        mc.moonshine = {
+          preprocessor: '',
+          encoder: f('encoder', 'encoder.onnx'),
+          uncachedDecoder: '',
+          cachedDecoder: '',
+          mergedDecoder: f('mergedDecoder', mf.mergedDecoder),
+        };
+      } else {
+        mc.moonshine = {
+          preprocessor: f('preprocessor', 'preprocessor.onnx'),
+          encoder: f('encoder', 'encoder.onnx'),
+          uncachedDecoder: f('uncachedDecoder', 'uncached_decoder.onnx'),
+          cachedDecoder: f('cachedDecoder', 'cached_decoder.onnx'),
+        };
+      }
       break;
     case 'sense_voice':
       mc.senseVoice = {

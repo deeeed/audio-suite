@@ -156,6 +156,7 @@ const nativeAdapter: ApiInterface = {
       nativeConfig.modelFilePreprocessor = config.modelFiles.preprocessor;
       nativeConfig.modelFileUncachedDecoder = config.modelFiles.uncachedDecoder;
       nativeConfig.modelFileCachedDecoder = config.modelFiles.cachedDecoder;
+      nativeConfig.modelFileMergedDecoder = config.modelFiles.mergedDecoder;
       nativeConfig.modelFileConvFrontend = config.modelFiles.convFrontend;
       nativeConfig.modelFileTokenizer = config.modelFiles.tokenizer;
     }
