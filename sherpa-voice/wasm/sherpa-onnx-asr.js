@@ -1,959 +1,2101 @@
 /**
  * sherpa-onnx-asr.js
- * 
- * Automatic Speech Recognition functionality for SherpaOnnx
- * Requires sherpa-onnx-core.js to be loaded first
+ *
+ * ASR functionality for SherpaOnnx combined WASM build.
+ * Core struct-building code comes from the official sherpa-onnx project
+ * (third_party/sherpa-onnx/wasm/asr/sherpa-onnx-asr.js).
+ *
+ * The SherpaOnnx.ASR namespace shim at the bottom bridges the official API
+ * to the combined orchestrator pattern used by this project.
  */
 
+// === BEGIN official sherpa-onnx ASR code ===
+
+function freeConfig(config, Module) {
+  if ('buffer' in config) {
+    Module._free(config.buffer);
+  }
+
+  if ('config' in config) {
+    freeConfig(config.config, Module)
+  }
+
+  if ('transducer' in config) {
+    freeConfig(config.transducer, Module)
+  }
+
+  if ('paraformer' in config) {
+    freeConfig(config.paraformer, Module)
+  }
+
+  if ('zipformer2Ctc' in config) {
+    freeConfig(config.zipformer2Ctc, Module)
+  }
+
+  if ('feat' in config) {
+    freeConfig(config.feat, Module)
+  }
+
+  if ('model' in config) {
+    freeConfig(config.model, Module)
+  }
+
+  if ('nemoCtc' in config) {
+    freeConfig(config.nemoCtc, Module)
+  }
+
+  if ('toneCtc' in config) {
+    freeConfig(config.toneCtc, Module)
+  }
+
+  if ('whisper' in config) {
+    freeConfig(config.whisper, Module)
+  }
+
+  if ('fireRedAsr' in config) {
+    freeConfig(config.fireRedAsr, Module)
+  }
+
+  if ('dolphin' in config) {
+    freeConfig(config.dolphin, Module)
+  }
+
+  if ('zipformerCtc' in config) {
+    freeConfig(config.zipformerCtc, Module)
+  }
+
+  if ('wenetCtc' in config) {
+    freeConfig(config.wenetCtc, Module)
+  }
+
+  if ('omnilingual' in config) {
+    freeConfig(config.omnilingual, Module)
+  }
+
+  if ('medasr' in config) {
+    freeConfig(config.medasr, Module)
+  }
+
+  if ('fireRedAsrCtc' in config) {
+    freeConfig(config.fireRedAsrCtc, Module)
+  }
+
+  if ('funasrNano' in config) {
+    freeConfig(config.funasrNano, Module)
+  }
+
+  if ('qwen3Asr' in config) {
+    freeConfig(config.qwen3Asr, Module)
+  }
+
+  if ('cohereTranscribe' in config) {
+    freeConfig(config.cohereTranscribe, Module)
+  }
+
+  if ('moonshine' in config) {
+    freeConfig(config.moonshine, Module)
+  }
+
+  if ('tdnn' in config) {
+    freeConfig(config.tdnn, Module)
+  }
+
+  if ('senseVoice' in config) {
+    freeConfig(config.senseVoice, Module)
+  }
+
+  if ('canary' in config) {
+    freeConfig(config.canary, Module)
+  }
+
+  if ('lm' in config) {
+    freeConfig(config.lm, Module)
+  }
+
+  if ('ctcFstDecoder' in config) {
+    freeConfig(config.ctcFstDecoder, Module)
+  }
+
+  if ('hr' in config) {
+    freeConfig(config.hr, Module)
+  }
+
+  Module._free(config.ptr);
+}
+
+// The user should free the returned pointers
+function initSherpaOnnxOnlineTransducerModelConfig(config, Module) {
+  const encoderLen = Module.lengthBytesUTF8(config.encoder || '') + 1;
+  const decoderLen = Module.lengthBytesUTF8(config.decoder || '') + 1;
+  const joinerLen = Module.lengthBytesUTF8(config.joiner || '') + 1;
+
+  const n = encoderLen + decoderLen + joinerLen;
+
+  const buffer = Module._malloc(n);
+
+  const len = 3 * 4;  // 3 pointers
+  const ptr = Module._malloc(len);
+
+  let offset = 0;
+  Module.stringToUTF8(config.encoder || '', buffer + offset, encoderLen);
+  offset += encoderLen;
+
+  Module.stringToUTF8(config.decoder || '', buffer + offset, decoderLen);
+  offset += decoderLen;
+
+  Module.stringToUTF8(config.joiner || '', buffer + offset, joinerLen);
+
+  offset = 0;
+  Module.setValue(ptr, buffer + offset, 'i8*');
+  offset += encoderLen;
+
+  Module.setValue(ptr + 4, buffer + offset, 'i8*');
+  offset += decoderLen;
+
+  Module.setValue(ptr + 8, buffer + offset, 'i8*');
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+  };
+}
+
+function initSherpaOnnxOnlineParaformerModelConfig(config, Module) {
+  const encoderLen = Module.lengthBytesUTF8(config.encoder || '') + 1;
+  const decoderLen = Module.lengthBytesUTF8(config.decoder || '') + 1;
+
+  const n = encoderLen + decoderLen;
+  const buffer = Module._malloc(n);
+
+  const len = 2 * 4;  // 2 pointers
+  const ptr = Module._malloc(len);
+
+  let offset = 0;
+  Module.stringToUTF8(config.encoder || '', buffer + offset, encoderLen);
+  offset += encoderLen;
+
+  Module.stringToUTF8(config.decoder || '', buffer + offset, decoderLen);
+
+  offset = 0;
+  Module.setValue(ptr, buffer + offset, 'i8*');
+  offset += encoderLen;
+
+  Module.setValue(ptr + 4, buffer + offset, 'i8*');
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+  };
+}
+
+function initSherpaOnnxOnlineZipformer2CtcModelConfig(config, Module) {
+  const n = Module.lengthBytesUTF8(config.model || '') + 1;
+  const buffer = Module._malloc(n);
+
+  const len = 1 * 4;  // 1 pointer
+  const ptr = Module._malloc(len);
+
+  Module.stringToUTF8(config.model || '', buffer, n);
+
+  Module.setValue(ptr, buffer, 'i8*');
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+  };
+}
+
+function initSherpaOnnxOnlineNemoCtcModelConfig(config, Module) {
+  const n = Module.lengthBytesUTF8(config.model || '') + 1;
+  const buffer = Module._malloc(n);
+
+  const len = 1 * 4;  // 1 pointer
+  const ptr = Module._malloc(len);
+
+  Module.stringToUTF8(config.model || '', buffer, n);
+
+  Module.setValue(ptr, buffer, 'i8*');
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+  };
+}
+
+function initSherpaOnnxOnlineToneCtcModelConfig(config, Module) {
+  const n = Module.lengthBytesUTF8(config.model || '') + 1;
+  const buffer = Module._malloc(n);
+
+  const len = 1 * 4;  // 1 pointer
+  const ptr = Module._malloc(len);
+
+  Module.stringToUTF8(config.model || '', buffer, n);
+
+  Module.setValue(ptr, buffer, 'i8*');
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+  };
+}
+
+function initSherpaOnnxOnlineModelConfig(config, Module) {
+  if (!('transducer' in config)) {
+    config.transducer = {
+      encoder: '',
+      decoder: '',
+      joiner: '',
+    };
+  }
+
+  if (!('paraformer' in config)) {
+    config.paraformer = {
+      encoder: '',
+      decoder: '',
+    };
+  }
+
+  if (!('zipformer2Ctc' in config)) {
+    config.zipformer2Ctc = {
+      model: '',
+    };
+  }
+
+  if (!('nemoCtc' in config)) {
+    config.nemoCtc = {
+      model: '',
+    };
+  }
+
+  if (!('toneCtc' in config)) {
+    config.toneCtc = {
+      model: '',
+    };
+  }
+
+  if (!('tokensBuf' in config)) {
+    config.tokensBuf = '';
+  }
+
+  if (!('tokensBufSize' in config)) {
+    config.tokensBufSize = 0;
+  }
+
+  const transducer =
+      initSherpaOnnxOnlineTransducerModelConfig(config.transducer, Module);
+
+  const paraformer =
+      initSherpaOnnxOnlineParaformerModelConfig(config.paraformer, Module);
+
+  const zipformer2Ctc = initSherpaOnnxOnlineZipformer2CtcModelConfig(
+      config.zipformer2Ctc, Module);
+
+  const nemoCtc =
+      initSherpaOnnxOnlineNemoCtcModelConfig(config.nemoCtc, Module);
+
+  const toneCtc =
+      initSherpaOnnxOnlineToneCtcModelConfig(config.toneCtc, Module);
+
+  const len = transducer.len + paraformer.len + zipformer2Ctc.len + 9 * 4 +
+      nemoCtc.len + toneCtc.len;
+
+  const ptr = Module._malloc(len);
+
+  let offset = 0;
+  Module._CopyHeap(transducer.ptr, transducer.len, ptr + offset);
+  offset += transducer.len;
+
+  Module._CopyHeap(paraformer.ptr, paraformer.len, ptr + offset);
+  offset += paraformer.len;
+
+  Module._CopyHeap(zipformer2Ctc.ptr, zipformer2Ctc.len, ptr + offset);
+  offset += zipformer2Ctc.len;
+
+  const tokensLen = Module.lengthBytesUTF8(config.tokens || '') + 1;
+  const providerLen = Module.lengthBytesUTF8(config.provider || 'cpu') + 1;
+  const modelTypeLen = Module.lengthBytesUTF8(config.modelType || '') + 1;
+  const modelingUnitLen = Module.lengthBytesUTF8(config.modelingUnit || '') + 1;
+  const bpeVocabLen = Module.lengthBytesUTF8(config.bpeVocab || '') + 1;
+  const tokensBufLen = Module.lengthBytesUTF8(config.tokensBuf || '') + 1;
+
+  const bufferLen = tokensLen + providerLen + modelTypeLen + modelingUnitLen +
+      bpeVocabLen + tokensBufLen;
+  const buffer = Module._malloc(bufferLen);
+
+  offset = 0;
+  Module.stringToUTF8(config.tokens || '', buffer, tokensLen);
+  offset += tokensLen;
+
+  Module.stringToUTF8(config.provider || 'cpu', buffer + offset, providerLen);
+  offset += providerLen;
+
+  Module.stringToUTF8(config.modelType || '', buffer + offset, modelTypeLen);
+  offset += modelTypeLen;
+
+  Module.stringToUTF8(
+      config.modelingUnit || '', buffer + offset, modelingUnitLen);
+  offset += modelingUnitLen;
+
+  Module.stringToUTF8(config.bpeVocab || '', buffer + offset, bpeVocabLen);
+  offset += bpeVocabLen;
+
+  Module.stringToUTF8(config.tokensBuf || '', buffer + offset, tokensBufLen);
+  offset += tokensBufLen;
+
+  offset = transducer.len + paraformer.len + zipformer2Ctc.len;
+  Module.setValue(ptr + offset, buffer, 'i8*');  // tokens
+  offset += 4;
+
+  Module.setValue(ptr + offset, config.numThreads || 1, 'i32');
+  offset += 4;
+
+  Module.setValue(ptr + offset, buffer + tokensLen, 'i8*');  // provider
+  offset += 4;
+
+  Module.setValue(ptr + offset, config.debug ?? 1, 'i32');
+  offset += 4;
+
+  Module.setValue(
+      ptr + offset, buffer + tokensLen + providerLen, 'i8*');  // modelType
+  offset += 4;
+
+  Module.setValue(
+      ptr + offset, buffer + tokensLen + providerLen + modelTypeLen,
+      'i8*');  // modelingUnit
+  offset += 4;
+
+  Module.setValue(
+      ptr + offset,
+      buffer + tokensLen + providerLen + modelTypeLen + modelingUnitLen,
+      'i8*');  // bpeVocab
+  offset += 4;
+
+  Module.setValue(
+      ptr + offset,
+      buffer + tokensLen + providerLen + modelTypeLen + modelingUnitLen +
+          bpeVocabLen,
+      'i8*');  // tokens_buf
+  offset += 4;
+
+  Module.setValue(ptr + offset, config.tokensBufSize || 0, 'i32');
+  offset += 4;
+
+  Module._CopyHeap(nemoCtc.ptr, nemoCtc.len, ptr + offset);
+  offset += nemoCtc.len;
+
+  Module._CopyHeap(toneCtc.ptr, toneCtc.len, ptr + offset);
+  offset += toneCtc.len;
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+    transducer: transducer,
+    paraformer: paraformer,
+    zipformer2Ctc: zipformer2Ctc,
+    nemoCtc: nemoCtc,
+    toneCtc: toneCtc,
+  };
+}
+
+function initSherpaOnnxFeatureConfig(config, Module) {
+  const len = 2 * 4;  // 2 pointers
+  const ptr = Module._malloc(len);
+
+  Module.setValue(ptr, config.sampleRate || 16000, 'i32');
+  Module.setValue(ptr + 4, config.featureDim || 80, 'i32');
+  return {ptr: ptr, len: len};
+}
+
+function initSherpaOnnxHomophoneReplacerConfig(config, Module) {
+  const len = 3 * 4;
+  const ptr = Module._malloc(len);
+
+  const dictDir = '';
+
+  const dictDirLen = Module.lengthBytesUTF8(dictDir) + 1;
+  const lexiconLen = Module.lengthBytesUTF8(config.lexicon || '') + 1;
+  const ruleFstsLen = Module.lengthBytesUTF8(config.ruleFsts || '') + 1;
+
+  const bufferLen = dictDirLen + lexiconLen + ruleFstsLen;
+
+  const buffer = Module._malloc(bufferLen);
+  let offset = 0
+  Module.stringToUTF8(dictDir, buffer + offset, dictDirLen);
+  offset += dictDirLen;
+
+  Module.stringToUTF8(config.lexicon || '', buffer + offset, lexiconLen);
+  offset += lexiconLen;
+
+  Module.stringToUTF8(config.ruleFsts || '', buffer + offset, ruleFstsLen);
+  offset += ruleFstsLen;
+
+  Module.setValue(ptr, buffer, 'i8*');
+  Module.setValue(ptr + 4, buffer + dictDirLen, 'i8*');
+  Module.setValue(ptr + 8, buffer + dictDirLen + lexiconLen, 'i8*');
+
+  return {ptr: ptr, len: len, buffer: buffer};
+}
+
+function initSherpaOnnxOnlineCtcFstDecoderConfig(config, Module) {
+  const len = 2 * 4;
+  const ptr = Module._malloc(len);
+
+  const graphLen = Module.lengthBytesUTF8(config.graph || '') + 1;
+  const buffer = Module._malloc(graphLen);
+  Module.stringToUTF8(config.graph, buffer, graphLen);
+
+  Module.setValue(ptr, buffer, 'i8*');
+  Module.setValue(ptr + 4, config.maxActive || 3000, 'i32');
+  return {ptr: ptr, len: len, buffer: buffer};
+}
+
+function initSherpaOnnxOnlineRecognizerConfig(config, Module) {
+  if (!('featConfig' in config)) {
+    config.featConfig = {
+      sampleRate: 16000,
+      featureDim: 80,
+    };
+  }
+
+  if (!('ctcFstDecoderConfig' in config)) {
+    config.ctcFstDecoderConfig = {
+      graph: '',
+      maxActive: 3000,
+    };
+  }
+
+  if (!('hotwordsBuf' in config)) {
+    config.hotwordsBuf = '';
+  }
+
+  if (!('hotwordsBufSize' in config)) {
+    config.hotwordsBufSize = 0;
+  }
+
+  if (!('hr' in config)) {
+    config.hr = {
+      lexicon: '',
+      ruleFsts: '',
+    };
+  }
+
+  const feat = initSherpaOnnxFeatureConfig(config.featConfig, Module);
+  const model = initSherpaOnnxOnlineModelConfig(config.modelConfig, Module);
+  const ctcFstDecoder = initSherpaOnnxOnlineCtcFstDecoderConfig(
+      config.ctcFstDecoderConfig, Module)
+  const hr = initSherpaOnnxHomophoneReplacerConfig(config.hr, Module);
+
+  const len = feat.len + model.len + 8 * 4 + ctcFstDecoder.len + 5 * 4 + hr.len;
+  const ptr = Module._malloc(len);
+
+  let offset = 0;
+  Module._CopyHeap(feat.ptr, feat.len, ptr + offset);
+  offset += feat.len;
+
+  Module._CopyHeap(model.ptr, model.len, ptr + offset);
+  offset += model.len;
+
+  const decodingMethodLen =
+      Module.lengthBytesUTF8(config.decodingMethod || 'greedy_search') + 1;
+  const hotwordsFileLen = Module.lengthBytesUTF8(config.hotwordsFile || '') + 1;
+  const ruleFstsFileLen = Module.lengthBytesUTF8(config.ruleFsts || '') + 1;
+  const ruleFarsFileLen = Module.lengthBytesUTF8(config.ruleFars || '') + 1;
+  const hotwordsBufLen = Module.lengthBytesUTF8(config.hotwordsBuf || '') + 1;
+  const bufferLen = decodingMethodLen + hotwordsFileLen + ruleFstsFileLen +
+      ruleFarsFileLen + hotwordsBufLen;
+  const buffer = Module._malloc(bufferLen);
+
+  offset = 0;
+  Module.stringToUTF8(
+      config.decodingMethod || 'greedy_search', buffer, decodingMethodLen);
+  offset += decodingMethodLen;
+
+  Module.stringToUTF8(
+      config.hotwordsFile || '', buffer + offset, hotwordsFileLen);
+  offset += hotwordsFileLen;
+
+  Module.stringToUTF8(config.ruleFsts || '', buffer + offset, ruleFstsFileLen);
+  offset += ruleFstsFileLen;
+
+  Module.stringToUTF8(config.ruleFars || '', buffer + offset, ruleFarsFileLen);
+  offset += ruleFarsFileLen;
+
+  Module.stringToUTF8(
+      config.hotwordsBuf || '', buffer + offset, hotwordsBufLen);
+  offset += hotwordsBufLen;
+
+  offset = feat.len + model.len;
+  Module.setValue(ptr + offset, buffer, 'i8*');  // decoding method
+  offset += 4;
+
+  Module.setValue(ptr + offset, config.maxActivePaths || 4, 'i32');
+  offset += 4;
+
+  Module.setValue(ptr + offset, config.enableEndpoint || 0, 'i32');
+  offset += 4;
+
+  Module.setValue(ptr + offset, config.rule1MinTrailingSilence || 2.4, 'float');
+  offset += 4;
+
+  Module.setValue(ptr + offset, config.rule2MinTrailingSilence || 1.2, 'float');
+  offset += 4;
+
+  Module.setValue(ptr + offset, config.rule3MinUtteranceLength || 20, 'float');
+  offset += 4;
+
+  Module.setValue(ptr + offset, buffer + decodingMethodLen, 'i8*');
+  offset += 4;
+
+  Module.setValue(ptr + offset, config.hotwordsScore || 1.5, 'float');
+  offset += 4;
+
+  Module._CopyHeap(ctcFstDecoder.ptr, ctcFstDecoder.len, ptr + offset);
+  offset += ctcFstDecoder.len;
+
+  Module.setValue(
+      ptr + offset, buffer + decodingMethodLen + hotwordsFileLen, 'i8*');
+  offset += 4;
+
+  Module.setValue(
+      ptr + offset,
+      buffer + decodingMethodLen + hotwordsFileLen + ruleFstsFileLen, 'i8*');
+  offset += 4;
+
+  Module.setValue(ptr + offset, config.blankPenalty || 0, 'float');
+  offset += 4;
+
+  Module.setValue(
+      ptr + offset,
+      buffer + decodingMethodLen + hotwordsFileLen + ruleFstsFileLen +
+          ruleFarsFileLen,
+      'i8*');
+  offset += 4;
+
+  Module.setValue(ptr + offset, config.hotwordsBufSize || 0, 'i32');
+  offset += 4;
+
+  Module._CopyHeap(hr.ptr, hr.len, ptr + offset);
+  offset += hr.len;
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+    feat: feat,
+    model: model,
+    ctcFstDecoder: ctcFstDecoder,
+    hr: hr,
+  };
+}
+
+function createOnlineRecognizer(Module, myConfig) {
+  const onlineTransducerModelConfig = {
+    encoder: '',
+    decoder: '',
+    joiner: '',
+  };
+
+  const onlineParaformerModelConfig = {
+    encoder: '',
+    decoder: '',
+  };
+
+  const onlineZipformer2CtcModelConfig = {
+    model: '',
+  };
+
+  const onlineNemoCtcModelConfig = {
+    model: '',
+  };
+
+  const onlineToneCtcModelConfig = {
+    model: '',
+  };
+
+  let type = 0;
+
+  switch (type) {
+    case 0:
+      // transducer
+      onlineTransducerModelConfig.encoder = './encoder.onnx';
+      onlineTransducerModelConfig.decoder = './decoder.onnx';
+      onlineTransducerModelConfig.joiner = './joiner.onnx';
+      break;
+    case 1:
+      // paraformer
+      onlineParaformerModelConfig.encoder = './encoder.onnx';
+      onlineParaformerModelConfig.decoder = './decoder.onnx';
+      break;
+    case 2:
+      // zipformer2Ctc
+      onlineZipformer2CtcModelConfig.model = './encoder.onnx';
+      break;
+    case 3:
+      // nemoCtc
+      onlineNemoCtcModelConfig.model = './nemo-ctc.onnx';
+      break;
+    case 4:
+      // toneCtc
+      onlineToneCtcModelConfig.model = './tone-ctc.onnx';
+      break;
+  }
+
+
+  const onlineModelConfig = {
+    transducer: onlineTransducerModelConfig,
+    paraformer: onlineParaformerModelConfig,
+    zipformer2Ctc: onlineZipformer2CtcModelConfig,
+    nemoCtc: onlineNemoCtcModelConfig,
+    toneCtc: onlineToneCtcModelConfig,
+    tokens: './tokens.txt',
+    numThreads: 1,
+    provider: 'cpu',
+    debug: 1,
+    modelType: '',
+    modelingUnit: 'cjkchar',
+    bpeVocab: '',
+  };
+
+  const featureConfig = {
+    sampleRate: 16000,  // it is ignored when toneCtc is used
+    featureDim: 80,     // it is ignored when toneCtc is used
+  };
+
+  let recognizerConfig = {
+    featConfig: featureConfig,
+    modelConfig: onlineModelConfig,
+    decodingMethod: 'greedy_search',
+    maxActivePaths: 4,
+    enableEndpoint: 1,
+    rule1MinTrailingSilence: 2.4,
+    rule2MinTrailingSilence: 1.2,
+    rule3MinUtteranceLength: 20,
+    hotwordsFile: '',
+    hotwordsScore: 1.5,
+    ctcFstDecoderConfig: {
+      graph: '',
+      maxActive: 3000,
+    },
+    ruleFsts: '',
+    ruleFars: '',
+  };
+  if (myConfig) {
+    recognizerConfig = myConfig;
+  }
+
+  return new OnlineRecognizer(recognizerConfig, Module);
+}
+
+function initSherpaOnnxOfflineTransducerModelConfig(config, Module) {
+  const encoderLen = Module.lengthBytesUTF8(config.encoder || '') + 1;
+  const decoderLen = Module.lengthBytesUTF8(config.decoder || '') + 1;
+  const joinerLen = Module.lengthBytesUTF8(config.joiner || '') + 1;
+
+  const n = encoderLen + decoderLen + joinerLen;
+
+  const buffer = Module._malloc(n);
+
+  const len = 3 * 4;  // 3 pointers
+  const ptr = Module._malloc(len);
+
+  let offset = 0;
+  Module.stringToUTF8(config.encoder || '', buffer + offset, encoderLen);
+  offset += encoderLen;
+
+  Module.stringToUTF8(config.decoder || '', buffer + offset, decoderLen);
+  offset += decoderLen;
+
+  Module.stringToUTF8(config.joiner || '', buffer + offset, joinerLen);
+
+  offset = 0;
+  Module.setValue(ptr, buffer + offset, 'i8*');
+  offset += encoderLen;
+
+  Module.setValue(ptr + 4, buffer + offset, 'i8*');
+  offset += decoderLen;
+
+  Module.setValue(ptr + 8, buffer + offset, 'i8*');
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+  };
+}
+
+function initSherpaOnnxOfflineParaformerModelConfig(config, Module) {
+  const n = Module.lengthBytesUTF8(config.model || '') + 1;
+
+  const buffer = Module._malloc(n);
+
+  const len = 1 * 4;  // 1 pointer
+  const ptr = Module._malloc(len);
+
+  Module.stringToUTF8(config.model || '', buffer, n);
+
+  Module.setValue(ptr, buffer, 'i8*');
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+  };
+}
+
+function initSherpaOnnxOfflineNemoEncDecCtcModelConfig(config, Module) {
+  const n = Module.lengthBytesUTF8(config.model || '') + 1;
+
+  const buffer = Module._malloc(n);
+
+  const len = 1 * 4;  // 1 pointer
+  const ptr = Module._malloc(len);
+
+  Module.stringToUTF8(config.model || '', buffer, n);
+
+  Module.setValue(ptr, buffer, 'i8*');
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+  };
+}
+
+function initSherpaOnnxOfflineDolphinModelConfig(config, Module) {
+  const n = Module.lengthBytesUTF8(config.model || '') + 1;
+
+  const buffer = Module._malloc(n);
+
+  const len = 1 * 4;  // 1 pointer
+  const ptr = Module._malloc(len);
+
+  Module.stringToUTF8(config.model || '', buffer, n);
+
+  Module.setValue(ptr, buffer, 'i8*');
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+  };
+}
+
+function initSherpaOnnxOfflineZipformerCtcModelConfig(config, Module) {
+  const n = Module.lengthBytesUTF8(config.model || '') + 1;
+
+  const buffer = Module._malloc(n);
+
+  const len = 1 * 4;  // 1 pointer
+  const ptr = Module._malloc(len);
+
+  Module.stringToUTF8(config.model || '', buffer, n);
+
+  Module.setValue(ptr, buffer, 'i8*');
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+  };
+}
+
+function initSherpaOnnxOfflineWenetCtcModelConfig(config, Module) {
+  const n = Module.lengthBytesUTF8(config.model || '') + 1;
+
+  const buffer = Module._malloc(n);
+
+  const len = 1 * 4;  // 1 pointer
+  const ptr = Module._malloc(len);
+
+  Module.stringToUTF8(config.model || '', buffer, n);
+
+  Module.setValue(ptr, buffer, 'i8*');
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+  };
+}
+
+function initSherpaOnnxOfflineOmnilingualAsrCtcModelConfig(config, Module) {
+  const n = Module.lengthBytesUTF8(config.model || '') + 1;
+
+  const buffer = Module._malloc(n);
+
+  const len = 1 * 4;  // 1 pointer
+  const ptr = Module._malloc(len);
+
+  Module.stringToUTF8(config.model || '', buffer, n);
+
+  Module.setValue(ptr, buffer, 'i8*');
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+  };
+}
+
+function initSherpaOnnxOfflineMedAsrCtcModelConfig(config, Module) {
+  const n = Module.lengthBytesUTF8(config.model || '') + 1;
+
+  const buffer = Module._malloc(n);
+
+  const len = 1 * 4;  // 1 pointer
+  const ptr = Module._malloc(len);
+
+  Module.stringToUTF8(config.model || '', buffer, n);
+
+  Module.setValue(ptr, buffer, 'i8*');
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+  };
+}
+
+function initSherpaOnnxOfflineFireRedAsrCtcModelConfig(config, Module) {
+  const n = Module.lengthBytesUTF8(config.model || '') + 1;
+
+  const buffer = Module._malloc(n);
+
+  const len = 1 * 4;  // 1 pointer
+  const ptr = Module._malloc(len);
+
+  Module.stringToUTF8(config.model || '', buffer, n);
+
+  Module.setValue(ptr, buffer, 'i8*');
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+  };
+}
+
+function initSherpaOnnxOfflineFunAsrNanoModelConfig(config, Module) {
+  const encoderAdaptorLen =
+      Module.lengthBytesUTF8(config.encoderAdaptor || '') + 1;
+  const llmLen = Module.lengthBytesUTF8(config.llm || '') + 1;
+  const embeddingLen = Module.lengthBytesUTF8(config.embedding || '') + 1;
+  const tokenizerLen = Module.lengthBytesUTF8(config.tokenizer || '') + 1;
+  const systemPromptLen =
+      Module.lengthBytesUTF8(
+          config.systemPrompt || 'You are a helpful assistant.') +
+      1;
+  const userPromptLen =
+      Module.lengthBytesUTF8(config.userPrompt || '语音转写：') + 1;
+  const languageLen = Module.lengthBytesUTF8(config.language || '') + 1;
+  const hotwordsLen = Module.lengthBytesUTF8(config.hotwords || '') + 1;
+
+  const n = encoderAdaptorLen + llmLen + embeddingLen + tokenizerLen +
+      systemPromptLen + userPromptLen + languageLen + hotwordsLen;
+
+  const buffer = Module._malloc(n);
+
+  const len = 13 * 4;  // 8 pointers + 3 int + 2 float
+  const ptr = Module._malloc(len);
+
+  let offset = 0;
+  Module.stringToUTF8(
+      config.encoderAdaptor || '', buffer + offset, encoderAdaptorLen);
+  offset += encoderAdaptorLen;
+
+  Module.stringToUTF8(config.llm || '', buffer + offset, llmLen);
+  offset += llmLen;
+
+  Module.stringToUTF8(config.embedding || '', buffer + offset, embeddingLen);
+  offset += embeddingLen;
+
+  Module.stringToUTF8(config.tokenizer || '', buffer + offset, tokenizerLen);
+  offset += tokenizerLen;
+
+  Module.stringToUTF8(
+      config.systemPrompt || 'You are a helpful assistant.', buffer + offset,
+      systemPromptLen);
+  offset += systemPromptLen;
+
+  Module.stringToUTF8(
+      config.userPrompt || '语音转写：', buffer + offset, userPromptLen);
+  offset += userPromptLen;
+
+  Module.stringToUTF8(config.language || '', buffer + offset, languageLen);
+  offset += languageLen;
+
+  Module.stringToUTF8(config.hotwords || '', buffer + offset, hotwordsLen);
+  offset += hotwordsLen;
+
+  offset = 0;
+  Module.setValue(ptr + 0 * 4, buffer + offset, 'i8*');
+  offset += encoderAdaptorLen;
+
+  Module.setValue(ptr + 1 * 4, buffer + offset, 'i8*');
+  offset += llmLen;
+
+  Module.setValue(ptr + 2 * 4, buffer + offset, 'i8*');
+  offset += embeddingLen;
+
+  Module.setValue(ptr + 3 * 4, buffer + offset, 'i8*');
+  offset += tokenizerLen;
+
+  Module.setValue(ptr + 4 * 4, buffer + offset, 'i8*');
+  offset += systemPromptLen;
+
+  Module.setValue(ptr + 5 * 4, buffer + offset, 'i8*');
+  offset += userPromptLen;
+
+  Module.setValue(ptr + 6 * 4, config.maxNewTokens || 512, 'i32');
+  Module.setValue(ptr + 7 * 4, config.temperature || 1e-6, 'float');
+  Module.setValue(ptr + 8 * 4, config.topP || 0.8, 'float');
+  Module.setValue(ptr + 9 * 4, config.seed || 42, 'i32');
+  Module.setValue(ptr + 10 * 4, buffer + offset, 'i8*');
+  offset += languageLen;
+  Module.setValue(ptr + 11 * 4, config.itn || 0, 'i32');
+  Module.setValue(ptr + 12 * 4, buffer + offset, 'i8*');
+  offset += hotwordsLen;
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+  };
+}
+
+function initSherpaOnnxOfflineWhisperModelConfig(config, Module) {
+  const encoderLen = Module.lengthBytesUTF8(config.encoder || '') + 1;
+  const decoderLen = Module.lengthBytesUTF8(config.decoder || '') + 1;
+  const languageLen = Module.lengthBytesUTF8(config.language || '') + 1;
+  const taskLen = Module.lengthBytesUTF8(config.task || '') + 1;
+
+  const n = encoderLen + decoderLen + languageLen + taskLen;
+  const buffer = Module._malloc(n);
+
+  const len = 7 * 4;  // 4 pointers + 3 int32
+  const ptr = Module._malloc(len);
+
+  let offset = 0;
+  Module.stringToUTF8(config.encoder || '', buffer + offset, encoderLen);
+  offset += encoderLen;
+
+  Module.stringToUTF8(config.decoder || '', buffer + offset, decoderLen);
+  offset += decoderLen;
+
+  Module.stringToUTF8(config.language || '', buffer + offset, languageLen);
+  offset += languageLen;
+
+  Module.stringToUTF8(config.task || '', buffer + offset, taskLen);
+
+  offset = 0;
+  Module.setValue(ptr, buffer + offset, 'i8*');
+  offset += encoderLen;
+
+  Module.setValue(ptr + 4, buffer + offset, 'i8*');
+  offset += decoderLen;
+
+  Module.setValue(ptr + 8, buffer + offset, 'i8*');
+  offset += languageLen;
+
+  Module.setValue(ptr + 12, buffer + offset, 'i8*');
+  offset += taskLen;
+
+  Module.setValue(ptr + 16, config.tailPaddings || 2000, 'i32');
+  Module.setValue(ptr + 20, config.enableTokenTimestamps || 0, 'i32');
+  Module.setValue(ptr + 24, config.enableSegmentTimestamps || 0, 'i32');
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+  };
+}
+
+function initSherpaOnnxOfflineCanaryModelConfig(config, Module) {
+  const encoderLen = Module.lengthBytesUTF8(config.encoder || '') + 1;
+  const decoderLen = Module.lengthBytesUTF8(config.decoder || '') + 1;
+  const srcLangLen = Module.lengthBytesUTF8(config.srcLang || '') + 1;
+  const tgtLangLen = Module.lengthBytesUTF8(config.tgtLang || '') + 1;
+
+  const n = encoderLen + decoderLen + srcLangLen + tgtLangLen;
+  const buffer = Module._malloc(n);
+
+  const len = 5 * 4;  // 4 pointers + 1 int32
+  const ptr = Module._malloc(len);
+
+  let offset = 0;
+  Module.stringToUTF8(config.encoder || '', buffer + offset, encoderLen);
+  offset += encoderLen;
+
+  Module.stringToUTF8(config.decoder || '', buffer + offset, decoderLen);
+  offset += decoderLen;
+
+  Module.stringToUTF8(config.srcLang || '', buffer + offset, srcLangLen);
+  offset += srcLangLen;
+
+  Module.stringToUTF8(config.tgtLang || '', buffer + offset, tgtLangLen);
+  offset += tgtLangLen;
+
+  offset = 0;
+  Module.setValue(ptr, buffer + offset, 'i8*');
+  offset += encoderLen;
+
+  Module.setValue(ptr + 4, buffer + offset, 'i8*');
+  offset += decoderLen;
+
+  Module.setValue(ptr + 8, buffer + offset, 'i8*');
+  offset += srcLangLen;
+
+  Module.setValue(ptr + 12, buffer + offset, 'i8*');
+  offset += tgtLangLen;
+
+  Module.setValue(ptr + 16, config.usePnc ?? 1, 'i32');
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+  };
+}
+
+function initSherpaOnnxOfflineMoonshineModelConfig(config, Module) {
+  const preprocessorLen = Module.lengthBytesUTF8(config.preprocessor || '') + 1;
+  const encoderLen = Module.lengthBytesUTF8(config.encoder || '') + 1;
+  const uncachedDecoderLen =
+      Module.lengthBytesUTF8(config.uncachedDecoder || '') + 1;
+  const cachedDecoderLen =
+      Module.lengthBytesUTF8(config.cachedDecoder || '') + 1;
+  const mergedDecoderLen =
+      Module.lengthBytesUTF8(config.mergedDecoder || '') + 1;
+
+  const n = preprocessorLen + encoderLen + uncachedDecoderLen +
+      cachedDecoderLen + mergedDecoderLen;
+  const buffer = Module._malloc(n);
+
+  const len = 5 * 4;  // 5 pointers
+  const ptr = Module._malloc(len);
+
+  let offset = 0;
+  Module.stringToUTF8(
+      config.preprocessor || '', buffer + offset, preprocessorLen);
+  offset += preprocessorLen;
+
+  Module.stringToUTF8(config.encoder || '', buffer + offset, encoderLen);
+  offset += encoderLen;
+
+  Module.stringToUTF8(
+      config.uncachedDecoder || '', buffer + offset, uncachedDecoderLen);
+  offset += uncachedDecoderLen;
+
+  Module.stringToUTF8(
+      config.cachedDecoder || '', buffer + offset, cachedDecoderLen);
+  offset += cachedDecoderLen;
+
+  Module.stringToUTF8(
+      config.mergedDecoder || '', buffer + offset, mergedDecoderLen);
+  offset += mergedDecoderLen;
+
+  offset = 0;
+  Module.setValue(ptr, buffer + offset, 'i8*');
+  offset += preprocessorLen;
+
+  Module.setValue(ptr + 4, buffer + offset, 'i8*');
+  offset += encoderLen;
+
+  Module.setValue(ptr + 8, buffer + offset, 'i8*');
+  offset += uncachedDecoderLen;
+
+  Module.setValue(ptr + 12, buffer + offset, 'i8*');
+  offset += cachedDecoderLen;
+
+  Module.setValue(ptr + 16, buffer + offset, 'i8*');
+  offset += mergedDecoderLen;
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+  };
+}
+
+function initSherpaOnnxOfflineFireRedAsrModelConfig(config, Module) {
+  const encoderLen = Module.lengthBytesUTF8(config.encoder || '') + 1;
+  const decoderLen = Module.lengthBytesUTF8(config.decoder || '') + 1;
+
+  const n = encoderLen + decoderLen;
+  const buffer = Module._malloc(n);
+
+  const len = 2 * 4;  // 2 pointers
+  const ptr = Module._malloc(len);
+
+  let offset = 0;
+  Module.stringToUTF8(config.encoder || '', buffer + offset, encoderLen);
+  offset += encoderLen;
+
+  Module.stringToUTF8(config.decoder || '', buffer + offset, decoderLen);
+  offset += decoderLen;
+
+  offset = 0;
+  Module.setValue(ptr, buffer + offset, 'i8*');
+  offset += encoderLen;
+
+  Module.setValue(ptr + 4, buffer + offset, 'i8*');
+  offset += decoderLen;
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+  };
+}
+
+function initSherpaOnnxOfflineTdnnModelConfig(config, Module) {
+  const n = Module.lengthBytesUTF8(config.model || '') + 1;
+  const buffer = Module._malloc(n);
+
+  const len = 1 * 4;  // 1 pointer
+  const ptr = Module._malloc(len);
+
+  Module.stringToUTF8(config.model || '', buffer, n);
+
+  Module.setValue(ptr, buffer, 'i8*');
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+  };
+}
+
+function initSherpaOnnxOfflineSenseVoiceModelConfig(config, Module) {
+  const modelLen = Module.lengthBytesUTF8(config.model || '') + 1;
+  const languageLen = Module.lengthBytesUTF8(config.language || '') + 1;
+
+  // useItn is a integer with 4 bytes
+  const n = modelLen + languageLen;
+  const buffer = Module._malloc(n);
+
+  const len = 3 * 4;  // 2 pointers + 1 int
+  const ptr = Module._malloc(len);
+
+  let offset = 0;
+  Module.stringToUTF8(config.model || '', buffer + offset, modelLen);
+  offset += modelLen;
+
+  Module.stringToUTF8(config.language || '', buffer + offset, languageLen);
+  offset += languageLen;
+
+  offset = 0;
+  Module.setValue(ptr, buffer + offset, 'i8*');
+  offset += modelLen;
+
+  Module.setValue(ptr + 4, buffer + offset, 'i8*');
+  offset += languageLen;
+
+  Module.setValue(ptr + 8, config.useInverseTextNormalization ?? 0, 'i32');
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+  };
+}
+
+function initSherpaOnnxOfflineLMConfig(config, Module) {
+  const n = Module.lengthBytesUTF8(config.model || '') + 1;
+  const buffer = Module._malloc(n);
+
+  const len = 2 * 4;
+  const ptr = Module._malloc(len);
+
+  Module.stringToUTF8(config.model || '', buffer, n);
+  Module.setValue(ptr, buffer, 'i8*');
+  Module.setValue(ptr + 4, config.scale || 1, 'float');
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+  };
+}
+
+// Ported from upstream sherpa-onnx v1.13.0 wasm/asr/sherpa-onnx-asr.js
+// to support Qwen3-ASR offline recognizer on web. Struct layout
+// (10 fields, 40 bytes): convFrontend, encoder, decoder, tokenizer, hotwords
+// (5 ptrs) + maxTotalLen, maxNewTokens (i32) + temperature, topP (float)
+// + seed (i32) — note the hotwords pointer is at offset 9, with the 4 ints
+// in slots 4-8 in between.
+function initSherpaOnnxOfflineQwen3AsrModelConfig(config, Module) {
+  const convFrontendLen = Module.lengthBytesUTF8(config.convFrontend || '') + 1;
+  const encoderLen = Module.lengthBytesUTF8(config.encoder || '') + 1;
+  const decoderLen = Module.lengthBytesUTF8(config.decoder || '') + 1;
+  const tokenizerLen = Module.lengthBytesUTF8(config.tokenizer || '') + 1;
+  const hotwordsLen = Module.lengthBytesUTF8(config.hotwords || '') + 1;
+
+  const n = convFrontendLen + encoderLen + decoderLen + tokenizerLen +
+      hotwordsLen;
+  const buffer = Module._malloc(n);
+
+  const len = 10 * 4;
+  const ptr = Module._malloc(len);
+
+  let offset = 0;
+  Module.stringToUTF8(
+      config.convFrontend || '', buffer + offset, convFrontendLen);
+  offset += convFrontendLen;
+
+  Module.stringToUTF8(config.encoder || '', buffer + offset, encoderLen);
+  offset += encoderLen;
+
+  Module.stringToUTF8(config.decoder || '', buffer + offset, decoderLen);
+  offset += decoderLen;
+
+  Module.stringToUTF8(config.tokenizer || '', buffer + offset, tokenizerLen);
+  offset += tokenizerLen;
+
+  Module.stringToUTF8(config.hotwords || '', buffer + offset, hotwordsLen);
+  offset += hotwordsLen;
+
+  offset = 0;
+  Module.setValue(ptr + 0 * 4, buffer + offset, 'i8*');
+  offset += convFrontendLen;
+
+  Module.setValue(ptr + 1 * 4, buffer + offset, 'i8*');
+  offset += encoderLen;
+
+  Module.setValue(ptr + 2 * 4, buffer + offset, 'i8*');
+  offset += decoderLen;
+
+  Module.setValue(ptr + 3 * 4, buffer + offset, 'i8*');
+  offset += tokenizerLen;
+
+  Module.setValue(ptr + 4 * 4, config.maxTotalLen || 512, 'i32');
+  Module.setValue(ptr + 5 * 4, config.maxNewTokens || 128, 'i32');
+  Module.setValue(ptr + 6 * 4, config.temperature || 1e-6, 'float');
+  Module.setValue(ptr + 7 * 4, config.topP || 0.8, 'float');
+  Module.setValue(ptr + 8 * 4, config.seed || 42, 'i32');
+  Module.setValue(ptr + 9 * 4, buffer + offset, 'i8*');
+  offset += hotwordsLen;
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+  };
+}
+
+// Ported from upstream sherpa-onnx v1.13.0. Struct layout (5 fields, 20 bytes):
+// encoder, decoder, language (3 ptrs) + usePunct, useItn (2 i32).
+function initSherpaOnnxOfflineCohereTranscribeModelConfig(config, Module) {
+  const encoderLen = Module.lengthBytesUTF8(config.encoder || '') + 1;
+  const decoderLen = Module.lengthBytesUTF8(config.decoder || '') + 1;
+  const languageLen = Module.lengthBytesUTF8(config.language || '') + 1;
+
+  const n = encoderLen + decoderLen + languageLen;
+  const buffer = Module._malloc(n);
+
+  const len = 5 * 4;
+  const ptr = Module._malloc(len);
+
+  let offset = 0;
+  Module.stringToUTF8(config.encoder || '', buffer + offset, encoderLen);
+  offset += encoderLen;
+
+  Module.stringToUTF8(config.decoder || '', buffer + offset, decoderLen);
+  offset += decoderLen;
+
+  Module.stringToUTF8(config.language || '', buffer + offset, languageLen);
+  offset += languageLen;
+
+  offset = 0;
+  Module.setValue(ptr, buffer + offset, 'i8*');
+  offset += encoderLen;
+
+  Module.setValue(ptr + 4, buffer + offset, 'i8*');
+  offset += decoderLen;
+
+  Module.setValue(ptr + 8, buffer + offset, 'i8*');
+  offset += languageLen;
+
+  Module.setValue(ptr + 12, config.usePunct ?? 1, 'i32');
+  Module.setValue(ptr + 16, config.useItn ?? 1, 'i32');
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+  };
+}
+
+function initSherpaOnnxOfflineModelConfig(config, Module) {
+  if (!('transducer' in config)) {
+    config.transducer = {
+      encoder: '',
+      decoder: '',
+      joiner: '',
+    };
+  }
+
+  if (!('paraformer' in config)) {
+    config.paraformer = {
+      model: '',
+    };
+  }
+
+  if (!('nemoCtc' in config)) {
+    config.nemoCtc = {
+      model: '',
+    };
+  }
+
+  if (!('dolphin' in config)) {
+    config.dolphin = {
+      model: '',
+    };
+  }
+
+  if (!('zipformerCtc' in config)) {
+    config.zipformerCtc = {
+      model: '',
+    };
+  }
+
+  if (!('wenetCtc' in config)) {
+    config.wenetCtc = {
+      model: '',
+    };
+  }
+
+  if (!('omnilingual' in config)) {
+    config.omnilingual = {
+      model: '',
+    };
+  }
+
+  if (!('medasr' in config)) {
+    config.medasr = {
+      model: '',
+    };
+  }
+
+  if (!('fireRedAsrCtc' in config)) {
+    config.fireRedAsrCtc = {
+      model: '',
+    };
+  }
+
+  if (!('funasrNano' in config)) {
+    config.funasrNano = {
+      encoderAdaptor: '',
+      llm: '',
+      embedding: '',
+      tokenizer: '',
+      systemPrompt: 'You are a helpful assistant.',
+      userPrompt: '语音转写：',
+      maxNewTokens: 512,
+      temperature: 1e-6,
+      topP: 0.8,
+      seed: 42,
+      language: '',
+      itn: 0,
+      hotwords: '',
+    };
+  }
+
+  if (!('qwen3Asr' in config)) {
+    config.qwen3Asr = {
+      convFrontend: '',
+      encoder: '',
+      decoder: '',
+      tokenizer: '',
+      maxTotalLen: 512,
+      maxNewTokens: 128,
+      temperature: 1e-6,
+      topP: 0.8,
+      seed: 42,
+      hotwords: '',
+    };
+  }
+
+  if (!('cohereTranscribe' in config)) {
+    config.cohereTranscribe = {
+      encoder: '',
+      decoder: '',
+      language: '',
+      usePunct: 1,
+      useItn: 1,
+    };
+  }
+
+  if (!('whisper' in config)) {
+    config.whisper = {
+      encoder: '',
+      decoder: '',
+      language: '',
+      task: '',
+      tailPaddings: -1,
+      enableTokenTimestamps: 0,
+      enableSegmentTimestamps: 0,
+    };
+  }
+
+  if (!('moonshine' in config)) {
+    config.moonshine = {
+      preprocessor: '',
+      encoder: '',
+      uncachedDecoder: '',
+      cachedDecoder: '',
+      mergedDecoder: '',
+    };
+  }
+
+  if (!('fireRedAsr' in config)) {
+    config.fireRedAsr = {
+      encoder: '',
+      decoder: '',
+    };
+  }
+
+  if (!('tdnn' in config)) {
+    config.tdnn = {
+      model: '',
+    };
+  }
+
+  if (!('senseVoice' in config)) {
+    config.senseVoice = {
+      model: '',
+      language: '',
+      useInverseTextNormalization: 0,
+    };
+  }
+
+  if (!('canary' in config)) {
+    config.canary = {
+      encoder: '',
+      decoder: '',
+      srcLang: '',
+      tgtLang: '',
+      usePnc: 1,
+    };
+  }
+
+  const transducer =
+      initSherpaOnnxOfflineTransducerModelConfig(config.transducer, Module);
+
+  const paraformer =
+      initSherpaOnnxOfflineParaformerModelConfig(config.paraformer, Module);
+
+  const nemoCtc =
+      initSherpaOnnxOfflineNemoEncDecCtcModelConfig(config.nemoCtc, Module);
+
+  const whisper =
+      initSherpaOnnxOfflineWhisperModelConfig(config.whisper, Module);
+
+  const tdnn = initSherpaOnnxOfflineTdnnModelConfig(config.tdnn, Module);
+
+  const senseVoice =
+      initSherpaOnnxOfflineSenseVoiceModelConfig(config.senseVoice, Module);
+
+  const moonshine =
+      initSherpaOnnxOfflineMoonshineModelConfig(config.moonshine, Module);
+
+  const fireRedAsr =
+      initSherpaOnnxOfflineFireRedAsrModelConfig(config.fireRedAsr, Module);
+
+  const dolphin =
+      initSherpaOnnxOfflineDolphinModelConfig(config.dolphin, Module);
+
+  const zipformerCtc =
+      initSherpaOnnxOfflineZipformerCtcModelConfig(config.zipformerCtc, Module);
+
+  const canary = initSherpaOnnxOfflineCanaryModelConfig(config.canary, Module);
+
+  const wenetCtc =
+      initSherpaOnnxOfflineWenetCtcModelConfig(config.wenetCtc, Module);
+
+  const omnilingual = initSherpaOnnxOfflineOmnilingualAsrCtcModelConfig(
+      config.omnilingual, Module);
+
+  const medasr =
+      initSherpaOnnxOfflineMedAsrCtcModelConfig(config.medasr, Module);
+
+  const funasrNano =
+      initSherpaOnnxOfflineFunAsrNanoModelConfig(config.funasrNano, Module);
+
+  const fireRedAsrCtc = initSherpaOnnxOfflineFireRedAsrCtcModelConfig(
+      config.fireRedAsrCtc, Module);
+
+  const qwen3Asr =
+      initSherpaOnnxOfflineQwen3AsrModelConfig(config.qwen3Asr, Module);
+
+  const cohereTranscribe = initSherpaOnnxOfflineCohereTranscribeModelConfig(
+      config.cohereTranscribe, Module);
+
+  const len = transducer.len + paraformer.len + nemoCtc.len + whisper.len +
+      tdnn.len + 8 * 4 + senseVoice.len + moonshine.len + fireRedAsr.len +
+      dolphin.len + zipformerCtc.len + canary.len + wenetCtc.len +
+      omnilingual.len + medasr.len + funasrNano.len + fireRedAsrCtc.len +
+      qwen3Asr.len + cohereTranscribe.len;
+
+  const ptr = Module._malloc(len);
+
+  let offset = 0;
+  Module._CopyHeap(transducer.ptr, transducer.len, ptr + offset);
+  offset += transducer.len;
+
+  Module._CopyHeap(paraformer.ptr, paraformer.len, ptr + offset);
+  offset += paraformer.len;
+
+  Module._CopyHeap(nemoCtc.ptr, nemoCtc.len, ptr + offset);
+  offset += nemoCtc.len;
+
+  Module._CopyHeap(whisper.ptr, whisper.len, ptr + offset);
+  offset += whisper.len;
+
+  Module._CopyHeap(tdnn.ptr, tdnn.len, ptr + offset);
+  offset += tdnn.len;
+
+  const tokensLen = Module.lengthBytesUTF8(config.tokens || '') + 1;
+  const providerLen = Module.lengthBytesUTF8(config.provider || 'cpu') + 1;
+  const modelTypeLen = Module.lengthBytesUTF8(config.modelType || '') + 1;
+  const modelingUnitLen = Module.lengthBytesUTF8(config.modelingUnit || '') + 1;
+  const bpeVocabLen = Module.lengthBytesUTF8(config.bpeVocab || '') + 1;
+  const teleSpeechCtcLen =
+      Module.lengthBytesUTF8(config.teleSpeechCtc || '') + 1;
+
+  const bufferLen = tokensLen + providerLen + modelTypeLen + modelingUnitLen +
+      bpeVocabLen + teleSpeechCtcLen;
+
+  const buffer = Module._malloc(bufferLen);
+
+  offset = 0;
+  Module.stringToUTF8(config.tokens, buffer, tokensLen);
+  offset += tokensLen;
+
+  Module.stringToUTF8(config.provider || 'cpu', buffer + offset, providerLen);
+  offset += providerLen;
+
+  Module.stringToUTF8(config.modelType || '', buffer + offset, modelTypeLen);
+  offset += modelTypeLen;
+
+  Module.stringToUTF8(
+      config.modelingUnit || '', buffer + offset, modelingUnitLen);
+  offset += modelingUnitLen;
+
+  Module.stringToUTF8(config.bpeVocab || '', buffer + offset, bpeVocabLen);
+  offset += bpeVocabLen;
+
+  Module.stringToUTF8(
+      config.teleSpeechCtc || '', buffer + offset, teleSpeechCtcLen);
+  offset += teleSpeechCtcLen;
+
+  offset =
+      transducer.len + paraformer.len + nemoCtc.len + whisper.len + tdnn.len;
+  Module.setValue(ptr + offset, buffer, 'i8*');  // tokens
+  offset += 4;
+
+  Module.setValue(ptr + offset, config.numThreads || 1, 'i32');
+  offset += 4;
+
+  Module.setValue(ptr + offset, config.debug ?? 1, 'i32');
+  offset += 4;
+
+  Module.setValue(ptr + offset, buffer + tokensLen, 'i8*');  // provider
+  offset += 4;
+
+  Module.setValue(
+      ptr + offset, buffer + tokensLen + providerLen, 'i8*');  // modelType
+  offset += 4;
+
+  Module.setValue(
+      ptr + offset, buffer + tokensLen + providerLen + modelTypeLen,
+      'i8*');  // modelingUnit
+  offset += 4;
+
+  Module.setValue(
+      ptr + offset,
+      buffer + tokensLen + providerLen + modelTypeLen + modelingUnitLen,
+      'i8*');  // bpeVocab
+  offset += 4;
+
+  Module.setValue(
+      ptr + offset,
+      buffer + tokensLen + providerLen + modelTypeLen + modelingUnitLen +
+          bpeVocabLen,
+      'i8*');  // teleSpeechCtc
+  offset += 4;
+
+  Module._CopyHeap(senseVoice.ptr, senseVoice.len, ptr + offset);
+  offset += senseVoice.len;
+
+  Module._CopyHeap(moonshine.ptr, moonshine.len, ptr + offset);
+  offset += moonshine.len;
+
+  Module._CopyHeap(fireRedAsr.ptr, fireRedAsr.len, ptr + offset);
+  offset += fireRedAsr.len;
+
+  Module._CopyHeap(dolphin.ptr, dolphin.len, ptr + offset);
+  offset += dolphin.len;
+
+  Module._CopyHeap(zipformerCtc.ptr, zipformerCtc.len, ptr + offset);
+  offset += zipformerCtc.len;
+
+  Module._CopyHeap(canary.ptr, canary.len, ptr + offset);
+  offset += canary.len;
+
+  Module._CopyHeap(wenetCtc.ptr, wenetCtc.len, ptr + offset);
+  offset += wenetCtc.len;
+
+  Module._CopyHeap(omnilingual.ptr, omnilingual.len, ptr + offset);
+  offset += omnilingual.len;
+
+  Module._CopyHeap(medasr.ptr, medasr.len, ptr + offset);
+  offset += medasr.len;
+
+  Module._CopyHeap(funasrNano.ptr, funasrNano.len, ptr + offset);
+  offset += funasrNano.len;
+
+  Module._CopyHeap(fireRedAsrCtc.ptr, fireRedAsrCtc.len, ptr + offset);
+  offset += fireRedAsrCtc.len;
+
+  Module._CopyHeap(qwen3Asr.ptr, qwen3Asr.len, ptr + offset);
+  offset += qwen3Asr.len;
+
+  Module._CopyHeap(cohereTranscribe.ptr, cohereTranscribe.len, ptr + offset);
+  offset += cohereTranscribe.len;
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+    transducer: transducer,
+    paraformer: paraformer,
+    nemoCtc: nemoCtc,
+    whisper: whisper,
+    tdnn: tdnn,
+    senseVoice: senseVoice,
+    moonshine: moonshine,
+    fireRedAsr: fireRedAsr,
+    dolphin: dolphin,
+    zipformerCtc: zipformerCtc,
+    canary: canary,
+    wenetCtc: wenetCtc,
+    omnilingual: omnilingual,
+    medasr: medasr,
+    funasrNano: funasrNano,
+    fireRedAsrCtc: fireRedAsrCtc,
+    qwen3Asr: qwen3Asr,
+    cohereTranscribe: cohereTranscribe
+  };
+}
+
+function initSherpaOnnxOfflineRecognizerConfig(config, Module) {
+  if (!('featConfig' in config)) {
+    config.featConfig = {
+      sampleRate: 16000,
+      featureDim: 80,
+    };
+  }
+
+  if (!('lmConfig' in config)) {
+    config.lmConfig = {
+      model: '',
+      scale: 1.0,
+    };
+  }
+
+  if (!('hr' in config)) {
+    config.hr = {
+      lexicon: '',
+      ruleFsts: '',
+    };
+  }
+
+  const feat = initSherpaOnnxFeatureConfig(config.featConfig, Module);
+  const model = initSherpaOnnxOfflineModelConfig(config.modelConfig, Module);
+  const lm = initSherpaOnnxOfflineLMConfig(config.lmConfig, Module);
+  const hr = initSherpaOnnxHomophoneReplacerConfig(config.hr, Module);
+
+  const len = feat.len + model.len + lm.len + 7 * 4 + hr.len;
+  const ptr = Module._malloc(len);
+
+  let offset = 0;
+  Module._CopyHeap(feat.ptr, feat.len, ptr + offset);
+  offset += feat.len;
+
+  Module._CopyHeap(model.ptr, model.len, ptr + offset);
+  offset += model.len;
+
+  Module._CopyHeap(lm.ptr, lm.len, ptr + offset);
+  offset += lm.len;
+
+  const decodingMethodLen =
+      Module.lengthBytesUTF8(config.decodingMethod || 'greedy_search') + 1;
+  const hotwordsFileLen = Module.lengthBytesUTF8(config.hotwordsFile || '') + 1;
+  const ruleFstsLen = Module.lengthBytesUTF8(config.ruleFsts || '') + 1;
+  const ruleFarsLen = Module.lengthBytesUTF8(config.ruleFars || '') + 1;
+  const bufferLen =
+      decodingMethodLen + hotwordsFileLen + ruleFstsLen + ruleFarsLen;
+  const buffer = Module._malloc(bufferLen);
+
+  offset = 0;
+  Module.stringToUTF8(
+      config.decodingMethod || 'greedy_search', buffer, decodingMethodLen);
+  offset += decodingMethodLen;
+
+  Module.stringToUTF8(
+      config.hotwordsFile || '', buffer + offset, hotwordsFileLen);
+  offset += hotwordsFileLen;
+
+  Module.stringToUTF8(config.ruleFsts || '', buffer + offset, ruleFstsLen);
+  offset += ruleFstsLen;
+
+  Module.stringToUTF8(config.ruleFars || '', buffer + offset, ruleFarsLen);
+  offset += ruleFarsLen;
+
+  offset = feat.len + model.len + lm.len;
+
+  Module.setValue(ptr + offset, buffer, 'i8*');  // decoding method
+  offset += 4;
+
+  Module.setValue(ptr + offset, config.maxActivePaths || 4, 'i32');
+  offset += 4;
+
+  Module.setValue(ptr + offset, buffer + decodingMethodLen, 'i8*');
+  offset += 4;
+
+  Module.setValue(ptr + offset, config.hotwordsScore || 1.5, 'float');
+  offset += 4;
+
+  Module.setValue(
+      ptr + offset, buffer + decodingMethodLen + hotwordsFileLen, 'i8*');
+  offset += 4;
+
+  Module.setValue(
+      ptr + offset, buffer + decodingMethodLen + hotwordsFileLen + ruleFstsLen,
+      'i8*');
+  offset += 4;
+
+  Module.setValue(ptr + offset, config.blankPenalty || 0, 'float');
+  offset += 4;
+
+  Module._CopyHeap(hr.ptr, hr.len, ptr + offset);
+  offset += hr.len;
+
+  return {
+    buffer: buffer,
+    ptr: ptr,
+    len: len,
+    feat: feat,
+    model: model,
+    lm: lm,
+    hr: hr,
+  };
+}
+
+class OfflineStream {
+  constructor(handle, Module) {
+    this.handle = handle;
+    this.Module = Module;
+  }
+
+  free() {
+    if (this.handle) {
+      this.Module._SherpaOnnxDestroyOfflineStream(this.handle);
+      this.handle = null;
+    }
+  }
+
+  /**
+   * @param sampleRate {Number}
+   * @param samples {Float32Array} Containing samples in the range [-1, 1]
+   */
+  acceptWaveform(sampleRate, samples) {
+    const pointer =
+        this.Module._malloc(samples.length * samples.BYTES_PER_ELEMENT);
+    this.Module.HEAPF32.set(samples, pointer / samples.BYTES_PER_ELEMENT);
+    this.Module._SherpaOnnxAcceptWaveformOffline(
+        this.handle, sampleRate, pointer, samples.length);
+    this.Module._free(pointer);
+  }
+};
+
+class OfflineRecognizer {
+  constructor(configObj, Module) {
+    this.config = configObj;
+    const config = initSherpaOnnxOfflineRecognizerConfig(configObj, Module);
+    const handle = Module._SherpaOnnxCreateOfflineRecognizer(config.ptr);
+    freeConfig(config, Module);
+
+    this.handle = handle;
+    this.Module = Module;
+  }
+
+  setConfig(configObj) {
+    const config =
+        initSherpaOnnxOfflineRecognizerConfig(configObj, this.Module);
+    this.Module._SherpaOnnxOfflineRecognizerSetConfig(this.handle, config.ptr);
+    freeConfig(config, this.Module);
+  }
+
+  free() {
+    this.Module._SherpaOnnxDestroyOfflineRecognizer(this.handle);
+    this.handle = 0
+  }
+
+  createStream() {
+    const handle = this.Module._SherpaOnnxCreateOfflineStream(this.handle);
+    return new OfflineStream(handle, this.Module);
+  }
+
+  decode(stream) {
+    this.Module._SherpaOnnxDecodeOfflineStream(this.handle, stream.handle);
+  }
+
+  getResult(stream) {
+    const r =
+        this.Module._SherpaOnnxGetOfflineStreamResultAsJson(stream.handle);
+    const jsonStr = this.Module.UTF8ToString(r);
+    const ans = JSON.parse(jsonStr);
+    this.Module._SherpaOnnxDestroyOfflineStreamResultJson(r);
+
+    return ans;
+  }
+};
+
+class OnlineStream {
+  constructor(handle, Module) {
+    this.handle = handle;
+    this.pointer = null;  // buffer
+    this.n = 0;           // buffer size
+    this.Module = Module;
+  }
+
+  free() {
+    if (this.handle) {
+      this.Module._SherpaOnnxDestroyOnlineStream(this.handle);
+      this.handle = null;
+      this.Module._free(this.pointer);
+      this.pointer = null;
+      this.n = 0;
+    }
+  }
+
+  /**
+   * @param sampleRate {Number}
+   * @param samples {Float32Array} Containing samples in the range [-1, 1]
+   */
+  acceptWaveform(sampleRate, samples) {
+    if (this.n < samples.length) {
+      this.Module._free(this.pointer);
+      this.pointer =
+          this.Module._malloc(samples.length * samples.BYTES_PER_ELEMENT);
+      this.n = samples.length
+    }
+
+    this.Module.HEAPF32.set(samples, this.pointer / samples.BYTES_PER_ELEMENT);
+    this.Module._SherpaOnnxOnlineStreamAcceptWaveform(
+        this.handle, sampleRate, this.pointer, samples.length);
+  }
+
+  inputFinished() {
+    this.Module._SherpaOnnxOnlineStreamInputFinished(this.handle);
+  }
+};
+
+class OnlineRecognizer {
+  constructor(configObj, Module) {
+    this.config = configObj;
+    const config = initSherpaOnnxOnlineRecognizerConfig(configObj, Module)
+    const handle = Module._SherpaOnnxCreateOnlineRecognizer(config.ptr);
+
+    freeConfig(config, Module);
+
+    this.handle = handle;
+    this.Module = Module;
+  }
+
+  free() {
+    this.Module._SherpaOnnxDestroyOnlineRecognizer(this.handle);
+    this.handle = 0
+  }
+
+  createStream() {
+    const handle = this.Module._SherpaOnnxCreateOnlineStream(this.handle);
+    return new OnlineStream(handle, this.Module);
+  }
+
+  isReady(stream) {
+    return this.Module._SherpaOnnxIsOnlineStreamReady(
+               this.handle, stream.handle) == 1;
+  }
+
+  decode(stream) {
+    this.Module._SherpaOnnxDecodeOnlineStream(this.handle, stream.handle);
+  }
+
+  isEndpoint(stream) {
+    return this.Module._SherpaOnnxOnlineStreamIsEndpoint(
+               this.handle, stream.handle) == 1;
+  }
+
+  reset(stream) {
+    this.Module._SherpaOnnxOnlineStreamReset(this.handle, stream.handle);
+  }
+
+  getResult(stream) {
+    const r = this.Module._SherpaOnnxGetOnlineStreamResultAsJson(
+        this.handle, stream.handle);
+    const jsonStr = this.Module.UTF8ToString(r);
+    const ans = JSON.parse(jsonStr);
+    this.Module._SherpaOnnxDestroyOnlineStreamResultJson(r);
+
+    return ans;
+  }
+}
+
+if (typeof process == 'object' && typeof process.versions == 'object' &&
+    typeof process.versions.node == 'string') {
+  module.exports = {
+    createOnlineRecognizer,
+    OfflineRecognizer,
+  };
+}
+
+// Expose ES6 classes on the global object (class declarations are block-scoped
+// and don't auto-attach to window like var/function do).
+if (typeof window !== 'undefined') {
+  window.OfflineRecognizer = OfflineRecognizer;
+  window.OfflineStream = OfflineStream;
+  window.OnlineRecognizer = OnlineRecognizer;
+  window.OnlineStream = OnlineStream;
+}
+
+// === END official sherpa-onnx ASR code ===
+
+// === SherpaOnnx.ASR namespace shim ===
+// Bridges the official classes/functions above to the SherpaOnnx.ASR namespace
+// used by the combined orchestrator and asr.ts.
 (function(global) {
-  // Ensure the namespace exists
   if (!global.SherpaOnnx) {
     console.error('SherpaOnnx namespace not found. Make sure to load sherpa-onnx-core.js first.');
     return;
   }
-  
-  // Get a reference to the SherpaOnnx namespace
+
   const SherpaOnnx = global.SherpaOnnx;
-  
-  // Create or use existing ASR namespace
   SherpaOnnx.ASR = SherpaOnnx.ASR || {};
-  
-  // Define the ASR module functionality
-  SherpaOnnx.ASR = {
-    /**
-     * Load an ASR model from URLs
-     * @param {Object} modelConfig - Configuration for the model
-     * @returns {Promise<Object>} - Information about the loaded model
-     */
-    loadModel: async function(modelConfig) {
-      const modelDir = modelConfig.modelDir || 'asr-models';
 
-      // Create directory (and parents) if it doesn't exist
-      SherpaOnnx.FileSystem.safeCreateDirectory(modelDir, !!modelConfig.debug);
-      
-      // Collection for actual file paths
-      const actualPaths = {};
-      
-      // Load model files based on type
-      if (modelConfig.type === 'transducer') {
-        const results = await Promise.all([
-          SherpaOnnx.FileSystem.safeLoadFile(modelConfig.encoder || 'assets/asr/encoder.onnx', `${modelDir}/encoder.onnx`, modelConfig.debug),
-          SherpaOnnx.FileSystem.safeLoadFile(modelConfig.decoder || 'assets/asr/decoder.onnx', `${modelDir}/decoder.onnx`, modelConfig.debug),
-          SherpaOnnx.FileSystem.safeLoadFile(modelConfig.joiner || 'assets/asr/joiner.onnx', `${modelDir}/joiner.onnx`, modelConfig.debug),
-          SherpaOnnx.FileSystem.safeLoadFile(modelConfig.tokens || 'assets/asr/tokens.txt', `${modelDir}/tokens.txt`, modelConfig.debug)
-        ]);
-        
-        // Collect actual paths
-        actualPaths.encoder = results[0].path;
-        actualPaths.decoder = results[1].path;
-        actualPaths.joiner = results[2].path;
-        actualPaths.tokens = results[3].path;
-        
-      } else if (modelConfig.type === 'paraformer') {
-        const results = await Promise.all([
-          SherpaOnnx.FileSystem.safeLoadFile(modelConfig.encoder || 'assets/asr/encoder.onnx', `${modelDir}/encoder.onnx`, modelConfig.debug),
-          SherpaOnnx.FileSystem.safeLoadFile(modelConfig.decoder || 'assets/asr/decoder.onnx', `${modelDir}/decoder.onnx`, modelConfig.debug),
-          SherpaOnnx.FileSystem.safeLoadFile(modelConfig.tokens || 'assets/asr/tokens.txt', `${modelDir}/tokens.txt`, modelConfig.debug)
-        ]);
-        
-        // Collect actual paths
-        actualPaths.encoder = results[0].path;
-        actualPaths.decoder = results[1].path;
-        actualPaths.tokens = results[2].path;
-        
-      } else if (modelConfig.type === 'ctc') {
-        const results = await Promise.all([
-          SherpaOnnx.FileSystem.safeLoadFile(modelConfig.model || 'assets/asr/model.onnx', `${modelDir}/model.onnx`, modelConfig.debug),
-          SherpaOnnx.FileSystem.safeLoadFile(modelConfig.tokens || 'assets/asr/tokens.txt', `${modelDir}/tokens.txt`, modelConfig.debug)
-        ]);
-        
-        // Collect actual paths
-        actualPaths.model = results[0].path;
-        actualPaths.tokens = results[1].path;
-      }
-      
-      // Get base directory from the tokens path
-      let effectiveModelDir = modelDir;
-      if (actualPaths.tokens) {
-        const lastSlash = actualPaths.tokens.lastIndexOf('/');
-        if (lastSlash > 0) {
-          effectiveModelDir = actualPaths.tokens.substring(0, lastSlash);
-        }
-      }
-      
-      return {
-        modelDir: effectiveModelDir,
-        type: modelConfig.type,
-        actualPaths: actualPaths
-      };
-    },
-    
-    /**
-     * Initialize online recognizer configuration in WASM
-     * @param {Object} config - ASR configuration
-     * @param {Object} Module - WebAssembly module
-     * @returns {number} - Pointer to the configuration in WASM
-     * @private
-     */
-    _initOnlineRecognizerConfig: function(config, Module) {
-      if (!config) {
-        console.error('ASR config is null');
-        return 0;
-      }
+  /**
+   * Load ASR model files from URLs into the Emscripten FS.
+   * @param {Object} modelConfig
+   * @returns {Promise<Object>} loaded model info with actualPaths
+   */
+  SherpaOnnx.ASR.loadModel = async function(modelConfig) {
+    const modelDir = modelConfig.modelDir || 'asr-models';
+    SherpaOnnx.FileSystem.safeCreateDirectory(modelDir, !!modelConfig.debug);
 
-      try {
-        // First, allocate all the strings we need
-        const allocatedStrings = {};
-        
-        // Transducer model config
-        if (config.modelConfig.transducer) {
-          allocatedStrings.encoder = SherpaOnnx.Utils.allocateString(config.modelConfig.transducer.encoder, Module);
-          allocatedStrings.decoder = SherpaOnnx.Utils.allocateString(config.modelConfig.transducer.decoder, Module);
-          allocatedStrings.joiner = SherpaOnnx.Utils.allocateString(config.modelConfig.transducer.joiner, Module);
-        } else {
-          allocatedStrings.encoder = SherpaOnnx.Utils.allocateString('', Module);
-          allocatedStrings.decoder = SherpaOnnx.Utils.allocateString('', Module);
-          allocatedStrings.joiner = SherpaOnnx.Utils.allocateString('', Module);
-        }
-        
-        // Paraformer model config
-        if (config.modelConfig.paraformer) {
-          allocatedStrings.paraEncoder = SherpaOnnx.Utils.allocateString(config.modelConfig.paraformer.encoder, Module);
-          allocatedStrings.paraDecoder = SherpaOnnx.Utils.allocateString(config.modelConfig.paraformer.decoder, Module);
-        } else {
-          allocatedStrings.paraEncoder = SherpaOnnx.Utils.allocateString('', Module);
-          allocatedStrings.paraDecoder = SherpaOnnx.Utils.allocateString('', Module);
-        }
-        
-        // Zipformer2 CTC model config
-        if (config.modelConfig.zipformer2Ctc) {
-          allocatedStrings.zipformerModel = SherpaOnnx.Utils.allocateString(config.modelConfig.zipformer2Ctc.model, Module);
-        } else {
-          allocatedStrings.zipformerModel = SherpaOnnx.Utils.allocateString('', Module);
-        }
-        
-        // Tokens, provider, model_type, modeling_unit, bpe_vocab
-        allocatedStrings.tokens = SherpaOnnx.Utils.allocateString(config.modelConfig.tokens, Module);
-        allocatedStrings.provider = SherpaOnnx.Utils.allocateString(config.modelConfig.provider || 'cpu', Module);
-        allocatedStrings.modelType = SherpaOnnx.Utils.allocateString('', Module); // Not used in JS API
-        allocatedStrings.modelingUnit = SherpaOnnx.Utils.allocateString('', Module); // Not used in JS API
-        allocatedStrings.bpeVocab = SherpaOnnx.Utils.allocateString('', Module); // Not used in JS API
-        
-        // Token buffer is not used in JS API
-        allocatedStrings.tokensBuffer = SherpaOnnx.Utils.allocateString('', Module);
-        
-        // Decoding method
-        allocatedStrings.decodingMethod = SherpaOnnx.Utils.allocateString(config.decodingMethod || 'greedy_search', Module);
-        
-        // Hotwords
-        allocatedStrings.hotwordsFile = SherpaOnnx.Utils.allocateString('', Module); // Not used in JS API
-        allocatedStrings.hotwordsBuffer = SherpaOnnx.Utils.allocateString('', Module); // Not used in JS API
-        
-        // Rule FSTs and FARs
-        allocatedStrings.ruleFsts = SherpaOnnx.Utils.allocateString('', Module); // Not used in JS API
-        allocatedStrings.ruleFars = SherpaOnnx.Utils.allocateString('', Module); // Not used in JS API
-        
-        // Now allocate the main config structure
-        // Size needs to match the C structure size
-        const configSize = 208; // Must match C struct (200 + 8 for nemo_ctc + t_one_ctc)
-        const configPtr = Module._malloc(configSize);
-        
-        // Zero out the memory
-        Module.HEAP8.fill(0, configPtr, configPtr + configSize);
-        
-        // Set feat_config fields
-        let offset = 0;
-        Module.setValue(configPtr + offset, config.featConfig.sampleRate || 16000, 'i32');
-        offset += 4;
-        Module.setValue(configPtr + offset, config.featConfig.featureDim || 80, 'i32');
-        offset += 4;
-        
-        // Set model_config fields - transducer
-        Module.setValue(configPtr + offset, allocatedStrings.encoder.ptr, 'i8*');
-        offset += 4;
-        Module.setValue(configPtr + offset, allocatedStrings.decoder.ptr, 'i8*');
-        offset += 4;
-        Module.setValue(configPtr + offset, allocatedStrings.joiner.ptr, 'i8*');
-        offset += 4;
-        
-        // Set model_config fields - paraformer
-        Module.setValue(configPtr + offset, allocatedStrings.paraEncoder.ptr, 'i8*');
-        offset += 4;
-        Module.setValue(configPtr + offset, allocatedStrings.paraDecoder.ptr, 'i8*');
-        offset += 4;
-        
-        // Set model_config fields - zipformer2_ctc
-        Module.setValue(configPtr + offset, allocatedStrings.zipformerModel.ptr, 'i8*');
-        offset += 4;
-        
-        // Set remaining model_config fields
-        Module.setValue(configPtr + offset, allocatedStrings.tokens.ptr, 'i8*');
-        offset += 4;
-        Module.setValue(configPtr + offset, config.modelConfig.numThreads || 1, 'i32');
-        offset += 4;
-        Module.setValue(configPtr + offset, allocatedStrings.provider.ptr, 'i8*');
-        offset += 4;
-        Module.setValue(configPtr + offset, config.modelConfig.debug || 0, 'i32');
-        offset += 4;
-        Module.setValue(configPtr + offset, allocatedStrings.modelType.ptr, 'i8*');
-        offset += 4;
-        Module.setValue(configPtr + offset, allocatedStrings.modelingUnit.ptr, 'i8*');
-        offset += 4;
-        Module.setValue(configPtr + offset, allocatedStrings.bpeVocab.ptr, 'i8*');
-        offset += 4;
-        Module.setValue(configPtr + offset, allocatedStrings.tokensBuffer.ptr, 'i8*');
-        offset += 4;
-        Module.setValue(configPtr + offset, 0, 'i32'); // tokens_buf_size
-        offset += 4;
+    const actualPaths = {};
 
-        // nemo_ctc.model (ptr) - missing in original, required by C struct
-        Module.setValue(configPtr + offset, SherpaOnnx.Utils.allocateString('', Module).ptr, 'i8*');
-        offset += 4;
-
-        // t_one_ctc.model (ptr) - missing in original, required by C struct
-        Module.setValue(configPtr + offset, SherpaOnnx.Utils.allocateString('', Module).ptr, 'i8*');
-        offset += 4;
-
-        // Set recognizer config fields
-        Module.setValue(configPtr + offset, allocatedStrings.decodingMethod.ptr, 'i8*');
-        offset += 4;
-        Module.setValue(configPtr + offset, config.maxActivePaths || 4, 'i32');
-        offset += 4;
-        Module.setValue(configPtr + offset, config.enableEndpoint || 1, 'i32');
-        offset += 4;
-        Module.setValue(configPtr + offset, config.rule1MinTrailingSilence || 2.4, 'float');
-        offset += 4;
-        Module.setValue(configPtr + offset, config.rule2MinTrailingSilence || 1.2, 'float');
-        offset += 4;
-        Module.setValue(configPtr + offset, config.rule3MinUtteranceLength || 300, 'float');
-        offset += 4;
-        
-        // Set hotwords fields
-        Module.setValue(configPtr + offset, allocatedStrings.hotwordsFile.ptr, 'i8*');
-        offset += 4;
-        Module.setValue(configPtr + offset, 0.0, 'float'); // hotwords_score
-        offset += 4;
-        
-        // Set CTC FST decoder config - graph and max_active
-        Module.setValue(configPtr + offset, 0, 'i8*'); // graph
-        offset += 4;
-        Module.setValue(configPtr + offset, 0, 'i32'); // max_active
-        offset += 4;
-        
-        // Set rule FSTs and FARs
-        Module.setValue(configPtr + offset, allocatedStrings.ruleFsts.ptr, 'i8*');
-        offset += 4;
-        Module.setValue(configPtr + offset, allocatedStrings.ruleFars.ptr, 'i8*');
-        offset += 4;
-        
-        // Set blank penalty
-        Module.setValue(configPtr + offset, 0.0, 'float'); // blank_penalty
-        offset += 4;
-        
-        // Set hotwords buffer and size
-        Module.setValue(configPtr + offset, allocatedStrings.hotwordsBuffer.ptr, 'i8*');
-        offset += 4;
-        Module.setValue(configPtr + offset, 0, 'i32'); // hotwords_buf_size
-        offset += 4;
-        
-        // Save the allocated strings for freeing later
-        Module.SherpaOnnxAllocatedStrings = allocatedStrings;
-        
-        return configPtr;
-      } catch (error) {
-        console.error('Error initializing ASR config:', error);
-        return 0;
-      }
-    },
-    
-    /**
-     * Free the configuration memory
-     * @param {number} configPtr - Pointer to the configuration
-     * @param {Object} Module - WebAssembly module
-     * @private
-     */
-    _freeConfig: function(configPtr, Module) {
-      if (!configPtr) return;
-
-      try {
-        // Free all allocated strings (offline path uses _sherpaOfflineAllocatedStrings)
-        const bag = Module._sherpaOfflineAllocatedStrings || Module.SherpaOnnxAllocatedStrings;
-        if (bag) {
-          for (const key in bag) {
-            if (bag[key] && bag[key].ptr) {
-              Module._free(bag[key].ptr);
-            }
-          }
-          delete Module._sherpaOfflineAllocatedStrings;
-          delete Module.SherpaOnnxAllocatedStrings;
-        }
-
-        // Free the config structure itself
-        Module._free(configPtr);
-      } catch (error) {
-        console.error('Error freeing ASR config:', error);
-      }
-    },
-    
-    /**
-     * Create an online ASR recognizer with the loaded model
-     * @param {Object} loadedModel - Model information returned by loadModel
-     * @param {Object} options - Additional configuration options
-     * @returns {OnlineRecognizer} - An instance of OnlineRecognizer
-     */
-    createOnlineRecognizer: function(loadedModel, options = {}) {
-      const config = {
-        featConfig: {
-          sampleRate: options.sampleRate || 16000,
-          featureDim: options.featureDim || 80,
-        },
-        modelConfig: {
-          tokens: loadedModel.actualPaths.tokens || `${loadedModel.modelDir}/tokens.txt`,
-          numThreads: options.numThreads || 1,
-          provider: options.provider || 'cpu',
-          debug: options.debug !== undefined ? options.debug : 1, // Configurable debug
-        },
-        decodingMethod: options.decodingMethod || 'greedy_search',
-        enableEndpoint: options.enableEndpoint === undefined ? 1 : options.enableEndpoint,
-        maxActivePaths: options.maxActivePaths || 4,
-        rule1MinTrailingSilence: options.rule1MinTrailingSilence || 2.4,
-        rule2MinTrailingSilence: options.rule2MinTrailingSilence || 1.2,
-        rule3MinUtteranceLength: options.rule3MinUtteranceLength || 300.0,
-      };
-      
-      if (loadedModel.type === 'transducer') {
-        config.modelConfig.transducer = {
-          encoder: loadedModel.actualPaths.encoder || `${loadedModel.modelDir}/encoder.onnx`,
-          decoder: loadedModel.actualPaths.decoder || `${loadedModel.modelDir}/decoder.onnx`,
-          joiner: loadedModel.actualPaths.joiner || `${loadedModel.modelDir}/joiner.onnx`,
-        };
-      } else if (loadedModel.type === 'paraformer') {
-        config.modelConfig.paraformer = {
-          encoder: loadedModel.actualPaths.encoder || `${loadedModel.modelDir}/encoder.onnx`,
-          decoder: loadedModel.actualPaths.decoder || `${loadedModel.modelDir}/decoder.onnx`,
-        };
-      } else if (loadedModel.type === 'ctc') {
-        config.modelConfig.zipformer2Ctc = {
-          model: loadedModel.actualPaths.model || `${loadedModel.modelDir}/model.onnx`,
-        };
-      }
-      
-      const recognizer = new global.OnlineRecognizer(config, global.Module);
-      
-      // Track the resource for cleanup if tracking function is available
-      if (SherpaOnnx.trackResource) {
-        SherpaOnnx.trackResource('asr', recognizer);
-      }
-      
-      return recognizer;
-    },
-    
-    /**
-     * Create an offline ASR recognizer with the loaded model
-     * @param {Object} loadedModel - Model information returned by loadModel
-     * @param {Object} options - Additional configuration options
-     * @returns {OfflineRecognizer} - An instance of OfflineRecognizer
-     */
-    createOfflineRecognizer: function(loadedModel, options = {}) {
-      const config = {
-        featConfig: {
-          sampleRate: options.sampleRate || 16000,
-          featureDim: options.featureDim || 80,
-        },
-        modelConfig: {
-          tokens: loadedModel.actualPaths.tokens || `${loadedModel.modelDir}/tokens.txt`,
-          numThreads: options.numThreads || 1,
-          provider: options.provider || 'cpu',
-          debug: options.debug !== undefined ? options.debug : 1, // Configurable debug
-        },
-        lmConfig: {
-          model: '', // No language model by default
-          scale: 1.0,
-        },
-        decodingMethod: options.decodingMethod || 'greedy_search',
-        maxActivePaths: options.maxActivePaths || 4,
-      };
-      
-      if (loadedModel.type === 'transducer') {
-        config.modelConfig.transducer = {
-          encoder: loadedModel.actualPaths.encoder || `${loadedModel.modelDir}/encoder.onnx`,
-          decoder: loadedModel.actualPaths.decoder || `${loadedModel.modelDir}/decoder.onnx`,
-          joiner: loadedModel.actualPaths.joiner || `${loadedModel.modelDir}/joiner.onnx`,
-        };
-      } else if (loadedModel.type === 'paraformer') {
-        config.modelConfig.paraformer = {
-          model: loadedModel.actualPaths.model || `${loadedModel.modelDir}/model.onnx`,
-        };
-      } else if (loadedModel.type === 'ctc') {
-        config.modelConfig.nemoCtc = {
-          model: loadedModel.actualPaths.model || `${loadedModel.modelDir}/model.onnx`,
-        };
-      }
-      
-      const recognizer = new global.OfflineRecognizer(config, global.Module);
-      
-      // Track the resource for cleanup if tracking function is available
-      if (SherpaOnnx.trackResource) {
-        SherpaOnnx.trackResource('asr', recognizer);
-      }
-      
-      return recognizer;
-    },
-    
-    /**
-     * Initialize offline recognizer configuration in WASM.
-     *
-     * Struct layout matches SherpaOnnxOfflineRecognizerConfig from c-api.h
-     * (32-bit WASM, pointer = 4 bytes).  Total: 172 bytes.
-     *
-     * Offsets:
-     *   0  feat_config.sample_rate (i32)
-     *   4  feat_config.feature_dim (i32)
-     *   8  model.transducer.encoder (ptr)
-     *  12  model.transducer.decoder (ptr)
-     *  16  model.transducer.joiner (ptr)
-     *  20  model.paraformer.model (ptr)          ← 1 field only
-     *  24  model.nemo_ctc.model (ptr)
-     *  28  model.whisper.encoder (ptr)
-     *  32  model.whisper.decoder (ptr)
-     *  36  model.whisper.language (ptr)
-     *  40  model.whisper.task (ptr)
-     *  44  model.whisper.tail_paddings (i32)
-     *  48  model.tdnn.model (ptr)
-     *  52  model.tokens (ptr)
-     *  56  model.num_threads (i32)
-     *  60  model.debug (i32)                     ← debug BEFORE provider
-     *  64  model.provider (ptr)
-     *  68  model.model_type (ptr)
-     *  72  model.modeling_unit (ptr)
-     *  76  model.bpe_vocab (ptr)
-     *  80  model.telespeech_ctc (ptr)
-     *  84  model.sense_voice.model (ptr)
-     *  88  model.sense_voice.language (ptr)
-     *  92  model.sense_voice.use_itn (i32)
-     *  96  model.moonshine.preprocessor (ptr)
-     * 100  model.moonshine.encoder (ptr)
-     * 104  model.moonshine.uncached_decoder (ptr)
-     * 108  model.moonshine.cached_decoder (ptr)
-     * 112  model.fire_red_asr.encoder (ptr)
-     * 116  model.fire_red_asr.decoder (ptr)
-     * 120  model.dolphin.model (ptr)
-     * 124  lm_config.model (ptr)
-     * 128  lm_config.scale (float)
-     * 132  decoding_method (ptr)
-     * 136  max_active_paths (i32)
-     * 140  hotwords_file (ptr)
-     * 144  hotwords_score (float)
-     * 148  rule_fsts (ptr)
-     * 152  rule_fars (ptr)
-     * 156  blank_penalty (float)
-     * 160  hr.dict_dir (ptr)
-     * 164  hr.lexicon (ptr)
-     * 168  hr.rule_fsts (ptr)
-     *
-     * @param {Object} config - ASR configuration
-     * @param {Object} Module - WebAssembly module
-     * @returns {number} - Pointer to the configuration in WASM
-     * @private
-     */
-    _initOfflineRecognizerConfig: function(config, Module) {
-      if (!config) {
-        console.error('ASR config is null');
-        return 0;
-      }
-
-      const alloc = (s) => SherpaOnnx.Utils.allocateString(s || '', Module);
-
-      try {
-        const mc = config.modelConfig || {};
-        const tr = mc.transducer || {};
-        const pa = mc.paraformer || {};
-        const nm = mc.nemoCtc || {};
-        const wh = mc.whisper || {};
-        const td = mc.tdnn || {};
-        const sv = mc.senseVoice || {};
-        const mo = mc.moonshine || {};
-        const fr = mc.fireRedAsr || {};
-        const dl = mc.dolphin || {};
-        const lm = config.lmConfig || {};
-
-        // Allocate all strings upfront
-        const ptrs = {
-          trEncoder:         alloc(tr.encoder),
-          trDecoder:         alloc(tr.decoder),
-          trJoiner:          alloc(tr.joiner),
-          paModel:           alloc(pa.model),
-          nmModel:           alloc(nm.model),
-          whEncoder:         alloc(wh.encoder),
-          whDecoder:         alloc(wh.decoder),
-          whLanguage:        alloc(wh.language),
-          whTask:            alloc(wh.task),
-          tdModel:           alloc(td.model),
-          tokens:            alloc(mc.tokens),
-          provider:          alloc(mc.provider || 'cpu'),
-          modelType:         alloc(mc.modelType || ''),
-          modelingUnit:      alloc(mc.modelingUnit || ''),
-          bpeVocab:          alloc(mc.bpeVocab || ''),
-          telespeechCtc:     alloc(mc.telespeechCtc || ''),
-          svModel:           alloc(sv.model),
-          svLanguage:        alloc(sv.language),
-          moPreprocessor:    alloc(mo.preprocessor),
-          moEncoder:         alloc(mo.encoder),
-          moUncachedDecoder: alloc(mo.uncachedDecoder),
-          moCachedDecoder:   alloc(mo.cachedDecoder),
-          frEncoder:         alloc(fr.encoder),
-          frDecoder:         alloc(fr.decoder),
-          dlModel:           alloc(dl.model),
-          lmModel:           alloc(lm.model),
-          decodingMethod:    alloc(config.decodingMethod || 'greedy_search'),
-          hotwordsFile:      alloc(config.hotwordsFile || ''),
-          ruleFsts:          alloc(config.ruleFsts || ''),
-          ruleFars:          alloc(config.ruleFars || ''),
-          hrDictDir:         alloc((config.hr || {}).dictDir),
-          hrLexicon:         alloc((config.hr || {}).lexicon),
-          hrRuleFsts:        alloc((config.hr || {}).ruleFsts),
-        };
-
-        // Allocate and zero the struct (172 bytes)
-        const configPtr = Module._malloc(172);
-        Module.HEAP8.fill(0, configPtr, configPtr + 172);
-
-        const set4 = (off, v) => Module.setValue(configPtr + off, v, 'i32');
-        const setF = (off, v) => Module.setValue(configPtr + off, v || 0, 'float');
-        const setP = (off, o) => Module.setValue(configPtr + off, o.ptr, 'i8*');
-
-        // feat_config
-        set4(0,  mc.sampleRate || config.featConfig?.sampleRate || 16000);
-        set4(4,  mc.featureDim || config.featConfig?.featureDim || 80);
-        // transducer
-        setP(8,  ptrs.trEncoder);
-        setP(12, ptrs.trDecoder);
-        setP(16, ptrs.trJoiner);
-        // paraformer (1 field)
-        setP(20, ptrs.paModel);
-        // nemo_ctc
-        setP(24, ptrs.nmModel);
-        // whisper
-        setP(28, ptrs.whEncoder);
-        setP(32, ptrs.whDecoder);
-        setP(36, ptrs.whLanguage);
-        setP(40, ptrs.whTask);
-        set4(44, wh.tailPaddings || 0);
-        // tdnn
-        setP(48, ptrs.tdModel);
-        // tokens, num_threads, debug, provider
-        setP(52, ptrs.tokens);
-        set4(56, mc.numThreads || 1);
-        set4(60, mc.debug ? 1 : 0);      // debug BEFORE provider
-        setP(64, ptrs.provider);
-        setP(68, ptrs.modelType);
-        setP(72, ptrs.modelingUnit);
-        setP(76, ptrs.bpeVocab);
-        setP(80, ptrs.telespeechCtc);
-        // sense_voice
-        setP(84, ptrs.svModel);
-        setP(88, ptrs.svLanguage);
-        set4(92, sv.useItn ? 1 : 0);
-        // moonshine
-        setP(96,  ptrs.moPreprocessor);
-        setP(100, ptrs.moEncoder);
-        setP(104, ptrs.moUncachedDecoder);
-        setP(108, ptrs.moCachedDecoder);
-        // fire_red_asr
-        setP(112, ptrs.frEncoder);
-        setP(116, ptrs.frDecoder);
-        // dolphin
-        setP(120, ptrs.dlModel);
-        // lm_config — if no model, scale must be 0 (writing float 1.0 would
-        // be 0x3F800000 ≈ 1 GB which exceeds the 512 MB WASM memory and
-        // causes "memory access out of bounds" if the C code reads this field
-        // as a pointer at inference time).
-        setP(124, ptrs.lmModel);
-        setF(128, lm.model ? (lm.scale || 1.0) : 0);
-        // recognizer fields
-        setP(132, ptrs.decodingMethod);
-        set4(136, config.maxActivePaths || 4);
-        setP(140, ptrs.hotwordsFile);
-        setF(144, config.hotwordsScore || 0.0);
-        setP(148, ptrs.ruleFsts);
-        setP(152, ptrs.ruleFars);
-        setF(156, config.blankPenalty || 0.0);
-        // hr (homophone replacer)
-        setP(160, ptrs.hrDictDir);
-        setP(164, ptrs.hrLexicon);
-        setP(168, ptrs.hrRuleFsts);
-
-        // Save ptrs for _freeConfig
-        Module._sherpaOfflineAllocatedStrings = ptrs;
-
-        return configPtr;
-      } catch (error) {
-        console.error('Error initializing offline ASR config:', error);
-        return 0;
-      }
+    if (modelConfig.type === 'transducer') {
+      const results = await Promise.all([
+        SherpaOnnx.FileSystem.safeLoadFile(modelConfig.encoder || 'assets/asr/encoder.onnx', modelDir + '/encoder.onnx', modelConfig.debug),
+        SherpaOnnx.FileSystem.safeLoadFile(modelConfig.decoder || 'assets/asr/decoder.onnx', modelDir + '/decoder.onnx', modelConfig.debug),
+        SherpaOnnx.FileSystem.safeLoadFile(modelConfig.joiner || 'assets/asr/joiner.onnx', modelDir + '/joiner.onnx', modelConfig.debug),
+        SherpaOnnx.FileSystem.safeLoadFile(modelConfig.tokens || 'assets/asr/tokens.txt', modelDir + '/tokens.txt', modelConfig.debug)
+      ]);
+      actualPaths.encoder = results[0].path;
+      actualPaths.decoder = results[1].path;
+      actualPaths.joiner = results[2].path;
+      actualPaths.tokens = results[3].path;
+    } else if (modelConfig.type === 'paraformer') {
+      const results = await Promise.all([
+        SherpaOnnx.FileSystem.safeLoadFile(modelConfig.encoder || 'assets/asr/encoder.onnx', modelDir + '/encoder.onnx', modelConfig.debug),
+        SherpaOnnx.FileSystem.safeLoadFile(modelConfig.decoder || 'assets/asr/decoder.onnx', modelDir + '/decoder.onnx', modelConfig.debug),
+        SherpaOnnx.FileSystem.safeLoadFile(modelConfig.tokens || 'assets/asr/tokens.txt', modelDir + '/tokens.txt', modelConfig.debug)
+      ]);
+      actualPaths.encoder = results[0].path;
+      actualPaths.decoder = results[1].path;
+      actualPaths.tokens = results[2].path;
+    } else if (modelConfig.type === 'ctc') {
+      const results = await Promise.all([
+        SherpaOnnx.FileSystem.safeLoadFile(modelConfig.model || 'assets/asr/model.onnx', modelDir + '/model.onnx', modelConfig.debug),
+        SherpaOnnx.FileSystem.safeLoadFile(modelConfig.tokens || 'assets/asr/tokens.txt', modelDir + '/tokens.txt', modelConfig.debug)
+      ]);
+      actualPaths.model = results[0].path;
+      actualPaths.tokens = results[1].path;
     }
-  };
-  
-  /**
-   * OnlineRecognizer class for streaming speech recognition
-   */
-  global.OnlineRecognizer = global.OnlineRecognizer || function(config, Module) {
-    this.Module = Module;
-    this.config = config;
-    this.streams = []; // Track streams created by this recognizer
-    
-    // Initialize the configuration in WASM
-    const configPtr = SherpaOnnx.ASR._initOnlineRecognizerConfig(config, Module);
-    
-    // Create the recognizer
-    this.handle = Module.ccall(
-      'SherpaOnnxCreateOnlineRecognizer',
-      'number',
-      ['number'],
-      [configPtr]
-    );
-    
-    // Free the configuration memory
-    SherpaOnnx.ASR._freeConfig(configPtr, Module);
-    
-    /**
-     * Create a stream for audio input
-     * @returns {OnlineStream} - A new stream for audio input
-     */
-    this.createStream = function() {
-      const streamHandle = this.Module.ccall(
-        'SherpaOnnxCreateOnlineStream',
-        'number',
-        ['number'],
-        [this.handle]
-      );
-      const stream = new global.OnlineStream(streamHandle, this.Module);
-      
-      // Track the stream for cleanup
-      this.streams.push(stream);
-      
-      return stream;
-    };
-    
-    /**
-     * Check if the stream is ready for decoding
-     * @param {OnlineStream} stream - The stream to check
-     * @returns {boolean} - True if ready, false otherwise
-     */
-    this.isReady = function(stream) {
-      return this.Module.ccall(
-        'SherpaOnnxIsOnlineStreamReady',
-        'number',
-        ['number', 'number'],
-        [this.handle, stream.handle]
-      ) === 1;
-    };
-    
-    /**
-     * Decode the audio in the stream
-     * @param {OnlineStream} stream - The stream to decode
-     */
-    this.decode = function(stream) {
-      this.Module.ccall(
-        'SherpaOnnxDecodeOnlineStream',
-        'void',
-        ['number', 'number'],
-        [this.handle, stream.handle]
-      );
-    };
-    
-    /**
-     * Check if an endpoint has been detected
-     * @param {OnlineStream} stream - The stream to check
-     * @returns {boolean} - True if endpoint detected, false otherwise
-     */
-    this.isEndpoint = function(stream) {
-      return this.Module.ccall(
-        'SherpaOnnxOnlineStreamIsEndpoint',
-        'number',
-        ['number', 'number'],
-        [this.handle, stream.handle]
-      ) === 1;
-    };
-    
-    /**
-     * Reset the stream
-     * @param {OnlineStream} stream - The stream to reset
-     */
-    this.reset = function(stream) {
-      this.Module.ccall(
-        'SherpaOnnxOnlineStreamReset',
-        'void',
-        ['number', 'number'],
-        [this.handle, stream.handle]
-      );
-    };
-    
-    /**
-     * Get the recognition result
-     * @param {OnlineStream} stream - The stream to get results from
-     * @returns {Object} - Recognition result as JSON
-     */
-    this.getResult = function(stream) {
-      const resultPtr = this.Module.ccall(
-        'SherpaOnnxGetOnlineStreamResultAsJson',
-        'number',
-        ['number', 'number'],
-        [this.handle, stream.handle]
-      );
-      
-      const jsonStr = this.Module.UTF8ToString(resultPtr);
-      const result = JSON.parse(jsonStr);
-      
-      this.Module.ccall(
-        'SherpaOnnxDestroyOnlineStreamResultJson',
-        'null',
-        ['number'],
-        [resultPtr]
-      );
-      
-      return result;
-    };
-    
-    /**
-     * Free the recognizer and all associated streams
-     */
-    this.free = function() {
-      // Free all streams first
-      for (let i = this.streams.length - 1; i >= 0; i--) {
-        if (this.streams[i]) {
-          this.streams[i].free();
-        }
-        this.streams.splice(i, 1);
-      }
-      
-      // Then free the recognizer
-      if (this.handle) {
-        this.Module.ccall(
-          'SherpaOnnxDestroyOnlineRecognizer',
-          'null',
-          ['number'],
-          [this.handle]
-        );
-        this.handle = null;
-      }
-    };
-  };
-  
-  /**
-   * OnlineStream class for handling streaming audio input
-   */
-  global.OnlineStream = global.OnlineStream || function(handle, Module) {
-    this.handle = handle;
-    this.Module = Module;
-    this.pointer = null;  // buffer
-    this.n = 0;           // buffer size
-    
-    /**
-     * Accept audio waveform data
-     * @param {number} sampleRate - Sample rate of the audio
-     * @param {Float32Array} samples - Audio samples in [-1, 1] range
-     */
-    this.acceptWaveform = function(sampleRate, samples) {
-      if (this.n < samples.length) {
-        if (this.pointer) {
-          this.Module._free(this.pointer);
-        }
-        this.pointer = this.Module._malloc(samples.length * samples.BYTES_PER_ELEMENT);
-        this.n = samples.length;
-      }
 
-      this.Module.HEAPF32.set(samples, this.pointer / samples.BYTES_PER_ELEMENT);
-      this.Module.ccall(
-        'SherpaOnnxOnlineStreamAcceptWaveform',
-        'void',
-        ['number', 'number', 'number', 'number'],
-        [this.handle, sampleRate, this.pointer, samples.length]
-      );
-    };
-    
-    /**
-     * Signal that input is finished
-     */
-    this.inputFinished = function() {
-      this.Module.ccall(
-        'SherpaOnnxOnlineStreamInputFinished',
-        'void',
-        ['number'],
-        [this.handle]
-      );
-    };
-    
-    /**
-     * Free the stream
-     */
-    this.free = function() {
-      if (this.handle) {
-        this.Module.ccall(
-          'SherpaOnnxDestroyOnlineStream',
-          'null',
-          ['number'],
-          [this.handle]
-        );
-        this.handle = null;
-        
-        if (this.pointer) {
-          this.Module._free(this.pointer);
-          this.pointer = null;
-          this.n = 0;
-        }
-      }
-    };
+    let effectiveModelDir = modelDir;
+    if (actualPaths.tokens) {
+      const lastSlash = actualPaths.tokens.lastIndexOf('/');
+      if (lastSlash > 0) effectiveModelDir = actualPaths.tokens.substring(0, lastSlash);
+    }
+
+    return { modelDir: effectiveModelDir, type: modelConfig.type, actualPaths: actualPaths };
   };
-  
+
   /**
-   * OfflineRecognizer class for non-streaming speech recognition
+   * Create an online recognizer from a loaded model.
+   * @param {Object} loadedModel - from loadModel()
+   * @param {Object} options
+   * @returns {OnlineRecognizer}
    */
-  global.OfflineRecognizer = global.OfflineRecognizer || function(config, Module) {
-    this.Module = Module;
-    this.config = config;
-    this.streams = []; // Track streams created by this recognizer
-    
-    // Initialize the configuration in WASM
-    const configPtr = SherpaOnnx.ASR._initOfflineRecognizerConfig(config, Module);
-    
-    // Create the recognizer
-    this.handle = Module.ccall(
-      'SherpaOnnxCreateOfflineRecognizer',
-      'number',
-      ['number'],
-      [configPtr]
-    );
-    
-    // Free the configuration memory
-    SherpaOnnx.ASR._freeConfig(configPtr, Module);
-    
-    /**
-     * Create a stream for offline processing
-     * @returns {OfflineStream} - A new stream for offline processing
-     */
-    this.createStream = function() {
-      const streamHandle = this.Module.ccall(
-        'SherpaOnnxCreateOfflineStream',
-        'number',
-        ['number'],
-        [this.handle]
-      );
-      const stream = new global.OfflineStream(streamHandle, this.Module);
-      
-      // Track the stream for cleanup
-      this.streams.push(stream);
-      
-      return stream;
+  SherpaOnnx.ASR.createOnlineRecognizer = function(loadedModel, options) {
+    options = options || {};
+    const config = {
+      featConfig: {
+        sampleRate: options.sampleRate || 16000,
+        featureDim: options.featureDim || 80,
+      },
+      modelConfig: {
+        tokens: loadedModel.actualPaths.tokens || loadedModel.modelDir + '/tokens.txt',
+        numThreads: options.numThreads || 1,
+        provider: options.provider || 'cpu',
+        debug: options.debug !== undefined ? options.debug : 1,
+      },
+      decodingMethod: options.decodingMethod || 'greedy_search',
+      enableEndpoint: options.enableEndpoint === undefined ? 1 : options.enableEndpoint,
+      maxActivePaths: options.maxActivePaths || 4,
+      rule1MinTrailingSilence: options.rule1MinTrailingSilence || 2.4,
+      rule2MinTrailingSilence: options.rule2MinTrailingSilence || 1.2,
+      rule3MinUtteranceLength: options.rule3MinUtteranceLength || 300.0,
     };
-    
-    /**
-     * Decode the audio in the stream
-     * @param {OfflineStream} stream - The stream to decode
-     */
-    this.decode = function(stream) {
-      this.Module.ccall(
-        'SherpaOnnxDecodeOfflineStream',
-        'void',
-        ['number', 'number'],
-        [this.handle, stream.handle]
-      );
-    };
-    
-    /**
-     * Free the recognizer and all associated streams
-     */
-    this.free = function() {
-      // Free all streams first
-      for (let i = this.streams.length - 1; i >= 0; i--) {
-        if (this.streams[i]) {
-          this.streams[i].free();
-        }
-        this.streams.splice(i, 1);
-      }
-      
-      // Then free the recognizer
-      if (this.handle) {
-        this.Module.ccall(
-          'SherpaOnnxDestroyOfflineRecognizer',
-          'null',
-          ['number'],
-          [this.handle]
-        );
-        this.handle = null;
-      }
-    };
+
+    if (loadedModel.type === 'transducer') {
+      config.modelConfig.transducer = {
+        encoder: loadedModel.actualPaths.encoder || loadedModel.modelDir + '/encoder.onnx',
+        decoder: loadedModel.actualPaths.decoder || loadedModel.modelDir + '/decoder.onnx',
+        joiner: loadedModel.actualPaths.joiner || loadedModel.modelDir + '/joiner.onnx',
+      };
+    } else if (loadedModel.type === 'paraformer') {
+      config.modelConfig.paraformer = {
+        encoder: loadedModel.actualPaths.encoder || loadedModel.modelDir + '/encoder.onnx',
+        decoder: loadedModel.actualPaths.decoder || loadedModel.modelDir + '/decoder.onnx',
+      };
+    } else if (loadedModel.type === 'ctc') {
+      config.modelConfig.zipformer2Ctc = {
+        model: loadedModel.actualPaths.model || loadedModel.modelDir + '/model.onnx',
+      };
+    }
+
+    const recognizer = new global.OnlineRecognizer(config, global.Module);
+
+    if (SherpaOnnx.trackResource) {
+      SherpaOnnx.trackResource('asr', recognizer);
+    }
+
+    return recognizer;
   };
-  
-  /**
-   * OfflineStream class for handling non-streaming audio input
-   */
-  global.OfflineStream = global.OfflineStream || function(handle, Module) {
-    this.handle = handle;
-    this.Module = Module;
-    
-    /**
-     * Accept audio waveform data
-     * @param {number} sampleRate - Sample rate of the audio
-     * @param {Float32Array} samples - Audio samples in [-1, 1] range
-     */
-    this.acceptWaveform = function(sampleRate, samples) {
-      const pointer = this.Module._malloc(samples.length * samples.BYTES_PER_ELEMENT);
-      this.Module.HEAPF32.set(samples, pointer / samples.BYTES_PER_ELEMENT);
-      
-      this.Module.ccall(
-        'SherpaOnnxAcceptWaveformOffline',
-        'void',
-        ['number', 'number', 'number', 'number'],
-        [this.handle, sampleRate, pointer, samples.length]
-      );
-      
-      this.Module._free(pointer);
-    };
-    
-    /**
-     * Get the recognition result
-     * @returns {Object} - Recognition result as JSON
-     */
-    this.getResult = function() {
-      const resultPtr = this.Module.ccall(
-        'SherpaOnnxGetOfflineStreamResultAsJson',
-        'number',
-        ['number'],
-        [this.handle]
-      );
-      
-      const jsonStr = this.Module.UTF8ToString(resultPtr);
-      const result = JSON.parse(jsonStr);
-      
-      this.Module.ccall(
-        'SherpaOnnxDestroyOfflineStreamResultJson',
-        'null',
-        ['number'],
-        [resultPtr]
-      );
-      
-      return result;
-    };
-    
-    /**
-     * Free the stream
-     */
-    this.free = function() {
-      if (this.handle) {
-        this.Module.ccall(
-          'SherpaOnnxDestroyOfflineStream',
-          'null',
-          ['number'],
-          [this.handle]
-        );
-        this.handle = null;
-      }
-    };
-  };
-  
+
   // For Node.js environments
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = SherpaOnnx;
   }
-})(typeof window !== 'undefined' ? window : global); 
+})(typeof window !== 'undefined' ? window : global);

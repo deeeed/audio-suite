@@ -123,6 +123,8 @@
       
       // Load the rest of the modules sequentially
       for (let i = 1; i < modulePaths.length; i++) {
+        var progressCb = typeof window !== 'undefined' && window._sherpaOnnxProgressCallback;
+        if (progressCb) progressCb({ phase: 'module', module: modulePaths[i], loaded: i, total: modulePaths.length });
         console.log(`Loading module ${i+1}/${modulePaths.length}: ${modulePaths[i]}`);
         await loadScript(modulePaths[i]);
       }
