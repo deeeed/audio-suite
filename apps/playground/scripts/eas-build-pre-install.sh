@@ -30,10 +30,11 @@ echo "=== Built react-native-essentia ==="
 
 # 4. Download sherpa-onnx prebuilt binaries if missing
 SHERPA_PKG="../../packages/sherpa-onnx.rn"
-SHERPA_VERSION="1.12.29"
+SHERPA_VERSION="1.13.0"
 CHECK_FILE="$SHERPA_PKG/prebuilt/android/arm64-v8a/libsherpa-onnx-jni.so"
+IOS_CHECK_FILE="$SHERPA_PKG/prebuilt/ios/device/libonnxruntime.a"
 
-if [ ! -f "$CHECK_FILE" ]; then
+if [ ! -f "$CHECK_FILE" ] || [ ! -f "$IOS_CHECK_FILE" ]; then
   echo "=== Downloading sherpa-onnx prebuilt binaries (v${SHERPA_VERSION}) ==="
   RELEASE_TAG="sherpa-onnx-prebuilt-v${SHERPA_VERSION}"
   ASSET_NAME="sherpa-onnx-binaries-${SHERPA_VERSION}.zip"

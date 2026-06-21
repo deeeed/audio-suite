@@ -20,23 +20,27 @@ yarn build
 yarn build:plugin
 echo "=== Built audio-studio ==="
 
-# 4. Download sherpa-onnx prebuilt iOS libraries if missing
+# 4. Download sherpa-onnx prebuilt binaries if missing
 SHERPA_PKG="../../packages/sherpa-onnx.rn"
-if [ ! -f "$SHERPA_PKG/prebuilt/ios/device/libonnxruntime.a" ]; then
-  echo "=== Downloading sherpa-onnx prebuilt iOS libraries ==="
-  RELEASE_TAG="sherpa-onnx-prebuilt-v1.12.28"
-  ASSET_NAME="sherpa-onnx-ios-prebuilt.tar.gz"
+SHERPA_VERSION="1.13.0"
+CHECK_FILE="$SHERPA_PKG/prebuilt/android/arm64-v8a/libsherpa-onnx-jni.so"
+IOS_CHECK_FILE="$SHERPA_PKG/prebuilt/ios/device/libonnxruntime.a"
+
+if [ ! -f "$CHECK_FILE" ] || [ ! -f "$IOS_CHECK_FILE" ]; then
+  echo "=== Downloading sherpa-onnx prebuilt binaries (v${SHERPA_VERSION}) ==="
+  RELEASE_TAG="sherpa-onnx-prebuilt-v${SHERPA_VERSION}"
+  ASSET_NAME="sherpa-onnx-binaries-${SHERPA_VERSION}.zip"
   DOWNLOAD_URL="https://github.com/deeeed/audiolab/releases/download/${RELEASE_TAG}/${ASSET_NAME}"
 
   cd "$SHERPA_PKG"
   echo "Downloading from $DOWNLOAD_URL ..."
   curl -L -o "$ASSET_NAME" "$DOWNLOAD_URL"
   echo "Extracting..."
-  tar xzf "$ASSET_NAME"
+  unzip -o "$ASSET_NAME"
   rm -f "$ASSET_NAME"
-  echo "=== sherpa-onnx iOS libraries installed ==="
+  echo "=== sherpa-onnx prebuilt binaries installed ==="
 else
-  echo "=== sherpa-onnx iOS libraries already present, skipping download ==="
+  echo "=== sherpa-onnx prebuilt binaries already present, skipping download ==="
 fi
 
 echo "=== EAS pre-install: done ==="

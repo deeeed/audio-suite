@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.4] - 2026-06-21
+
+### Changed
+- Rebuild Sherpa Voice against `@siteed/audio-studio@3.2.1` and `@siteed/sherpa-onnx.rn@1.3.1`.
+
+### Fixed
+- Include offline CT-Transformer punctuation, Android denoiser config, and Moonshine v2 merged-decoder validation fixes from the Sherpa package release.
+
 
 ## [1.1.3] - 2026-03-21
 

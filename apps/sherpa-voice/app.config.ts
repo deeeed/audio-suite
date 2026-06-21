@@ -118,7 +118,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
                     ? '/audiolab/sherpa-voice/'
                     : '',
         },
-        runtimeVersion: '1.1.3',
+        runtimeVersion: '1.1.4',
         ...(validatedEnv.EAS_PROJECT_ID ? {
             updates: {
                 url: 'https://u.expo.dev/' + validatedEnv.EAS_PROJECT_ID,

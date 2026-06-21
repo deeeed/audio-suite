@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.3.2] - 2026-06-21
+
+### Changed
+- Rebuild playground against `@siteed/audio-studio@3.2.1` and `@siteed/sherpa-onnx.rn@1.3.1`.
+- Include recent audio recording and Sherpa validation fixes in native and web app releases.
+
 
 ## [2.3.1] - 2026-05-11
 
