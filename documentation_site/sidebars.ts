@@ -84,6 +84,11 @@ const sidebars: SidebarsConfig = {
             id: 'ui-components',
             label: 'UI Components',
         },
+        {
+            type: 'doc',
+            id: 'community',
+            label: 'Community',
+        },
     ],
 }
 
