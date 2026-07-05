@@ -28,12 +28,16 @@ import CSherpaOnnx
         }
 
         let modelFile = config["modelFile"] as? String ?? "silero_vad_v5.onnx"
-        let threshold = config["threshold"] as? Float ?? 0.5
-        let minSilenceDuration = config["minSilenceDuration"] as? Float ?? 0.25
-        let minSpeechDuration = config["minSpeechDuration"] as? Float ?? 0.25
+        // NSNumber bridging fix (Swift SE-0170): the RN bridge boxes JS numbers
+        // as double-backed NSNumbers, and `as? Float` on those returns nil unless
+        // the value is exactly Float32-representable — so non-dyadic config like
+        // 0.005 silently fell back to the default. `.floatValue` converts explicitly.
+        let threshold = (config["threshold"] as? NSNumber)?.floatValue ?? 0.5
+        let minSilenceDuration = (config["minSilenceDuration"] as? NSNumber)?.floatValue ?? 0.25
+        let minSpeechDuration = (config["minSpeechDuration"] as? NSNumber)?.floatValue ?? 0.25
         let windowSize = config["windowSize"] as? Int32 ?? 512
-        let maxSpeechDuration = config["maxSpeechDuration"] as? Float ?? 5.0
-        let bufferSizeInSeconds = config["bufferSizeInSeconds"] as? Float ?? 30.0
+        let maxSpeechDuration = (config["maxSpeechDuration"] as? NSNumber)?.floatValue ?? 5.0
+        let bufferSizeInSeconds = (config["bufferSizeInSeconds"] as? NSNumber)?.floatValue ?? 30.0
         let numThreads = config["numThreads"] as? Int32 ?? 1
         let debug = config["debug"] as? Bool ?? false
         let provider = config["provider"] as? String ?? "cpu"

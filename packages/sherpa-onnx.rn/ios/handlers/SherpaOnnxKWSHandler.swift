@@ -32,8 +32,12 @@ import CSherpaOnnx
         let debug = config["debug"] as? Bool ?? false
         let provider = config["provider"] as? String ?? "cpu"
         let maxActivePaths = config["maxActivePaths"] as? Int ?? 4
-        let keywordsScore = config["keywordsScore"] as? Float ?? 1.5
-        let keywordsThreshold = config["keywordsThreshold"] as? Float ?? 0.25
+        // NSNumber bridging fix (Swift SE-0170): the RN bridge boxes JS numbers
+        // as double-backed NSNumbers, and `as? Float` on those returns nil unless
+        // the value is exactly Float32-representable — so non-dyadic config like
+        // 0.005 silently fell back to the default. `.floatValue` converts explicitly.
+        let keywordsScore = (config["keywordsScore"] as? NSNumber)?.floatValue ?? 1.5
+        let keywordsThreshold = (config["keywordsThreshold"] as? NSNumber)?.floatValue ?? 0.25
         let numTrailingBlanks = config["numTrailingBlanks"] as? Int ?? 2
         let modelType = config["modelType"] as? String ?? "zipformer2"
 
