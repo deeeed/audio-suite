@@ -10,11 +10,11 @@ Audio processing monorepo for React Native and Expo — recording, analysis, vis
 
 [![Sponsor this project](https://img.shields.io/github/sponsors/deeeed?label=Sponsor&logo=GitHub)](https://github.com/sponsors/deeeed)
 
-<a href="https://www.star-history.com/#deeeed/audiolab&type=date&legend=top-left">
+<a href="https://star-history.dera.page/#deeeed/audiolab&type=date&legend=top-left">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=deeeed/audiolab&type=date&theme=dark&legend=top-left" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=deeeed/audiolab&type=date&legend=top-left" />
-    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=deeeed/audiolab&type=date&legend=top-left" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=deeeed/audiolab&type=date&theme=dark&legend=top-left" />
+    <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=deeeed/audiolab&type=date&legend=top-left" />
+    <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=deeeed/audiolab&type=date&legend=top-left" />
   </picture>
 </a>
 
