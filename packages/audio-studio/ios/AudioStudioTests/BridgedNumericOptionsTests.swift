@@ -8,11 +8,19 @@ import XCTest
 /// to its default — `onAudioStream` stayed pinned at the 1s default no matter
 /// what `interval` was requested.
 ///
-/// These tests feed the same shapes the bridge actually delivers. Reverting the
-/// `bridgedInt`/`bridgedDouble` helpers back to `as? Int` / `as? Double` makes
-/// them fail, which the pre-existing `EventEmissionIntervalTests` could not do:
-/// that suite builds a Swift `RecordingConfig` directly and never crosses the
-/// dictionary boundary where the bug lived.
+/// These tests feed the same shapes the bridge actually delivers. Reverting
+/// `bridgedInt` to `as? Int` fails `testDoubleBackedIntIsReadAsInt`,
+/// `testInt64ReadsLargeDurations`, and the `fromDictionary` cases; reverting
+/// `bridgedDouble` to `as? Double` fails `testDoubleReadsSampleRate` (the
+/// Int-backed input). The pre-existing `EventEmissionIntervalTests` could not
+/// catch #423 at all: it builds a Swift `RecordingConfig` directly and never
+/// crosses the dictionary boundary where the bug lived.
+///
+/// KNOWN GAP: `AudioStudioTests/` has no Xcode test target or scheme, so this
+/// suite is not executed by `yarn test:ios` (which only builds) or by CI. That
+/// predates this file. Until a target exists these assertions document and
+/// pin intent for a human running them manually, rather than enforcing it
+/// automatically.
 final class BridgedNumericOptionsTests: XCTestCase {
 
     // MARK: - The exact failure mode from #423
