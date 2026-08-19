@@ -123,8 +123,8 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             // Get time or byte range options
             let startTimeMs = options["startTimeMs"] as? Double
             let endTimeMs = options["endTimeMs"] as? Double
-            let position = options["position"] as? Int
-            let byteLength = options["length"] as? Int
+            let position = bridgedInt(options, "position")
+            let byteLength = bridgedInt(options, "length")
             
             // Validate ranges - can have time range OR byte range OR no range
             let hasTimeRange = startTimeMs != nil && endTimeMs != nil
@@ -138,7 +138,7 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             
             let features = options["features"] as? [String: Bool] ?? [:]
             let featureOptions = self.extractFeatureOptions(from: features)
-            let segmentDurationMs = options["segmentDurationMs"] as? Int ?? DEFAULT_SEGMENT_DURATION_MS // Default value of 100ms
+            let segmentDurationMs = bridgedInt(options, "segmentDurationMs") ?? DEFAULT_SEGMENT_DURATION_MS // Default value of 100ms
             
             DispatchQueue.global().async(execute: {
                 do {
@@ -648,8 +648,8 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             // Get time or byte range options
             let startTimeMs = options["startTimeMs"] as? Double
             let endTimeMs = options["endTimeMs"] as? Double
-            let position = options["position"] as? Int
-            let length = options["length"] as? Int
+            let position = bridgedInt(options, "position")
+            let length = bridgedInt(options, "length")
             let includeWavHeader = options["includeWavHeader"] as? Bool ?? false
             let includeNormalizedData = options["includeNormalizedData"] as? Bool ?? false
             let decodingOptions = options["decodingOptions"] as? [String: Any] ?? [:]
@@ -777,7 +777,7 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                     guard let hopLengthMs = options["hopLengthMs"] as? Double else {
                         throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "hopLengthMs is required"])
                     }
-                    guard let nMels = options["nMels"] as? Int ?? (options["nMels"] as? Double).map({ Int($0) }) else {
+                    guard let nMels = bridgedInt(options, "nMels") else {
                         throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "nMels is required"])
                     }
 
@@ -948,7 +948,7 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                 return
             }
 
-            let chunkDurationMs = options["chunkDurationMs"] as? Int ?? 1000
+            let chunkDurationMs = bridgedInt(options, "chunkDurationMs") ?? 1000
             guard (10...60000).contains(chunkDurationMs) else {
                 promise.reject(
                     "ERR_AUDIO_STREAM_INVALID_RANGE",
@@ -963,11 +963,11 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                 startTimeMs: options["startTimeMs"] as? Double,
                 endTimeMs: options["endTimeMs"] as? Double,
                 targetSampleRate: options["targetSampleRate"] as? Double,
-                channels: options["channels"] as? Int,
+                channels: bridgedInt(options, "channels"),
                 normalizeAudio: options["normalizeAudio"] as? Bool ?? true,
                 chunkDurationMs: chunkDurationMs,
-                maxChunkBytes: options["maxChunkBytes"] as? Int,
-                maxBufferedChunks: options["maxBufferedChunks"] as? Int ?? 4,
+                maxChunkBytes: bridgedInt(options, "maxChunkBytes"),
+                maxBufferedChunks: bridgedInt(options, "maxBufferedChunks") ?? 4,
                 backpressureTimeoutMs: options["backpressureTimeoutMs"] as? Double
             )
 
