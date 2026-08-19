@@ -4819,17 +4819,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@expo/vector-icons@npm:^15.0.3":
-  version: 15.0.3
-  resolution: "@expo/vector-icons@npm:15.0.3"
-  peerDependencies:
-    expo-font: ">=14.0.4"
-    react: "*"
-    react-native: "*"
-  checksum: 10/8845ed6aeade73d7c684776a134153658549e1ee473e99ac56c355af53d848a4c91f9d218da798f481b117a08b86ab523c9c3f3de0c50b1f111ded644825803c
-  languageName: node
-  linkType: hard
-
 "@expo/vector-icons@npm:^15.1.1":
   version: 15.1.1
   resolution: "@expo/vector-icons@npm:15.1.1"
@@ -8291,7 +8280,7 @@ __metadata:
     "@babel/core": "npm:^7.25.2"
     "@babel/plugin-proposal-decorators": "npm:^7.25.9"
     "@config-plugins/detox": "npm:^9.0.0"
-    "@expo/vector-icons": "npm:^15.0.3"
+    "@expo/vector-icons": "npm:^15.1.1"
     "@farmslot/expo-recipe": "npm:0.1.1"
     "@gorhom/bottom-sheet": "npm:^5.2.8"
     "@gorhom/portal": "npm:^1.0.14"
@@ -12281,7 +12270,7 @@ __metadata:
     "@expo/config": "npm:~57.0.8"
     "@expo/config-plugins": "npm:~57.0.8"
     "@expo/metro-runtime": "npm:~57.0.11"
-    "@expo/vector-icons": "npm:^15.0.3"
+    "@expo/vector-icons": "npm:^15.1.1"
     "@farmslot/expo-recipe": "npm:0.1.1"
     "@gorhom/bottom-sheet": "npm:^5.2.8"
     "@gorhom/portal": "npm:^1.0.14"
@@ -18115,7 +18104,7 @@ __metadata:
   resolution: "essentia-demo@workspace:apps/essentia-demo"
   dependencies:
     "@babel/core": "npm:^7.25.2"
-    "@expo/vector-icons": "npm:^15.0.3"
+    "@expo/vector-icons": "npm:^15.1.1"
     "@siteed/audio-studio": "workspace:^"
     "@siteed/react-native-essentia": "workspace:^"
     "@types/jest": "npm:^29.5.12"
@@ -27073,7 +27062,7 @@ __metadata:
   resolution: "minimal@workspace:apps/minimal"
   dependencies:
     "@babel/core": "npm:^7.25.2"
-    "@expo/vector-icons": "npm:^15.0.3"
+    "@expo/vector-icons": "npm:^15.1.1"
     "@siteed/audio-studio": "workspace:^"
     "@siteed/audio-ui": "workspace:^"
     "@siteed/react-native-logger": "npm:^0.10.0"

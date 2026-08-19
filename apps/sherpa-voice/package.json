@@ -92,7 +92,7 @@
         "preset": "jest-expo"
     },
     "dependencies": {
-        "@expo/vector-icons": "^15.0.3",
+        "@expo/vector-icons": "^15.1.1",
         "@gorhom/bottom-sheet": "^5.2.8",
         "@gorhom/portal": "^1.0.14",
         "@react-native-async-storage/async-storage": "2.2.0",

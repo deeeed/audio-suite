@@ -16,7 +16,7 @@
     "preset": "jest-expo"
   },
   "dependencies": {
-    "@expo/vector-icons": "^15.0.3",
+    "@expo/vector-icons": "^15.1.1",
     "@siteed/audio-studio": "workspace:^",
     "@siteed/react-native-essentia": "workspace:^",
     "expo": "^57.0.14",
