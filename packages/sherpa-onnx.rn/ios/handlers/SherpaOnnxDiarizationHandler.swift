@@ -35,10 +35,14 @@ import CSherpaOnnx
         let numThreads = config["numThreads"] as? Int ?? 1
         let debug = config["debug"] as? Bool ?? false
         let provider = config["provider"] as? String ?? "cpu"
-        let minDurationOn = config["minDurationOn"] as? Float ?? 0.3
-        let minDurationOff = config["minDurationOff"] as? Float ?? 0.5
+        // NSNumber bridging fix (Swift SE-0170): the RN bridge boxes JS numbers
+        // as double-backed NSNumbers, and `as? Float` on those returns nil unless
+        // the value is exactly Float32-representable — so non-dyadic config like
+        // 0.005 silently fell back to the default. `.floatValue` converts explicitly.
+        let minDurationOn = (config["minDurationOn"] as? NSNumber)?.floatValue ?? 0.3
+        let minDurationOff = (config["minDurationOff"] as? NSNumber)?.floatValue ?? 0.5
         let numClusters = config["numClusters"] as? Int ?? -1
-        let threshold = config["threshold"] as? Float ?? 0.5
+        let threshold = (config["threshold"] as? NSNumber)?.floatValue ?? 0.5
 
         let requestedSegModelFile = config["segmentationModelFile"] as? String
         let segModelPath: String

@@ -61,9 +61,13 @@ import CSherpaOnnx
             let numThreads = config["numThreads"] as? Int ?? 1
             let debug = config["debug"] as? Bool ?? false
             let provider = "cpu"
-            let noiseScale = config["noiseScale"] as? Float ?? 0.667
-            let noiseScaleW = config["noiseScaleW"] as? Float ?? 0.8
-            let lengthScale = config["lengthScale"] as? Float ?? 1.0
+        // NSNumber bridging fix (Swift SE-0170): the RN bridge boxes JS numbers
+        // as double-backed NSNumbers, and `as? Float` on those returns nil unless
+        // the value is exactly Float32-representable — so non-dyadic config like
+        // 0.005 silently fell back to the default. `.floatValue` converts explicitly.
+            let noiseScale = (config["noiseScale"] as? NSNumber)?.floatValue ?? 0.667
+            let noiseScaleW = (config["noiseScaleW"] as? NSNumber)?.floatValue ?? 0.8
+            let lengthScale = (config["lengthScale"] as? NSNumber)?.floatValue ?? 1.0
             
             // --- Log Extracted Config --- 
             NSLog("TTS Init - Model dir (cleaned): \(modelDir)")
@@ -322,17 +326,17 @@ import CSherpaOnnx
             let fileNamePrefix = config["fileNamePrefix"] as? String
             
             // Apply custom parameters if provided
-            if let _ = config["lengthScale"] as? Float { // Use _ to ignore the value
+            if config["lengthScale"] as? NSNumber != nil { // Use _ to ignore the value
                 // Note: Unlike Android, we don't have direct access to modify these parameters 
                 // on existing TTS instance. Instead, we'd need to recreate the instance.
                 NSLog("lengthScale parameter provided but cannot be applied to existing instance in iOS")
             }
             
-            if let _ = config["noiseScale"] as? Float { // Use _ to ignore the value
+            if config["noiseScale"] as? NSNumber != nil { // Use _ to ignore the value
                 NSLog("noiseScale parameter provided but cannot be applied to existing instance in iOS")
             }
             
-            if let _ = config["noiseScaleW"] as? Float { // Use _ to ignore the value
+            if config["noiseScaleW"] as? NSNumber != nil { // Use _ to ignore the value
                 NSLog("noiseScaleW parameter provided but cannot be applied to existing instance in iOS")
             }
             
