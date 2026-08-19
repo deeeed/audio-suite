@@ -10,28 +10,25 @@ import AVFoundation
 /// `interval` was requested (issue #423). Going through `NSNumber` accepts Double,
 /// Int, and NSNumber alike.
 ///
+/// Only numeric payloads are accepted; the TS API never promises numeric strings.
+///
+/// Note: `intValue` truncates toward zero. The TS contract documents a 10ms minimum
+/// for interval values and `AudioStreamManager` clamps with `max(10.0, ...)`, so
+/// sub-1ms fractions cannot silently disable emission.
+///
 /// This is the integer counterpart of the `Float` fix in #422.
 func bridgedInt(_ dict: [String: Any], _ key: String) -> Int? {
-    guard let value = dict[key] else { return nil }
-    if let number = value as? NSNumber { return number.intValue }
-    if let string = value as? String { return Int(string) }
-    return nil
+    (dict[key] as? NSNumber)?.intValue
 }
 
 /// Int64 variant of `bridgedInt` for large values such as durations.
 func bridgedInt64(_ dict: [String: Any], _ key: String) -> Int64? {
-    guard let value = dict[key] else { return nil }
-    if let number = value as? NSNumber { return number.int64Value }
-    if let string = value as? String { return Int64(string) }
-    return nil
+    (dict[key] as? NSNumber)?.int64Value
 }
 
 /// Double variant of `bridgedInt`, for symmetry and explicitness.
 func bridgedDouble(_ dict: [String: Any], _ key: String) -> Double? {
-    guard let value = dict[key] else { return nil }
-    if let number = value as? NSNumber { return number.doubleValue }
-    if let string = value as? String { return Double(string) }
-    return nil
+    (dict[key] as? NSNumber)?.doubleValue
 }
 
 struct NotificationAction {

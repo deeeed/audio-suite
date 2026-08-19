@@ -708,7 +708,7 @@ public class AudioProcessor {
         // Log output format details
         if let format = outputFormat {
             let formatType = format["format"] as? String ?? "unknown"
-            let bitrate = format["bitrate"] as? Int ?? 0
+            let bitrate = bridgedInt(format, "bitrate") ?? 0
             Logger.debug("AudioProcessor", "- Output format: \(formatType), bitrate: \(bitrate)")
         }
         
@@ -739,10 +739,10 @@ public class AudioProcessor {
             Logger.debug("AudioProcessor", "Unsupported format '\(requestedFormat)', falling back to 'aac'")
         }
 
-        let targetSampleRate = outputFormat?["sampleRate"] as? Double ?? inputSampleRate
-        let targetChannels = outputFormat?["channels"] as? Int ?? inputChannels
-        let targetBitDepth = outputFormat?["bitDepth"] as? Int ?? 16
-        let bitrate = outputFormat?["bitrate"] as? Int ?? 128000
+        let targetSampleRate = outputFormat.flatMap { bridgedDouble($0, "sampleRate") } ?? inputSampleRate
+        let targetChannels = outputFormat.flatMap { bridgedInt($0, "channels") } ?? inputChannels
+        let targetBitDepth = outputFormat.flatMap { bridgedInt($0, "bitDepth") } ?? 16
+        let bitrate = outputFormat.flatMap { bridgedInt($0, "bitrate") } ?? 128000
 
         let fileExtension = formatStr == "wav" ? "wav" : "aac"
         let outputURL = FileManager.default.temporaryDirectory

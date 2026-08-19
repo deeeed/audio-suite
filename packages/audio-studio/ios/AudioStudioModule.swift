@@ -121,8 +121,8 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             }
             
             // Get time or byte range options
-            let startTimeMs = options["startTimeMs"] as? Double
-            let endTimeMs = options["endTimeMs"] as? Double
+            let startTimeMs = bridgedDouble(options, "startTimeMs")
+            let endTimeMs = bridgedDouble(options, "endTimeMs")
             let position = bridgedInt(options, "position")
             let byteLength = bridgedInt(options, "length")
             
@@ -505,8 +505,8 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             }
 
             let mode = options["mode"] as? String ?? "single"
-            let startTimeMs = options["startTimeMs"] as? Double
-            let endTimeMs = options["endTimeMs"] as? Double
+            let startTimeMs = bridgedDouble(options, "startTimeMs")
+            let endTimeMs = bridgedDouble(options, "endTimeMs")
             let ranges = options["ranges"] as? [[String: Double]]
             let outputFileName = options["outputFileName"] as? String
             let outputFormat = options["outputFormat"] as? [String: Any]
@@ -646,8 +646,8 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             }
 
             // Get time or byte range options
-            let startTimeMs = options["startTimeMs"] as? Double
-            let endTimeMs = options["endTimeMs"] as? Double
+            let startTimeMs = bridgedDouble(options, "startTimeMs")
+            let endTimeMs = bridgedDouble(options, "endTimeMs")
             let position = bridgedInt(options, "position")
             let length = bridgedInt(options, "length")
             let includeWavHeader = options["includeWavHeader"] as? Bool ?? false
@@ -771,23 +771,23 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                     guard let fileUri = options["fileUri"] as? String else {
                         throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "fileUri is required"])
                     }
-                    guard let windowSizeMs = options["windowSizeMs"] as? Double else {
+                    guard let windowSizeMs = bridgedDouble(options, "windowSizeMs") else {
                         throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "windowSizeMs is required"])
                     }
-                    guard let hopLengthMs = options["hopLengthMs"] as? Double else {
+                    guard let hopLengthMs = bridgedDouble(options, "hopLengthMs") else {
                         throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "hopLengthMs is required"])
                     }
                     guard let nMels = bridgedInt(options, "nMels") else {
                         throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "nMels is required"])
                     }
 
-                    let fMin = Float(options["fMin"] as? Double ?? 0.0)
-                    let fMaxParam = options["fMax"] as? Double
+                    let fMin = Float(bridgedDouble(options, "fMin") ?? 0.0)
+                    let fMaxParam = bridgedDouble(options, "fMax")
                     let windowType = options["windowType"] as? String ?? "hann"
                     let logScale = options["logScale"] as? Bool ?? true
                     let normalize = options["normalize"] as? Bool ?? false
-                    let startTimeMs = options["startTimeMs"] as? Double
-                    let endTimeMs = options["endTimeMs"] as? Double
+                    let startTimeMs = bridgedDouble(options, "startTimeMs")
+                    let endTimeMs = bridgedDouble(options, "endTimeMs")
 
                     let audioData = try loadAudioFile(fileUri)
                     let sampleRate = audioData.sampleRate
@@ -960,15 +960,15 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             let opts = AudioStreamDecoder.Options(
                 requestId: requestId,
                 fileUri: fileUri,
-                startTimeMs: options["startTimeMs"] as? Double,
-                endTimeMs: options["endTimeMs"] as? Double,
-                targetSampleRate: options["targetSampleRate"] as? Double,
+                startTimeMs: bridgedDouble(options, "startTimeMs"),
+                endTimeMs: bridgedDouble(options, "endTimeMs"),
+                targetSampleRate: bridgedDouble(options, "targetSampleRate"),
                 channels: bridgedInt(options, "channels"),
                 normalizeAudio: options["normalizeAudio"] as? Bool ?? true,
                 chunkDurationMs: chunkDurationMs,
                 maxChunkBytes: bridgedInt(options, "maxChunkBytes"),
                 maxBufferedChunks: bridgedInt(options, "maxBufferedChunks") ?? 4,
-                backpressureTimeoutMs: options["backpressureTimeoutMs"] as? Double
+                backpressureTimeoutMs: bridgedDouble(options, "backpressureTimeoutMs")
             )
 
             let decoder = AudioStreamDecoder(options: opts)
