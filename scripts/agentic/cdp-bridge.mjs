@@ -169,21 +169,31 @@ function fetchTargets(port) {
  * Returns true if the bridge is available, false otherwise.
  */
 async function probeTarget(wsUrl, WebSocketImpl) {
-  try {
-    const client = await createWSClient(wsUrl, 2000, WebSocketImpl);
+  // A rejected Origin still completes the WebSocket upgrade and only then closes
+  // the socket (code 1006, no reason), so a successful connect proves nothing --
+  // only a completed eval does.  Try each candidate Origin and keep the one that
+  // actually answers, so later connections reuse it.
+  for (const origin of getInspectorOriginCandidates(wsUrl)) {
     try {
-      const result = await cdpEval(
-        client,
-        'typeof globalThis.__AGENTIC__ !== "undefined"',
-        2000
-      );
-      return result === true;
-    } finally {
-      client.close();
+      const client = await createWSClient(wsUrl, 2000, WebSocketImpl, origin);
+      try {
+        const result = await cdpEval(
+          client,
+          'typeof globalThis.__AGENTIC__ !== "undefined"',
+          2000
+        );
+        if (result === true) {
+          setLastGoodInspectorOrigin(origin);
+          return true;
+        }
+      } finally {
+        client.close();
+      }
+    } catch {
+      // Try the next candidate Origin.
     }
-  } catch {
-    return false;
   }
+  return false;
 }
 
 /**
@@ -266,6 +276,17 @@ function isPidAlive(pidText) {
   }
 }
 
+/**
+ * Read the Metro host recorded by start-metro.sh for the current app.
+ *
+ * When the bridge is invoked through an app-local wrapper, APP_ROOT is already
+ * the app directory (apps/playground), so there is no `apps/` subtree for
+ * findAppMetroHost() to walk.  This covers that case directly.
+ */
+function findLocalMetroHost() {
+  return readTextFile(path.join(AGENT_DIR, 'metro.host'));
+}
+
 function findAppMetroHost() {
   const appsDir = path.join(APP_ROOT, 'apps');
   try {
@@ -300,35 +321,75 @@ function findAppMetroHost() {
   }
 }
 
-function getInspectorOrigin(wsUrl) {
+/**
+ * Origin that most recently passed the __AGENTIC__ probe.
+ *
+ * Discovery tries several candidates; once one works we reuse it for the
+ * list-devices and command connections instead of re-probing every time.
+ */
+let lastGoodInspectorOrigin = null;
+
+function setLastGoodInspectorOrigin(origin) {
+  lastGoodInspectorOrigin = origin ?? null;
+}
+
+/**
+ * Candidate Origin headers for a native inspector WebSocket, most likely first.
+ *
+ * Expo/React Native validate the Origin of inspector upgrades against the host
+ * the packager is actually serving on.  Which host that is depends on how Metro
+ * was started:
+ *
+ *   - SDK 57 / RN 0.86 slots launched via start-metro.sh bind the LAN host and
+ *     reject a localhost Origin.  The upgrade returns 101 and the socket is then
+ *     closed with code 1006 and no reason, so it looks like the JS runtime is
+ *     silent when it is really an Origin rejection.
+ *   - Expo 56 rejected the LAN host and required the local one.
+ *
+ * We therefore try the recorded Metro host first and keep the local origin as a
+ * fallback, rather than hardcoding either.  An explicit CDP_ORIGIN always wins.
+ */
+function getInspectorOriginCandidates(wsUrl) {
   if (process.env.CDP_ORIGIN !== undefined) {
-    return process.env.CDP_ORIGIN || undefined;
+    return [process.env.CDP_ORIGIN || undefined];
   }
 
   try {
     const parsed = new URL(wsUrl);
-    if (!parsed.pathname.startsWith('/inspector/')) return undefined;
+    if (!parsed.pathname.startsWith('/inspector/')) return [undefined];
 
     const metroPort = parsed.port || loadPort();
     const httpProtocol = parsed.protocol === 'wss:' ? 'https:' : 'http:';
+    const candidates = [];
+    const push = (origin) => {
+      if (origin && !candidates.includes(origin)) candidates.push(origin);
+    };
 
-    // Native targets are discovered through this local Metro process
-    // (`http://localhost:<port>/json/list`) and Expo validates the WebSocket
-    // Origin against that local host.  Using the LAN packager host recorded for
-    // physical-device launch causes Expo 56 to reject the inspector connection
-    // even though the app is already running.
+    if (lastGoodInspectorOrigin) push(lastGoodInspectorOrigin);
+
     if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
-      return `${httpProtocol}//127.0.0.1:${metroPort}`;
+      // Metro host recorded for this app, then any app in the repo.
+      const metroHost = findLocalMetroHost() || findAppMetroHost();
+      push(metroHost ? `${httpProtocol}//${metroHost}:${metroPort}` : null);
+      // Expo 56 compatibility: the local origin it required.
+      push(`${httpProtocol}//127.0.0.1:${metroPort}`);
+      return candidates;
     }
 
     parsed.protocol = httpProtocol;
     parsed.pathname = '';
     parsed.search = '';
     parsed.hash = '';
-    return parsed.toString().replace(/\/$/, '');
+    push(parsed.toString().replace(/\/$/, ''));
+    return candidates;
   } catch {
-    return undefined;
+    return [undefined];
   }
+}
+
+/** Back-compat single-origin accessor: the first candidate. */
+function getInspectorOrigin(wsUrl) {
+  return getInspectorOriginCandidates(wsUrl)[0];
 }
 
 /**
@@ -581,9 +642,10 @@ async function resolveWebSocket() {
 /**
  * Minimal CDP client using WebSocket.
  */
-function createWSClient(wsUrl, timeout, WebSocketImpl) {
+function createWSClient(wsUrl, timeout, WebSocketImpl, originOverride) {
   return new Promise((resolve, reject) => {
-    const origin = getInspectorOrigin(wsUrl);
+    const origin =
+      originOverride !== undefined ? originOverride : getInspectorOrigin(wsUrl);
     const ws = origin
       ? new WebSocketImpl(wsUrl, undefined, { headers: { Origin: origin } })
       : new WebSocketImpl(wsUrl);
@@ -1400,7 +1462,10 @@ function inferTargetType(platform, deviceName) {
 const { deviceFilter, args } = parseArgs(process.argv);
 const command = args[0];
 
-if (!command || command === '--help' || command === '-h') {
+if (
+  !process.env.CDP_BRIDGE_IMPORT_ONLY &&
+  (!command || command === '--help' || command === '-h')
+) {
   console.log(`CDP Bridge — unified entry point for all platforms (Android, iOS, Web)
 
 Usage:
@@ -1554,7 +1619,17 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(`ERROR: ${err.message}`);
-  process.exit(1);
-});
+// Exported for regression tests. The CLI still runs on direct execution.
+export {
+  getInspectorOriginCandidates,
+  getInspectorOrigin,
+  setLastGoodInspectorOrigin,
+  findLocalMetroHost,
+};
+
+if (!process.env.CDP_BRIDGE_IMPORT_ONLY) {
+  main().catch((err) => {
+    console.error(`ERROR: ${err.message}`);
+    process.exit(1);
+  });
+}

@@ -104,3 +104,6 @@ apps/sherpa-voice/public/wasm/
 CLAUDE.local.md
 .omx/
 .omc/
+
+# Farmslot task artifacts
+.task/

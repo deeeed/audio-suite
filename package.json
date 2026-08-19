@@ -20,7 +20,7 @@
         "react-dom": "19.2.3"
     },
     "devDependencies": {
-        "@expo/config-plugins": "~56.0.8",
+        "@expo/config-plugins": "~57.0.8",
         "@storybook/react-native-web-vite": "^10.2.10",
         "eslint-import-resolver-typescript": "^3.7.0",
         "eslint-plugin-import": "^2.31.0",
