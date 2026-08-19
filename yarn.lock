@@ -4852,35 +4852,45 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@farmslot/expo-recipe@npm:0.1.1":
-  version: 0.1.1
-  resolution: "@farmslot/expo-recipe@npm:0.1.1"
+"@farmslot/expo-recipe@npm:0.8.2":
+  version: 0.8.2
+  resolution: "@farmslot/expo-recipe@npm:0.8.2"
   dependencies:
-    "@farmslot/protocol": "npm:0.6.0"
-    "@farmslot/recipe-harness": "npm:0.2.0"
+    "@farmslot/protocol": "npm:0.21.0"
+    "@farmslot/recipe-harness": "npm:0.15.0"
+    pngjs: "npm:^7.0.0"
+  peerDependencies:
+    agent-device: ">=0.19.3"
+  peerDependenciesMeta:
+    agent-device:
+      optional: true
   bin:
     farmslot-expo-recipe: ./bin/farmslot-expo-recipe.mjs
-  checksum: 10/ad8ec6772ce188f304f9f027a21208ceea538ce5f3f53432f20c3d0938c7f9356c94775a85386921b322d2f43794a831778f427a15782d528c85c600d132ac90
+  checksum: 10/b16d79aa940856c82954e0ffd513937966fdf491b539ed823c826769f37e82907173ed1e9e451c841fe815e7e23985ff4d4fee1512f2eeee8e5390e38fab5984
   languageName: node
   linkType: hard
 
-"@farmslot/protocol@npm:0.6.0":
-  version: 0.6.0
-  resolution: "@farmslot/protocol@npm:0.6.0"
-  checksum: 10/93d3c51506f50e2dad42c8d0c684ff01804fb7139578a97b839289b25810b448035613eb1f629bbbb57dec55e4302602137ebd9cebc3509b4a4fb536e835375b
-  languageName: node
-  linkType: hard
-
-"@farmslot/recipe-harness@npm:0.2.0":
-  version: 0.2.0
-  resolution: "@farmslot/recipe-harness@npm:0.2.0"
+"@farmslot/protocol@npm:0.21.0":
+  version: 0.21.0
+  resolution: "@farmslot/protocol@npm:0.21.0"
   dependencies:
-    "@farmslot/protocol": "npm:0.6.0"
+    "@noble/hashes": "npm:1.4.0"
+  checksum: 10/dc3fbaaaeb6018d0c1023dd4c6675d1a36f56acfccd33214778765ef61a31f6b64d8d84a25f29d23f3a79d85279de73f3ccecbd7c40732f363a0f66b0b9a730b
+  languageName: node
+  linkType: hard
+
+"@farmslot/recipe-harness@npm:0.15.0":
+  version: 0.15.0
+  resolution: "@farmslot/recipe-harness@npm:0.15.0"
+  dependencies:
+    "@farmslot/protocol": "npm:0.21.0"
     commander: "npm:^12.0.0"
+    semver: "npm:^7.7.3"
     ws: "npm:^8.18.0"
   bin:
     farmslot-recipe: ./bin/farmslot-recipe.mjs
-  checksum: 10/0ccaf42909e17849c31b1e457a0e417d010e2679def0282594d86fe5ff1519161fa3327ca1851bb00987e6edbd4dbf5fc0f20ed410fcf80816a30417ca95e9c2
+    farmslot-visual-review: ./bin/farmslot-visual-review.mjs
+  checksum: 10/fe04ca1b4f537e961b71be429f37218dea3a274a2c81569db44b925c2be2c64fb6f8cfb099fdc9ce32257458a3b5303e0dbebc46e895181c0ecfb0c922a1a859
   languageName: node
   linkType: hard
 
@@ -6124,6 +6134,13 @@ __metadata:
   dependencies:
     eslint-scope: "npm:5.1.1"
   checksum: 10/f2e3b2d6a6e2d9f163ca22105910c9f850dc4897af0aea3ef0a5886b63d8e1ba6505b71c99cb78a3bba24a09557d601eb21c8dede3f3213753fcfef364eb0e57
+  languageName: node
+  linkType: hard
+
+"@noble/hashes@npm:1.4.0":
+  version: 1.4.0
+  resolution: "@noble/hashes@npm:1.4.0"
+  checksum: 10/e156e65794c473794c52fa9d06baf1eb20903d0d96719530f523cc4450f6c721a957c544796e6efd0197b2296e7cd70efeb312f861465e17940a3e3c7e0febc6
   languageName: node
   linkType: hard
 
@@ -8281,7 +8298,7 @@ __metadata:
     "@babel/plugin-proposal-decorators": "npm:^7.25.9"
     "@config-plugins/detox": "npm:^9.0.0"
     "@expo/vector-icons": "npm:^15.1.1"
-    "@farmslot/expo-recipe": "npm:0.1.1"
+    "@farmslot/expo-recipe": "npm:0.8.2"
     "@gorhom/bottom-sheet": "npm:^5.2.8"
     "@gorhom/portal": "npm:^1.0.14"
     "@playwright/test": "npm:^1.58.2"
@@ -12271,7 +12288,7 @@ __metadata:
     "@expo/config-plugins": "npm:~57.0.8"
     "@expo/metro-runtime": "npm:~57.0.11"
     "@expo/vector-icons": "npm:^15.1.1"
-    "@farmslot/expo-recipe": "npm:0.1.1"
+    "@farmslot/expo-recipe": "npm:0.8.2"
     "@gorhom/bottom-sheet": "npm:^5.2.8"
     "@gorhom/portal": "npm:^1.0.14"
     "@playwright/test": "npm:^1.50.0"
