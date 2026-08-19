@@ -507,14 +507,11 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             let mode = options["mode"] as? String ?? "single"
             let startTimeMs = bridgedDouble(options, "startTimeMs")
             let endTimeMs = bridgedDouble(options, "endTimeMs")
-            // Nested payload: map through bridgedDouble so inner values parse the
-            // same way as every other bridged number, regardless of boxing.
-            let ranges = (options["ranges"] as? [[String: Any]]).map { rawRanges in
-                rawRanges.map { range in
-                    range.keys.reduce(into: [String: Double]()) { acc, key in
-                        if let value = bridgedDouble(range, key) { acc[key] = value }
-                    }
-                }
+            // Nested payload: read inner values through NSNumber, matching
+            // bridgedDouble, so they parse regardless of how the bridge boxed them.
+            // Absent `ranges` stays nil so the keep/remove guard below still fires.
+            let ranges = (options["ranges"] as? [[String: Any]])?.map { range in
+                range.compactMapValues { ($0 as? NSNumber)?.doubleValue }
             }
             let outputFileName = options["outputFileName"] as? String
             let outputFormat = options["outputFormat"] as? [String: Any]
