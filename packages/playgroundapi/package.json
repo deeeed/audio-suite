@@ -19,9 +19,9 @@
   },
   "devDependencies": {
     "@types/react": "^19.1.0",
-    "expo": "^56.0.5",
+    "expo": "^57.0.14",
     "react": "19.2.3",
-    "react-native": "0.85.3",
+    "react-native": "0.86.2",
     "typescript": "~6.0.3"
   },
   "dependencies": {
