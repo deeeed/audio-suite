@@ -2,14 +2,10 @@ package net.siteed.sherpaonnx
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.facebook.react.ReactInstanceManager
 import com.facebook.react.ReactPackage
-import com.facebook.react.bridge.JavaScriptExecutor
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableMap
-import com.facebook.react.common.LifecycleState
-import com.facebook.react.shell.MainReactPackage
 import com.facebook.soloader.SoLoader
 import junit.framework.TestCase.*
 import net.siteed.sherpaonnx.utils.createPromise

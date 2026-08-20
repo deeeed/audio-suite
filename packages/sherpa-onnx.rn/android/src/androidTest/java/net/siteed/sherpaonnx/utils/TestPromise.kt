@@ -125,4 +125,13 @@ fun createTestReactContext(context: android.content.Context): ReactApplicationCo
             path: String,
             callback: com.facebook.react.bridge.Callback,
         ) = Unit
+
+        // The inherited implementation dispatches through a UI message queue that only
+        // exists once a React instance has initialized it, so it throws here. Every
+        // handler resolves its Promise through this call, which means without the
+        // override the tests compile and then fail on the first completion. Route
+        // straight to the main looper instead — same thread, no React instance needed.
+        override fun runOnUiQueueThread(runnable: Runnable) {
+            com.facebook.react.bridge.UiThreadUtil.runOnUiThread(runnable)
+        }
     }

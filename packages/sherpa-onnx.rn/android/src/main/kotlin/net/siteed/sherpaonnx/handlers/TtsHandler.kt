@@ -33,6 +33,28 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
         private const val PREFILL_DIVISOR = 5 // 1/5s = 200ms
 
         private fun prefillFrames(sampleRate: Int) = sampleRate / PREFILL_DIVISOR
+
+        /**
+         * Frames that must be buffered before play() will actually produce output.
+         *
+         * A MODE_STREAM track only starts once the buffer holds startThresholdInFrames.
+         * On API 31+ that value is writable, so the prefill target governs. Below API 31
+         * it is fixed at the full buffer capacity and cannot be lowered — starting after
+         * only 200ms there leaves the track waiting, and a short utterance never plays at
+         * all. On those devices the effective target is the buffer itself.
+         *
+         * Returns the larger of the prefill target and whatever the track demands, so the
+         * caller can also detect the case where the utterance is simply too short.
+         */
+        private fun effectivePrefillFrames(track: AudioTrack?, sampleRate: Int): Int {
+            val target = prefillFrames(sampleRate)
+            if (track == null) return target
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                // Threshold was lowered at build time; trust the smaller target.
+                return target
+            }
+            return maxOf(target, track.bufferSizeInFrames)
+        }
     }
     
     /**
@@ -460,6 +482,12 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                     var totalSamplesWritten = 0
                     var totalCalls = 0
                     var playbackStarted = false
+                    // Frames buffered into the CURRENT AudioTrack. Distinct from
+                    // totalSamplesWritten, which is cumulative across the utterance: when a
+                    // track is replaced mid-generation the new one starts empty, so a
+                    // cumulative count would claim the prefill target was already met and
+                    // start a track holding far less than that.
+                    var framesInCurrentTrack = 0
                     
                     // Use explicit Function1 object instead of a lambda to prevent D8 from
                     // desugaring it into ExternalSyntheticLambda, which breaks the JNI lookup
@@ -479,6 +507,8 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                             try {
                                 releaseAudioTrack()
                                 initAudioTrack(currentSampleRate, startPlayback = playbackStarted)
+                                // New track starts empty; the prefill target applies again.
+                                framesInCurrentTrack = 0
                                 // Add a small delay to let AudioTrack initialize
                                 Thread.sleep(50)
                             } catch (e: Exception) {
@@ -513,6 +543,7 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                                     Log.w(TAG, "AudioTrack disabled during chunk write, reinitializing...")
                                     releaseAudioTrack()
                                     initAudioTrack(currentSampleRate, startPlayback = playbackStarted)
+                                    framesInCurrentTrack = 0
                                     // If AudioTrack couldn't be reinitialized, continue to next chunk
                                     if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
                                         offset += currentChunkSize
@@ -523,14 +554,15 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                                 val written = audioTrack?.write(shortSamples, offset, currentChunkSize, AudioTrack.WRITE_BLOCKING) ?: 0
                                 if (written > 0) {
                                     totalSamplesWritten += written
+                                    framesInCurrentTrack += written
                                     offset += written
-                                    if (!playbackStarted && totalSamplesWritten >= prefillFrames(currentSampleRate)) {
+                                    if (!playbackStarted && framesInCurrentTrack >= prefillFrames(currentSampleRate)) {
                                         audioTrack?.play()
                                         playbackStarted = true
-                                        // playbackHeadPosition is the only proof output actually
-                                        // advanced; play() returning says nothing about whether
-                                        // the start threshold was met.
-                                        Log.d(TAG, "AudioTrack playback started after prefill: $totalSamplesWritten samples, head=${audioTrack?.playbackHeadPosition}")
+                                        // Head is expected to still be 0 here — output advances
+                                        // asynchronously. The value logged at generation end is
+                                        // the one that shows whether playback actually ran.
+                                        Log.d(TAG, "AudioTrack play() called after prefill: $framesInCurrentTrack frames buffered in current track")
                                     }
                                 } else {
                                     // If write fails, skip this chunk and try the next one
@@ -561,21 +593,36 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                     // would play the buffered samples after the caller asked to stop,
                     // because stop() only pauses a track already in PLAYSTATE_PLAYING and
                     // a prefilling track is still STOPPED.
-                    if (isGenerating && !playbackStarted && totalSamplesWritten > 0) {
+                    if (isGenerating && !playbackStarted && framesInCurrentTrack > 0) {
                         // The utterance ended below the prefill target, so the start
-                        // threshold set at build time will never be reached. Lower it to
-                        // what is actually buffered, otherwise play() leaves the track
-                        // waiting on samples that will never arrive and nothing is heard.
+                        // threshold will never be reached on its own. On API 31+ lower it
+                        // to what is actually buffered. Below API 31 the threshold is fixed
+                        // at the buffer size, so pad with silence up to that size instead —
+                        // otherwise play() waits on samples that never arrive and the
+                        // utterance is silently dropped.
                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
                             try {
-                                audioTrack?.startThresholdInFrames = totalSamplesWritten
+                                audioTrack?.startThresholdInFrames = framesInCurrentTrack
                             } catch (e: Exception) {
                                 Log.w(TAG, "Could not lower start threshold for short utterance: ${e.message}")
+                            }
+                        } else {
+                            val deficit = (audioTrack?.bufferSizeInFrames ?: 0) - framesInCurrentTrack
+                            if (deficit > 0) {
+                                val silence = ShortArray(minOf(deficit, currentSampleRate))
+                                var padded = 0
+                                while (padded < deficit) {
+                                    val n = minOf(silence.size, deficit - padded)
+                                    val w = audioTrack?.write(silence, 0, n, AudioTrack.WRITE_BLOCKING) ?: 0
+                                    if (w <= 0) break
+                                    padded += w
+                                }
+                                Log.d(TAG, "Padded short utterance with $padded silent frames to reach the pre-S start threshold")
                             }
                         }
                         audioTrack?.play()
                         playbackStarted = true
-                        Log.d(TAG, "AudioTrack playback started after short utterance prefill: $totalSamplesWritten samples")
+                        Log.d(TAG, "AudioTrack playback started after short utterance prefill: $framesInCurrentTrack samples")
                     }
 
                     Log.d(TAG, "Completed callback generation. Total samples: $totalSamplesWritten in $totalCalls callback calls, head=${audioTrack?.playbackHeadPosition}, playState=${audioTrack?.playState}")

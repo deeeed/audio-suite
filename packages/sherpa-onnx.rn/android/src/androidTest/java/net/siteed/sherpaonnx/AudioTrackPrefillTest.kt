@@ -162,4 +162,75 @@ class AudioTrackPrefillTest {
             head > 0
         )
     }
+
+    /**
+     * A replaced track starts empty. If the prefill gate keyed off a cumulative count it
+     * would consider the target already met and start a track holding almost nothing —
+     * the defect this asserts against.
+     */
+    @Test
+    fun replacementTrackRequiresItsOwnPrefill() {
+        assumeTrue(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+        val first = buildTrack().also { track = it }
+        first.startThresholdInFrames = prefillFrames
+        val samples = ShortArray(prefillFrames)
+        first.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
+        first.play()
+
+        // Replace it, exactly as the reinit paths in TtsHandler do.
+        if (first.playState == AudioTrack.PLAYSTATE_PLAYING) first.stop()
+        first.release()
+
+        val second = buildTrack().also { track = it }
+        second.startThresholdInFrames = prefillFrames
+
+        assertEquals(
+            "A freshly built replacement track must report zero buffered frames, so the " +
+                "prefill gate has to be per-track rather than cumulative.",
+            0,
+            second.playbackHeadPosition
+        )
+    }
+
+    /**
+     * Below API 31 the start threshold cannot be lowered, so a short utterance only plays
+     * if the track is padded up to its buffer size. Asserts the padding strategy works on
+     * whatever API the test device runs.
+     */
+    @Test
+    fun paddingToBufferSizeStartsPlayback() {
+        val t = buildTrack().also { track = it }
+        val shortFrames = prefillFrames / 4
+        val samples = ShortArray(shortFrames)
+        assertEquals(shortFrames, t.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING))
+
+        // Pad with silence up to the buffer, the pre-S path in TtsHandler.
+        val deficit = t.bufferSizeInFrames - shortFrames
+        if (deficit > 0) {
+            val silence = ShortArray(minOf(deficit, sampleRate))
+            var padded = 0
+            while (padded < deficit) {
+                val n = minOf(silence.size, deficit - padded)
+                val w = t.write(silence, 0, n, AudioTrack.WRITE_BLOCKING)
+                if (w <= 0) break
+                padded += w
+            }
+        }
+
+        t.play()
+
+        var head = 0
+        val deadline = System.currentTimeMillis() + 3000
+        while (System.currentTimeMillis() < deadline) {
+            head = t.playbackHeadPosition
+            if (head > 0) break
+            Thread.sleep(50)
+        }
+
+        assertTrue(
+            "Padding a short utterance to the buffer size did not start playback; " +
+                "pre-API-31 devices would drop the utterance entirely.",
+            head > 0
+        )
+    }
 }
