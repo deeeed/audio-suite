@@ -3,11 +3,16 @@ import XCTest
 
 /// Covers promoting a trim's work file onto its destination (#433).
 ///
-/// Every previous version of this was verified by hand and every one had a hole. Writing
-/// straight to the destination destroyed it before failure was known; guarding the cleanup
-/// with `fileExists` preserved the already-corrupted file and mistook a dangling symlink
-/// for an absent one; and the work-file version replaced a non-empty directory, which the
-/// manual check missed because it only exercised directories on the failure path.
+/// Every earlier version of this was verified by hand and every one had a hole somewhere
+/// different. Writing straight to the destination corrupted it before failure was known;
+/// guarding cleanup with `fileExists` preserved the corrupted file and mistook a dangling
+/// symlink for nothing; `replaceItemAt` deleted a non-empty directory, which manual checks
+/// missed because they only exercised directories on the failure path; and inspecting the
+/// type first still raced, since the destination can become a directory between the look
+/// and the act.
+///
+/// These run against a real filesystem rather than asserting on a decision enum, because
+/// the decision was never the part that was wrong.
 final class OutputPromotionTests: XCTestCase {
 
     private var directory: URL!
@@ -28,71 +33,6 @@ final class OutputPromotionTests: XCTestCase {
         return url
     }
 
-    // MARK: - The decision
-
-    func testAnAbsentDestinationIsMovedOnto() {
-        XCTAssertEqual(OutputPromotion.action(forExistingType: nil), .move)
-    }
-
-    func testARegularFileIsReplaced() {
-        XCTAssertEqual(OutputPromotion.action(forExistingType: .typeRegular), .replace)
-    }
-
-    func testASymlinkIsReplaced() {
-        // Replacing the link itself, not what it points at.
-        XCTAssertEqual(OutputPromotion.action(forExistingType: .typeSymbolicLink), .replace)
-    }
-
-    func testADirectoryIsRefused() {
-        // The case that made it through manual checking: replaceItemAt succeeds against a
-        // directory and takes its contents with it.
-        guard case .refuse = OutputPromotion.action(forExistingType: .typeDirectory) else {
-            return XCTFail("A directory destination must be refused")
-        }
-    }
-
-    func testOtherFileTypesAreRefused() {
-        for type in [FileAttributeType.typeSocket, .typeBlockSpecial, .typeCharacterSpecial] {
-            guard case .refuse = OutputPromotion.action(forExistingType: type) else {
-                return XCTFail("\(type.rawValue) must be refused")
-            }
-        }
-    }
-
-    // MARK: - Against a real filesystem
-
-    func testANonEmptyDirectoryAndItsContentsSurvive() throws {
-        let destination = directory.appendingPathComponent("target.wav")
-        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
-        let sentinel = destination.appendingPathComponent("keep.txt")
-        try "SENTINEL".write(to: sentinel, atomically: true, encoding: .utf8)
-
-        let work = try makeWorkFile()
-        XCTAssertThrowsError(try OutputPromotion.promote(workURL: work, to: destination))
-
-        XCTAssertEqual(try String(contentsOf: sentinel), "SENTINEL")
-        var isDirectory: ObjCBool = false
-        XCTAssertTrue(
-            FileManager.default.fileExists(atPath: destination.path, isDirectory: &isDirectory)
-        )
-        XCTAssertTrue(isDirectory.boolValue, "the destination must still be a directory")
-        XCTAssertTrue(
-            FileManager.default.fileExists(atPath: work.path),
-            "the work file is left for the caller to clean up"
-        )
-    }
-
-    func testAnExistingFileIsReplacedByTheWorkFile() throws {
-        let destination = directory.appendingPathComponent("existing.wav")
-        try "OLD AUDIO".write(to: destination, atomically: true, encoding: .utf8)
-
-        let work = try makeWorkFile()
-        try OutputPromotion.promote(workURL: work, to: destination)
-
-        XCTAssertEqual(try String(contentsOf: destination), "NEW AUDIO")
-        XCTAssertFalse(FileManager.default.fileExists(atPath: work.path))
-    }
-
     func testAFreshDestinationReceivesTheWorkFile() throws {
         let destination = directory.appendingPathComponent("fresh.wav")
         let work = try makeWorkFile()
@@ -103,15 +43,91 @@ final class OutputPromotionTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: work.path))
     }
 
-    func testADanglingSymlinkIsSeenRatherThanTreatedAsAbsent() throws {
-        // fileExists returns false here, which is what made the previous guard wrong.
+    func testAnExistingFileIsReplaced() throws {
+        let destination = directory.appendingPathComponent("existing.wav")
+        try "OLD AUDIO".write(to: destination, atomically: true, encoding: .utf8)
+        let work = try makeWorkFile()
+
+        try OutputPromotion.promote(workURL: work, to: destination)
+
+        XCTAssertEqual(try String(contentsOf: destination), "NEW AUDIO")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: work.path))
+    }
+
+    func testANonEmptyDirectoryAndItsContentsSurvive() throws {
+        // The case manual verification missed: replaceItemAt reported success here and
+        // took the directory's contents with it.
+        let destination = directory.appendingPathComponent("target.wav")
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let sentinel = destination.appendingPathComponent("keep.txt")
+        try "SENTINEL".write(to: sentinel, atomically: true, encoding: .utf8)
+        let work = try makeWorkFile()
+
+        XCTAssertThrowsError(try OutputPromotion.promote(workURL: work, to: destination))
+
+        XCTAssertEqual(try String(contentsOf: sentinel), "SENTINEL")
+        var isDirectory: ObjCBool = false
+        XCTAssertTrue(FileManager.default.fileExists(atPath: destination.path, isDirectory: &isDirectory))
+        XCTAssertTrue(isDirectory.boolValue, "the destination must still be a directory")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: work.path),
+            "the work file is left for the caller to clean up"
+        )
+    }
+
+    func testALiveSymlinkIsReplacedWithoutTouchingItsTarget() throws {
+        // rename replaces the link itself. replaceItemAt could not do this at all — it
+        // throws Cocoa error 4 for a symlink, live or dangling.
+        let target = directory.appendingPathComponent("target.txt")
+        try "TARGET".write(to: target, atomically: true, encoding: .utf8)
+        let destination = directory.appendingPathComponent("live.wav")
+        try FileManager.default.createSymbolicLink(at: destination, withDestinationURL: target)
+        let work = try makeWorkFile()
+
+        try OutputPromotion.promote(workURL: work, to: destination)
+
+        XCTAssertEqual(try String(contentsOf: destination), "NEW AUDIO")
+        XCTAssertEqual(try String(contentsOf: target), "TARGET", "the link's target is untouched")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: work.path))
+    }
+
+    func testADanglingSymlinkIsReplaced() throws {
+        // fileExists reports false here, which is what made an earlier guard wrong.
         let destination = directory.appendingPathComponent("dangling.wav")
         try FileManager.default.createSymbolicLink(
             at: destination,
             withDestinationURL: directory.appendingPathComponent("missing-target")
         )
-
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
-        XCTAssertEqual(OutputPromotion.existingType(at: destination), .typeSymbolicLink)
+        let work = try makeWorkFile()
+
+        try OutputPromotion.promote(workURL: work, to: destination)
+
+        XCTAssertEqual(try String(contentsOf: destination), "NEW AUDIO")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: work.path))
+    }
+
+    func testAMissingWorkFileFailsWithoutDisturbingTheDestination() throws {
+        let destination = directory.appendingPathComponent("existing.wav")
+        try "OLD AUDIO".write(to: destination, atomically: true, encoding: .utf8)
+        let absent = directory.appendingPathComponent("never-written.wav")
+
+        XCTAssertThrowsError(try OutputPromotion.promote(workURL: absent, to: destination))
+        XCTAssertEqual(try String(contentsOf: destination), "OLD AUDIO")
+    }
+
+    func testAFailureCarriesThePosixReason() throws {
+        let destination = directory.appendingPathComponent("adir.wav")
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let work = try makeWorkFile()
+
+        do {
+            try OutputPromotion.promote(workURL: work, to: destination)
+            XCTFail("promoting onto a directory must throw")
+        } catch let error as NSError {
+            let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError
+            XCTAssertEqual(underlying?.domain, NSPOSIXErrorDomain)
+            XCTAssertEqual(underlying?.code, Int(EISDIR), "the kernel refuses, not a pre-check")
+        }
     }
 }
