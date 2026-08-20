@@ -138,7 +138,7 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             
             let features = options["features"] as? [String: Bool] ?? [:]
             let featureOptions = self.extractFeatureOptions(from: features)
-            let segmentDurationMs = bridgedInt(options, "segmentDurationMs") ?? DEFAULT_SEGMENT_DURATION_MS // Default value of 100ms
+            let segmentDurationMs = bridgedInt(options, "segmentDurationMs").flatMap { $0 > 0 ? $0 : nil } ?? DEFAULT_SEGMENT_DURATION_MS // Default value of 100ms
             
             DispatchQueue.global().async(execute: {
                 do {

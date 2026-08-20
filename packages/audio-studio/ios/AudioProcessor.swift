@@ -350,7 +350,13 @@ public class AudioProcessor {
 
         let length = channelData.count
         // Calculate points per segment based on segment duration
-        let samplesPerSegment = Int(Float(segmentDurationMs) * sampleRate / 1000.0)
+        // Clamp before narrowing. Int(_:) traps on a value it cannot represent, and
+        // the product depends on the incoming sampleRate, so no bound on
+        // segmentDurationMs alone makes this safe. Mirrors the frames-per-segment
+        // clamp in extraction.
+        let rawSamplesPerSegment = (Double(segmentDurationMs) * Double(sampleRate) / 1000.0)
+            .rounded(.towardZero)
+        let samplesPerSegment = Int(min(max(rawSamplesPerSegment, 1), Double(Int.max / 2)))
         var dataPoints = [DataPoint]()
         var minAmplitude: Float = .greatestFiniteMagnitude
         var maxAmplitude: Float = -.greatestFiniteMagnitude
@@ -579,7 +585,12 @@ public class AudioProcessor {
         }
 
         // Calculate frames per buffer based on segment duration
-        let framesPerBuffer = AVAudioFrameCount(Float(sampleRate) * Float(segmentDurationMs) / 1000.0)
+        // Clamp before narrowing, as above.
+        let rawFramesPerBuffer = (Double(sampleRate) * Double(segmentDurationMs) / 1000.0)
+            .rounded(.towardZero)
+        let framesPerBuffer = AVAudioFrameCount(
+            min(max(rawFramesPerBuffer, 1), Double(AVAudioFrameCount.max))
+        )
         
         guard let buffer = AVAudioPCMBuffer(pcmFormat: audioFile.processingFormat, frameCapacity: framesPerBuffer) else {
             Logger.debug("AudioProcessor", "Failed to create buffer")
