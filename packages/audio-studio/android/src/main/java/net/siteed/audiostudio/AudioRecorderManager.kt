@@ -80,6 +80,11 @@ class AudioRecorderManager(
     private val MAX_ANALYSIS_BUFFER_SIZE = 20 * 1024 * 1024 // 20MB
     
     private var audioRecord: AudioRecord? = null
+    /**
+     * Which audio source recording actually opened, reported back to JS so a caller can
+     * tell an honoured request from a fallback (#428).
+     */
+    private var activeAudioSourceName: String = "mic"
     private var bufferSizeInBytes = 0
     private val _isRecording = AtomicBoolean(false)
     private val isPaused = AtomicBoolean(false)
@@ -648,6 +653,9 @@ class AudioRecorderManager(
                 "bitDepth" to AudioFormatUtils.getBitDepth(recordingConfig.encoding),
                 "sampleRate" to recordingConfig.sampleRate,
                 "mimeType" to mimeType,
+                // The source actually opened, which may differ from the request when the
+                // device does not support it (#428).
+                "androidAudioSource" to activeAudioSourceName,
                 "compression" to if (compressedFile != null) bundleOf(
                     "mimeType" to if (recordingConfig.output.compressed.format == "aac") "audio/aac" else "audio/opus",
                     "bitrate" to recordingConfig.output.compressed.bitrate,
@@ -975,10 +983,31 @@ class AudioRecorderManager(
             if (audioRecord == null || !isPaused.get()) {
                 LogUtils.d(CLASS_NAME, "Initializing AudioRecord with format: $audioFormat, BufferSize: $bufferSizeInBytes")
 
+                val channelConfig =
+                    if (recordingConfig.channels == 1) AudioFormat.CHANNEL_IN_MONO
+                    else AudioFormat.CHANNEL_IN_STEREO
+
+                // Honour androidConfig.audioSource so callers can bypass OEM voice
+                // processing for ASR or analysis (#428). Falls back to MIC when the
+                // requested source is not usable on this device.
+                val resolvedSource = AudioSourceResolver.resolve(
+                    requested = recordingConfig.audioSource,
+                    sampleRate = recordingConfig.sampleRate,
+                    channelConfig = channelConfig,
+                    audioFormat = audioFormat,
+                )
+                activeAudioSourceName = resolvedSource.name
+                if (resolvedSource.fellBack) {
+                    LogUtils.w(
+                        CLASS_NAME,
+                        "Requested audio source '${recordingConfig.audioSource}' is unavailable; using '${resolvedSource.name}'"
+                    )
+                }
+
                 audioRecord = AudioRecord(
-                    MediaRecorder.AudioSource.MIC,
+                    resolvedSource.source,
                     recordingConfig.sampleRate,
-                    if (recordingConfig.channels == 1) AudioFormat.CHANNEL_IN_MONO else AudioFormat.CHANNEL_IN_STEREO,
+                    channelConfig,
                     audioFormat,
                     bufferSizeInBytes
                 )
@@ -1964,7 +1993,17 @@ class AudioRecorderManager(
             }
 
             compressedRecorder?.apply {
-                setAudioSource(MediaRecorder.AudioSource.MIC)
+                // Keep the compressed recorder on the same source as the PCM path, so the
+                // two outputs are not captured through different processing chains (#428).
+                setAudioSource(
+                    AudioSourceResolver.resolve(
+                        requested = recordingConfig.audioSource,
+                        sampleRate = recordingConfig.sampleRate,
+                        channelConfig = if (recordingConfig.channels == 1)
+                            AudioFormat.CHANNEL_IN_MONO else AudioFormat.CHANNEL_IN_STEREO,
+                        audioFormat = AudioFormat.ENCODING_PCM_16BIT,
+                    ).source
+                )
                 
                 // Choose output format based on codec and preferRawStream flag
                 val outputFormat = when (recordingConfig.output.compressed.format) {

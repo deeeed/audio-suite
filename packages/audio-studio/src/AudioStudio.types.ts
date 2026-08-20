@@ -187,6 +187,14 @@ export interface StartRecordingResult {
     bitDepth?: BitDepth
     /** Sample rate of the audio in Hz */
     sampleRate?: SampleRate
+    /**
+     * The `MediaRecorder.AudioSource` recording actually opened. Android only.
+     *
+     * May differ from `android.audioSource` when the request could not be honoured — for
+     * example `'unprocessed'` on a device that does not support it falls back to `'mic'`.
+     * Check this rather than assuming the requested source was used.
+     */
+    androidAudioSource?: 'mic' | 'voiceRecognition' | 'unprocessed'
     /** Information about compression if enabled, including the URI to the compressed file */
     compression?: CompressionInfo & {
         /** URI to the compressed audio file */
@@ -285,6 +293,28 @@ export interface AndroidConfig {
      * @default 'background' when keepAwake=true, 'interactive' otherwise
      */
     audioFocusStrategy?: 'background' | 'interactive' | 'communication' | 'none'
+
+    /**
+     * Which `MediaRecorder.AudioSource` to capture from.
+     *
+     * The default `'mic'` runs OEM voice processing — noise suppression, AGC, and on some
+     * devices an "AI voice enhancement" pass. That is usually what you want for voice
+     * memos, and usually what you do not want for speech-to-text, acoustic analysis, or
+     * anything measuring the signal itself. This is the Android counterpart to
+     * `ios.audioSession.mode: 'measurement'`.
+     *
+     * - `'mic'`: the device's primary microphone with OEM processing applied
+     * - `'voiceRecognition'`: tuned for ASR; usually skips AGC and aggressive noise suppression
+     * - `'unprocessed'`: raw capture with no processing. Not supported on every device;
+     *   falls back to `'mic'` when unavailable
+     * - `'auto'`: prefer `'unprocessed'`, then `'voiceRecognition'`, then `'mic'`
+     *
+     * The resolved source is reported on the recording result as `androidAudioSource`, so
+     * you can tell whether a fallback happened rather than assuming the request was honoured.
+     *
+     * @default 'mic'
+     */
+    audioSource?: 'mic' | 'voiceRecognition' | 'unprocessed' | 'auto'
 }
 
 /** Web platform specific configuration options */
