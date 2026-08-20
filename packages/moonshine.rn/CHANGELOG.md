@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `build-moonshine-android.sh` now fails immediately with an actionable message when the `speaker-embedding-model-data.cpp` LFS asset is missing or unmaterialized, instead of letting gradle run on for ~80s into an opaque CMake "Cannot find source file" error.
+
 ## [0.4.0] - 2026-05-15
 
 Long-streaming release focused on keeping Moonshine transcription memory bounded for very long recordings.
