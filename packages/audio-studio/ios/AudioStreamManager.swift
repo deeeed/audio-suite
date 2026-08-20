@@ -1510,13 +1510,16 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             }
             Logger.debug("Tap reinstalled for resume")
 
-            // Try to restart the engine
-            try audioEngine.start()
-
-            // Revalidate the primary WAV handle before resuming (issue #420).
+            // Revalidate the primary WAV handle BEFORE starting the engine.
+            // Once the engine runs, a tap callback can enqueue a write; if that
+            // lands against a stale handle the first resumed PCM buffer is lost
+            // (issue #420).
             if recordingSettings?.output.primary.enabled == true {
                 reopenPrimaryFileHandleIfNeeded()
             }
+
+            // Try to restart the engine
+            try audioEngine.start()
             
             // Resume the compressed recorder if active
             compressedRecorder?.record()

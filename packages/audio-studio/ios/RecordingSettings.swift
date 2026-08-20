@@ -23,6 +23,15 @@ func bridgedInt(_ dict: [String: Any], _ key: String) -> Int? {
 
 /// `bridgedInt` constrained to a permitted range.
 ///
+/// Bounds applied by `fromDictionary`, chosen to be far wider than any real caller
+/// while excluding values that trap or corrupt output:
+///   channels 1...2, bitDepth {16, 32}, sampleRate 1...768000 Hz,
+///   interval/intervalAnalysis/segmentDurationMs 1...3600000 ms (1 hour),
+///   bitrate 1...3000000 bps, maxDurationMs 0...2073600000 ms (24 days),
+///   bufferDurationSeconds 0.001...10 s.
+/// An out-of-range value falls back to the documented default rather than failing
+/// the call, matching how an omitted option already behaves.
+///
 /// Out-of-range and non-finite values return nil so the caller falls back to its
 /// default instead of carrying a hostile value downstream. This matters because
 /// several call sites narrow into unsigned types — `UInt32(channels)` in
@@ -48,8 +57,19 @@ func bridgedDouble(_ dict: [String: Any], _ key: String, in range: ClosedRange<D
 }
 
 /// Int64 variant of `bridgedInt` for large values such as durations.
+///
+/// Rejects non-finite input: `NSNumber.int64Value` maps +inf to `Int64.max`, which
+/// then traps downstream when `scheduleMaxDurationTimer` narrows it back to `Int`.
 func bridgedInt64(_ dict: [String: Any], _ key: String) -> Int64? {
-    (dict[key] as? NSNumber)?.int64Value
+    guard let number = dict[key] as? NSNumber else { return nil }
+    guard number.doubleValue.isFinite else { return nil }
+    return number.int64Value
+}
+
+/// `bridgedInt64` constrained to a permitted range.
+func bridgedInt64(_ dict: [String: Any], _ key: String, in range: ClosedRange<Int64>) -> Int64? {
+    guard let value = bridgedInt64(dict, key), range.contains(value) else { return nil }
+    return value
 }
 
 /// Double variant of `bridgedInt`, for symmetry and explicitness.
@@ -232,10 +252,12 @@ struct RecordingSettings {
 
         // Parse core settings
         settings.numberOfChannels = bridgedInt(dict, "channels", in: 1...2) ?? 1
-        settings.bitDepth = bridgedInt(dict, "bitDepth", in: 8...32) ?? 16
+        // Only 16 and 32 are real: AudioStreamManager writes every non-32 depth as
+        // pcmFormatInt16, so any other value would put a lie in the WAV header.
+        settings.bitDepth = bridgedInt(dict, "bitDepth").flatMap { [16, 32].contains($0) ? $0 : nil } ?? 16
         settings.interval = bridgedInt(dict, "interval", in: 1...3_600_000)
         settings.intervalAnalysis = bridgedInt(dict, "intervalAnalysis", in: 1...3_600_000)
-        if let maxDurationMs = bridgedInt64(dict, "maxDurationMs"), maxDurationMs >= 0 {
+        if let maxDurationMs = bridgedInt64(dict, "maxDurationMs", in: 0...2_073_600_000) {
             settings.maxDurationMs = maxDurationMs
         }
         settings.autoStopOnMaxDuration = dict["autoStopOnMaxDuration"] as? Bool ?? false

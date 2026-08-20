@@ -183,4 +183,38 @@ final class BridgedNumericOptionsTests: XCTestCase {
         }
         XCTAssertEqual(settings.maxDurationMs, 0, "negative maxDurationMs must not be applied")
     }
+
+    // MARK: - Blockers found in cross-review of the guard commit
+
+    func testInfiniteMaxDurationIsRejected() {
+        // NSNumber.int64Value maps +inf to Int64.max, which then traps when
+        // scheduleMaxDurationTimer narrows it back to Int.
+        XCTAssertNil(bridgedInt64(["v": Double.infinity], "v"))
+        XCTAssertNil(bridgedInt64(["v": Double.nan], "v"))
+
+        guard case .success(let settings) = RecordingSettings.fromDictionary(["maxDurationMs": Double.infinity]) else {
+            return XCTFail("fromDictionary rejected the payload")
+        }
+        XCTAssertEqual(settings.maxDurationMs, 0, "infinite maxDurationMs must not be applied")
+    }
+
+    func testUnsupportedBitDepthFallsBackTo16() {
+        // AudioStreamManager writes every non-32 depth as pcmFormatInt16, so
+        // accepting 8 or 24 would advertise a depth the file does not have.
+        for depth in [Double(8), Double(9), Double(24)] {
+            guard case .success(let settings) = RecordingSettings.fromDictionary(["bitDepth": depth]) else {
+                return XCTFail("fromDictionary rejected bitDepth \(depth)")
+            }
+            XCTAssertEqual(settings.bitDepth, 16, "unsupported bitDepth \(depth) must fall back to 16")
+        }
+    }
+
+    func testSupportedBitDepthsAreKept() {
+        for depth in [Double(16), Double(32)] {
+            guard case .success(let settings) = RecordingSettings.fromDictionary(["bitDepth": depth]) else {
+                return XCTFail("fromDictionary rejected bitDepth \(depth)")
+            }
+            XCTAssertEqual(settings.bitDepth, Int(depth))
+        }
+    }
 }
