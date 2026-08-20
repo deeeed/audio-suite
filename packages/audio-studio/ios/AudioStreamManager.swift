@@ -989,22 +989,33 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
     /// This reduces latency when startRecording is called later.
     /// - Parameters:
     ///   - settings: The recording settings to use.
-    /// - Returns: A boolean indicating if preparation was successful.
-    func prepareRecording(settings: RecordingSettings) -> Bool {
+    /// - Throws: `StartRecordingError` naming why preparation could not complete.
+    /// Prepares the audio session, output file and tap.
+    ///
+    /// Throws rather than returning Bool: a bare Bool meant every reason — an active
+    /// call, a file that could not be opened, a tap that would not install — arrived at
+    /// the caller identical, and reporting them as one code was worse than the generic
+    /// message it replaced. A mutable "last failure" side channel replaced that with a
+    /// path that was easy to miss, and one was missed (#419). Throwing makes the compiler
+    /// require a reason on every failure.
+    func prepareRecording(settings: RecordingSettings) throws {
+
         // Store settings first before doing anything else
         recordingSettings = settings
         
         // Skip if already prepared or recording
+        // Already prepared is success, not failure — there is nothing left to do. Recording
+        // in progress is caught by startRecording's own alreadyRecording guard.
         guard !isPrepared && !isRecording else {
             Logger.debug("AudioStreamManager", "Already prepared or recording in progress.")
-            return isPrepared
+            return
         }
 
         // Check for active call using the new method
         if isPhoneCallActive() {
             Logger.debug("AudioStreamManager", "Cannot prepare recording during an active phone call")
             delegate?.audioStreamManager(self, didFailWithError: "Cannot prepare recording during an active phone call")
-            return false
+            throw StartRecordingError.phoneCallActive
         }
 
         // Deactivate the session for a clean slate before reconfiguring.
@@ -1056,12 +1067,12 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
                     Logger.debug("AudioStreamManager", "File handle opened and initial header written for \(url.path). Initial size: \(self.totalDataSize)")
                 } catch {
                     Logger.debug("AudioStreamManager", "Error creating/opening file handle: \(error.localizedDescription)")
-                    // No need to call cleanupPreparation here, return false will handle it
-                    return false
+                    // No need to call cleanupPreparation here; throwing handles it
+                    throw StartRecordingError.fileCreationFailed
                 }
             } else {
                 Logger.debug("AudioStreamManager", "Error: Failed to create recording file URL.")
-                return false
+                throw StartRecordingError.fileCreationFailed
             }
         } else {
             // Skip file writing mode
@@ -1112,7 +1123,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             guard tapInstall.installed else {
                 isPrepared = true
                 cleanupPreparation()
-                return false
+                throw StartRecordingError.tapInstallationFailed
             }
             let tapFormat = tapInstall.format
 
@@ -1192,9 +1203,14 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
                 }
             }
             
+        } catch let error as StartRecordingError {
+            // A reason thrown from inside this block — a tap that would not install, for
+            // example — already names its cause. The generic catch below would replace it
+            // with .preparationFailed and lose that.
+            throw error
         } catch {
             Logger.debug("AudioStreamManager", "Error: Failed to set up audio session with preferred settings: \(error.localizedDescription)")
-            return false
+            throw StartRecordingError.preparationFailed
         }
         
         NotificationCenter.default.addObserver(self, selector: #selector(handleAudioSessionInterruption), name: AVAudioSession.interruptionNotification, object: nil)
@@ -1226,15 +1242,14 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         // Mark preparation as complete
         isPrepared = true
         Logger.debug("Recording prepared successfully. Ready to start.")
-        
-        return true
     }
 
     /// Starts a new audio recording with the specified settings.
     /// - Parameters:
     ///   - settings: The recording settings to use.
-    /// - Returns: A StartRecordingResult object if recording starts successfully, or nil otherwise.
-    func startRecording(settings: RecordingSettings) -> StartRecordingResult? {
+    /// - Returns: A `StartRecordingResult` describing the started recording.
+    /// - Throws: `StartRecordingError` naming why recording could not start.
+    func startRecording(settings: RecordingSettings) throws -> StartRecordingResult {
         // If already prepared, use the prepared state
         if isPrepared {
             Logger.debug("Using prepared recording state")
@@ -1244,16 +1259,15 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             guard tapInstall.installed else {
                 Logger.debug("Failed to install recording tap")
                 cleanupPreparation()
-                return nil
+                throw StartRecordingError.tapInstallationFailed
             }
             Logger.debug("Tap was reinstalled during recording start")
         } else {
             // If not prepared, prepare now
             Logger.debug("Not prepared, preparing recording first")
-            if !prepareRecording(settings: settings) {
-                Logger.debug("Failed to prepare recording")
-                return nil
-            }
+            // prepareRecording throws a specific StartRecordingError; let it propagate
+            // rather than flattening a phone call or a tap failure into one code.
+            try prepareRecording(settings: settings)
         }
         
         // Rest of the method remains unchanged
@@ -1262,17 +1276,17 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             Logger.debug("Cannot start recording during an active phone call")
             delegate?.audioStreamManager(self, didFailWithError: "Cannot start recording during an active phone call")
             cleanupPreparation()
-            return nil
+            throw StartRecordingError.phoneCallActive
         }
         
         guard !isRecording else {
             Logger.debug("Recording already in progress")
-            return nil
+            throw StartRecordingError.alreadyRecording
         }
         
         guard let settings = recordingSettings else {
             Logger.debug("Missing settings")
-            return nil
+            throw StartRecordingError.missingSettings
         }
         
         // File URI is optional when primary output is disabled
@@ -1336,7 +1350,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             isRecording = false
             cancelMaxDurationTimer()
             cleanupPreparation()
-            return nil
+            throw StartRecordingError.engineStartFailed(underlying: error)
         }
     }
 

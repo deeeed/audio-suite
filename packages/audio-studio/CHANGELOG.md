@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking for error handling:** iOS `startRecording` and `prepareRecording` no longer reject with the code `"ERROR"` and a fixed message. Callers matching on that code or on the exact string must switch on `error.code` instead; use the exported `startRecordingErrorCode()` helper to narrow it.
+- iOS `startRecording` now rejects with a specific reason instead of the single message "Failed to start recording.". Six distinct failures — an active phone call, a recording already in progress, missing settings, a failed audio tap, preparation failure, and the audio engine refusing to start — previously collapsed into one string. The codes match the ones Android already emits (`ONGOING_CALL`, `ALREADY_RECORDING`, `FILE_CREATION_FAILED`, `START_FAILED`), so callers switch on one vocabulary rather than one per platform. New `startRecordingErrorCode()` helper and `StartRecordingErrorCode` type narrow an unknown rejection.
+
 ## [3.2.1] - 2026-06-20
 
 Stable release of the 3.2.1 beta fixes plus recent release-blocker validation.
