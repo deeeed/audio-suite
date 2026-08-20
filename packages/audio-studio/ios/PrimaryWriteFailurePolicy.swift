@@ -31,6 +31,20 @@ internal struct PrimaryWriteFailurePolicy {
         case refuse
     }
 
+    /// The length to finalize the WAV header and reported size against.
+    ///
+    /// Once writes stop being accepted — an unrecoverable handle, or a file that shrank
+    /// below what was counted — the counter keeps the length the recording *would* have
+    /// had. Sizing the header from it describes audio that is not in the file and returns
+    /// that as a successful result, so the file's own length wins whenever it is known.
+    ///
+    /// - Parameters:
+    ///   - physicalSize: the file's length on disk, or nil if it could not be measured
+    ///   - accountedSize: header plus every byte this recording counted as written
+    static func finalSize(physicalSize: Int64?, accountedSize: Int64) -> Int64 {
+        physicalSize ?? accountedSize
+    }
+
     /// - Parameters:
     ///   - physicalEnd: the file's actual length on disk
     ///   - logicalEnd: header plus every byte this recording has accounted for

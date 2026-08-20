@@ -138,6 +138,40 @@ final class PrimaryWriteRecoveryTests: XCTestCase {
         )
     }
 
+    // MARK: - Finalizing after writes stopped being accepted
+
+    func testFinalSizeComesFromTheFileNotTheCounters() throws {
+        // Once .refuse stops accepting writes, totalDataSize keeps the length the recording
+        // *would* have had. Sizing the header from it writes a data chunk describing audio
+        // that is not in the file, and returns that as a successful result — the shrunken
+        // file still looks fine to the caller. stopRecording() therefore measures the file.
+        let url = directory.appendingPathComponent("shrunk.wav")
+        let onDisk = Data(repeating: 0x44, count: 300)
+        try onDisk.write(to: url)
+
+        let counted: Int64 = 1_024 // What the counters still believe.
+        let physical = (try FileManager.default.attributesOfItem(atPath: url.path)[.size]
+            as? NSNumber)?.int64Value
+        XCTAssertEqual(physical, 300)
+
+        let finalSize = PrimaryWriteFailurePolicy.finalSize(
+            physicalSize: physical,
+            accountedSize: counted
+        )
+
+        XCTAssertEqual(finalSize, 300, "The file's length wins over a counter that stopped tracking")
+        XCTAssertEqual(finalSize - 44, 256, "The data chunk describes bytes that exist")
+    }
+
+    func testFinalSizeFallsBackToTheCounterWhenTheFileCannotBeMeasured() {
+        // Measuring can fail — a deleted file, a permissions change. The counter is then
+        // the only number available, and is right for every recording that did not degrade.
+        XCTAssertEqual(
+            PrimaryWriteFailurePolicy.finalSize(physicalSize: nil, accountedSize: 1_024),
+            1_024
+        )
+    }
+
     func testRecoveryCannotSucceedWhenTheFileIsGone() {
         // The case that must reach the delegate instead of stalling quietly.
         let url = directory.appendingPathComponent("missing.wav")

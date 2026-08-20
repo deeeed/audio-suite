@@ -2405,8 +2405,29 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         // the file), not a re-encode. State teardown below stays asynchronous.
         var finalWavFileSize = capturedWavFileSize
         fileWriteQueue.sync {
-            finalWavFileSize = self.cachedWavFileSize
-            let finalDataChunkSize = self.totalDataSize - Int64(WAV_HEADER_SIZE)
+            // Size the header from the file itself, not from the counters. Once writes
+            // stop being accepted — a handle that cannot be recovered, or a file that
+            // shrank below what was counted (#420) — totalDataSize keeps the length the
+            // recording *would* have had. Trusting it here writes a header describing
+            // audio that is not in the file, and returns that as a successful result.
+            let physicalSize = (
+                try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? NSNumber
+            )??.int64Value
+
+            let accountedSize = self.cachedWavFileSize
+            if let physicalSize = physicalSize, physicalSize != accountedSize {
+                Logger.debug(
+                    "AudioStreamManager",
+                    "Primary WAV is \(physicalSize) bytes but \(accountedSize) were counted; "
+                    + "finalizing against the file."
+                )
+            }
+
+            finalWavFileSize = PrimaryWriteFailurePolicy.finalSize(
+                physicalSize: physicalSize,
+                accountedSize: accountedSize
+            )
+            let finalDataChunkSize = finalWavFileSize - Int64(WAV_HEADER_SIZE)
             if finalDataChunkSize > 0 {
                 self.updateWavHeader(fileURL: fileURL, totalDataSize: finalDataChunkSize)
                 Logger.debug("WAV header finalized before return. Data chunk size: \(finalDataChunkSize)")

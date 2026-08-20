@@ -93,11 +93,12 @@ export interface RecordingErrorEvent {
  * - a compressed recorder that failed to complete or hit an encode error — that output is
  *   finished
  * - a failed auto-resume or resume after an interruption
- * - input hardware reporting an unusable format, so no tap was installed
+ * - input hardware reporting an unusable format, so no tap was installed — this happens on
+ *   resume, device switching and foreground recovery as well as on prepare/start
  * - prepare/start refused during an active phone call
  *
- * The last two accompany a rejected `prepareRecording`/`startRecording` call, so handling
- * both surfaces the same failure twice.
+ * During prepare/start, either of those last two also accompanies the rejected call, so
+ * handling both surfaces the same failure twice.
  *
  * There is no machine-readable discriminator; `message` is prose and its wording is not a
  * stable API. Do not branch on it, and note there is no state to poll in response either —
