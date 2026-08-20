@@ -490,8 +490,10 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                                 // would start it immediately and let a remainder below the
                                 // threshold play as silence — or not at all.
                                 initAudioTrack(currentSampleRate, startPlayback = false)
-                                framesInCurrentTrack = 0
-                                playbackStarted = false
+                                PrefillPolicy.onTrackReplaced().let {
+                                    framesInCurrentTrack = it.framesInCurrentTrack
+                                    playbackStarted = it.playbackStarted
+                                }
                                 // Add a small delay to let AudioTrack initialize
                                 Thread.sleep(50)
                             } catch (e: Exception) {
@@ -526,8 +528,10 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                                     Log.w(TAG, "AudioTrack disabled during chunk write, reinitializing...")
                                     releaseAudioTrack()
                                     initAudioTrack(currentSampleRate, startPlayback = false)
-                                    framesInCurrentTrack = 0
-                                    playbackStarted = false
+                                    PrefillPolicy.onTrackReplaced().let {
+                                        framesInCurrentTrack = it.framesInCurrentTrack
+                                        playbackStarted = it.playbackStarted
+                                    }
                                     // If AudioTrack couldn't be reinitialized, continue to next chunk
                                     if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
                                         offset += currentChunkSize
