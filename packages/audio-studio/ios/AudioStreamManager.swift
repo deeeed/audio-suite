@@ -990,32 +990,32 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
     /// - Parameters:
     ///   - settings: The recording settings to use.
     /// - Returns: A boolean indicating if preparation was successful.
-    /// Why the last `prepareRecording` returned false.
+    /// Prepares the audio session, output file and tap.
     ///
-    /// Preparation reports a bare Bool, so every reason — an active call, a file that
-    /// could not be opened, a tap that would not install — used to arrive at the caller
-    /// identical. Reporting all of them as one code is worse than the generic message it
-    /// replaced, since a phone call would read as a file-system problem (#419).
-    private var lastPreparationFailure: StartRecordingError?
-
-    func prepareRecording(settings: RecordingSettings) -> Bool {
-        lastPreparationFailure = nil
+    /// Throws rather than returning Bool: a bare Bool meant every reason — an active
+    /// call, a file that could not be opened, a tap that would not install — arrived at
+    /// the caller identical, and reporting them as one code was worse than the generic
+    /// message it replaced. A mutable "last failure" side channel replaced that with a
+    /// path that was easy to miss, and one was missed (#419). Throwing makes the compiler
+    /// require a reason on every failure.
+    func prepareRecording(settings: RecordingSettings) throws {
 
         // Store settings first before doing anything else
         recordingSettings = settings
         
         // Skip if already prepared or recording
+        // Already prepared is success, not failure — there is nothing left to do. Recording
+        // in progress is caught by startRecording's own alreadyRecording guard.
         guard !isPrepared && !isRecording else {
             Logger.debug("AudioStreamManager", "Already prepared or recording in progress.")
-            return isPrepared
+            return
         }
 
         // Check for active call using the new method
         if isPhoneCallActive() {
             Logger.debug("AudioStreamManager", "Cannot prepare recording during an active phone call")
             delegate?.audioStreamManager(self, didFailWithError: "Cannot prepare recording during an active phone call")
-            lastPreparationFailure = .phoneCallActive
-            return false
+            throw StartRecordingError.phoneCallActive
         }
 
         // Deactivate the session for a clean slate before reconfiguring.
@@ -1067,13 +1067,12 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
                     Logger.debug("AudioStreamManager", "File handle opened and initial header written for \(url.path). Initial size: \(self.totalDataSize)")
                 } catch {
                     Logger.debug("AudioStreamManager", "Error creating/opening file handle: \(error.localizedDescription)")
-                    // No need to call cleanupPreparation here, return false will handle it
-                    lastPreparationFailure = .fileCreationFailed
-                    return false
+                    // No need to call cleanupPreparation here; throwing handles it
+                    throw StartRecordingError.fileCreationFailed
                 }
             } else {
                 Logger.debug("AudioStreamManager", "Error: Failed to create recording file URL.")
-                return false
+                throw StartRecordingError.fileCreationFailed
             }
         } else {
             // Skip file writing mode
@@ -1124,8 +1123,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             guard tapInstall.installed else {
                 isPrepared = true
                 cleanupPreparation()
-                lastPreparationFailure = .tapInstallationFailed
-                return false
+                throw StartRecordingError.tapInstallationFailed
             }
             let tapFormat = tapInstall.format
 
@@ -1207,7 +1205,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             
         } catch {
             Logger.debug("AudioStreamManager", "Error: Failed to set up audio session with preferred settings: \(error.localizedDescription)")
-            return false
+            throw StartRecordingError.preparationFailed
         }
         
         NotificationCenter.default.addObserver(self, selector: #selector(handleAudioSessionInterruption), name: AVAudioSession.interruptionNotification, object: nil)
@@ -1239,8 +1237,6 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         // Mark preparation as complete
         isPrepared = true
         Logger.debug("Recording prepared successfully. Ready to start.")
-        
-        return true
     }
 
     /// Starts a new audio recording with the specified settings.
@@ -1264,12 +1260,9 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         } else {
             // If not prepared, prepare now
             Logger.debug("Not prepared, preparing recording first")
-            if !prepareRecording(settings: settings) {
-                Logger.debug("Failed to prepare recording")
-                // Report why preparation failed rather than flattening a phone call or a
-                // tap failure into a file-system error.
-                throw lastPreparationFailure ?? .preparationFailed
-            }
+            // prepareRecording throws a specific StartRecordingError; let it propagate
+            // rather than flattening a phone call or a tap failure into one code.
+            try prepareRecording(settings: settings)
         }
         
         // Rest of the method remains unchanged

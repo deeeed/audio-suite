@@ -344,14 +344,25 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                     // Serial queue prevents concurrent AVAudioEngine mutation if
                     // prepare/start/stop overlap. Off-main keeps UI responsive.
                     self.audioLifecycleQueue.async {
-                        let ok = self.streamManager.prepareRecording(settings: settings)
+                        let prepareError: Error?
+                        do {
+                            try self.streamManager.prepareRecording(settings: settings)
+                            prepareError = nil
+                        } catch {
+                            prepareError = error
+                        }
                         DispatchQueue.main.async {
-                            if ok {
+                            if let error = prepareError {
+                                // Same reasoning as startRecording: report which reason,
+                                // not just that something failed (#419).
+                                let prep = error as? StartRecordingError
+                                let code = prep?.code ?? "START_FAILED"
+                                let message = prep?.message ?? error.localizedDescription
+                                Logger.error("AudioStudioModule", "prepareRecording failed: \(code) - \(message)")
+                                promise.reject(code, message)
+                            } else {
                                 Logger.info("AudioStudioModule", "prepareRecording: Preparation successful.")
                                 promise.resolve(true)
-                            } else {
-                                Logger.error("AudioStudioModule", "prepareRecording: streamManager.prepareRecording returned false.")
-                                promise.reject("ERROR", "Failed to prepare recording.")
                             }
                         }
                     }
