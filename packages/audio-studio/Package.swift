@@ -25,6 +25,7 @@ let package = Package(
                 "RecordingSettings.swift",
                 "DeviceDisconnectionBehavior.swift",
                 "PrimaryWriteFailurePolicy.swift",
+                "BridgedNarrowing.swift",
             ]
         ),
         .testTarget(
@@ -33,6 +34,7 @@ let package = Package(
             path: "ios/AudioStudioTests", sources: [
                 "BridgedNumericOptionsTests.swift",
                 "PrimaryWriteRecoveryTests.swift",
+                "BridgedNarrowingTests.swift",
             ]
         ),
     ]

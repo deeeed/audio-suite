@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking for error handling:** iOS `startRecording` and `prepareRecording` no longer reject with the code `"ERROR"` and a fixed message. Callers matching on that code or on the exact string must switch on `error.code` instead; use the exported `startRecordingErrorCode()` helper to narrow it.
 - iOS `startRecording` now rejects with a specific reason instead of the single message "Failed to start recording.". Six distinct failures — an active phone call, a recording already in progress, missing settings, a failed audio tap, preparation failure, and the audio engine refusing to start — previously collapsed into one string. The codes match the ones Android already emits (`ONGOING_CALL`, `ALREADY_RECORDING`, `FILE_CREATION_FAILED`, `START_FAILED`), so callers switch on one vocabulary rather than one per platform. New `startRecordingErrorCode()` helper and `StartRecordingErrorCode` type narrow an unknown rejection.
 
+### Fixed
+
+- iOS `extractMelSpectrogram` no longer crashes on a large `windowSizeMs`, `hopLengthMs`, `startTimeMs` or `endTimeMs`. Those options are validated as representable, but the value is then multiplied by the file's sample rate, and the product can overflow the type it is narrowed to — `windowSizeMs: 100000000` is 4.41e9 samples at 44.1 kHz, which fits `Int` and traps the `Int32` the native wrapper takes. The conversions now clamp where the sample rate is known, since no bound on the option alone can be correct (#433).
+
 ## [3.2.1] - 2026-06-20
 
 Stable release of the 3.2.1 beta fixes plus recent release-blocker validation.

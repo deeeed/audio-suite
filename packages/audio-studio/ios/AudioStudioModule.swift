@@ -829,10 +829,23 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                     var samples = audioData.samples
 
                     if let startMs = startTimeMs {
-                        let startSample = Int(startMs * Double(sampleRate) / 1000.0)
+                        // Clamp at the conversion: bridgedFiniteDouble proves the value fits
+                        // Int, but the product with the sample rate need not (#433).
+                        let startSample = BridgedNarrowing.sampleCount(
+                            milliseconds: startMs,
+                            sampleRate: Double(sampleRate),
+                            minimum: 0
+                        )
                         let endSample: Int
                         if let endMs = endTimeMs {
-                            endSample = min(Int(endMs * Double(sampleRate) / 1000.0), samples.count)
+                            endSample = min(
+                                BridgedNarrowing.sampleCount(
+                                    milliseconds: endMs,
+                                    sampleRate: Double(sampleRate),
+                                    minimum: 0
+                                ),
+                                samples.count
+                            )
                         } else {
                             endSample = samples.count
                         }
@@ -843,8 +856,14 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
 
                     let fMax = fMaxParam.map { Float($0) } ?? Float(sampleRate) / 2.0
 
-                    let windowSizeSamples = Int(windowSizeMs * Double(sampleRate) / 1000.0)
-                    let hopLengthSamples = Int(hopLengthMs * Double(sampleRate) / 1000.0)
+                    let windowSizeSamples = BridgedNarrowing.sampleCount(
+                        milliseconds: windowSizeMs,
+                        sampleRate: Double(sampleRate)
+                    )
+                    let hopLengthSamples = BridgedNarrowing.sampleCount(
+                        milliseconds: hopLengthMs,
+                        sampleRate: Double(sampleRate)
+                    )
 
                     let windowTypeInt: Int32 = windowType.lowercased() == "hamming" ? 1 : 0
 
@@ -855,8 +874,10 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                             numSamples: Int32(samples.count),
                             sampleRate: Int32(sampleRate),
                             fftLength: 2048,
-                            windowSizeSamples: Int32(windowSizeSamples),
-                            hopLengthSamples: Int32(hopLengthSamples),
+                            // Int32 traps well before Int does: 100_000_000 ms at 44.1 kHz
+                            // is 4.41e9 samples, fine as Int and past Int32.max (#433).
+                            windowSizeSamples: BridgedNarrowing.int32(windowSizeSamples, minimum: 1),
+                            hopLengthSamples: BridgedNarrowing.int32(hopLengthSamples, minimum: 1),
                             nMels: Int32(nMels),
                             fMin: fMin,
                             fMax: fMax,
