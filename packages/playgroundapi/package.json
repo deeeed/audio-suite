@@ -1,5 +1,6 @@
 {
   "name": "playgroundapi",
+  "private": true,
   "version": "0.1.0",
   "description": "Playground API native module",
   "main": "build/index.js",

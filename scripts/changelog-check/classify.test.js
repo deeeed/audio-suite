@@ -14,6 +14,7 @@ const assert = require('assert')
 const { findMissing } = require('./classify')
 
 const MANIFESTS = {
+  playgroundapi: { private: true },
   'audio-studio': { files: ['src', 'android', 'ios'] },
   'audio-ui': { files: ['src', 'lib'] },
   'moonshine.rn': { files: ['src', 'lib', 'android', 'ios'] },
@@ -22,7 +23,6 @@ const MANIFESTS = {
   'expo-audio-stream': { files: ['src'] },
   'expo-audio-studio': { files: ['index.js'] },
   'agentic-dev': { private: true },
-  playgroundapi: { files: ['build'] },
 }
 
 const ALL = Object.keys(MANIFESTS)
@@ -96,7 +96,22 @@ const cases = [
   ['FALSE-FAILURE: run_tests.sh', { changed: ['packages/audio-studio/scripts/run_tests.sh'] }, []],
   ['FALSE-FAILURE: jest.setup', { changed: ['packages/audio-studio/jest.setup.js'] }, []],
   ['FALSE-FAILURE: contributor doc at package root', { changed: ['packages/audio-studio/CONTRIBUTE.md'] }, []],
-  ['FALSE-FAILURE: playgroundapi is exempt', { changed: ['packages/playgroundapi/src/x.ts'] }, []],
+  ['playgroundapi is private, so out of scope', {
+    changed: ['packages/playgroundapi/src/x.ts'],
+    base: { ...MANIFESTS, playgroundapi: { private: true } },
+  }, []],
+  ['BYPASS: playgroundapi flipped public must be enforced', {
+    changed: ['packages/playgroundapi/src/x.ts'],
+    base: { ...MANIFESTS, playgroundapi: { private: true } },
+    head: { ...MANIFESTS, playgroundapi: { files: ['build'] } },
+  }, ['playgroundapi']],
+  ['FALSE-FAILURE: ios-testing-info.sh at package root', { changed: ['packages/sherpa-onnx.rn/ios-testing-info.sh'] }, []],
+  ['FALSE-FAILURE: third_party eslintignore', { changed: ['packages/sherpa-onnx.rn/third_party/.eslintignore'] }, []],
+  ['FALSE-FAILURE: babelrc', { changed: ['packages/react-native-essentia/.babelrc'] }, []],
+  ['FALSE-FAILURE: test-ios-artifacts script', { changed: ['packages/moonshine.rn/scripts/test-ios-artifacts-script.mjs'] }, []],
+  ['FALSE-FAILURE: scripts README', { changed: ['packages/audio-studio/scripts/README.md'] }, []],
+  ['FALSE-FAILURE: src INSTALL doc', { changed: ['packages/audio-ui/src/INSTALL.md'] }, []],
+  ['package.json changes are enforced', { changed: ['packages/audio-studio/package.json'] }, ['audio-studio']],
 
   // --- docs asymmetry: only sherpa ships docs/ ---
   ['sherpa docs are shipped, so enforced', { changed: ['packages/sherpa-onnx.rn/docs/API.md'] }, ['sherpa-onnx.rn']],

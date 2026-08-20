@@ -17,7 +17,9 @@ jobs:
           fetch-depth: 0
 
       - name: Classifier self-test
-        run: node scripts/changelog-check/classify.test.js
+        run: |
+          node scripts/changelog-check/classify.test.js
+          node scripts/changelog-check/corpus.test.js
 
       - name: Require a changelog entry for each touched package
         uses: actions/github-script@v7
@@ -78,14 +80,35 @@ jobs:
                 return null
               }
             }
-            // A path in the diff only proves it was touched — a deletion counts too. Require
-            // a real blob at head so deleting the changelog cannot pass as updating it.
-            const existsAtHead = (path) => {
+            // A path in the diff only proves it was touched — a deletion counts too, and a
+            // symlink is also a blob (mode 120000), so `cat-file -t` alone is not enough.
+            // Require a regular file whose content actually changed: a chmod leaves the blob
+            // id untouched, which would otherwise pass as an update.
+            const changelogUpdatedAtHead = (path) => {
+              let mode
+              let headOid
               try {
-                return git('cat-file', '-t', `${head}:${path}`).trim() === 'blob'
+                const entry = git('ls-tree', head, '--', path).trim()
+                if (!entry) return false
+                // "<mode> <type> <oid>\t<path>"
+                const [meta] = entry.split('\t')
+                const parts = meta.split(/\s+/)
+                mode = parts[0]
+                headOid = parts[2]
               } catch {
                 return false
               }
+              if (mode !== '100644' && mode !== '100755') return false
+
+              let baseOid = null
+              try {
+                const entry = git('ls-tree', mergeBase, '--', path).trim()
+                if (entry) baseOid = entry.split('\t')[0].split(/\s+/)[2]
+              } catch {
+                baseOid = null
+              }
+              // New file counts as updated; otherwise content must differ.
+              return baseOid === null || baseOid !== headOid
             }
 
             const missing = findMissing({
@@ -94,7 +117,7 @@ jobs:
               headPackages: listTree(head, 'packages'),
               baseManifest: manifestAt(mergeBase),
               headManifest: manifestAt(head),
-              existsAtHead,
+              existsAtHead: changelogUpdatedAtHead,
             })
 
             if (missing.length === 0) {

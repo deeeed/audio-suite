@@ -33,18 +33,21 @@ const IGNORED = [
   /^packages\/[^/]+\/test-assets\//,
   /^packages\/[^/]+\/jest\.setup\.[jt]s$/,
   /^packages\/[^/]+\/\.size-limit\.json$/,
-  /^packages\/[^/]+\/scripts\/(run_tests|ios-testing-info|validate-[^/]*)\.(sh|js|mjs)$/,
+  /^packages\/[^/]+\/(.*\/)?(run_tests|ios-testing-info|test-[^/]*)\.(sh|js|mjs)$/,
+  /^packages\/[^/]+\/scripts\/README\.md$/,
+  /^packages\/[^/]+\/third_party\//,
   // Storybook — dev-only, never built into published output.
   /^packages\/[^/]+\/\.storybook\//,
   /^packages\/[^/]+\/.*\.stories\.[jt]sx?$/,
   /^packages\/[^/]+\/assets\/Roboto\//,
   // Lint/editor config. NOT build config.
-  /^packages\/[^/]+\/(.*\/)?\.(eslintrc|prettierrc|editorconfig)/,
+  /^packages\/[^/]+\/(.*\/)?\.(eslintrc|eslintignore|prettierrc|prettierignore|editorconfig|babelrc)/,
   /^packages\/[^/]+\/(.*\/)?(jest|babel|metro)\.config\./,
   /^packages\/[^/]+\/(.*\/)?tsconfig\.(eslint|test|spec)\.json$/,
   /^packages\/[^/]+\/(.*\/)?tsconfig\.tsbuildinfo$/,
   // Contributor-facing docs at the package root that are not packed.
-  /^packages\/[^/]+\/(ARCHITECTURE|CONTRIBUTE|CONTRIBUTING|PLAN|MIGRATION|TESTING)[^/]*\.md$/,
+  /^packages\/[^/]+\/(ARCHITECTURE|CONTRIBUTE|CONTRIBUTING|PLAN|MIGRATION|TESTING|INSTALL)[^/]*\.md$/,
+  /^packages\/[^/]+\/src\/INSTALL\.md$/,
 ]
 
 /** Packages that keep no changelog of their own; their changes are documented elsewhere. */
@@ -52,9 +55,6 @@ const REDIRECT = {
   'expo-audio-stream': 'audio-studio',
   'expo-audio-studio': 'audio-studio',
 }
-
-/** Packages that are neither published nor expected to keep a changelog. */
-const EXEMPT = new Set(['playgroundapi'])
 
 function shipsDocs(manifest) {
   if (!manifest) return true // unknown — enforce
@@ -93,13 +93,11 @@ function findMissing(input) {
   // package's manifest or marks it private while changing its source.
   const inScope = new Set()
   for (const pkg of basePackages) {
-    if (EXEMPT.has(pkg)) continue
     const m = baseManifest(pkg)
     // A manifest that is unparseable at base is enforced rather than skipped.
     if (m === null || publishable(m)) inScope.add(pkg)
   }
   for (const pkg of headPackages) {
-    if (EXEMPT.has(pkg)) continue
     const m = headManifest(pkg)
     if (m === null || publishable(m)) inScope.add(pkg)
   }
@@ -108,7 +106,10 @@ function findMissing(input) {
 
   for (const pkg of [...inScope].sort()) {
     const prefix = `packages/${pkg}/`
-    const manifest = headManifest(pkg) ?? baseManifest(pkg)
+    // A head manifest that is present-but-unparseable (null) must not inherit the base
+    // manifest's docs behaviour; treat it as unknown so shipsDocs() enforces.
+    const headM = headManifest(pkg)
+    const manifest = headM === undefined ? baseManifest(pkg) : headM
     const ignored = shipsDocs(manifest)
       ? IGNORED
       : [...IGNORED, /^packages\/[^/]+\/docs\//]
@@ -134,4 +135,4 @@ function findMissing(input) {
   return missing
 }
 
-module.exports = { findMissing, shipsDocs, IGNORED, REDIRECT, EXEMPT }
+module.exports = { findMissing, shipsDocs, IGNORED, REDIRECT }
