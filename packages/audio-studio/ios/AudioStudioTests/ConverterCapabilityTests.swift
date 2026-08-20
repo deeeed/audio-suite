@@ -118,6 +118,14 @@ final class ConverterCapabilityTests: XCTestCase {
         return Double(output.frameLength) / rate
     }
 
+    func testAnUnsupportedRateGivesNoConverter() {
+        // Asserted rather than only described in a comment. This is why trim probes the
+        // requested format before deferring to whatever the writer resolved: the writer
+        // turns 1Hz into 8kHz and that conversion succeeds, so checking only the resolved
+        // format would silently produce 8kHz for a request that cannot be served.
+        XCTAssertNil(converter(to: 1), "1Hz from a 44.1kHz source is not convertible")
+    }
+
     func testAVAudioFormatIsNotAGateOnNonsenseRates() {
         // Worth recording because it is the opposite of what it looks like: AVAudioFormat
         // happily describes 0 Hz and a negative rate on the simulator. So nothing upstream

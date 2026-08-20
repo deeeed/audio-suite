@@ -788,10 +788,25 @@ public class AudioProcessor {
             .appendingPathComponent(outputFileName ?? UUID().uuidString)
             .appendingPathExtension(fileExtension)
 
-        // Whether the failure path may delete this. outputFileName is caller-supplied, so
-        // the path can already exist — and can be a directory — and removing it on failure
-        // would destroy something this call never created.
-        let ownsOutputPath = !FileManager.default.fileExists(atPath: outputURL.path)
+        // Write to a private work file and promote it only on success. The destination is
+        // caller-supplied, and AVAudioFile truncates it the moment the writer opens — a
+        // 14-byte file became a 4096-byte WAV header before a later failure — so writing
+        // there directly destroys the caller's data before anything can go wrong. Deciding
+        // afterwards whether to delete cannot undo that, and fileExists is not ownership
+        // anyway: it is false for a dangling symlink, and two concurrent calls with the
+        // same name would both claim it (#433).
+        let workURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("trim-\(UUID().uuidString)")
+            .appendingPathExtension(fileExtension)
+
+        /// Moves the finished work file onto the requested destination.
+        func promoteWorkFile() throws {
+            if FileManager.default.fileExists(atPath: outputURL.path) {
+                _ = try FileManager.default.replaceItemAt(outputURL, withItemAt: workURL)
+            } else {
+                try FileManager.default.moveItem(at: workURL, to: outputURL)
+            }
+        }
 
         let decodingConfig = DecodingConfig.fromDictionary(decodingOptions ?? [:])
         // Compare what was actually resolved, not just decodingOptions. outputFormat is a
@@ -812,7 +827,7 @@ public class AudioProcessor {
                 // AVAudioFile reports length 0 for a file whose writer is still alive, so
                 // reopening too early reported durationMs: 0 for a successful trim (#433).
                 try autoreleasepool {
-                let outputFile = try AVAudioFile(forWriting: outputURL, settings: inputFormat.settings)
+                let outputFile = try AVAudioFile(forWriting: workURL, settings: inputFormat.settings)
                 var totalFrames: Int64 = 0
                 for range in keepRanges {
                     // Break down complex expression
@@ -843,16 +858,17 @@ public class AudioProcessor {
                 }
 
                 // When creating the output file
-                Logger.debug("AudioProcessor", "Creating output file at: \(outputURL.path)")
+                Logger.debug("AudioProcessor", "Creating output file at: \(workURL.path)")
                 
                 // After processing is complete
                 Logger.debug("AudioProcessor", "Trim operation completed")
-                Logger.debug("AudioProcessor", "- Output file: \(outputURL.path)")
-                Logger.debug("AudioProcessor", "- File exists: \(FileManager.default.fileExists(atPath: outputURL.path))")
-                Logger.debug("AudioProcessor", "- File size: \((try? FileManager.default.attributesOfItem(atPath: outputURL.path)[.size] as? Int64) ?? 0) bytes") // Fixed optional unwrapping
-                Logger.debug("AudioProcessor", "- File extension: \(outputURL.pathExtension)")
+                Logger.debug("AudioProcessor", "- Output file: \(workURL.path)")
+                Logger.debug("AudioProcessor", "- File exists: \(FileManager.default.fileExists(atPath: workURL.path))")
+                Logger.debug("AudioProcessor", "- File size: \((try? FileManager.default.attributesOfItem(atPath: workURL.path)[.size] as? Int64) ?? 0) bytes")
+                Logger.debug("AudioProcessor", "- File extension: \(workURL.pathExtension)")
                 }
 
+                try promoteWorkFile()
                 return createTrimResult(from: outputURL, keepRanges: keepRanges, formatStr: formatStr, sampleRate: Int(inputSampleRate), channels: inputChannels, bitDepth: 16, bitrate: bitrate)
             } else {
                 // Non-fast path: Decode and re-encode
@@ -877,7 +893,7 @@ public class AudioProcessor {
                 if formatStr == "wav" {
                     // Scoped for the same reason as the fast path above.
                     try autoreleasepool {
-                    let outputFile = try AVAudioFile(forWriting: outputURL, settings: [
+                    let outputFile = try AVAudioFile(forWriting: workURL, settings: [
                         AVFormatIDKey: kAudioFormatLinearPCM,
                         AVSampleRateKey: targetSampleRate,
                         AVNumberOfChannelsKey: targetChannels,
@@ -1018,6 +1034,7 @@ public class AudioProcessor {
                     }
                     }
 
+                    try promoteWorkFile()
                     return createTrimResult(from: outputURL, keepRanges: keepRanges, formatStr: formatStr, sampleRate: Int(targetSampleRate), channels: targetChannels, bitDepth: targetBitDepth, bitrate: bitrate)
                 } else {
                     // Use AAC instead of Opus (Opus support removed)
@@ -1039,7 +1056,7 @@ public class AudioProcessor {
                     // 5. Update the MIME type logic for AAC only
                     let _ = "audio/mp4" // Changed from mimeType
                     
-                    let outputFile = try AVAudioFile(forWriting: outputURL, settings: outputSettings)
+                    let outputFile = try AVAudioFile(forWriting: workURL, settings: outputSettings)
                     var totalFrames: Int64 = 0
                     for range in keepRanges {
                         // Break down complex expressions
@@ -1058,6 +1075,8 @@ public class AudioProcessor {
                         let progress = Float(cumulativeFrames) / Float(totalFrames) * 100
                         progressCallback?(progress, 0, totalFrames * Int64(inputFormat.streamDescription.pointee.mBytesPerFrame))
                     }
+
+                    try promoteWorkFile()
                     return createTrimResult(
                         from: outputURL, 
                         keepRanges: keepRanges, 
@@ -1071,13 +1090,9 @@ public class AudioProcessor {
                 }
             }
         } catch {
-            // Remove the partial output, but only if this call created it. Failing now
-            // throws where it used to skip a range and return, so a half-written file
-            // would otherwise be left behind — while deleting a path that already existed
-            // would be worse than leaking one.
-            if ownsOutputPath {
-                try? FileManager.default.removeItem(at: outputURL)
-            }
+            // Only ever the work file: the destination has not been touched, so a failure
+            // leaves whatever was there intact.
+            try? FileManager.default.removeItem(at: workURL)
             reject("TRIM_ERROR", "Failed to trim audio: \(error.localizedDescription)")
             return nil
         }
