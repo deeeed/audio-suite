@@ -36,7 +36,7 @@ nodeLinker: node-modules
 
 ## Platform requirements
 
-- **Android:** `minSdkVersion 35`
+- **Android:** `minSdkVersion 26`
 - **iOS:** native rebuild required after installing or upgrading the package
 - **Web:** `window.ort` must be available before creating a transcriber
 
@@ -411,5 +411,3 @@ SHA-256 before npm publish.
 - Android apps that combine Moonshine with Sherpa or another ONNX Runtime
   provider must verify ONNX Runtime symbol compatibility; see
   [Android ONNX Runtime coexistence](../../docs/ANDROID_ORT_ALIGNMENT.md).
-- External Android consumers still need an app configuration compatible with
-  `minSdkVersion 35`.

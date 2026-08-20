@@ -36,7 +36,7 @@ index 02b3691..34be6eb 100644
                                                 int sampleRate) {
      return JNI.moonshineTranscribeWithoutStreaming(this.transcriberHandle,
 diff --git c/build.gradle.kts w/build.gradle.kts
-index 04891cb..bfff79a 100644
+index 04891cb..187d651 100644
 --- c/build.gradle.kts
 +++ w/build.gradle.kts
 @@ -5,23 +5,55 @@ plugins {
@@ -68,7 +68,7 @@ index 04891cb..bfff79a 100644
 +    "SITEED_MOONSHINE_ANDROID_MIN_SDK",
 +    "siteedMoonshineAndroidMinSdk",
 +    "26"
-+)?.toInt() ?: 26
++)?.toIntOrNull() ?: 26
 +
  android {
      namespace = "ai.moonshine.voice"
