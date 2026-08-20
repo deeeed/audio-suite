@@ -93,12 +93,17 @@ export interface RecordingErrorEvent {
  * - a compressed recorder that failed to complete or hit an encode error — that output is
  *   finished
  * - a failed auto-resume or resume after an interruption
- * - prepare/start refused during an active phone call, which **also** rejects the
- *   originating call, so handling both will surface the same failure twice
+ * - input hardware reporting an unusable format, so no tap was installed
+ * - prepare/start refused during an active phone call
+ *
+ * The last two accompany a rejected `prepareRecording`/`startRecording` call, so handling
+ * both surfaces the same failure twice.
  *
  * There is no machine-readable discriminator; `message` is prose and its wording is not a
- * stable API. Do not branch on it. Treat this as a signal to check recording state rather
- * than as a typed error channel.
+ * stable API. Do not branch on it, and note there is no state to poll in response either —
+ * `status()` reports whether recording is running, not whether an output is still healthy.
+ * Until the event carries a code, the practical use is logging and telemetry: surfacing
+ * that something degraded, not deciding what.
  *
  * **iOS only.** Android does not declare this event, so the listener never fires there —
  * silence is not evidence that recording is healthy. Parity is tracked in #447.

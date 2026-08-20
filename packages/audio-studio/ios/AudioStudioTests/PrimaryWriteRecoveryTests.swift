@@ -110,6 +110,34 @@ final class PrimaryWriteRecoveryTests: XCTestCase {
         XCTAssertFalse(result.contains(0xFF), "The uncounted partial bytes must be gone")
     }
 
+    func testSeekingPastEndOfFileWouldWriteSilenceRatherThanFailing() throws {
+        // Why every append reconciles, not just the ones after a failure: seeking past EOF
+        // succeeds, and the write fills the gap with zeroes. A file that shrank underneath
+        // a still-open descriptor would quietly gain silence instead of erroring, so the
+        // .refuse branch has to run before the seek.
+        let url = directory.appendingPathComponent("hole.wav")
+        FileManager.default.createFile(atPath: url.path, contents: nil)
+
+        let handle = try FileHandle(forWritingTo: url)
+        try handle.seek(toOffset: 128) // Past the end of an empty file.
+        try handle.write(contentsOf: Data(repeating: 0x33, count: 8))
+        try handle.close()
+
+        let result = try Data(contentsOf: url)
+        XCTAssertEqual(result.count, 136)
+        XCTAssertEqual(
+            result.prefix(128),
+            Data(repeating: 0x00, count: 128),
+            "The gap is zero-filled, which as PCM is silence"
+        )
+
+        // The policy catches this before the seek happens.
+        XCTAssertEqual(
+            PrimaryWriteFailurePolicy.resume(physicalEnd: 0, logicalEnd: 128),
+            .refuse
+        )
+    }
+
     func testRecoveryCannotSucceedWhenTheFileIsGone() {
         // The case that must reach the delegate instead of stalling quietly.
         let url = directory.appendingPathComponent("missing.wav")
