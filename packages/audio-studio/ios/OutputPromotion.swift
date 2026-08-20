@@ -38,14 +38,16 @@ enum OutputPromotion {
     /// resolves to `/var/tmp/pwned.wav`, where the trim then writes — outside the
     /// documented contract, and a way to overwrite unrelated files (#433).
     ///
-    /// Not every rejected name escapes, and the difference is worth stating precisely,
-    /// having been described wrongly twice. Probed against `/tmp/base`:
-    /// - `../escaped` and `../../../../tmp/pwned` land outside it
-    /// - `a/b` nests inside it, `/absolute` is absorbed, `.` and `..` become `..wav` and
-    ///   `...wav` inside it
+    /// Rejected names fail in three different ways, worth stating exactly because this
+    /// was described wrongly three times. Probed against `/tmp/base`:
+    /// - traversing out: `../escaped` and `../../../../tmp/pwned` land in `/tmp`
+    /// - outside without traversing: `""` leaves the base URL unchanged, so the extension
+    ///   goes onto the directory itself — `/tmp/base.wav`, a sibling
+    /// - inside but not a filename: `a/b` nests, `/absolute` is absorbed, `.` and `..`
+    ///   become `..wav` and `...wav`
     ///
-    /// All are refused, because the contract is a single filename and anything else writes
-    /// somewhere the caller did not name. Only the first group is a traversal.
+    /// All are refused: the contract is a single filename, and every one of these writes
+    /// somewhere the caller did not name.
     static func isSafeOutputFileName(_ name: String) -> Bool {
         guard !name.isEmpty else { return false }
         guard !name.contains("/") else { return false }

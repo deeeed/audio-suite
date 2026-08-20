@@ -131,11 +131,18 @@ final class OutputPromotionTests: XCTestCase {
         }
     }
 
+    func testAnEmptyNameLandsBesideTheOutputDirectoryRatherThanInsideIt() {
+        // Its own case: appending "" leaves the base URL unchanged, so the extension goes
+        // onto the directory itself — /tmp/base.wav, a sibling of /tmp/base. Outside
+        // without traversing.
+        XCTAssertFalse(OutputPromotion.isSafeOutputFileName(""))
+    }
+
     func testNonFilenamesAreRejectedEvenWhenTheyStayInside() {
-        // None of these traverse — "a/b" nests, "/absolute" is absorbed, and "." and ".."
+        // These do land inside — "a/b" nests, "/absolute" is absorbed, and "." and ".."
         // become "..wav" and "...wav" — but none is a filename, so each writes somewhere
-        // the caller did not name. Kept separate because I described this wrongly twice.
-        for name in ["a/b", "/absolute", ".", "..", ""] {
+        // the caller did not name.
+        for name in ["a/b", "/absolute", ".", ".."] {
             XCTAssertFalse(OutputPromotion.isSafeOutputFileName(name), name)
         }
     }
