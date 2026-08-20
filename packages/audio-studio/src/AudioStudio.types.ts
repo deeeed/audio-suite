@@ -303,7 +303,7 @@ export interface AndroidConfig {
      * anything measuring the signal itself. This is the Android counterpart to
      * `ios.audioSession.mode: 'measurement'`.
      *
-     * - `'mic'`: the device's primary microphone with OEM processing applied
+     * - `'mic'`: the device's primary microphone, with whatever processing the OEM applies
      * - `'voiceRecognition'`: tuned for ASR; usually skips AGC and aggressive noise suppression
      * - `'unprocessed'`: raw capture with no processing. Requires hardware support —
      *   Android treats it as `DEFAULT` on devices without it, so support is checked via
