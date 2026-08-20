@@ -98,7 +98,7 @@
         "test:android:unit": "cd ../../apps/playground/android && ./gradlew :siteed-audio-studio:test",
         "test:android:instrumented": "cd ../../apps/playground/android && ./gradlew :siteed-audio-studio:connectedAndroidTest",
         "test:android:unit:watch": "cd ../../apps/playground/android && ./gradlew :siteed-audio-studio:test --continuous",
-        "test:ios": "cd ../../apps/playground/ios && xcodebuild -workspace AudioDevPlayground.xcworkspace -scheme AudioDevPlayground -destination 'generic/platform=iOS Simulator' build",
+        "test:ios": "xcodebuild test -scheme AudioStudio-Package -destination \"platform=iOS Simulator,name=${IOS_SIMULATOR:-audiolab-1}\"",
         "test:coverage": "cd ../../apps/playground/android && ./gradlew :siteed-audio-studio:jacocoTestReport",
         "typecheck": "tsc --noEmit",
         "docgen": "typedoc src/index.ts --plugin typedoc-plugin-markdown --readme none --out ../../documentation_site/docs/api-reference/API && node ../../scripts/escape-mdx-generics.js ../../documentation_site/docs/api-reference",
@@ -117,7 +117,8 @@
         "validate:stream-long": "node scripts/validate-stream-long.mjs",
         "android:device": "cd ../../apps/playground && yarn android:device",
         "android:device:launch": "cd ../../apps/playground && yarn android:device:launch",
-        "summarize:stream-long": "node scripts/summarize-stream-long.mjs"
+        "summarize:stream-long": "node scripts/summarize-stream-long.mjs",
+        "test:ios:build": "cd ../../apps/playground/ios && xcodebuild -workspace AudioDevPlayground.xcworkspace -scheme AudioDevPlayground -destination 'generic/platform=iOS Simulator' build"
     },
     "devDependencies": {
         "@expo/config-plugins": "~57.0.8",

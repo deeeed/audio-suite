@@ -201,7 +201,14 @@ public class AudioProcessor {
         let endFrame: AVAudioFramePosition = effectiveOffset + effectiveLength
         
         // Calculate frames per segment based on segment duration
-        let framesPerSegment = AVAudioFrameCount(Float(audioFile.fileFormat.sampleRate) * Float(segmentDurationMs) / 1000.0)
+        // Clamp before narrowing: AVAudioFrameCount(_:) traps on a value it cannot
+        // represent, and the product depends on the file's sample rate, so no bound
+        // on segmentDurationMs alone can make this safe.
+        let rawFramesPerSegment = (Double(audioFile.fileFormat.sampleRate) * Double(segmentDurationMs) / 1000.0)
+            .rounded(.towardZero)
+        let framesPerSegment = AVAudioFrameCount(
+            min(max(rawFramesPerSegment, 1), Double(AVAudioFrameCount.max))
+        )
         
         if let numberOfSamples = numberOfSamples {
             framesPerBuffer = AVAudioFrameCount(max(1, effectiveLength / Int64(numberOfSamples)))
@@ -343,7 +350,13 @@ public class AudioProcessor {
 
         let length = channelData.count
         // Calculate points per segment based on segment duration
-        let samplesPerSegment = Int(Float(segmentDurationMs) * sampleRate / 1000.0)
+        // Clamp before narrowing. Int(_:) traps on a value it cannot represent, and
+        // the product depends on the incoming sampleRate, so no bound on
+        // segmentDurationMs alone makes this safe. Mirrors the frames-per-segment
+        // clamp in extraction.
+        let rawSamplesPerSegment = (Double(segmentDurationMs) * Double(sampleRate) / 1000.0)
+            .rounded(.towardZero)
+        let samplesPerSegment = Int(min(max(rawSamplesPerSegment, 1), Double(Int.max / 2)))
         var dataPoints = [DataPoint]()
         var minAmplitude: Float = .greatestFiniteMagnitude
         var maxAmplitude: Float = -.greatestFiniteMagnitude
@@ -572,7 +585,12 @@ public class AudioProcessor {
         }
 
         // Calculate frames per buffer based on segment duration
-        let framesPerBuffer = AVAudioFrameCount(Float(sampleRate) * Float(segmentDurationMs) / 1000.0)
+        // Clamp before narrowing, as above.
+        let rawFramesPerBuffer = (Double(sampleRate) * Double(segmentDurationMs) / 1000.0)
+            .rounded(.towardZero)
+        let framesPerBuffer = AVAudioFrameCount(
+            min(max(rawFramesPerBuffer, 1), Double(AVAudioFrameCount.max))
+        )
         
         guard let buffer = AVAudioPCMBuffer(pcmFormat: audioFile.processingFormat, frameCapacity: framesPerBuffer) else {
             Logger.debug("AudioProcessor", "Failed to create buffer")
@@ -739,10 +757,10 @@ public class AudioProcessor {
             Logger.debug("AudioProcessor", "Unsupported format '\(requestedFormat)', falling back to 'aac'")
         }
 
-        let targetSampleRate = outputFormat.flatMap { bridgedDouble($0, "sampleRate") } ?? inputSampleRate
-        let targetChannels = outputFormat.flatMap { bridgedInt($0, "channels") } ?? inputChannels
-        let targetBitDepth = outputFormat.flatMap { bridgedInt($0, "bitDepth") } ?? 16
-        let bitrate = outputFormat.flatMap { bridgedInt($0, "bitrate") } ?? 128000
+        let targetSampleRate = outputFormat.flatMap { bridgedFiniteDouble($0, "sampleRate").flatMap { $0 > 0 ? $0 : nil } } ?? inputSampleRate
+        let targetChannels = outputFormat.flatMap { bridgedInt($0, "channels", in: 1...2) } ?? inputChannels
+        let targetBitDepth = outputFormat.flatMap { bridgedInt($0, "bitDepth").flatMap { [16, 32].contains($0) ? $0 : nil } } ?? 16
+        let bitrate = outputFormat.flatMap { bridgedInt($0, "bitrate").flatMap { $0 > 0 ? $0 : nil } } ?? 128000
 
         let fileExtension = formatStr == "wav" ? "wav" : "aac"
         let outputURL = FileManager.default.temporaryDirectory

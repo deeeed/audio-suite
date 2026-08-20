@@ -1,1 +1,5 @@
 generated
+
+# SwiftPM test package artifacts
+.build/
+*.xcresult

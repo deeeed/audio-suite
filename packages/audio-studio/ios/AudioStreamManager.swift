@@ -33,11 +33,6 @@ extension UInt16 {
 }
 
 // Define DeviceDisconnectionBehavior enum mirroring AudioStudio.types.ts
-enum DeviceDisconnectionBehavior: String {
-    case PAUSE = "pause"
-    case FALLBACK = "fallback"
-}
-
 class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
     private let audioEngine = AVAudioEngine()
     private var inputNode: AVAudioInputNode {
@@ -89,6 +84,17 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
     // from other threads. Without this lock, base64EncodedString crashed
     // mid-flush (issue #314) and short emissions were occasionally dropped.
     private let accumulatedDataLock = NSLock()
+
+    /// Serial queue owning every write to the primary WAV file.
+    ///
+    /// PCM blocks were appended on the global concurrent utility queue, which gives
+    /// no ordering guarantee against the final header rewrite in stopRecording().
+    /// A serial queue makes "all appends done" something stopRecording() can wait
+    /// for (issue #424).
+    private let fileWriteQueue = DispatchQueue(
+        label: "net.siteed.audiostudio.filewrite",
+        qos: .utility
+    )
 
     /// Append the same chunk to both buffers under the lock.
     /// Called from the audio tap thread.
@@ -932,8 +938,14 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         if let duration = recordingSettings?.bufferDurationSeconds {
             // Use target sample rate from settings for calculation
             let targetSampleRate = Double(recordingSettings?.sampleRate ?? 16000)
-            let calculatedSize = AVAudioFrameCount(duration * targetSampleRate)
-            
+            // Clamp BEFORE narrowing: AVAudioFrameCount(_:) traps on a value it
+            // cannot represent, so the safety clamp below would never be reached
+            // for a large duration.
+            let requestedFrames = (duration * targetSampleRate).rounded(.towardZero)
+            let calculatedSize = AVAudioFrameCount(
+                min(max(requestedFrames, 0), Double(AVAudioFrameCount.max))
+            )
+
             // iOS enforces minimum buffer size of ~4800 frames
             if calculatedSize < 4800 {
                 Logger.debug("AudioStreamManager", "Requested buffer size \(calculatedSize) frames (from \(duration)s at \(targetSampleRate)Hz) is below iOS minimum of ~4800 frames")
@@ -1427,6 +1439,55 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
     }
     
     /// Resumes a paused recording.
+    /// Verify the primary WAV file handle still accepts writes, reopening it if not.
+    ///
+    /// Runs on `fileWriteQueue` so it cannot race the background appends.
+    ///
+    /// An interruption can leave the persistent fileHandle unusable while the
+    /// compressed recorder recovers fine. Appends then failed silently on the
+    /// background queue, so the M4A kept growing while the WAV — used as a
+    /// crash-recovery backup — silently stopped (issue #420). If the handle cannot
+    /// be restored the failure is surfaced to the delegate instead of being lost.
+    private func reopenPrimaryFileHandleIfNeeded() {
+        guard let url = recordingFileURL else { return }
+
+        fileWriteQueue.sync {
+            if let handle = self.fileHandle {
+                do {
+                    try handle.seekToEnd()
+                    return // Still usable.
+                } catch {
+                    Logger.debug(
+                        "AudioStreamManager",
+                        "Primary file handle unusable after interruption: \(error.localizedDescription). Reopening."
+                    )
+                }
+            }
+
+            do {
+                // Reopen for appending; the header is rewritten at stop, so the
+                // bytes already on disk must be preserved here.
+                let reopened = try FileHandle(forWritingTo: url)
+                try reopened.seekToEnd()
+                self.fileHandle = reopened
+                Logger.debug("AudioStreamManager", "Primary file handle reopened after interruption.")
+            } catch {
+                self.fileHandle = nil
+                Logger.debug(
+                    "AudioStreamManager",
+                    "Failed to reopen primary file handle after interruption: \(error.localizedDescription)"
+                )
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    self.delegate?.audioStreamManager(
+                        self,
+                        didFailWithError: "Primary WAV output stopped after an audio interruption: \(error.localizedDescription)"
+                    )
+                }
+            }
+        }
+    }
+
     func resumeRecording() {
         guard isRecording, isPaused else { return }
         
@@ -1449,7 +1510,15 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
                 return
             }
             Logger.debug("Tap reinstalled for resume")
-            
+
+            // Revalidate the primary WAV handle BEFORE starting the engine.
+            // Once the engine runs, a tap callback can enqueue a write; if that
+            // lands against a stale handle the first resumed PCM buffer is lost
+            // (issue #420).
+            if recordingSettings?.output.primary.enabled == true {
+                reopenPrimaryFileHandleIfNeeded()
+            }
+
             // Try to restart the engine
             try audioEngine.start()
             
@@ -1731,7 +1800,8 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         // Only write to file if primary output is enabled
         if settings.output.primary.enabled {
             // Use the persistent fileHandle opened during preparation.
-            DispatchQueue.global(qos: .utility).async { [weak self] in
+            // Serial queue so stopRecording() can barrier on outstanding appends.
+            fileWriteQueue.async { [weak self] in
                 guard let self = self, let handle = self.fileHandle else {
                     Logger.debug("BG Write Error: File handle is nil.")
                     return
@@ -2038,7 +2108,6 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         let capturedSettings = recordingSettings
         let capturedWavFileSize = cachedWavFileSize
         let capturedCompressedFileSize = cachedCompressedFileSize
-        let capturedTotalDataSize = totalDataSize
         let capturedCompressedURL = compressedFileURL
         
         // PERFORMANCE OPTIMIZATION: Move all slow operations to background
@@ -2163,29 +2232,40 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             )
         }
         
-        // Create result with cached values - no file system access
+        // Finalize the WAV header BEFORE returning. Consumers routinely parse or
+        // convert the returned file immediately, and finalizing asynchronously let
+        // stopRecording() resolve while the RIFF/data sizes could still be stale
+        // (issue #424). Running synchronously on fileWriteQueue also drains any PCM
+        // appends still queued, so the reported size matches the bytes on disk.
+        //
+        // This is a bounded write (a seek plus WAV_HEADER_SIZE bytes at the head of
+        // the file), not a re-encode. State teardown below stays asynchronous.
+        var finalWavFileSize = capturedWavFileSize
+        fileWriteQueue.sync {
+            finalWavFileSize = self.cachedWavFileSize
+            let finalDataChunkSize = self.totalDataSize - Int64(WAV_HEADER_SIZE)
+            if finalDataChunkSize > 0 {
+                self.updateWavHeader(fileURL: fileURL, totalDataSize: finalDataChunkSize)
+                Logger.debug("WAV header finalized before return. Data chunk size: \(finalDataChunkSize)")
+            }
+        }
+
+        // Create result once the file is final, so `size` matches what is on disk.
         let result = RecordingResult(
             fileUri: fileURL.absoluteString,
             filename: fileURL.lastPathComponent,
             mimeType: mimeType,
             duration: durationMs,
-            size: capturedWavFileSize,
+            size: finalWavFileSize,
             channels: capturedSettings?.numberOfChannels ?? 1,
             bitDepth: capturedSettings?.bitDepth ?? 16,
             sampleRate: capturedSettings?.sampleRate ?? 44100,
             compression: compression
         )
-        
-        // Perform file operations asynchronously after returning result
+
+        // Remaining state teardown stays asynchronous after returning result
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self = self else { return }
-            
-            // Update WAV header in background
-            let finalDataChunkSize = capturedTotalDataSize - Int64(WAV_HEADER_SIZE)
-            if finalDataChunkSize > 0 {
-                self.updateWavHeader(fileURL: fileURL, totalDataSize: finalDataChunkSize)
-                Logger.debug("Background: WAV header updated. Data chunk size: \(finalDataChunkSize)")
-            }
             
             // Cleanup
             self.recordingSettings = nil

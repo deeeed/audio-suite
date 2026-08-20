@@ -21,9 +21,95 @@ func bridgedInt(_ dict: [String: Any], _ key: String) -> Int? {
     (dict[key] as? NSNumber)?.intValue
 }
 
+/// `bridgedInt` constrained to a permitted range.
+///
+/// Guard policy: reject only what would trap or corrupt output, never invent a
+/// maximum the public API does not document. Silently rewriting a valid value to
+/// a default is its own bug — that is exactly how #423 hid for so long.
+///   channels    1...2   (`UInt32`/`AVAudioChannelCount` trap on negatives)
+///   bitDepth    {16,32} (anything else makes the WAV header advertise a depth
+///                        the encoder did not write)
+///   everything else: finite, and positive/non-negative where zero or below
+///   would trap or divide by zero. No upper ceilings.
+/// An out-of-range value falls back to the documented default rather than failing
+/// the call, matching how an omitted option already behaves.
+///
+/// Out-of-range and non-finite values return nil so the caller falls back to its
+/// default instead of carrying a hostile value downstream. This matters because
+/// several call sites narrow into unsigned types — `UInt32(channels)` in
+/// `createWavHeader` and `AVAudioChannelCount(...)` in the decode/trim paths all
+/// **trap** on a negative value rather than throwing.
+///
+/// Before numeric bridging was fixed, `channels: -1` failed the `as? Int` cast and
+/// silently fell back to 1. Now that the value parses, that accidental guard is
+/// gone, so the bound has to be explicit.
+func bridgedInt(_ dict: [String: Any], _ key: String, in range: ClosedRange<Int>) -> Int? {
+    guard let value = bridgedInt(dict, key), range.contains(value) else { return nil }
+    return value
+}
+
+/// `bridgedDouble` constrained to a permitted range, rejecting NaN and infinity.
+///
+/// `NSNumber.doubleValue` happily returns NaN/inf, and `UInt32(Double.nan)` traps.
+func bridgedDouble(_ dict: [String: Any], _ key: String, in range: ClosedRange<Double>) -> Double? {
+    guard let value = bridgedDouble(dict, key), value.isFinite, range.contains(value) else {
+        return nil
+    }
+    return value
+}
+
+/// Read a bridged value that is later narrowed to an unsigned 32-bit type.
+///
+/// `sampleRate` feeds `UInt32(...)` in createWavHeader and the derived
+/// `byteRate = sampleRate * blockAlign`, which is also UInt32. Int
+/// representability is not enough — 5e9 is a valid Int and still traps at
+/// `UInt32(...)`. Bounds to what the header arithmetic can actually hold.
+func bridgedUInt32SafeDouble(_ dict: [String: Any], _ key: String) -> Double? {
+    guard let value = bridgedFiniteDouble(dict, key), value > 0 else { return nil }
+    // Leave headroom so `sampleRate * blockAlign` (max blockAlign = 2ch * 4B = 8)
+    // cannot overflow UInt32 either.
+    let ceiling = Double(UInt32.max / 8)
+    guard value <= ceiling else { return nil }
+    return value
+}
+
+/// `bridgedDouble` that rejects only NaN and infinity, with no range ceiling.
+///
+/// For values where the API deliberately imposes no maximum — media timestamps in
+/// `extractAudioData`/`trimAudio`/`streamAudioData`, which support long-form and
+/// unbounded recordings. A ceiling here would silently rewrite a legitimate
+/// offset to nil and decode from the beginning.
+func bridgedFiniteDouble(_ dict: [String: Any], _ key: String) -> Double? {
+    guard let value = bridgedDouble(dict, key), value.isFinite else { return nil }
+    // Finite is not sufficient. These values are later narrowed to Int,
+    // AVAudioFramePosition, or AVAudioFrameCount, and those conversions TRAP on a
+    // value the target type cannot represent — 1e30 is perfectly finite and still
+    // traps. Requiring exact Int representability rejects only values no real
+    // caller can mean, without inventing a domain-specific ceiling.
+    guard Int(exactly: value.rounded(.towardZero)) != nil else { return nil }
+    return value
+}
+
 /// Int64 variant of `bridgedInt` for large values such as durations.
+///
+/// Rejects non-finite input: `NSNumber.int64Value` maps +inf to `Int64.max`, which
+/// then traps downstream when `scheduleMaxDurationTimer` narrows it back to `Int`.
 func bridgedInt64(_ dict: [String: Any], _ key: String) -> Int64? {
-    (dict[key] as? NSNumber)?.int64Value
+    guard let number = dict[key] as? NSNumber else { return nil }
+    let asDouble = number.doubleValue
+    guard asDouble.isFinite else { return nil }
+    // `int64Value` SATURATES rather than failing: NSNumber(1e30).int64Value is
+    // Int64.max. Feeding that back through Double(Int64.max) -> Int then traps on
+    // rounding. Require the value to survive the round trip exactly.
+    guard let exact = Int64(exactly: asDouble.rounded(.towardZero)),
+          Int(exactly: exact) != nil else { return nil }
+    return exact
+}
+
+/// `bridgedInt64` constrained to a permitted range.
+func bridgedInt64(_ dict: [String: Any], _ key: String, in range: ClosedRange<Int64>) -> Int64? {
+    guard let value = bridgedInt64(dict, key), range.contains(value) else { return nil }
+    return value
 }
 
 /// Double variant of `bridgedInt`, for symmetry and explicitness.
@@ -177,7 +263,7 @@ struct RecordingSettings {
                 outputSettings.compressed.enabled = compressedDict["enabled"] as? Bool ?? false
                 let format = (compressedDict["format"] as? String)?.lowercased() ?? "aac"
                 outputSettings.compressed.format = format
-                outputSettings.compressed.bitrate = bridgedInt(compressedDict, "bitrate") ?? 128000
+                outputSettings.compressed.bitrate = bridgedInt(compressedDict, "bitrate").flatMap { $0 > 0 ? $0 : nil } ?? 128000
 
                 // Validate compression settings if enabled
                 if outputSettings.compressed.enabled {
@@ -197,19 +283,21 @@ struct RecordingSettings {
 
         // Create settings
         var settings = RecordingSettings(
-            sampleRate: bridgedDouble(dict, "sampleRate") ?? 44100.0,
-            desiredSampleRate: bridgedDouble(dict, "desiredSampleRate") ?? 44100.0,
+            sampleRate: bridgedUInt32SafeDouble(dict, "sampleRate") ?? 44100.0,
+            desiredSampleRate: bridgedUInt32SafeDouble(dict, "desiredSampleRate") ?? 44100.0,
             autoResumeAfterInterruption: dict["autoResumeAfterInterruption"] as? Bool ?? false
         )
 
         settings.output = outputSettings
 
         // Parse core settings
-        settings.numberOfChannels = bridgedInt(dict, "channels") ?? 1
-        settings.bitDepth = bridgedInt(dict, "bitDepth") ?? 16
-        settings.interval = bridgedInt(dict, "interval")
-        settings.intervalAnalysis = bridgedInt(dict, "intervalAnalysis")
-        if let maxDurationMs = bridgedInt64(dict, "maxDurationMs") {
+        settings.numberOfChannels = bridgedInt(dict, "channels", in: 1...2) ?? 1
+        // Only 16 and 32 are real: AudioStreamManager writes every non-32 depth as
+        // pcmFormatInt16, so any other value would put a lie in the WAV header.
+        settings.bitDepth = bridgedInt(dict, "bitDepth").flatMap { [16, 32].contains($0) ? $0 : nil } ?? 16
+        settings.interval = bridgedInt(dict, "interval").flatMap { $0 > 0 ? $0 : nil }
+        settings.intervalAnalysis = bridgedInt(dict, "intervalAnalysis").flatMap { $0 > 0 ? $0 : nil }
+        if let maxDurationMs = bridgedInt64(dict, "maxDurationMs"), maxDurationMs >= 0 {
             settings.maxDurationMs = maxDurationMs
         }
         settings.autoStopOnMaxDuration = dict["autoStopOnMaxDuration"] as? Bool ?? false
@@ -221,7 +309,7 @@ struct RecordingSettings {
         settings.featureOptions = dict["features"] as? [String: Bool]
 
         // Update segmentDurationMs parsing
-        settings.segmentDurationMs = bridgedInt(dict, "segmentDurationMs") ?? 100
+        settings.segmentDurationMs = bridgedInt(dict, "segmentDurationMs").flatMap { $0 > 0 ? $0 : nil } ?? 100
 
         // Parse iOS-specific config
         if let iosDict = dict["ios"] as? [String: Any],
@@ -334,7 +422,7 @@ struct RecordingSettings {
         settings.deviceId = deviceId
         settings.deviceDisconnectionBehavior = DeviceDisconnectionBehavior(rawValue: deviceDisconnectionBehaviorStr ?? "fallback") ?? .FALLBACK
 
-        if let bufferDuration = bridgedDouble(dict, "bufferDurationSeconds") {
+        if let bufferDuration = bridgedFiniteDouble(dict, "bufferDurationSeconds"), bufferDuration > 0 {
             settings.bufferDurationSeconds = bufferDuration
         }
 

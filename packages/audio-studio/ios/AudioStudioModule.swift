@@ -121,8 +121,8 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             }
             
             // Get time or byte range options
-            let startTimeMs = bridgedDouble(options, "startTimeMs")
-            let endTimeMs = bridgedDouble(options, "endTimeMs")
+            let startTimeMs = bridgedFiniteDouble(options, "startTimeMs")
+            let endTimeMs = bridgedFiniteDouble(options, "endTimeMs")
             let position = bridgedInt(options, "position")
             let byteLength = bridgedInt(options, "length")
             
@@ -138,7 +138,7 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             
             let features = options["features"] as? [String: Bool] ?? [:]
             let featureOptions = self.extractFeatureOptions(from: features)
-            let segmentDurationMs = bridgedInt(options, "segmentDurationMs") ?? DEFAULT_SEGMENT_DURATION_MS // Default value of 100ms
+            let segmentDurationMs = bridgedInt(options, "segmentDurationMs").flatMap { $0 > 0 ? $0 : nil } ?? DEFAULT_SEGMENT_DURATION_MS // Default value of 100ms
             
             DispatchQueue.global().async(execute: {
                 do {
@@ -505,13 +505,19 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             }
 
             let mode = options["mode"] as? String ?? "single"
-            let startTimeMs = bridgedDouble(options, "startTimeMs")
-            let endTimeMs = bridgedDouble(options, "endTimeMs")
+            let startTimeMs = bridgedFiniteDouble(options, "startTimeMs")
+            let endTimeMs = bridgedFiniteDouble(options, "endTimeMs")
             // Nested payload: read inner values through NSNumber, matching
             // bridgedDouble, so they parse regardless of how the bridge boxed them.
             // Absent `ranges` stays nil so the keep/remove guard below still fires.
             let ranges = (options["ranges"] as? [[String: Any]])?.map { range in
-                range.compactMapValues { ($0 as? NSNumber)?.doubleValue }
+                // Same finite + Int-representable rule as the scalar reads: these
+                // values are later narrowed for frame-position math.
+                range.compactMapValues { value -> Double? in
+                    guard let d = (value as? NSNumber)?.doubleValue, d.isFinite,
+                          Int(exactly: d.rounded(.towardZero)) != nil else { return nil }
+                    return d
+                }
             }
             let outputFileName = options["outputFileName"] as? String
             let outputFormat = options["outputFormat"] as? [String: Any]
@@ -651,8 +657,8 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             }
 
             // Get time or byte range options
-            let startTimeMs = bridgedDouble(options, "startTimeMs")
-            let endTimeMs = bridgedDouble(options, "endTimeMs")
+            let startTimeMs = bridgedFiniteDouble(options, "startTimeMs")
+            let endTimeMs = bridgedFiniteDouble(options, "endTimeMs")
             let position = bridgedInt(options, "position")
             let length = bridgedInt(options, "length")
             let includeWavHeader = options["includeWavHeader"] as? Bool ?? false
@@ -776,23 +782,23 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                     guard let fileUri = options["fileUri"] as? String else {
                         throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "fileUri is required"])
                     }
-                    guard let windowSizeMs = bridgedDouble(options, "windowSizeMs") else {
+                    guard let windowSizeMs = bridgedFiniteDouble(options, "windowSizeMs"), windowSizeMs > 0 else {
                         throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "windowSizeMs is required"])
                     }
-                    guard let hopLengthMs = bridgedDouble(options, "hopLengthMs") else {
+                    guard let hopLengthMs = bridgedFiniteDouble(options, "hopLengthMs"), hopLengthMs > 0 else {
                         throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "hopLengthMs is required"])
                     }
-                    guard let nMels = bridgedInt(options, "nMels") else {
+                    guard let nMels = bridgedInt(options, "nMels"), nMels > 0, nMels <= Int(Int32.max) else {
                         throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "nMels is required"])
                     }
 
-                    let fMin = Float(bridgedDouble(options, "fMin") ?? 0.0)
-                    let fMaxParam = bridgedDouble(options, "fMax")
+                    let fMin = Float(bridgedFiniteDouble(options, "fMin") ?? 0.0)
+                    let fMaxParam = bridgedFiniteDouble(options, "fMax")
                     let windowType = options["windowType"] as? String ?? "hann"
                     let logScale = options["logScale"] as? Bool ?? true
                     let normalize = options["normalize"] as? Bool ?? false
-                    let startTimeMs = bridgedDouble(options, "startTimeMs")
-                    let endTimeMs = bridgedDouble(options, "endTimeMs")
+                    let startTimeMs = bridgedFiniteDouble(options, "startTimeMs")
+                    let endTimeMs = bridgedFiniteDouble(options, "endTimeMs")
 
                     let audioData = try loadAudioFile(fileUri)
                     let sampleRate = audioData.sampleRate
@@ -965,15 +971,15 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             let opts = AudioStreamDecoder.Options(
                 requestId: requestId,
                 fileUri: fileUri,
-                startTimeMs: bridgedDouble(options, "startTimeMs"),
-                endTimeMs: bridgedDouble(options, "endTimeMs"),
-                targetSampleRate: bridgedDouble(options, "targetSampleRate"),
+                startTimeMs: bridgedFiniteDouble(options, "startTimeMs"),
+                endTimeMs: bridgedFiniteDouble(options, "endTimeMs"),
+                targetSampleRate: bridgedFiniteDouble(options, "targetSampleRate").flatMap { $0 > 0 ? $0 : nil },
                 channels: bridgedInt(options, "channels"),
                 normalizeAudio: options["normalizeAudio"] as? Bool ?? true,
                 chunkDurationMs: chunkDurationMs,
                 maxChunkBytes: bridgedInt(options, "maxChunkBytes"),
                 maxBufferedChunks: bridgedInt(options, "maxBufferedChunks") ?? 4,
-                backpressureTimeoutMs: bridgedDouble(options, "backpressureTimeoutMs")
+                backpressureTimeoutMs: bridgedFiniteDouble(options, "backpressureTimeoutMs").flatMap { $0 >= 0 ? $0 : nil }
             )
 
             let decoder = AudioStreamDecoder(options: opts)
