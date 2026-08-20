@@ -126,7 +126,15 @@ final class OutputPromotionTests: XCTestCase {
     func testNamesThatEscapeTheOutputDirectoryAreRejected() {
         // Probed: "../../../../tmp/pwned" appended to the temporary directory resolves to
         // /var/tmp/pwned.wav, so the trim would write outside it entirely.
-        for name in ["../escaped", "a/b", "../../../../tmp/pwned", "/absolute", "..", ".", ""] {
+        for name in ["../escaped", "a/b", "../../../../tmp/pwned", "/absolute"] {
+            XCTAssertFalse(OutputPromotion.isSafeOutputFileName(name), name)
+        }
+    }
+
+    func testDotComponentsAreRejectedEvenThoughTheyDoNotEscape() {
+        // An extension is appended, so these land as "..wav" and "...wav" inside the
+        // directory rather than traversing. Refused for not being filenames.
+        for name in [".", "..", ""] {
             XCTAssertFalse(OutputPromotion.isSafeOutputFileName(name), name)
         }
     }

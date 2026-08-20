@@ -563,7 +563,7 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                 }
             }
             let outputFileName = options["outputFileName"] as? String
-            // A name, not a path: appending one containing "/" or ".." escapes the output
+            // A name, not a path: appending one containing a separator escapes the output
             // directory, so `../../../../tmp/pwned` would write to /var/tmp (#433).
             if let name = outputFileName, !OutputPromotion.isSafeOutputFileName(name) {
                 promise.reject(

@@ -33,10 +33,14 @@ enum OutputPromotion {
 
     /// Whether a caller-supplied output filename is a single, safe path component.
     ///
-    /// `outputFileName` arrives from JS and is appended to a directory, so `/` and `..`
-    /// escape it: `../../../../tmp/pwned` resolves to `/var/tmp/pwned.wav`. The trim then
-    /// writes wherever that lands, which is both outside the documented contract — a name,
-    /// not a path — and a way to overwrite unrelated files (#433).
+    /// `outputFileName` arrives from JS and is appended to a directory, so a separator
+    /// escapes it: `../../../../tmp/pwned` resolves to `/var/tmp/pwned.wav`, and the trim
+    /// writes there. That is outside the documented contract — a name, not a path — and a
+    /// way to overwrite unrelated files (#433).
+    ///
+    /// Bare `.` and `..` are rejected too, though they do not escape on their own: an
+    /// extension is appended, so they land as `..wav` and `...wav` inside the directory.
+    /// They are refused because they are not filenames, not because they traverse.
     static func isSafeOutputFileName(_ name: String) -> Bool {
         guard !name.isEmpty else { return false }
         guard !name.contains("/") else { return false }
