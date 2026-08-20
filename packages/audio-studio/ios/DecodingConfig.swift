@@ -31,9 +31,9 @@ public struct DecodingConfig {
         }
         
         return DecodingConfig(
-            targetSampleRate: bridgedDouble(dict, "targetSampleRate", in: 1...768_000),
+            targetSampleRate: bridgedFiniteDouble(dict, "targetSampleRate").flatMap { $0 > 0 ? $0 : nil },
             targetChannels: bridgedInt(dict, "targetChannels", in: 1...2),
-            targetBitDepth: bridgedInt(dict, "targetBitDepth", in: 8...32),
+            targetBitDepth: bridgedInt(dict, "targetBitDepth").flatMap { [16, 32].contains($0) ? $0 : nil },
             normalizeAudio: dict["normalizeAudio"] as? Bool ?? false
         )
     }

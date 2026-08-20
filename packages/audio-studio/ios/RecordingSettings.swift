@@ -23,12 +23,14 @@ func bridgedInt(_ dict: [String: Any], _ key: String) -> Int? {
 
 /// `bridgedInt` constrained to a permitted range.
 ///
-/// Bounds applied by `fromDictionary`, chosen to be far wider than any real caller
-/// while excluding values that trap or corrupt output:
-///   channels 1...2, bitDepth {16, 32}, sampleRate 1...768000 Hz,
-///   interval/intervalAnalysis/segmentDurationMs 1...3600000 ms (1 hour),
-///   bitrate 1...3000000 bps, maxDurationMs 0...2073600000 ms (24 days),
-///   bufferDurationSeconds 0.001...10 s.
+/// Guard policy: reject only what would trap or corrupt output, never invent a
+/// maximum the public API does not document. Silently rewriting a valid value to
+/// a default is its own bug — that is exactly how #423 hid for so long.
+///   channels    1...2   (`UInt32`/`AVAudioChannelCount` trap on negatives)
+///   bitDepth    {16,32} (anything else makes the WAV header advertise a depth
+///                        the encoder did not write)
+///   everything else: finite, and positive/non-negative where zero or below
+///   would trap or divide by zero. No upper ceilings.
 /// An out-of-range value falls back to the documented default rather than failing
 /// the call, matching how an omitted option already behaves.
 ///
@@ -53,6 +55,17 @@ func bridgedDouble(_ dict: [String: Any], _ key: String, in range: ClosedRange<D
     guard let value = bridgedDouble(dict, key), value.isFinite, range.contains(value) else {
         return nil
     }
+    return value
+}
+
+/// `bridgedDouble` that rejects only NaN and infinity, with no range ceiling.
+///
+/// For values where the API deliberately imposes no maximum — media timestamps in
+/// `extractAudioData`/`trimAudio`/`streamAudioData`, which support long-form and
+/// unbounded recordings. A ceiling here would silently rewrite a legitimate
+/// offset to nil and decode from the beginning.
+func bridgedFiniteDouble(_ dict: [String: Any], _ key: String) -> Double? {
+    guard let value = bridgedDouble(dict, key), value.isFinite else { return nil }
     return value
 }
 
@@ -223,7 +236,7 @@ struct RecordingSettings {
                 outputSettings.compressed.enabled = compressedDict["enabled"] as? Bool ?? false
                 let format = (compressedDict["format"] as? String)?.lowercased() ?? "aac"
                 outputSettings.compressed.format = format
-                outputSettings.compressed.bitrate = bridgedInt(compressedDict, "bitrate", in: 1...3_000_000) ?? 128000
+                outputSettings.compressed.bitrate = bridgedInt(compressedDict, "bitrate").flatMap { $0 > 0 ? $0 : nil } ?? 128000
 
                 // Validate compression settings if enabled
                 if outputSettings.compressed.enabled {
@@ -243,8 +256,8 @@ struct RecordingSettings {
 
         // Create settings
         var settings = RecordingSettings(
-            sampleRate: bridgedDouble(dict, "sampleRate", in: 1...768_000) ?? 44100.0,
-            desiredSampleRate: bridgedDouble(dict, "desiredSampleRate", in: 1...768_000) ?? 44100.0,
+            sampleRate: bridgedFiniteDouble(dict, "sampleRate").flatMap { $0 > 0 ? $0 : nil } ?? 44100.0,
+            desiredSampleRate: bridgedFiniteDouble(dict, "desiredSampleRate").flatMap { $0 > 0 ? $0 : nil } ?? 44100.0,
             autoResumeAfterInterruption: dict["autoResumeAfterInterruption"] as? Bool ?? false
         )
 
@@ -255,9 +268,9 @@ struct RecordingSettings {
         // Only 16 and 32 are real: AudioStreamManager writes every non-32 depth as
         // pcmFormatInt16, so any other value would put a lie in the WAV header.
         settings.bitDepth = bridgedInt(dict, "bitDepth").flatMap { [16, 32].contains($0) ? $0 : nil } ?? 16
-        settings.interval = bridgedInt(dict, "interval", in: 1...3_600_000)
-        settings.intervalAnalysis = bridgedInt(dict, "intervalAnalysis", in: 1...3_600_000)
-        if let maxDurationMs = bridgedInt64(dict, "maxDurationMs", in: 0...2_073_600_000) {
+        settings.interval = bridgedInt(dict, "interval").flatMap { $0 > 0 ? $0 : nil }
+        settings.intervalAnalysis = bridgedInt(dict, "intervalAnalysis").flatMap { $0 > 0 ? $0 : nil }
+        if let maxDurationMs = bridgedInt64(dict, "maxDurationMs"), maxDurationMs >= 0 {
             settings.maxDurationMs = maxDurationMs
         }
         settings.autoStopOnMaxDuration = dict["autoStopOnMaxDuration"] as? Bool ?? false
@@ -269,7 +282,7 @@ struct RecordingSettings {
         settings.featureOptions = dict["features"] as? [String: Bool]
 
         // Update segmentDurationMs parsing
-        settings.segmentDurationMs = bridgedInt(dict, "segmentDurationMs", in: 1...3_600_000) ?? 100
+        settings.segmentDurationMs = bridgedInt(dict, "segmentDurationMs").flatMap { $0 > 0 ? $0 : nil } ?? 100
 
         // Parse iOS-specific config
         if let iosDict = dict["ios"] as? [String: Any],
@@ -382,7 +395,7 @@ struct RecordingSettings {
         settings.deviceId = deviceId
         settings.deviceDisconnectionBehavior = DeviceDisconnectionBehavior(rawValue: deviceDisconnectionBehaviorStr ?? "fallback") ?? .FALLBACK
 
-        if let bufferDuration = bridgedDouble(dict, "bufferDurationSeconds", in: 0.001...10) {
+        if let bufferDuration = bridgedFiniteDouble(dict, "bufferDurationSeconds"), bufferDuration > 0 {
             settings.bufferDurationSeconds = bufferDuration
         }
 

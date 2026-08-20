@@ -144,7 +144,7 @@ final class BridgedNumericOptionsTests: XCTestCase {
         XCTAssertEqual(settings.numberOfChannels, 1, "negative channels must not reach UInt32()")
     }
 
-    func testOutOfRangeNumericOptionsFallBackToDefaults() {
+    func testTrapProneValuesFallBackToDefaults() {
         let dict: [String: Any] = [
             "channels": Double(99),
             "bitDepth": Double(-8),
@@ -185,6 +185,23 @@ final class BridgedNumericOptionsTests: XCTestCase {
     }
 
     // MARK: - Blockers found in cross-review of the guard commit
+
+    func testLargeButValidValuesAreNotCapped() {
+        // Guards must reject only what traps or corrupts. Inventing a ceiling the
+        // public API never documented would silently disable a caller's setting —
+        // the same silent-default failure mode as #423.
+        let thirtyDaysMs = Double(30 * 24 * 60 * 60 * 1000)
+        guard case .success(let settings) = RecordingSettings.fromDictionary([
+            "maxDurationMs": thirtyDaysMs,
+            "interval": Double(7_200_000),
+            "sampleRate": Double(768_000),
+        ]) else {
+            return XCTFail("fromDictionary rejected large but valid values")
+        }
+        XCTAssertEqual(settings.maxDurationMs, Int64(thirtyDaysMs), "no invented maxDurationMs cap")
+        XCTAssertEqual(settings.interval, 7_200_000, "no invented interval cap")
+        XCTAssertEqual(settings.sampleRate, 768_000.0)
+    }
 
     func testInfiniteMaxDurationIsRejected() {
         // NSNumber.int64Value maps +inf to Int64.max, which then traps when
