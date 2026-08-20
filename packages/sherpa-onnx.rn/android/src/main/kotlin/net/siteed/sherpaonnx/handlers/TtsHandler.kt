@@ -29,32 +29,11 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
     companion object {
         private const val TAG = "SherpaOnnxTTS"
 
-        /** Prefill target before starting playback, as a fraction of one second. */
-        private const val PREFILL_DIVISOR = 5 // 1/5s = 200ms
+        private fun prefillFrames(sampleRate: Int) = PrefillPolicy.prefillFrames(sampleRate)
 
-        private fun prefillFrames(sampleRate: Int) = sampleRate / PREFILL_DIVISOR
-
-        /**
-         * Frames that must be buffered before play() will actually produce output.
-         *
-         * A MODE_STREAM track only starts once the buffer holds startThresholdInFrames.
-         * On API 31+ that value is writable, so the prefill target governs. Below API 31
-         * it is fixed at the full buffer capacity and cannot be lowered — starting after
-         * only 200ms there leaves the track waiting, and a short utterance never plays at
-         * all. On those devices the effective target is the buffer itself.
-         *
-         * Returns the larger of the prefill target and whatever the track demands, so the
-         * caller can also detect the case where the utterance is simply too short.
-         */
-        private fun effectivePrefillFrames(track: AudioTrack?, sampleRate: Int): Int {
-            val target = prefillFrames(sampleRate)
-            if (track == null) return target
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                // Threshold was lowered at build time; trust the smaller target.
-                return target
-            }
-            return maxOf(target, track.bufferSizeInFrames)
-        }
+        /** True when startThresholdInFrames can be lowered on this device (API 31+). */
+        private fun canLowerThreshold() =
+            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
     }
     
     /**
@@ -506,9 +485,13 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                             Log.e(TAG, "AudioTrack invalid during playback, reinitializing...")
                             try {
                                 releaseAudioTrack()
-                                initAudioTrack(currentSampleRate, startPlayback = playbackStarted)
-                                // New track starts empty; the prefill target applies again.
+                                // A replacement track is empty, so it must earn its own
+                                // prefill before starting. Carrying playbackStarted over
+                                // would start it immediately and let a remainder below the
+                                // threshold play as silence — or not at all.
+                                initAudioTrack(currentSampleRate, startPlayback = false)
                                 framesInCurrentTrack = 0
+                                playbackStarted = false
                                 // Add a small delay to let AudioTrack initialize
                                 Thread.sleep(50)
                             } catch (e: Exception) {
@@ -542,8 +525,9 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                                 if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
                                     Log.w(TAG, "AudioTrack disabled during chunk write, reinitializing...")
                                     releaseAudioTrack()
-                                    initAudioTrack(currentSampleRate, startPlayback = playbackStarted)
+                                    initAudioTrack(currentSampleRate, startPlayback = false)
                                     framesInCurrentTrack = 0
+                                    playbackStarted = false
                                     // If AudioTrack couldn't be reinitialized, continue to next chunk
                                     if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
                                         offset += currentChunkSize
@@ -556,7 +540,14 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                                     totalSamplesWritten += written
                                     framesInCurrentTrack += written
                                     offset += written
-                                    if (!playbackStarted && framesInCurrentTrack >= prefillFrames(currentSampleRate)) {
+                                    if (PrefillPolicy.shouldStart(
+                                            playbackStarted,
+                                            framesInCurrentTrack,
+                                            currentSampleRate,
+                                            canLowerThreshold(),
+                                            audioTrack?.bufferSizeInFrames ?: 0
+                                        )
+                                    ) {
                                         audioTrack?.play()
                                         playbackStarted = true
                                         // Head is expected to still be 0 here — output advances
@@ -607,7 +598,11 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                                 Log.w(TAG, "Could not lower start threshold for short utterance: ${e.message}")
                             }
                         } else {
-                            val deficit = (audioTrack?.bufferSizeInFrames ?: 0) - framesInCurrentTrack
+                            val deficit = PrefillPolicy.tailPaddingFrames(
+                                framesInCurrentTrack,
+                                canLowerThreshold(),
+                                audioTrack?.bufferSizeInFrames ?: 0
+                            )
                             if (deficit > 0) {
                                 val silence = ShortArray(minOf(deficit, currentSampleRate))
                                 var padded = 0
