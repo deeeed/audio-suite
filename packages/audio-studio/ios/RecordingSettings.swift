@@ -66,6 +66,12 @@ func bridgedDouble(_ dict: [String: Any], _ key: String, in range: ClosedRange<D
 /// offset to nil and decode from the beginning.
 func bridgedFiniteDouble(_ dict: [String: Any], _ key: String) -> Double? {
     guard let value = bridgedDouble(dict, key), value.isFinite else { return nil }
+    // Finite is not sufficient. These values are later narrowed to Int,
+    // AVAudioFramePosition, or AVAudioFrameCount, and those conversions TRAP on a
+    // value the target type cannot represent — 1e30 is perfectly finite and still
+    // traps. Requiring exact Int representability rejects only values no real
+    // caller can mean, without inventing a domain-specific ceiling.
+    guard Int(exactly: value.rounded(.towardZero)) != nil else { return nil }
     return value
 }
 
@@ -75,8 +81,14 @@ func bridgedFiniteDouble(_ dict: [String: Any], _ key: String) -> Double? {
 /// then traps downstream when `scheduleMaxDurationTimer` narrows it back to `Int`.
 func bridgedInt64(_ dict: [String: Any], _ key: String) -> Int64? {
     guard let number = dict[key] as? NSNumber else { return nil }
-    guard number.doubleValue.isFinite else { return nil }
-    return number.int64Value
+    let asDouble = number.doubleValue
+    guard asDouble.isFinite else { return nil }
+    // `int64Value` SATURATES rather than failing: NSNumber(1e30).int64Value is
+    // Int64.max. Feeding that back through Double(Int64.max) -> Int then traps on
+    // rounding. Require the value to survive the round trip exactly.
+    guard let exact = Int64(exactly: asDouble.rounded(.towardZero)),
+          Int(exactly: exact) != nil else { return nil }
+    return exact
 }
 
 /// `bridgedInt64` constrained to a permitted range.

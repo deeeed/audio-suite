@@ -943,8 +943,14 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         if let duration = recordingSettings?.bufferDurationSeconds {
             // Use target sample rate from settings for calculation
             let targetSampleRate = Double(recordingSettings?.sampleRate ?? 16000)
-            let calculatedSize = AVAudioFrameCount(duration * targetSampleRate)
-            
+            // Clamp BEFORE narrowing: AVAudioFrameCount(_:) traps on a value it
+            // cannot represent, so the safety clamp below would never be reached
+            // for a large duration.
+            let requestedFrames = (duration * targetSampleRate).rounded(.towardZero)
+            let calculatedSize = AVAudioFrameCount(
+                min(max(requestedFrames, 0), Double(AVAudioFrameCount.max))
+            )
+
             // iOS enforces minimum buffer size of ~4800 frames
             if calculatedSize < 4800 {
                 Logger.debug("AudioStreamManager", "Requested buffer size \(calculatedSize) frames (from \(duration)s at \(targetSampleRate)Hz) is below iOS minimum of ~4800 frames")

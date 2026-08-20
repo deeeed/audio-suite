@@ -234,4 +234,33 @@ final class BridgedNumericOptionsTests: XCTestCase {
             XCTAssertEqual(settings.bitDepth, Int(depth))
         }
     }
+
+    // MARK: - Representability (round 3 blockers)
+
+    func testHugeFiniteValuesAreRejectedBeforeNarrowing() {
+        // 1e30 is finite, so an isFinite check alone lets it through — and then
+        // Int(1e30) / AVAudioFramePosition(1e30) TRAP. Representability is the
+        // real requirement, not an invented ceiling.
+        XCTAssertNil(bridgedFiniteDouble(["v": Double(1e30)], "v"))
+        XCTAssertNil(bridgedFiniteDouble(["v": -Double(1e30)], "v"))
+        XCTAssertNotNil(bridgedFiniteDouble(["v": Double(86_400_000)], "v"),
+                        "ordinary long-form timestamps must still parse")
+    }
+
+    func testSaturatingInt64IsRejected() {
+        // NSNumber.int64Value SATURATES rather than failing: 1e30 becomes
+        // Int64.max, and Double(Int64.max) -> Int then traps on rounding.
+        XCTAssertNil(bridgedInt64(["v": Double(1e30)], "v"))
+
+        guard case .success(let settings) = RecordingSettings.fromDictionary(["maxDurationMs": Double(1e30)]) else {
+            return XCTFail("fromDictionary rejected the payload")
+        }
+        XCTAssertEqual(settings.maxDurationMs, 0, "unrepresentable maxDurationMs must not be applied")
+    }
+
+    func testRealisticLongDurationsStillParse() {
+        // The representability guard must not become a de-facto ceiling.
+        let thirtyDaysMs = Double(30 * 24 * 60 * 60 * 1000)
+        XCTAssertEqual(bridgedInt64(["v": thirtyDaysMs], "v"), Int64(thirtyDaysMs))
+    }
 }
