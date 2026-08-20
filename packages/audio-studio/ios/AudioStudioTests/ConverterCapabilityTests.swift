@@ -58,20 +58,22 @@ final class ConverterCapabilityTests: XCTestCase {
         XCTAssertEqual(scaled, 1.0, accuracy: 0.01, "sizing by the ratio preserves duration")
     }
 
-    func testADownsampleOverfillsAnOversizedBuffer() throws {
-        // Measured, and not what it first looks like: a source-sized buffer is *larger*
-        // than a downsampled second needs, and the converter keeps pulling input to fill
-        // it, so one second came back as two. Holding capacity at the correct size fixes
-        // this on its own — the repeated-input callback does not cause it.
-        let oversized = try convertOneSecond(to: 22_050, scaleOutputBuffer: false, singleShot: false)
-        XCTAssertEqual(oversized, 2.0, accuracy: 0.01, "an oversized buffer gets overfilled")
-
-        // Capacity held constant, callback varied: both give one second, which is why the
-        // sizing is the fix and the single-shot callback is belt and braces.
-        let sizedRepeating = try convertOneSecond(to: 22_050, scaleOutputBuffer: true, singleShot: false)
-        XCTAssertEqual(sizedRepeating, 1.0, accuracy: 0.01)
+    func testDoublingNeedsBothAnOversizedBufferAndRepeatedInput() throws {
+        // All four combinations, because I twice attributed this to one factor alone and
+        // was wrong both times. A downsample only overruns when the buffer is larger than
+        // the output needs AND the callback keeps handing back input to fill it; either
+        // condition alone is harmless.
         let sizedOnce = try convertOneSecond(to: 22_050, scaleOutputBuffer: true, singleShot: true)
         XCTAssertEqual(sizedOnce, 1.0, accuracy: 0.01)
+
+        let sizedRepeating = try convertOneSecond(to: 22_050, scaleOutputBuffer: true, singleShot: false)
+        XCTAssertEqual(sizedRepeating, 1.0, accuracy: 0.01, "correct capacity stops the converter")
+
+        let oversizedOnce = try convertOneSecond(to: 22_050, scaleOutputBuffer: false, singleShot: true)
+        XCTAssertEqual(oversizedOnce, 1.0, accuracy: 0.01, "end-of-stream stops the converter")
+
+        let both = try convertOneSecond(to: 22_050, scaleOutputBuffer: false, singleShot: false)
+        XCTAssertEqual(both, 2.0, accuracy: 0.01, "only the combination overruns")
     }
 
     func testAnExtremeUpsamplePreservesDuration() throws {

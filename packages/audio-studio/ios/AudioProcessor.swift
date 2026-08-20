@@ -788,6 +788,11 @@ public class AudioProcessor {
             .appendingPathComponent(outputFileName ?? UUID().uuidString)
             .appendingPathExtension(fileExtension)
 
+        // Whether the failure path may delete this. outputFileName is caller-supplied, so
+        // the path can already exist — and can be a directory — and removing it on failure
+        // would destroy something this call never created.
+        let ownsOutputPath = !FileManager.default.fileExists(atPath: outputURL.path)
+
         let decodingConfig = DecodingConfig.fromDictionary(decodingOptions ?? [:])
         // Compare what was actually resolved, not just decodingOptions. outputFormat is a
         // separate parameter, so a sampleRate or channel change requested there took the
@@ -886,6 +891,22 @@ public class AudioProcessor {
                     // converting to the request and writing into the clamped file produced
                     // twice the audio (#433).
                     let writerFormat = outputFile.processingFormat
+
+                    // Ask about the requested format before deferring to the writer's.
+                    // The writer resolves an unsupported rate to one it likes — 1Hz becomes
+                    // 8kHz — and that resolved conversion succeeds, so checking only the
+                    // writer's format would silently produce 8kHz audio for a request the
+                    // platform cannot serve (#433).
+                    guard AVAudioConverter(from: inputFormat, to: targetFormat) != nil else {
+                        throw NSError(
+                            domain: "AudioProcessor",
+                            code: -1,
+                            userInfo: [NSLocalizedDescriptionKey:
+                                "Cannot convert to \(targetFormat.sampleRate)Hz "
+                                + "from this file's \(inputFormat.sampleRate)Hz"]
+                        )
+                    }
+
                     if writerFormat.sampleRate != targetFormat.sampleRate {
                         Logger.debug(
                             "AudioProcessor",
@@ -1050,10 +1071,13 @@ public class AudioProcessor {
                 }
             }
         } catch {
-            // Remove the partial output. Failing now throws where it used to skip a range
-            // and return, so a half-written temporary file would otherwise be left behind
-            // on every failure.
-            try? FileManager.default.removeItem(at: outputURL)
+            // Remove the partial output, but only if this call created it. Failing now
+            // throws where it used to skip a range and return, so a half-written file
+            // would otherwise be left behind — while deleting a path that already existed
+            // would be worse than leaking one.
+            if ownsOutputPath {
+                try? FileManager.default.removeItem(at: outputURL)
+            }
             reject("TRIM_ERROR", "Failed to trim audio: \(error.localizedDescription)")
             return nil
         }
