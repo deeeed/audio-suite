@@ -1,10 +1,11 @@
-diff --git a/android/java/main/java/ai/moonshine/voice/Transcriber.java b/android/java/main/java/ai/moonshine/voice/Transcriber.java
---- a/android/java/main/java/ai/moonshine/voice/Transcriber.java
-+++ b/android/java/main/java/ai/moonshine/voice/Transcriber.java
+diff --git c/android/java/main/java/ai/moonshine/voice/Transcriber.java w/android/java/main/java/ai/moonshine/voice/Transcriber.java
+index 02b3691..34be6eb 100644
+--- c/android/java/main/java/ai/moonshine/voice/Transcriber.java
++++ w/android/java/main/java/ai/moonshine/voice/Transcriber.java
 @@ -25,7 +25,7 @@ import java.util.HashMap;
  import java.util.concurrent.ConcurrentHashMap;
  import java.util.Map;
-
+ 
 -public class Transcriber {
 +public class Transcriber implements AutoCloseable {
    private int transcriberHandle = -1;
@@ -13,7 +14,7 @@ diff --git a/android/java/main/java/ai/moonshine/voice/Transcriber.java b/androi
 @@ -85,18 +85,22 @@ public class Transcriber {
      this.getDefaultStreamHandle();
    }
-
+ 
 -  protected void finalize() throws Throwable {
 +  @Override
 +  public synchronized void close() {
@@ -28,19 +29,20 @@ diff --git a/android/java/main/java/ai/moonshine/voice/Transcriber.java b/androi
        this.transcriberHandle = -1;
      }
    }
-
+ 
 +  protected void finalize() throws Throwable { this.close(); }
 +
    public Transcript transcribeWithoutStreaming(float[] audioData,
                                                 int sampleRate) {
      return JNI.moonshineTranscribeWithoutStreaming(this.transcriberHandle,
-diff --git a/build.gradle.kts b/build.gradle.kts
---- a/build.gradle.kts
-+++ b/build.gradle.kts
-@@ -5,6 +5,28 @@ plugins {
+diff --git c/build.gradle.kts w/build.gradle.kts
+index 04891cb..bfff79a 100644
+--- c/build.gradle.kts
++++ w/build.gradle.kts
+@@ -5,23 +5,55 @@ plugins {
      id("com.vanniktech.maven.publish") version "0.28.0"
  }
-
+ 
 +fun envOrProp(envName: String, propName: String, fallback: String? = null): String? {
 +    val envValue = System.getenv(envName)?.trim()
 +    if (!envValue.isNullOrEmpty()) {
@@ -62,11 +64,21 @@ diff --git a/build.gradle.kts b/build.gradle.kts
 +)?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
 +val moonshineOrtLibPath = envOrProp("SITEED_MOONSHINE_ORT_LIB_PATH", "siteedMoonshineOrtLibPath")
 +val moonshineOrtIncludeDir = envOrProp("SITEED_MOONSHINE_ORT_INCLUDE_DIR", "siteedMoonshineOrtIncludeDir")
++val moonshineMinSdk = envOrProp(
++    "SITEED_MOONSHINE_ANDROID_MIN_SDK",
++    "siteedMoonshineAndroidMinSdk",
++    "26"
++)?.toInt() ?: 26
 +
  android {
      namespace = "ai.moonshine.voice"
      compileSdk = 35
-@@ -16,12 +38,17 @@ android {
+     ndkVersion = "28.2.13676358"
+ 
+     defaultConfig {
+-        minSdk = 35
++        minSdk = moonshineMinSdk
+ 
          testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
          consumerProguardFiles("consumer-rules.pro")
          ndk {
@@ -86,9 +98,10 @@ diff --git a/build.gradle.kts b/build.gradle.kts
              }
          }
      }
-diff --git a/core/CMakeLists.txt b/core/CMakeLists.txt
---- a/core/CMakeLists.txt
-+++ b/core/CMakeLists.txt
+diff --git c/core/CMakeLists.txt w/core/CMakeLists.txt
+index 950a060..9cefd1b 100644
+--- c/core/CMakeLists.txt
++++ w/core/CMakeLists.txt
 @@ -97,7 +97,7 @@ target_include_directories(moonshine PRIVATE
      ${CMAKE_CURRENT_LIST_DIR}/moonshine-utils
      ${CMAKE_CURRENT_LIST_DIR}/ort-utils
@@ -97,18 +110,19 @@ diff --git a/core/CMakeLists.txt b/core/CMakeLists.txt
 +    ${ONNXRUNTIME_INCLUDE_DIR}
      ${CMAKE_CURRENT_LIST_DIR}/third-party/utf-8/
  )
-
-diff --git a/core/ort-utils/CMakeLists.txt b/core/ort-utils/CMakeLists.txt
---- a/core/ort-utils/CMakeLists.txt
-+++ b/core/ort-utils/CMakeLists.txt
+ 
+diff --git c/core/ort-utils/CMakeLists.txt w/core/ort-utils/CMakeLists.txt
+index 091e538..738ad60 100644
+--- c/core/ort-utils/CMakeLists.txt
++++ w/core/ort-utils/CMakeLists.txt
 @@ -31,7 +31,7 @@ target_compile_options(ort-utils PRIVATE
-
+ 
  target_include_directories(ort-utils PRIVATE
      ${MOONSHINE_UTILS_INCLUDE_DIR}
 -    ${CMAKE_CURRENT_LIST_DIR}/../third-party/onnxruntime/include
 +    ${ONNXRUNTIME_INCLUDE_DIR}
  )
-
+ 
  if (ANDROID)
 @@ -69,7 +69,7 @@ target_include_directories(ort-utils-test PRIVATE
      ${CMAKE_CURRENT_LIST_DIR}
@@ -117,11 +131,12 @@ diff --git a/core/ort-utils/CMakeLists.txt b/core/ort-utils/CMakeLists.txt
 -    ${CMAKE_CURRENT_LIST_DIR}/../third-party/onnxruntime/include
 +    ${ONNXRUNTIME_INCLUDE_DIR}
  )
-
+ 
  target_link_libraries(ort-utils-test PRIVATE
-diff --git a/core/third-party/onnxruntime/find-ort-library-path.cmake b/core/third-party/onnxruntime/find-ort-library-path.cmake
---- a/core/third-party/onnxruntime/find-ort-library-path.cmake
-+++ b/core/third-party/onnxruntime/find-ort-library-path.cmake
+diff --git c/core/third-party/onnxruntime/find-ort-library-path.cmake w/core/third-party/onnxruntime/find-ort-library-path.cmake
+index 636f408..8418127 100644
+--- c/core/third-party/onnxruntime/find-ort-library-path.cmake
++++ w/core/third-party/onnxruntime/find-ort-library-path.cmake
 @@ -1,4 +1,16 @@
 -if (ANDROID)
 +if (DEFINED MOONSHINE_ONNXRUNTIME_INCLUDE_DIR AND NOT "${MOONSHINE_ONNXRUNTIME_INCLUDE_DIR}" STREQUAL "")

@@ -16,6 +16,9 @@ Pinned version: `v0.0.59`
   `SITEED_MOONSHINE_ORT_INCLUDE_DIR`
 - adds a public `close()` method to upstream `Transcriber` so wrappers do not
   need to reflectively call `finalize()`
+- makes the upstream Android `minSdk` configurable via
+  `SITEED_MOONSHINE_ANDROID_MIN_SDK` (default 26 instead of the upstream
+  hardcoded 35), so the AAR can be consumed by apps below Android 15
 - applied automatically by `./setup.sh` and `./build-moonshine-android.sh`
 
 ### LongStreamingMemory.patch
