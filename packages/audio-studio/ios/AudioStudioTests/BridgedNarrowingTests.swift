@@ -52,31 +52,86 @@ final class BridgedNarrowingTests: XCTestCase {
 
     // MARK: - Output sample rates
 
-    func testOrdinarySampleRatesAreAccepted() {
-        for rate in [8_000.0, 44_100.0, 48_000.0, 96_000.0, 192_000.0] {
-            XCTAssertEqual(BridgedNarrowing.outputSampleRate(rate), rate)
-        }
-    }
-
-    func testTheBoundsAreTheReadersOwn() {
+    func testTheReaderBoundsAreTheReadersOwn() {
         // Probed against AVAssetReaderTrackOutput with a real asset: 7999 and 192001 raise
         // an uncaught NSException that terminates the process, while 8000 and 192000
-        // construct fine. The bound is the platform's, not a policy choice.
-        XCTAssertEqual(BridgedNarrowing.outputSampleRate(8_000), 8_000)
-        XCTAssertEqual(BridgedNarrowing.outputSampleRate(192_000), 192_000)
-        XCTAssertNil(BridgedNarrowing.outputSampleRate(7_999))
-        XCTAssertNil(BridgedNarrowing.outputSampleRate(192_001))
+        // construct fine. Platform limit, not policy.
+        let r = BridgedNarrowing.readerSampleRates
+        XCTAssertTrue(r.contains(8_000))
+        XCTAssertTrue(r.contains(44_100))
+        XCTAssertTrue(r.contains(192_000))
+        XCTAssertFalse(r.contains(7_999))
+        XCTAssertFalse(r.contains(192_001))
+        // 384 kHz is a real hardware rate and still crashes the reader.
+        XCTAssertFalse(r.contains(384_000))
     }
 
-    func testRatesCoreAudioCannotServeAreRejected() {
-        // 384000 is a real hardware rate but still crashes the reader, so it is out too.
-        XCTAssertNil(BridgedNarrowing.outputSampleRate(384_000))
-        XCTAssertNil(BridgedNarrowing.outputSampleRate(1e12))
-        XCTAssertNil(BridgedNarrowing.outputSampleRate(1e15))
-        XCTAssertNil(BridgedNarrowing.outputSampleRate(1))
-        XCTAssertNil(BridgedNarrowing.outputSampleRate(0))
-        XCTAssertNil(BridgedNarrowing.outputSampleRate(-44_100))
-        XCTAssertNil(BridgedNarrowing.outputSampleRate(nil))
+    func testTheConverterAcceptsMoreThanTheReader() {
+        // AVAudioConverter converts a real file to 384 kHz with frames produced, so
+        // applying the reader's bound to trim would downgrade a request the platform can
+        // serve. The two ranges are deliberately different.
+        XCTAssertTrue(BridgedNarrowing.converterSampleRates.contains(384_000))
+        XCTAssertFalse(BridgedNarrowing.readerSampleRates.contains(384_000))
+        // Both still reject what returns nil.
+        XCTAssertFalse(BridgedNarrowing.converterSampleRates.contains(1e12))
+    }
+
+    // MARK: - Present, absent, or unusable
+
+    func testAMissingRateIsAbsentRatherThanInvalid() {
+        XCTAssertEqual(
+            BridgedNarrowing.requestedRate(rawValue: nil, parsed: nil, permitted: BridgedNarrowing.readerSampleRates),
+            .absent
+        )
+        XCTAssertEqual(
+            BridgedNarrowing.requestedRate(rawValue: NSNull(), parsed: nil, permitted: BridgedNarrowing.readerSampleRates),
+            .absent
+        )
+    }
+
+    func testAnUnparseableRateIsInvalidRatherThanAbsent() {
+        // The distinction that matters: bridgedFiniteDouble returns nil for 1e20 exactly as
+        // it does for a missing key, so treating its nil as "not requested" silently used
+        // the source rate for a request that should have been rejected.
+        XCTAssertEqual(
+            BridgedNarrowing.requestedRate(
+                rawValue: NSNumber(value: 1e20),
+                parsed: nil,
+                permitted: BridgedNarrowing.readerSampleRates
+            ),
+            .invalid
+        )
+    }
+
+    func testAnOutOfRangeRateIsInvalid() {
+        XCTAssertEqual(
+            BridgedNarrowing.requestedRate(
+                rawValue: NSNumber(value: 384_000),
+                parsed: 384_000,
+                permitted: BridgedNarrowing.readerSampleRates
+            ),
+            .invalid
+        )
+    }
+
+    func testARateTheApiCanServeIsValid() {
+        XCTAssertEqual(
+            BridgedNarrowing.requestedRate(
+                rawValue: NSNumber(value: 48_000),
+                parsed: 48_000,
+                permitted: BridgedNarrowing.readerSampleRates
+            ),
+            .valid(48_000)
+        )
+        // The same value against the wider converter range.
+        XCTAssertEqual(
+            BridgedNarrowing.requestedRate(
+                rawValue: NSNumber(value: 384_000),
+                parsed: 384_000,
+                permitted: BridgedNarrowing.converterSampleRates
+            ),
+            .valid(384_000)
+        )
     }
 
     // MARK: - Time ranges

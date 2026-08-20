@@ -761,18 +761,26 @@ public class AudioProcessor {
             Logger.debug("AudioProcessor", "Unsupported format '\(requestedFormat)', falling back to 'aac'")
         }
 
-        // An out-of-range rate falls back to the input rate rather than reaching
+        // An unusable rate falls back to the input rate rather than reaching
         // AVAudioConverter, which returns nil for extreme values and was force-unwrapped
-        // downstream (#433).
-        let requestedOutputRate = outputFormat.flatMap { bridgedFiniteDouble($0, "sampleRate") }
-        if let requested = requestedOutputRate,
-           BridgedNarrowing.outputSampleRate(requested) == nil {
+        // downstream (#433). Trim uses the converter's range, which is far wider than the
+        // streaming reader's — 384 kHz converts fine, so bounding it at the reader's limit
+        // would silently downgrade a request the platform can serve.
+        let requestedOutputRate = BridgedNarrowing.requestedRate(
+            rawValue: outputFormat?["sampleRate"],
+            parsed: outputFormat.flatMap { bridgedFiniteDouble($0, "sampleRate") },
+            permitted: BridgedNarrowing.converterSampleRates
+        )
+        if requestedOutputRate == .invalid {
             Logger.debug(
                 "AudioProcessor",
-                "Ignoring unsupported output sampleRate \(requested); using the input rate"
+                "Ignoring unsupported output sampleRate; using the input rate"
             )
         }
-        let targetSampleRate = BridgedNarrowing.outputSampleRate(requestedOutputRate) ?? inputSampleRate
+        let targetSampleRate: Double = {
+            if case .valid(let rate) = requestedOutputRate { return rate }
+            return inputSampleRate
+        }()
         let targetChannels = outputFormat.flatMap { bridgedInt($0, "channels", in: 1...2) } ?? inputChannels
         let targetBitDepth = outputFormat.flatMap { bridgedInt($0, "bitDepth").flatMap { [16, 32].contains($0) ? $0 : nil } } ?? 16
         let bitrate = outputFormat.flatMap { bridgedInt($0, "bitrate").flatMap { $0 > 0 ? $0 : nil } } ?? 128000

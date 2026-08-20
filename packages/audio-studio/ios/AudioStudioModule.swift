@@ -1091,29 +1091,32 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             // Reject rather than silently falling back to the source rate. An absurd value
             // reached AVAssetReaderTrackOutput, which raises an ObjC exception no Swift
             // catch can recover from, and AVAudioConverter, which returns nil (#433).
-            // "Present but unparseable" must reject, not fall through to the source rate.
-            // bridgedFiniteDouble returns nil for 1e20, which is indistinguishable from the
-            // key being absent unless the raw value is checked first (#433).
-            let sampleRateWasProvided = options["targetSampleRate"] != nil
-                && !(options["targetSampleRate"] is NSNull)
-            let requestedSampleRate = bridgedFiniteDouble(options, "targetSampleRate")
-            if sampleRateWasProvided,
-               BridgedNarrowing.outputSampleRate(requestedSampleRate) == nil {
+            // Present-but-unusable must reject, not fall through to the source rate.
+            let requested = BridgedNarrowing.requestedRate(
+                rawValue: options["targetSampleRate"],
+                parsed: bridgedFiniteDouble(options, "targetSampleRate"),
+                permitted: BridgedNarrowing.readerSampleRates
+            )
+            if requested == .invalid {
                 promise.reject(
                     "ERR_AUDIO_STREAM_INVALID_RANGE",
                     "targetSampleRate must be in "
-                    + "[\(BridgedNarrowing.supportedSampleRates.lowerBound), "
-                    + "\(BridgedNarrowing.supportedSampleRates.upperBound)]"
+                    + "[\(BridgedNarrowing.readerSampleRates.lowerBound), "
+                    + "\(BridgedNarrowing.readerSampleRates.upperBound)]"
                 )
                 return
             }
+            let requestedSampleRate: Double? = {
+                if case .valid(let rate) = requested { return rate }
+                return nil
+            }()
 
             let opts = AudioStreamDecoder.Options(
                 requestId: requestId,
                 fileUri: fileUri,
                 startTimeMs: bridgedFiniteDouble(options, "startTimeMs"),
                 endTimeMs: bridgedFiniteDouble(options, "endTimeMs"),
-                targetSampleRate: BridgedNarrowing.outputSampleRate(requestedSampleRate),
+                targetSampleRate: requestedSampleRate,
                 channels: bridgedInt(options, "channels"),
                 normalizeAudio: options["normalizeAudio"] as? Bool ?? true,
                 chunkDurationMs: chunkDurationMs,

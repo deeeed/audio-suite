@@ -10,12 +10,12 @@ import Foundation
 ///
 /// `windowSizeMs: 100_000_000` passes every option guard and, at 44.1 kHz, produces
 /// 4_410_000_000 samples — fine for `Int`, and far past what the native code can accept.
-/// Where a bound exists the caller rejects rather than clamping, because clamping an
-/// oversized window to a type's maximum still overruns the fixed FFT buffer downstream.
 ///
-/// So clamp at the conversion, where the other operands are known, rather than inventing a
-/// ceiling on the option itself. A bound on `windowSizeMs` alone could never be right,
-/// because the safe range depends on the sample rate it is multiplied by.
+/// Where no bound exists, clamp at the conversion, where the other operands are known —
+/// a ceiling on `windowSizeMs` alone could never be right, because the safe range depends
+/// on the sample rate it is multiplied by. Where the platform does impose a bound, reject
+/// instead: clamping an oversized window to a type's maximum still overruns the fixed FFT
+/// buffer downstream.
 enum BridgedNarrowing {
 
     /// Milliseconds times a sample rate, as a sample count, clamped to `Int`.
@@ -54,26 +54,55 @@ enum BridgedNarrowing {
         )
     }
 
-    /// Sample rates a caller may request for output.
+    /// Sample rates `AVAssetReaderTrackOutput` will accept, for the streaming decoder.
     ///
-    /// `bridgedFiniteDouble` only proves representability, so an absurd rate reached
-    /// CoreAudio unchecked. Two different failures, verified against the real APIs with a
-    /// file from test-assets (#433):
-    /// - `AVAssetReaderTrackOutput` raises an uncaught `NSException` — not a Swift error,
-    ///   so nothing downstream can catch it — outside 8 kHz...192 kHz. 7999 and 192001 both
-    ///   terminate the process; 8000 and 192000 construct fine.
-    /// - `AVAudioConverter(from:to:)` returns nil for extreme rates, which was force-
-    ///   unwrapped.
+    /// Outside this range the reader raises an uncaught `NSException` — not a Swift error,
+    /// so nothing downstream can catch it and the process dies. Probed against a real asset
+    /// (#433): 1, 7999, 192001 and 384000 all terminate; 8000 and 192000 construct fine.
     ///
-    /// The bound is therefore the reader's, since it is the strictest and its failure is
-    /// unrecoverable. This is a real limit of the platform APIs, not a policy about which
-    /// formats the library supports.
-    static let supportedSampleRates: ClosedRange<Double> = 8_000...192_000
+    /// Deliberately narrower than what a converter accepts. 384 kHz is a real hardware rate
+    /// and converts without complaint, so applying this bound to the trim path would
+    /// silently downgrade a request the platform can actually serve.
+    static let readerSampleRates: ClosedRange<Double> = 8_000...192_000
 
-    /// The requested rate if CoreAudio can serve it, otherwise nil.
-    static func outputSampleRate(_ value: Double?) -> Double? {
-        guard let value = value, supportedSampleRates.contains(value) else { return nil }
-        return value
+    /// Sample rates `AVAudioConverter` can be constructed for, used by trim and decode.
+    ///
+    /// The converter returns nil rather than throwing, and that nil was force-unwrapped
+    /// (#433). It is far more permissive than the reader: 384 kHz succeeds with frames
+    /// produced, while 1e12 returns nil. The ceiling here is a sanity bound on what a
+    /// caller can mean, not a transcription of a platform limit — hence 4x the highest
+    /// consumer rate rather than something tighter.
+    static let converterSampleRates: ClosedRange<Double> = 1...768_000
+
+    /// What a caller asked for, distinguishing "nothing" from "something unusable".
+    enum RequestedRate: Equatable {
+        /// The key was absent or null; use the source rate.
+        case absent
+        /// A rate the API can serve.
+        case valid(Double)
+        /// The key was present but is not a rate that can be honoured.
+        case invalid
+    }
+
+    /// Classifies a raw bridged value against `permitted`.
+    ///
+    /// Present-but-unusable has to be distinguishable from absent. `bridgedFiniteDouble`
+    /// returns nil for both a missing key and `1e20`, so treating its nil as "not
+    /// requested" silently fell back to the source rate for a request that should have been
+    /// rejected (#433).
+    ///
+    /// - Parameters:
+    ///   - rawValue: the value as it arrived, before parsing
+    ///   - parsed: the result of `bridgedFiniteDouble` for the same key
+    ///   - permitted: which API's range applies
+    static func requestedRate(
+        rawValue: Any?,
+        parsed: Double?,
+        permitted: ClosedRange<Double>
+    ) -> RequestedRate {
+        guard let rawValue = rawValue, !(rawValue is NSNull) else { return .absent }
+        guard let parsed = parsed, permitted.contains(parsed) else { return .invalid }
+        return .valid(parsed)
     }
 
     /// A caller-supplied time range, resolved against the material being analysed.
