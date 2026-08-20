@@ -19,6 +19,14 @@ export type StartRecordingErrorCode =
     | 'COMPRESSED_INIT_FAILED'
     /** The compressed recorder could not be started. Android only. */
     | 'COMPRESSED_START_FAILED'
+    /** Microphone permission was not granted. Android only. */
+    | 'PERMISSION_DENIED'
+    /** Notification permission was not granted while notifications were requested. Android only. */
+    | 'NOTIFICATION_PERMISSION_DENIED'
+    /** No supported audio format was found for the requested configuration. Android only. */
+    | 'INITIALIZATION_FAILED'
+    /** A usable buffer size could not be determined. Android only. */
+    | 'BUFFER_SIZE_ERROR'
     /** Recording could not start for a reason with no more specific code. */
     | 'START_FAILED'
     /** An unexpected error escaped the native layer. */
@@ -29,6 +37,9 @@ const RECOVERABLE: StartRecordingErrorCode[] = [
     'ONGOING_CALL',
     'ALREADY_RECORDING',
     'AUDIO_FOCUS_ERROR',
+    // Retryable only after the user grants the permission; the caller decides when.
+    'PERMISSION_DENIED',
+    'NOTIFICATION_PERMISSION_DENIED',
 ]
 
 const KNOWN_CODES = new Set<string>([
@@ -38,6 +49,10 @@ const KNOWN_CODES = new Set<string>([
     'AUDIO_FOCUS_ERROR',
     'COMPRESSED_INIT_FAILED',
     'COMPRESSED_START_FAILED',
+    'PERMISSION_DENIED',
+    'NOTIFICATION_PERMISSION_DENIED',
+    'INITIALIZATION_FAILED',
+    'BUFFER_SIZE_ERROR',
     'START_FAILED',
     'UNEXPECTED_ERROR',
 ])
