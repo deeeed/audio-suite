@@ -18,12 +18,12 @@ let package = Package(
     targets: [
         .target(
             name: "AudioStudio",
-            path: "Sources/AudioStudioSettings"
+            path: "ios", sources: ["RecordingSettings.swift", "DeviceDisconnectionBehavior.swift"]
         ),
         .testTarget(
             name: "AudioStudioTests",
             dependencies: ["AudioStudio"],
-            path: "Tests/AudioStudioSettingsTests"
+            path: "ios/AudioStudioTests", sources: ["BridgedNumericOptionsTests.swift"]
         ),
     ]
 )

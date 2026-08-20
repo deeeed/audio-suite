@@ -98,7 +98,7 @@
         "test:android:unit": "cd ../../apps/playground/android && ./gradlew :siteed-audio-studio:test",
         "test:android:instrumented": "cd ../../apps/playground/android && ./gradlew :siteed-audio-studio:connectedAndroidTest",
         "test:android:unit:watch": "cd ../../apps/playground/android && ./gradlew :siteed-audio-studio:test --continuous",
-        "test:ios": "cd SettingsTests && xcodebuild test -scheme AudioStudio-Package -destination \"platform=iOS Simulator,name=${IOS_SIMULATOR:-audiolab-1}\"",
+        "test:ios": "xcodebuild test -scheme AudioStudio-Package -destination \"platform=iOS Simulator,name=${IOS_SIMULATOR:-audiolab-1}\"",
         "test:coverage": "cd ../../apps/playground/android && ./gradlew :siteed-audio-studio:jacocoTestReport",
         "typecheck": "tsc --noEmit",
         "docgen": "typedoc src/index.ts --plugin typedoc-plugin-markdown --readme none --out ../../documentation_site/docs/api-reference/API && node ../../scripts/escape-mdx-generics.js ../../documentation_site/docs/api-reference",
