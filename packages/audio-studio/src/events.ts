@@ -73,3 +73,29 @@ export function addMaxDurationReachedListener(
         listener
     )
 }
+
+export interface RecordingErrorEvent {
+    /** Human-readable description of what failed. */
+    message: string
+}
+
+/**
+ * Errors raised while recording is already running.
+ *
+ * iOS has always emitted these, but there was no typed way to subscribe, so failures that
+ * do not reject a call were effectively unobservable. That mattered for #420: when the
+ * primary WAV stops accepting writes, the compressed output keeps going, and without this
+ * a caller relying on the WAV for crash recovery had no signal it had gone stale.
+ *
+ * These do not stop the recording. Treat them as a degraded-state notification.
+ *
+ * **iOS only for now.** Android does not declare this event, so the listener never fires
+ * there; it is not a guarantee that recording is healthy on Android. Bringing Android to
+ * parity is tracked separately — do not use this as the sole health check on either
+ * platform.
+ */
+export function addRecordingErrorListener(
+    listener: (event: RecordingErrorEvent) => void
+): EventSubscription {
+    return emitter.addListener<RecordingErrorEvent>('error', listener)
+}

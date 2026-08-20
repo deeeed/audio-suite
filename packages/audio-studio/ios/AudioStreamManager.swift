@@ -41,6 +41,12 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
     internal var recordingFileURL: URL?
     private var audioProcessor: AudioProcessor?
     private var fileHandle: FileHandle?
+    /// Set once the primary WAV has stopped accepting writes and could not be recovered.
+    ///
+    /// Only read and written on `fileWriteQueue`. Without it a failing handle would report
+    /// on every dropped buffer — dozens per second — so the delegate is told once and the
+    /// remaining appends fail quietly (#420).
+    private var primaryWriteFailureReported = false
     private var startTime: Date?
     private var totalPausedDuration: TimeInterval = 0  // Track total paused time
     private var currentPauseStart: Date?              // Track current pause start
@@ -1039,6 +1045,9 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         resetAccumulated()
         totalDataSize = 0
         totalDataSizeAnalysis = 0
+        // Per recording: a previous recording's failure must not suppress this one's report.
+        // Synchronous so the reset is ordered before any append this recording enqueues.
+        fileWriteQueue.sync { self.primaryWriteFailureReported = false }
         totalPausedDuration = 0
         lastEmittedSize = 0
         lastEmittedCompressedSize = 0
@@ -1463,7 +1472,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
     /// crash-recovery backup — silently stopped (issue #420). If the handle cannot
     /// be restored the failure is surfaced to the delegate instead of being lost.
     private func reopenPrimaryFileHandleIfNeeded() {
-        guard let url = recordingFileURL else { return }
+        guard recordingFileURL != nil else { return }
 
         fileWriteQueue.sync {
             if let handle = self.fileHandle {
@@ -1479,26 +1488,89 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             }
 
             do {
-                // Reopen for appending; the header is rewritten at stop, so the
-                // bytes already on disk must be preserved here.
-                let reopened = try FileHandle(forWritingTo: url)
-                try reopened.seekToEnd()
-                self.fileHandle = reopened
+                try self.reopenPrimaryFileHandle()
                 Logger.debug("AudioStreamManager", "Primary file handle reopened after interruption.")
             } catch {
-                self.fileHandle = nil
-                Logger.debug(
-                    "AudioStreamManager",
-                    "Failed to reopen primary file handle after interruption: \(error.localizedDescription)"
-                )
-                DispatchQueue.main.async { [weak self] in
-                    guard let self = self else { return }
-                    self.delegate?.audioStreamManager(
-                        self,
-                        didFailWithError: "Primary WAV output stopped after an audio interruption: \(error.localizedDescription)"
-                    )
-                }
+                self.reportPrimaryWriteFailureOnce(error)
             }
+        }
+    }
+
+    /// Reopens the primary WAV handle for appending. Caller must be on `fileWriteQueue`.
+    ///
+    /// The header is rewritten at stop, so the bytes already on disk are preserved rather
+    /// than truncated.
+    private func reopenPrimaryFileHandle() throws {
+        guard let url = recordingFileURL else {
+            throw NSError(
+                domain: "AudioStreamManager",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "No primary recording file to reopen"]
+            )
+        }
+
+        // Drop the old handle first: keeping it on failure would leave a descriptor that
+        // every later append retries against.
+        self.fileHandle = nil
+
+        let reopened = try FileHandle(forWritingTo: url)
+        try reopened.seekToEnd()
+        self.fileHandle = reopened
+    }
+
+    /// Appends one buffer to the primary WAV. Caller must be on `fileWriteQueue`.
+    private func appendToPrimary(_ data: Data) throws {
+        guard let handle = self.fileHandle else {
+            throw NSError(
+                domain: "AudioStreamManager",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Primary file handle is nil"]
+            )
+        }
+        try handle.seekToEnd()
+        try handle.write(contentsOf: data)
+        self.totalDataSize += Int64(data.count)
+        self.cachedWavFileSize = self.totalDataSize
+    }
+
+    /// Recovers from a failed append, or reports that the WAV has stopped.
+    ///
+    /// Caller must be on `fileWriteQueue`.
+    private func handlePrimaryWriteFailure(_ error: Error, retrying data: Data) {
+        Logger.debug(
+            "AudioStreamManager",
+            "Primary WAV append failed: \(error.localizedDescription). Reopening."
+        )
+        do {
+            try self.reopenPrimaryFileHandle()
+            try self.appendToPrimary(data)
+            Logger.debug("AudioStreamManager", "Primary WAV handle recovered mid-recording.")
+        } catch {
+            self.reportPrimaryWriteFailureOnce(error)
+        }
+    }
+
+    /// Reports that the primary WAV has stopped, at most once per recording.
+    ///
+    /// Caller must be on `fileWriteQueue`, which is what makes the once-only check safe.
+    private func reportPrimaryWriteFailureOnce(_ error: Error) {
+        self.fileHandle = nil
+
+        guard PrimaryWriteFailurePolicy.shouldReport(
+            alreadyReported: self.primaryWriteFailureReported
+        ) else { return }
+        self.primaryWriteFailureReported = true
+
+        Logger.debug(
+            "AudioStreamManager",
+            "Primary WAV output stopped: \(error.localizedDescription)"
+        )
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.delegate?.audioStreamManager(
+                self,
+                didFailWithError: "Primary WAV output stopped and could not be recovered: \(error.localizedDescription). Compressed output, if enabled, is unaffected."
+            )
         }
     }
 
@@ -1816,19 +1888,15 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             // Use the persistent fileHandle opened during preparation.
             // Serial queue so stopRecording() can barrier on outstanding appends.
             fileWriteQueue.async { [weak self] in
-                guard let self = self, let handle = self.fileHandle else {
-                    Logger.debug("BG Write Error: File handle is nil.")
-                    return
-                }
+                guard let self = self else { return }
+                // A failed append used to be logged and dropped. The compressed recorder
+                // kept running, so the M4A grew while the WAV silently stopped — and a
+                // caller using the WAV for crash recovery had no way to know it had gone
+                // stale (#420). Try to recover the handle, and if that fails, say so.
                 do {
-                    try handle.seekToEnd()
-                    try handle.write(contentsOf: dataToWrite)
-                    // Update total size state
-                    self.totalDataSize += Int64(dataToWrite.count)
-                    // Cache WAV file size for performance
-                    self.cachedWavFileSize = self.totalDataSize
+                    try self.appendToPrimary(dataToWrite)
                 } catch {
-                     Logger.debug("BG Write Error: Failed to seek/write: \(error.localizedDescription)")
+                    self.handlePrimaryWriteFailure(error, retrying: dataToWrite)
                 }
             }
         } else {
