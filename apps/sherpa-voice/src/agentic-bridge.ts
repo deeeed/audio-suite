@@ -2252,6 +2252,116 @@ if (__DEV__) {
             return { op, status: 'pending' }
         },
 
+        // Init → generate with playAudio enabled → release. Exercises the Android
+        // callback playback path (AudioTrack prefill), which the playAudio:false
+        // helpers above never reach.
+        testTTSPlayback: (text = 'Testing prefill playback with a long enough sentence to span several generation callbacks.', modelDir?: string) => {
+            const op = 'ttsPlayback'
+            const BASE = MODELS_BASE
+            const defaultModelDir = `${BASE}/vits-icefall-en-low/vits-icefall-en_US-ljspeech-low`
+            const dir = modelDir ?? defaultModelDir
+            _lastAsyncResult = { op, status: 'pending' }
+            void (async () => {
+                try {
+                    const initResult = await SherpaOnnx.initTts({
+                        modelDir: dir,
+                        ttsModelType: 'vits',
+                        modelFile: 'model.onnx',
+                        tokensFile: 'tokens.txt',
+                        dataDir: 'espeak-ng-data',
+                        numThreads: 1,
+                        debug: false,
+                    })
+                    if (!initResult.success)
+                        throw new Error('initTts failed: ' + initResult.error)
+
+                    const genResult = await SherpaOnnx.generateTts({
+                        text,
+                        speakerId: 0,
+                        speakingRate: 1.0,
+                        playAudio: true,
+                    })
+
+                    await SherpaOnnx.releaseTts()
+
+                    _lastAsyncResult = {
+                        op,
+                        status: 'success',
+                        result: { genResult, text, modelDir: dir },
+                    }
+                } catch (e) {
+                    _lastAsyncResult = { op, status: 'error', error: String(e) }
+                }
+            })()
+            return { op, status: 'pending' }
+        },
+
+        // Start playback then call stopTts() inside the prefill window.
+        //
+        // NOTE: on Android this currently cannot interrupt generation — TtsHandler
+        // runs init/generate/stop/release on one single-thread executor, so stopTts()
+        // queues behind the in-flight generateTts() and only runs after it finishes.
+        // Logcat shows no "Stopping TTS generation" line until generation completes.
+        // Kept as a regression probe: if stop ever moves off that executor, this is
+        // the scenario to re-run. The bug would be a "playback started" line
+        // appearing AFTER "Stopping TTS generation".
+        testTTSStopDuringPrefill: (stopAfterMs = 120, modelDir?: string) => {
+            const op = 'ttsStopDuringPrefill'
+            const BASE = MODELS_BASE
+            const defaultModelDir = `${BASE}/vits-icefall-en-low/vits-icefall-en_US-ljspeech-low`
+            const dir = modelDir ?? defaultModelDir
+            _lastAsyncResult = { op, status: 'pending' }
+            void (async () => {
+                const timing: Record<string, number> = {}
+                try {
+                    const initResult = await SherpaOnnx.initTts({
+                        modelDir: dir,
+                        ttsModelType: 'vits',
+                        modelFile: 'model.onnx',
+                        tokensFile: 'tokens.txt',
+                        dataDir: 'espeak-ng-data',
+                        numThreads: 1,
+                        debug: false,
+                    })
+                    if (!initResult.success)
+                        throw new Error('initTts failed: ' + initResult.error)
+
+                    const t0 = Date.now()
+                    const genPromise = SherpaOnnx.generateTts({
+                        text: 'This utterance should be cut off almost immediately after generation begins.',
+                        speakerId: 0,
+                        speakingRate: 1.0,
+                        playAudio: true,
+                    })
+
+                    await new Promise((r) => setTimeout(r, stopAfterMs))
+                    const stopResult = await SherpaOnnx.stopTts()
+                    timing.stoppedAtMs = Date.now() - t0
+
+                    const genResult = await genPromise.catch((e) => ({
+                        stoppedWithError: String(e),
+                    }))
+                    timing.generateReturnedMs = Date.now() - t0
+
+                    await SherpaOnnx.releaseTts()
+
+                    _lastAsyncResult = {
+                        op,
+                        status: 'success',
+                        result: { stopResult, genResult, timing, stopAfterMs },
+                    }
+                } catch (e) {
+                    _lastAsyncResult = {
+                        op,
+                        status: 'error',
+                        error: String(e),
+                        result: { timing },
+                    }
+                }
+            })()
+            return { op, status: 'pending' }
+        },
+
         // Test any TTS model by ID using predefined config (modelId → config lookup)
         testTTSModel: (modelId: string, text = 'Hello from sherpa onnx.') => {
             const op = 'ttsModel'

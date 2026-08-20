@@ -298,9 +298,6 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                 currentSampleRate = tts!!.sampleRate()
                 Log.i(TAG, "Native model sample rate: $currentSampleRate Hz")
 
-                // Initialize audio track with the actual model sample rate
-                initAudioTrack(currentSampleRate)
-
                 // Return success result
                 val resultMap = Arguments.createMap()
                 resultMap.putBoolean("success", true)
@@ -434,8 +431,9 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                     // Release any existing audio track first
                     releaseAudioTrack()
                     
-                    // Create new audio track with the correct sample rate
-                    initAudioTrack(currentSampleRate)
+                    // Prefill the track before starting playback. Starting an empty stream
+                    // makes the first callback prone to an audible underrun.
+                    initAudioTrack(currentSampleRate, startPlayback = false)
                     
                     if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
                         Log.e(TAG, "Failed to initialize AudioTrack for playback!")
@@ -454,6 +452,7 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                     
                     var totalSamplesWritten = 0
                     var totalCalls = 0
+                    var playbackStarted = false
                     
                     // Use explicit Function1 object instead of a lambda to prevent D8 from
                     // desugaring it into ExternalSyntheticLambda, which breaks the JNI lookup
@@ -468,12 +467,11 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                         totalCalls++
                         
                         // Check if AudioTrack is still valid and re-create if necessary
-                        if (audioTrack?.state != AudioTrack.STATE_INITIALIZED || 
-                            audioTrack?.playState == AudioTrack.PLAYSTATE_STOPPED) {
-                            Log.e(TAG, "AudioTrack invalid or stopped during playback, reinitializing...")
+                        if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
+                            Log.e(TAG, "AudioTrack invalid during playback, reinitializing...")
                             try {
                                 releaseAudioTrack()
-                                initAudioTrack(currentSampleRate)
+                                initAudioTrack(currentSampleRate, startPlayback = playbackStarted)
                                 // Add a small delay to let AudioTrack initialize
                                 Thread.sleep(50)
                             } catch (e: Exception) {
@@ -507,7 +505,7 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                                 if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
                                     Log.w(TAG, "AudioTrack disabled during chunk write, reinitializing...")
                                     releaseAudioTrack()
-                                    initAudioTrack(currentSampleRate)
+                                    initAudioTrack(currentSampleRate, startPlayback = playbackStarted)
                                     // If AudioTrack couldn't be reinitialized, continue to next chunk
                                     if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
                                         offset += currentChunkSize
@@ -519,6 +517,11 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                                 if (written > 0) {
                                     totalSamplesWritten += written
                                     offset += written
+                                    if (!playbackStarted && totalSamplesWritten >= currentSampleRate / 5) {
+                                        audioTrack?.play()
+                                        playbackStarted = true
+                                        Log.d(TAG, "AudioTrack playback started after prefill: $totalSamplesWritten samples")
+                                    }
                                 } else {
                                     // If write fails, skip this chunk and try the next one
                                     Log.w(TAG, "Failed to write chunk: error code $written")
@@ -538,6 +541,21 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                         }
                         } // end invoke
                     }) // end object / generateWithCallback
+
+                    // Short utterances can finish before reaching the prefill threshold.
+                    //
+                    // The isGenerating check is defensive. stop() and release() clear the
+                    // flag, but both run on the same single-thread executor as this
+                    // generation, so today they queue behind it and cannot flip it here.
+                    // If any of them ever moves off that executor, an unguarded start
+                    // would play the buffered samples after the caller asked to stop,
+                    // because stop() only pauses a track already in PLAYSTATE_PLAYING and
+                    // a prefilling track is still STOPPED.
+                    if (isGenerating && !playbackStarted && totalSamplesWritten > 0) {
+                        audioTrack?.play()
+                        playbackStarted = true
+                        Log.d(TAG, "AudioTrack playback started after short utterance prefill: $totalSamplesWritten samples")
+                    }
 
                     Log.d(TAG, "Completed callback generation. Total samples: $totalSamplesWritten in $totalCalls callback calls")
                 } else {
@@ -621,7 +639,7 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
     /**
      * Initialize audio track for playback
      */
-    private fun initAudioTrack(sampleRate: Int) {
+    private fun initAudioTrack(sampleRate: Int, startPlayback: Boolean = true) {
         try {
             // Release any existing AudioTrack first to prevent resource conflicts
             try {
@@ -693,9 +711,12 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                     Log.e(TAG, "Error checking audio focus: ${e.message}")
                 }
                 
-                // Start playback
-                play()
-                Log.d(TAG, "AudioTrack created and started. State: ${if (state == AudioTrack.STATE_INITIALIZED) "INITIALIZED" else "NOT INITIALIZED"}")
+                if (startPlayback) {
+                    play()
+                    Log.d(TAG, "AudioTrack created and started. State: ${if (state == AudioTrack.STATE_INITIALIZED) "INITIALIZED" else "NOT INITIALIZED"}")
+                } else {
+                    Log.d(TAG, "AudioTrack created and waiting for prefill")
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize AudioTrack: ${e.message}")
