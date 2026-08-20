@@ -87,6 +87,25 @@ class AudioSourceLifecycleTest {
     }
 
     @Test
+    fun `a failed attempt does not leak its source into the next one`() {
+        // Round-3 blocker: each initializer catches its own exception and returns false, so
+        // a caller returns early without reaching any catch or cleanup. Preparation that
+        // fails after resolving must not leave that source behind for a different request.
+        val lifecycle = AudioSourceLifecycle<String>()
+        val resolver = Resolver("unprocessed", "mic")
+
+        lifecycle.onBeginAttempt()
+        lifecycle.onInitializeRecorders(resolver::next)
+        // ...compressed-recorder init fails here and prepareRecording() returns false.
+
+        lifecycle.onBeginAttempt()
+        lifecycle.onInitializeRecorders(resolver::next)
+
+        assertEquals("mic", lifecycle.resolved)
+        assertEquals(2, resolver.calls)
+    }
+
+    @Test
     fun `teardown drops the source so nothing reads a stale value`() {
         val lifecycle = AudioSourceLifecycle<String>()
 

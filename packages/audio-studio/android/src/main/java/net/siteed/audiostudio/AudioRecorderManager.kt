@@ -994,6 +994,14 @@ class AudioRecorderManager(
             if (audioRecord == null || !isPaused.get()) {
                 LogUtils.d(CLASS_NAME, "Initializing AudioRecord with format: $audioFormat, BufferSize: $bufferSizeInBytes")
 
+                // A new AudioRecord replaces whatever was here, so this is a fresh attempt
+                // unless a device change or resume is rebuilding one that is still part of
+                // the current recording. Those keep their source; anything a failed attempt
+                // left behind is dropped, so the next attempt does not inherit it.
+                if (!_isRecording.get() && !isPrepared) {
+                    audioSourceLifecycle.onBeginAttempt()
+                }
+
                 val channelConfig =
                     if (recordingConfig.channels == 1) AudioFormat.CHANNEL_IN_MONO
                     else AudioFormat.CHANNEL_IN_STEREO
@@ -2414,11 +2422,24 @@ internal class AudioSourceLifecycle<T> {
     }
 
     /**
-     * Tearing the recorders down. The only place the source is dropped — clearing it on the
-     * start path instead would wipe what preparation resolved, and a prepared start skips
-     * initialization, so it would report `mic` while non-MIC recorders were running.
+     * Tearing the recorders down. Clearing it on the start path instead would wipe what
+     * preparation resolved, and a prepared start skips initialization, so it would report
+     * `mic` while non-MIC recorders were running.
      */
     fun onTeardown() {
+        resolved = null
+    }
+
+    /**
+     * Starting a fresh attempt to bring a recording up, before anything is resolved.
+     *
+     * Bringing a recording up has many failure exits: each initializer catches its own
+     * exception and returns false, and the caller returns early without reaching any catch
+     * or cleanup, so a resolution can outlive the recorder it describes. Rather than making
+     * every one of those exits reset, a new attempt starts from nothing — whatever a failed
+     * attempt left behind is discarded here, so the next attempt resolves its own source.
+     */
+    fun onBeginAttempt() {
         resolved = null
     }
 }
