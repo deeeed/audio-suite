@@ -2404,7 +2404,13 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         // the file), not a re-encode. State teardown below stays asynchronous.
         var finalWavFileSize = capturedWavFileSize
         var degradedPrimary: String?
+        var primaryUnusable = false
+        var alreadyReported = false
         fileWriteQueue.sync {
+            // The write path may already have reported a failure it could observe while
+            // running. One report per recording is the documented contract.
+            alreadyReported = self.primaryWriteFailureReported
+
             // Reconcile the counters against the file. Once writes stop being accepted —
             // an unrecoverable handle, or a file that shrank below what was counted (#420)
             // — totalDataSize keeps the length the recording *would* have had, and sizing
@@ -2435,19 +2441,45 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             }
 
             guard PrimaryWriteFailurePolicy.isUsableWav(finalSize: finalWavFileSize) else {
-                // Shorter than a header: nothing a decoder will open. Say so rather than
-                // returning it as a successful recording.
+                // Shorter than a header: nothing will open it. Leave the file alone and
+                // let the caller-facing check below refuse to return it as a recording.
+                primaryUnusable = true
                 degradedPrimary = "the primary WAV is \(finalWavFileSize) bytes, "
-                    + "too short to be a valid file"
+                    + "too short to contain a header"
                 Logger.debug("AudioStreamManager", "Primary WAV unusable at \(finalWavFileSize) bytes.")
                 return
             }
 
             if let physicalSize = physicalSize, physicalSize > finalWavFileSize {
                 // Drop the unaccounted tail so the file matches the header written below.
-                if let handle = try? FileHandle(forWritingTo: fileURL) {
-                    try? handle.truncate(atOffset: UInt64(finalWavFileSize))
-                    try? handle.close()
+                // A failure here leaves the file longer than the header describes, which
+                // is the corruption this is preventing, so it is not swallowed.
+                do {
+                    let handle = try FileHandle(forWritingTo: fileURL)
+                    defer { try? handle.close() }
+                    try handle.truncate(atOffset: UInt64(finalWavFileSize))
+
+                    let remeasured = (
+                        try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? NSNumber
+                    )??.int64Value
+                    if remeasured != finalWavFileSize {
+                        throw NSError(
+                            domain: "AudioStreamManager",
+                            code: 5,
+                            userInfo: [NSLocalizedDescriptionKey:
+                                "Primary WAV is \(remeasured.map(String.init) ?? "unreadable") bytes "
+                                + "after truncating to \(finalWavFileSize)"]
+                        )
+                    }
+                } catch {
+                    primaryUnusable = true
+                    degradedPrimary = "the primary WAV could not be trimmed to the bytes that "
+                        + "were recorded: \(error.localizedDescription)"
+                    Logger.debug(
+                        "AudioStreamManager",
+                        "Failed to truncate primary WAV: \(error.localizedDescription)"
+                    )
+                    return
                 }
             }
 
@@ -2458,12 +2490,16 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             }
         }
 
+
         // A degradation only detectable at stop — a file that shrank, grew past what was
         // counted, or cannot be measured — has not been reported yet: the write path
         // reports what it observes while running, and these were not observable there.
         // The returned size is truthful either way, but silence would read as a healthy
         // recording, which is the failure #420 is about.
-        if let degradedPrimary = degradedPrimary {
+        // Suppressed only when the write path already reported and the file is still
+        // usable — that is the same failure said twice. An unusable file is a different,
+        // worse fact than "writes stopped", so it is always reported.
+        if let degradedPrimary = degradedPrimary, !alreadyReported || primaryUnusable {
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
                 self.delegate?.audioStreamManager(
@@ -2511,6 +2547,16 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         }
         
         stopping = false
+
+        // A primary WAV too short to hold a header, or one that could not be trimmed to
+        // the bytes actually recorded, is not a recording. Returning it would resolve
+        // stopRecording() with a file nothing can open — the silent-success outcome this
+        // issue is about. Teardown above still ran, and the delegate error was emitted.
+        if primaryUnusable {
+            Logger.debug("AudioStreamManager", "Refusing to return an unusable primary WAV.")
+            return nil
+        }
+
         return result
     }
 
