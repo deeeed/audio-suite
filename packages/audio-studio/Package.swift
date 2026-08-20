@@ -26,6 +26,7 @@ let package = Package(
                 "DeviceDisconnectionBehavior.swift",
                 "PrimaryWriteFailurePolicy.swift",
                 "BridgedNarrowing.swift",
+                "OutputPromotion.swift",
             ]
         ),
         .testTarget(
@@ -36,6 +37,7 @@ let package = Package(
                 "PrimaryWriteRecoveryTests.swift",
                 "BridgedNarrowingTests.swift",
                 "ConverterCapabilityTests.swift",
+                "OutputPromotionTests.swift",
             ]
         ),
     ]

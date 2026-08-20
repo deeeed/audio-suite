@@ -801,11 +801,7 @@ public class AudioProcessor {
 
         /// Moves the finished work file onto the requested destination.
         func promoteWorkFile() throws {
-            if FileManager.default.fileExists(atPath: outputURL.path) {
-                _ = try FileManager.default.replaceItemAt(outputURL, withItemAt: workURL)
-            } else {
-                try FileManager.default.moveItem(at: workURL, to: outputURL)
-            }
+            try OutputPromotion.promote(workURL: workURL, to: outputURL)
         }
 
         let decodingConfig = DecodingConfig.fromDictionary(decodingOptions ?? [:])
