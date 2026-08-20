@@ -1234,7 +1234,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
     /// - Parameters:
     ///   - settings: The recording settings to use.
     /// - Returns: A StartRecordingResult object if recording starts successfully, or nil otherwise.
-    func startRecording(settings: RecordingSettings) -> StartRecordingResult? {
+    func startRecording(settings: RecordingSettings) throws -> StartRecordingResult {
         // If already prepared, use the prepared state
         if isPrepared {
             Logger.debug("Using prepared recording state")
@@ -1244,7 +1244,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             guard tapInstall.installed else {
                 Logger.debug("Failed to install recording tap")
                 cleanupPreparation()
-                return nil
+                throw StartRecordingError.tapInstallationFailed
             }
             Logger.debug("Tap was reinstalled during recording start")
         } else {
@@ -1252,7 +1252,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             Logger.debug("Not prepared, preparing recording first")
             if !prepareRecording(settings: settings) {
                 Logger.debug("Failed to prepare recording")
-                return nil
+                throw StartRecordingError.preparationFailed
             }
         }
         
@@ -1262,17 +1262,17 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             Logger.debug("Cannot start recording during an active phone call")
             delegate?.audioStreamManager(self, didFailWithError: "Cannot start recording during an active phone call")
             cleanupPreparation()
-            return nil
+            throw StartRecordingError.phoneCallActive
         }
         
         guard !isRecording else {
             Logger.debug("Recording already in progress")
-            return nil
+            throw StartRecordingError.alreadyRecording
         }
         
         guard let settings = recordingSettings else {
             Logger.debug("Missing settings")
-            return nil
+            throw StartRecordingError.missingSettings
         }
         
         // File URI is optional when primary output is disabled
@@ -1336,7 +1336,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             isRecording = false
             cancelMaxDurationTimer()
             cleanupPreparation()
-            return nil
+            throw StartRecordingError.engineStartFailed(underlying: error)
         }
     }
 

@@ -63,7 +63,7 @@ class CompressedOnlyOutputTests: XCTestCase {
         )
     }
     
-    func testCompressedOnlyOutputWithAAC() {
+    func testCompressedOnlyOutputWithAAC() throws {
         // Given: Recording settings with primary disabled and compressed enabled (AAC)
         var settings = RecordingSettings(
             sampleRate: 44100,
@@ -91,8 +91,8 @@ class CompressedOnlyOutputTests: XCTestCase {
         }
         
         // Start recording returns a result that we can check
-        let startResult = audioManager.startRecording(settings: settings)
-        XCTAssertNotNil(startResult, "Start recording should return a result")
+        let startResult = try audioManager.startRecording(settings: settings)
+        XCTAssertFalse(startResult.mimeType.isEmpty, "Start recording should report a mime type")
         
         // Generate and process some test audio to ensure compression happens
         let testBuffer = TestAudioGenerator.generateTone(frequency: 440, duration: 0.1, sampleRate: 44100)
@@ -132,7 +132,7 @@ class CompressedOnlyOutputTests: XCTestCase {
                       "Main mimeType should reflect compressed format")
     }
     
-    func testCompressedOnlyOutputWithOpusFallback() {
+    func testCompressedOnlyOutputWithOpusFallback() throws {
         // Given: Recording settings with primary disabled and compressed enabled (Opus)
         var settings = RecordingSettings(
             sampleRate: 48000,
@@ -149,8 +149,8 @@ class CompressedOnlyOutputTests: XCTestCase {
         let expectation = self.expectation(description: "Recording should complete with AAC fallback")
         
         // Start recording
-        let startResult = audioManager.startRecording(settings: settings)
-        XCTAssertNotNil(startResult, "Start recording should return a result")
+        let startResult = try audioManager.startRecording(settings: settings)
+        XCTAssertFalse(startResult.mimeType.isEmpty, "Start recording should report a mime type")
         
         // Generate test audio
         if let buffer = TestAudioGenerator.generateTone(frequency: 440, duration: 0.1, sampleRate: 48000) {
@@ -176,7 +176,7 @@ class CompressedOnlyOutputTests: XCTestCase {
                       "Bitrate should be preserved from original settings")
     }
     
-    func testCompressedFileAccessibility() {
+    func testCompressedFileAccessibility() throws {
         // Given: Recording with compressed output
         var settings = RecordingSettings(
             sampleRate: 44100,
@@ -193,8 +193,8 @@ class CompressedOnlyOutputTests: XCTestCase {
         let expectation = self.expectation(description: "Compressed file should be accessible")
         
         // Start recording
-        let startResult = audioManager.startRecording(settings: settings)
-        XCTAssertNotNil(startResult, "Start recording should return a result")
+        let startResult = try audioManager.startRecording(settings: settings)
+        XCTAssertFalse(startResult.mimeType.isEmpty, "Start recording should report a mime type")
         
         // Generate substantial audio data to ensure file is created
         if let buffer = TestAudioGenerator.generateTone(frequency: 440, duration: 0.2, sampleRate: 44100) {
@@ -238,7 +238,7 @@ class CompressedOnlyOutputTests: XCTestCase {
         }
     }
     
-    func testStreamingOnlyWithCompression() {
+    func testStreamingOnlyWithCompression() throws {
         // Given: Streaming configuration with compression
         var settings = RecordingSettings(
             sampleRate: 44100,
@@ -265,8 +265,8 @@ class CompressedOnlyOutputTests: XCTestCase {
         }
         
         // Start recording
-        let startResult = audioManager.startRecording(settings: settings)
-        XCTAssertNotNil(startResult, "Start recording should return a result")
+        let startResult = try audioManager.startRecording(settings: settings)
+        XCTAssertFalse(startResult.mimeType.isEmpty, "Start recording should report a mime type")
         
         // Generate audio data
         if let buffer = TestAudioGenerator.generateTone(frequency: 440, duration: 0.1, sampleRate: 44100) {

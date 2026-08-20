@@ -87,6 +87,13 @@ export type {
     AudioStreamErrorPayload,
 } from './errors/AudioStreamError'
 
+export {
+    isRecoverableStartRecordingError,
+    isStartRecordingErrorCode,
+    startRecordingErrorCode,
+} from './errors/StartRecordingError'
+export type { StartRecordingErrorCode } from './errors/StartRecordingError'
+
 export type {
     StreamAudioDataOptions,
     StreamAudioDataChunk,

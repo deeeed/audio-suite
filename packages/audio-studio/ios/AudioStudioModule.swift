@@ -263,9 +263,15 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                     // and keeps the JS/UI thread responsive while audio session
                     // and AVAudioEngine come up.
                     self.audioLifecycleQueue.async {
-                        let result = self.streamManager.startRecording(settings: settings)
+                        let outcome: Result<StartRecordingResult, Error>
+                        do {
+                            outcome = .success(try self.streamManager.startRecording(settings: settings))
+                        } catch {
+                            outcome = .failure(error)
+                        }
                         DispatchQueue.main.async {
-                            if let result = result {
+                            switch outcome {
+                            case .success(let result):
                                 var resultDict: [String: Any] = [
                                     "fileUri": result.fileUri,
                                     "channels": result.channels,
@@ -285,9 +291,16 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
 
                                 Logger.info("AudioStudioModule", "Recording started successfully")
                                 promise.resolve(resultDict)
-                            } else {
-                                Logger.error("AudioStudioModule", "Failed to start recording")
-                                promise.reject("ERROR", "Failed to start recording.")
+
+                            case .failure(let error):
+                                // Surface the specific reason. Every failure used to collapse
+                                // into "Failed to start recording." with no way to tell a phone
+                                // call from a permission problem (#419).
+                                let startError = error as? StartRecordingError
+                                let code = startError?.code ?? "START_FAILED"
+                                let message = startError?.message ?? error.localizedDescription
+                                Logger.error("AudioStudioModule", "Failed to start recording: \(code) - \(message)")
+                                promise.reject(code, message)
                             }
                         }
                     }
