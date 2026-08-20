@@ -33,6 +33,13 @@ for (const [name, head, expected] of cases) {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`)
 }
 
+// Duplicating an existing bullet adds no information, so it must not count.
+const dupBase = '# CL\n\n## [Unreleased]\n\n- existing\n\n## [1.0.0]\n\n- old thing\n'
+const dupHead = dupBase.replace('- existing\n', '- existing\n- existing\n')
+const dupOk = hasNewUnreleasedEntry(dupBase, dupHead) === false
+if (!dupOk) failed++
+console.log(`${dupOk ? 'PASS' : 'FAIL'}  duplicating an existing bullet does not count`)
+
 // Editing an existing Unreleased bullet is not new work. Needs its own base, since the
 // shared one has an empty Unreleased section.
 const editBase = '# CL\n\n## [Unreleased]\n\n- existing\n\n## [1.0.0]\n\n- old thing\n'
@@ -55,5 +62,5 @@ const cjkOk = hasNewUnreleasedEntry(base, withUnreleased('\n- 修复音频\n'))
 if (!cjkOk) failed++
 console.log(`${cjkOk ? 'PASS' : 'FAIL'}  a non-ASCII entry counts`)
 
-console.log(failed ? `\n${failed} FAILED` : `\nall ${cases.length + 4} pass`)
+console.log(failed ? `\n${failed} FAILED` : `\nall ${cases.length + 5} pass`)
 assert.strictEqual(failed, 0, `${failed} changelog cases failed`)

@@ -48,14 +48,17 @@ function hasNewUnreleasedEntry(baseText, headText) {
   const beforeUnreleased = entries(unreleasedSection(baseText))
   const afterUnreleased = entries(unreleasedSection(headText))
 
-  // Require MORE bullets under Unreleased than before. Exact-text comparison alone let an
-  // edit pass: rewording an existing bullet produces a string the base did not contain.
-  if (afterUnreleased.length <= beforeUnreleased.length) return false
+  // Require MORE distinct bullets under Unreleased than before. Counting duplicates would
+  // let `- existing` be pasted twice; comparing text alone would let a reworded bullet
+  // pass, since an edit produces a string the base did not contain.
+  const distinctBefore = new Set(beforeUnreleased)
+  const distinctAfter = new Set(afterUnreleased)
+  if (distinctAfter.size <= distinctBefore.size) return false
 
-  // And require at least one that does not already exist anywhere in the base file, so
-  // copying a released bullet up into Unreleased does not read as new work.
+  // And require at least one bullet that does not already exist anywhere in the base file,
+  // so copying a released entry up into Unreleased does not read as new work.
   const seen = new Set(beforeAll)
-  return afterUnreleased.some((e) => !seen.has(e))
+  return [...distinctAfter].some((e) => !seen.has(e))
 }
 
 module.exports = { unreleasedSection, entries, stripNonRendered, hasNewUnreleasedEntry }
