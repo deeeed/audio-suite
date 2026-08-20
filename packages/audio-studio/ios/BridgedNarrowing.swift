@@ -37,13 +37,37 @@ enum BridgedNarrowing {
         return Int(min(max(raw, Double(minimum)), Double(Int.max).nextDown))
     }
 
-    /// Clamps to `Int32`, for values crossing into C++ wrappers that take `int32_t`.
+    /// Milliseconds times a bytes-per-second rate, as a byte offset, clamped to `Int`.
     ///
-    /// A sample count can be perfectly valid as `Int` and still trap here, so this is a
-    /// separate step rather than folded into `sampleCount`.
-    static func int32(_ value: Int, minimum: Int32 = 0) -> Int32 {
-        if value >= Int(Int32.max) { return Int32.max }
-        if value <= Int(minimum) { return minimum }
-        return Int32(value)
+    /// Same shape as [sampleCount]; named separately so call sites say which unit they mean.
+    static func byteOffset(
+        milliseconds: Double,
+        bytesPerSecond: Int,
+        minimum: Int = 0
+    ) -> Int {
+        sampleCount(
+            milliseconds: milliseconds,
+            sampleRate: Double(bytesPerSecond),
+            minimum: minimum
+        )
+    }
+
+    /// Sample rates a caller may request for output.
+    ///
+    /// `bridgedFiniteDouble` only proves representability, so an absurd rate reached
+    /// CoreAudio unchecked: `AVAudioConverter(from:to:)` returns nil at 1e12 and above,
+    /// which force-unwraps crashed on, and `AVAssetReaderTrackOutput` raises an
+    /// unrecoverable ObjC exception for rates it cannot serve (#433).
+    ///
+    /// The ceiling is 384 kHz — quadruple the highest rate consumer hardware records, and
+    /// far above anything this library targets — chosen to reject only what no caller can
+    /// mean rather than to encode a supported-format policy. The floor is 1 Hz for the same
+    /// reason: absurd, but not this function's business to judge beyond "not zero".
+    static let supportedSampleRates: ClosedRange<Double> = 1...384_000
+
+    /// The requested rate if it is one CoreAudio can plausibly serve, otherwise nil.
+    static func outputSampleRate(_ value: Double?) -> Double? {
+        guard let value = value, supportedSampleRates.contains(value) else { return nil }
+        return value
     }
 }

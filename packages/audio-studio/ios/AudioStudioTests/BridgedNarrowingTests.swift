@@ -50,6 +50,38 @@ final class BridgedNarrowingTests: XCTestCase {
         XCTAssertNotNil(Int(exactly: largestRepresentable))
     }
 
+    // MARK: - Output sample rates
+
+    func testOrdinarySampleRatesAreAccepted() {
+        for rate in [8_000.0, 44_100.0, 48_000.0, 192_000.0, 384_000.0] {
+            XCTAssertEqual(BridgedNarrowing.outputSampleRate(rate), rate)
+        }
+    }
+
+    func testRatesCoreAudioCannotServeAreRejected() {
+        // AVAudioConverter returns nil at 1e12 and above, which force-unwraps crashed on.
+        XCTAssertNil(BridgedNarrowing.outputSampleRate(1e12))
+        XCTAssertNil(BridgedNarrowing.outputSampleRate(1e15))
+        XCTAssertNil(BridgedNarrowing.outputSampleRate(384_001))
+        XCTAssertNil(BridgedNarrowing.outputSampleRate(0))
+        XCTAssertNil(BridgedNarrowing.outputSampleRate(-44_100))
+        XCTAssertNil(BridgedNarrowing.outputSampleRate(nil))
+    }
+
+    // MARK: - Byte offsets
+
+    func testByteOffsetsClampLikeSampleCounts() {
+        XCTAssertEqual(
+            BridgedNarrowing.byteOffset(milliseconds: 1_000, bytesPerSecond: 176_400),
+            176_400
+        )
+        // Passes the option guard; the product does not fit Int.
+        XCTAssertEqual(
+            BridgedNarrowing.byteOffset(milliseconds: 4.0816326530612243e17, bytesPerSecond: 176_400),
+            Int(Double(Int.max).nextDown)
+        )
+    }
+
     func testTheMinimumIsHonoured() {
         // A window rounding to zero samples would divide by zero downstream.
         XCTAssertEqual(BridgedNarrowing.sampleCount(milliseconds: 0.0001, sampleRate: 8_000), 1)
@@ -68,26 +100,18 @@ final class BridgedNarrowingTests: XCTestCase {
         )
     }
 
-    // MARK: - Int32 at the wrapper boundary
-
-    func testASampleCountValidAsIntStillClampsForInt32() {
-        // The reachable case: windowSizeMs 100_000_000 passes every option guard and, at
-        // 44.1 kHz, is 4_410_000_000 samples — fine as Int, a trap as Int32.
-        let samples = BridgedNarrowing.sampleCount(milliseconds: 100_000_000, sampleRate: 44_100)
-        XCTAssertEqual(samples, 4_410_000_000)
-        XCTAssertNil(Int32(exactly: samples), "precondition: Int32(_:) would trap")
-
-        XCTAssertEqual(BridgedNarrowing.int32(samples, minimum: 1), Int32.max)
-    }
-
-    func testOrdinarySampleCountsCrossUnchanged() {
-        XCTAssertEqual(BridgedNarrowing.int32(882, minimum: 1), 882)
-        XCTAssertEqual(BridgedNarrowing.int32(Int(Int32.max) - 1, minimum: 1), Int32.max - 1)
-    }
-
-    func testInt32ClampsAtBothEnds() {
-        XCTAssertEqual(BridgedNarrowing.int32(Int(Int32.max), minimum: 1), Int32.max)
-        XCTAssertEqual(BridgedNarrowing.int32(-1, minimum: 1), 1)
-        XCTAssertEqual(BridgedNarrowing.int32(Int(Int64.min / 2), minimum: 0), 0)
+    func testASubSampleHopStaysZeroSoTheNativeDefaultApplies() {
+        // The C++ side treats hopLengthSamples <= 0 as "use the 160-sample default"
+        // (MelSpectrogram.cpp:15). Flooring at 1 instead would produce ~160x the frames,
+        // so the mel path passes minimum: 0 and this records why.
+        XCTAssertEqual(
+            BridgedNarrowing.sampleCount(milliseconds: 0.001, sampleRate: 44_100, minimum: 0),
+            0
+        )
+        // A hop that does round to whole samples is untouched.
+        XCTAssertEqual(
+            BridgedNarrowing.sampleCount(milliseconds: 10, sampleRate: 44_100, minimum: 0),
+            441
+        )
     }
 }

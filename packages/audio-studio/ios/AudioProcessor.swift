@@ -170,11 +170,14 @@ public class AudioProcessor {
             Int64(totalFrameCount) - effectiveOffset
         }
         
+        // Report the sum rather than computing it: both operands are bridged, and adding
+        // them can overflow before any validation runs (#433).
+        let (expectedEndFrame, endFrameOverflowed) = effectiveOffset.addingReportingOverflow(effectiveLength)
         NSLog("""
             [AudioProcessor] Calculated frame positions:
             - effectiveOffset: \(effectiveOffset)
             - effectiveLength: \(effectiveLength)
-            - expectedEndFrame: \(effectiveOffset + effectiveLength)
+            - expectedEndFrame: \(endFrameOverflowed ? "overflowed" : String(expectedEndFrame))
             - totalFrameCount: \(totalFrameCount)
         """)
         
@@ -191,9 +194,10 @@ public class AudioProcessor {
             return nil
         }
         
-        if effectiveOffset + effectiveLength > Int64(totalFrameCount) {
+        if endFrameOverflowed || expectedEndFrame > Int64(totalFrameCount) {
             NSLog("[AudioProcessor] ERROR: Requested range exceeds file length")
-            reject("INVALID_RANGE", "Requested range [\(effectiveOffset), \(effectiveOffset + effectiveLength)] exceeds file length \(totalFrameCount)")
+            let describedEnd = endFrameOverflowed ? "overflowed" : String(expectedEndFrame)
+            reject("INVALID_RANGE", "Requested range [\(effectiveOffset), \(describedEnd)] exceeds file length \(totalFrameCount)")
             return nil
         }
         
@@ -757,7 +761,18 @@ public class AudioProcessor {
             Logger.debug("AudioProcessor", "Unsupported format '\(requestedFormat)', falling back to 'aac'")
         }
 
-        let targetSampleRate = outputFormat.flatMap { bridgedFiniteDouble($0, "sampleRate").flatMap { $0 > 0 ? $0 : nil } } ?? inputSampleRate
+        // An out-of-range rate falls back to the input rate rather than reaching
+        // AVAudioConverter, which returns nil for extreme values and was force-unwrapped
+        // downstream (#433).
+        let requestedOutputRate = outputFormat.flatMap { bridgedFiniteDouble($0, "sampleRate") }
+        if let requested = requestedOutputRate,
+           BridgedNarrowing.outputSampleRate(requested) == nil {
+            Logger.debug(
+                "AudioProcessor",
+                "Ignoring unsupported output sampleRate \(requested); using the input rate"
+            )
+        }
+        let targetSampleRate = BridgedNarrowing.outputSampleRate(requestedOutputRate) ?? inputSampleRate
         let targetChannels = outputFormat.flatMap { bridgedInt($0, "channels", in: 1...2) } ?? inputChannels
         let targetBitDepth = outputFormat.flatMap { bridgedInt($0, "bitDepth").flatMap { [16, 32].contains($0) ? $0 : nil } } ?? 16
         let bitrate = outputFormat.flatMap { bridgedInt($0, "bitrate").flatMap { $0 > 0 ? $0 : nil } } ?? 128000
@@ -932,7 +947,30 @@ public class AudioProcessor {
         }
     }
     
+    /// Clamps a range to the file, so the frame conversions downstream cannot overflow.
+    ///
+    /// The bridged values are only checked for Int representability, and every caller then
+    /// multiplies them by a sample rate; the product need not fit (#433). Bounding here
+    /// covers all three modes and every conversion that reads these ranges, rather than
+    /// guarding each site. A range entirely past the end collapses to empty and is dropped.
+    private func clampRange(_ range: [Double], totalDurationMs: Double) -> [Double] {
+        let start = min(max(0, range[0]), totalDurationMs)
+        let end = min(max(start, range[1]), totalDurationMs)
+        return [start, end]
+    }
+
     private func computeKeepRanges(mode: String, startTimeMs: Double?, endTimeMs: Double?, ranges: [[String: Double]]?, totalDurationMs: Double) -> [[Double]] {
+        let clamped = computeRawKeepRanges(
+            mode: mode,
+            startTimeMs: startTimeMs,
+            endTimeMs: endTimeMs,
+            ranges: ranges,
+            totalDurationMs: totalDurationMs
+        ).map { clampRange($0, totalDurationMs: totalDurationMs) }
+        return clamped.filter { $0[1] > $0[0] }
+    }
+
+    private func computeRawKeepRanges(mode: String, startTimeMs: Double?, endTimeMs: Double?, ranges: [[String: Double]]?, totalDurationMs: Double) -> [[Double]] {
         switch mode {
         case "single":
             guard let start = startTimeMs, let end = endTimeMs else { return [] }
@@ -1054,11 +1092,26 @@ public class AudioProcessor {
         let requestedBars = max(1, numberOfBars)
         let sampleRate = audioFile.fileFormat.sampleRate
         let totalDurationMs = Double(audioFile.length) / sampleRate * 1000
-        let effectiveStartMs = max(0, startTimeMs ?? 0)
+        // Bound the start by the file as well as by zero. endTimeMs is already capped at
+        // totalDurationMs, but startTimeMs was not, so a large value overflowed the
+        // narrowing below rather than being treated as past the end (#433).
+        let effectiveStartMs = min(max(0, startTimeMs ?? 0), totalDurationMs)
         let effectiveEndMs = min(endTimeMs ?? totalDurationMs, totalDurationMs)
         let durationMs = max(1, effectiveEndMs - effectiveStartMs)
-        let startFrame = AVAudioFramePosition(effectiveStartMs * sampleRate / 1000.0)
-        let endFrame = AVAudioFramePosition(effectiveEndMs * sampleRate / 1000.0)
+        let startFrame = AVAudioFramePosition(
+            BridgedNarrowing.sampleCount(
+                milliseconds: effectiveStartMs,
+                sampleRate: sampleRate,
+                minimum: 0
+            )
+        )
+        let endFrame = AVAudioFramePosition(
+            BridgedNarrowing.sampleCount(
+                milliseconds: effectiveEndMs,
+                sampleRate: sampleRate,
+                minimum: 0
+            )
+        )
         let samplesInRange = Int(endFrame - startFrame)
 
         guard samplesInRange > 0 else {
