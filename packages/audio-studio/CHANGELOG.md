@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `androidConfig.audioSource` controls which `MediaRecorder.AudioSource` Android captures from, so callers can bypass OEM voice processing. Recording was hardcoded to `MIC`, which applies noise suppression, AGC and — on Honor/Huawei and Xiaomi/Redmi devices — an aggressive enhancement pass that degrades speech-to-text and acoustic analysis. Accepts `'mic'` (default, unchanged), `'voiceRecognition'`, `'unprocessed'`, or `'auto'`. This is the Android counterpart to `ios.audioSession.mode: 'measurement'`.
+- `android.audioSource` controls which `MediaRecorder.AudioSource` Android captures from, so callers can bypass OEM voice processing. Recording was hardcoded to `MIC`, which applies noise suppression, AGC and — on Honor/Huawei and Xiaomi/Redmi devices — an aggressive enhancement pass that degrades speech-to-text and acoustic analysis. Accepts `'mic'` (default, unchanged), `'voiceRecognition'`, `'unprocessed'`, or `'auto'`. This is the Android counterpart to `ios.audioSession.mode: 'measurement'`.
   `'unprocessed'` is not supported on every device, so availability is verified by opening an `AudioRecord` rather than assuming the constant works, and falls back to `'mic'`. The source actually used is reported on the start result as `androidAudioSource`, so a fallback is visible instead of silent.
 
 ### Changed

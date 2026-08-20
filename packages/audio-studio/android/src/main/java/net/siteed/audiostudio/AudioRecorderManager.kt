@@ -84,7 +84,12 @@ class AudioRecorderManager(
      * Which audio source recording actually opened, reported back to JS so a caller can
      * tell an honoured request from a fallback (#428).
      */
-    private var activeAudioSourceName: String = "mic"
+    /**
+     * The source resolved for the current recording, shared by the PCM AudioRecord and the
+     * compressed MediaRecorder. Resolving separately let the two capture through different
+     * sources while the result reported only the PCM choice (#428).
+     */
+    private var activeAudioSource: AudioSourceResolver.Resolution = AudioSourceResolver.MIC
     private var bufferSizeInBytes = 0
     private val _isRecording = AtomicBoolean(false)
     private val isPaused = AtomicBoolean(false)
@@ -655,7 +660,7 @@ class AudioRecorderManager(
                 "mimeType" to mimeType,
                 // The source actually opened, which may differ from the request when the
                 // device does not support it (#428).
-                "androidAudioSource" to activeAudioSourceName,
+                "androidAudioSource" to activeAudioSource.name,
                 "compression" to if (compressedFile != null) bundleOf(
                     "mimeType" to if (recordingConfig.output.compressed.format == "aac") "audio/aac" else "audio/opus",
                     "bitrate" to recordingConfig.output.compressed.bitrate,
@@ -990,22 +995,22 @@ class AudioRecorderManager(
                 // Honour androidConfig.audioSource so callers can bypass OEM voice
                 // processing for ASR or analysis (#428). Falls back to MIC when the
                 // requested source is not usable on this device.
-                val resolvedSource = AudioSourceResolver.resolve(
+                activeAudioSource = AudioSourceResolver.resolve(
                     requested = recordingConfig.audioSource,
+                    context = context,
                     sampleRate = recordingConfig.sampleRate,
                     channelConfig = channelConfig,
                     audioFormat = audioFormat,
                 )
-                activeAudioSourceName = resolvedSource.name
-                if (resolvedSource.fellBack) {
+                if (activeAudioSource.fellBack) {
                     LogUtils.w(
                         CLASS_NAME,
-                        "Requested audio source '${recordingConfig.audioSource}' is unavailable; using '${resolvedSource.name}'"
+                        "Requested audio source '${recordingConfig.audioSource}' is unavailable; using '${activeAudioSource.name}'"
                     )
                 }
 
                 audioRecord = AudioRecord(
-                    resolvedSource.source,
+                    activeAudioSource.source,
                     recordingConfig.sampleRate,
                     channelConfig,
                     audioFormat,
@@ -1995,15 +2000,9 @@ class AudioRecorderManager(
             compressedRecorder?.apply {
                 // Keep the compressed recorder on the same source as the PCM path, so the
                 // two outputs are not captured through different processing chains (#428).
-                setAudioSource(
-                    AudioSourceResolver.resolve(
-                        requested = recordingConfig.audioSource,
-                        sampleRate = recordingConfig.sampleRate,
-                        channelConfig = if (recordingConfig.channels == 1)
-                            AudioFormat.CHANNEL_IN_MONO else AudioFormat.CHANNEL_IN_STEREO,
-                        audioFormat = AudioFormat.ENCODING_PCM_16BIT,
-                    ).source
-                )
+                // Reuse the resolution the PCM path already made, so both outputs capture
+                // through the same source rather than resolving independently.
+                setAudioSource(activeAudioSource.source)
                 
                 // Choose output format based on codec and preferRawStream flag
                 val outputFormat = when (recordingConfig.output.compressed.format) {

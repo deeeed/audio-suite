@@ -297,17 +297,22 @@ export interface AndroidConfig {
     /**
      * Which `MediaRecorder.AudioSource` to capture from.
      *
-     * The default `'mic'` runs OEM voice processing — noise suppression, AGC, and on some
-     * devices an "AI voice enhancement" pass. That is usually what you want for voice
+     * The default `'mic'` may receive OEM voice processing — noise suppression, AGC, and
+     * on some devices an "AI voice enhancement" pass. What is applied varies by vendor. That is usually what you want for voice
      * memos, and usually what you do not want for speech-to-text, acoustic analysis, or
      * anything measuring the signal itself. This is the Android counterpart to
      * `ios.audioSession.mode: 'measurement'`.
      *
      * - `'mic'`: the device's primary microphone with OEM processing applied
      * - `'voiceRecognition'`: tuned for ASR; usually skips AGC and aggressive noise suppression
-     * - `'unprocessed'`: raw capture with no processing. Not supported on every device;
-     *   falls back to `'mic'` when unavailable
-     * - `'auto'`: prefer `'unprocessed'`, then `'voiceRecognition'`, then `'mic'`
+     * - `'unprocessed'`: raw capture with no processing. Requires hardware support —
+     *   Android treats it as `DEFAULT` on devices without it, so support is checked via
+     *   `PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED` and falls back to `'mic'`
+     * - `'auto'`: `'unprocessed'` where supported, otherwise `'voiceRecognition'`
+     *
+     * Only `'unprocessed'` can fall back; `'mic'` and `'voiceRecognition'` are available
+     * everywhere. Because `'auto'` resolves per device, prefer an explicit value when you
+     * need consistent behaviour across a fleet.
      *
      * The resolved source is reported on the recording result as `androidAudioSource`, so
      * you can tell whether a fallback happened rather than assuming the request was honoured.

@@ -1,6 +1,8 @@
 package net.siteed.audiostudio
 
+import android.content.Context
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 
@@ -13,9 +15,13 @@ import android.media.MediaRecorder
  * speech-to-text or acoustic analysis (#428). iOS already exposes an escape hatch via
  * `ios.audioSession.mode: 'measurement'`; this is the Android equivalent.
  *
- * `UNPROCESSED` is not available on every device, so a request for it is verified by
- * actually opening an `AudioRecord` rather than trusting a constant to exist. The resolved
- * source is reported back to JS so a caller can tell a fallback from an honoured request.
+ * Verifying `UNPROCESSED` needs care. Android documents that a device without hardware
+ * support treats it as `DEFAULT`, so an `AudioRecord` opens and reports
+ * `STATE_INITIALIZED` while OEM processing stays on — the exact thing the caller asked to
+ * avoid. Construction alone therefore proves nothing, and an earlier version of this file
+ * got that wrong. The platform exposes `PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED` for
+ * precisely this question, so that is the gate; the construction probe only confirms the
+ * requested format also works.
  */
 internal object AudioSourceResolver {
 
@@ -30,20 +36,24 @@ internal object AudioSourceResolver {
         val fellBack: Boolean,
     )
 
+    val MIC = Resolution(MediaRecorder.AudioSource.MIC, "mic", fellBack = false)
+
     /**
      * @param requested one of mic, voiceRecognition, unprocessed, auto, or null for the default
-     * @param sampleRate used to probe availability at the rate recording will actually use
+     * @param context used to query the platform's unprocessed-capture capability
+     * @param sampleRate the rate recording will actually use
      * @param channelConfig `AudioFormat.CHANNEL_IN_*`
      * @param audioFormat `AudioFormat.ENCODING_*`
      */
     fun resolve(
         requested: String?,
+        context: Context,
         sampleRate: Int,
         channelConfig: Int,
         audioFormat: Int,
     ): Resolution {
         return when (requested) {
-            null, "mic" -> Resolution(MediaRecorder.AudioSource.MIC, "mic", fellBack = false)
+            null, "mic" -> MIC
 
             "voiceRecognition" -> Resolution(
                 MediaRecorder.AudioSource.VOICE_RECOGNITION,
@@ -52,42 +62,64 @@ internal object AudioSourceResolver {
             )
 
             "unprocessed" -> {
-                if (isUsable(MediaRecorder.AudioSource.UNPROCESSED, sampleRate, channelConfig, audioFormat)) {
-                    Resolution(MediaRecorder.AudioSource.UNPROCESSED, "unprocessed", fellBack = false)
+                val resolved = unprocessedIfSupported(context, sampleRate, channelConfig, audioFormat)
+                if (resolved != null) {
+                    resolved
                 } else {
                     LogUtils.w(
                         CLASS_NAME,
-                        "UNPROCESSED audio source is not usable on this device; falling back to MIC"
+                        "This device does not support unprocessed capture; falling back to MIC. " +
+                            "Audio will carry whatever processing the OEM applies."
                     )
-                    Resolution(MediaRecorder.AudioSource.MIC, "mic", fellBack = true)
+                    MIC.copy(fellBack = true)
                 }
             }
 
-            "auto" -> {
-                if (isUsable(MediaRecorder.AudioSource.UNPROCESSED, sampleRate, channelConfig, audioFormat)) {
-                    Resolution(MediaRecorder.AudioSource.UNPROCESSED, "unprocessed", fellBack = false)
-                } else if (isUsable(MediaRecorder.AudioSource.VOICE_RECOGNITION, sampleRate, channelConfig, audioFormat)) {
-                    Resolution(MediaRecorder.AudioSource.VOICE_RECOGNITION, "voiceRecognition", fellBack = false)
-                } else {
-                    Resolution(MediaRecorder.AudioSource.MIC, "mic", fellBack = false)
-                }
-            }
+            "auto" -> unprocessedIfSupported(context, sampleRate, channelConfig, audioFormat)
+                ?: Resolution(
+                    MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                    "voiceRecognition",
+                    fellBack = false,
+                )
 
             else -> {
-                LogUtils.w(CLASS_NAME, "Unknown androidConfig.audioSource '$requested'; using MIC")
-                Resolution(MediaRecorder.AudioSource.MIC, "mic", fellBack = true)
+                LogUtils.w(CLASS_NAME, "Unknown android.audioSource '$requested'; using MIC")
+                MIC.copy(fellBack = true)
             }
         }
     }
 
     /**
-     * Can this source actually be opened here?
+     * `UNPROCESSED` when the device genuinely supports it at this format, otherwise null.
      *
-     * `MediaRecorder.AudioSource.UNPROCESSED` is a compile-time constant on every API level
-     * this library supports, so its presence proves nothing — plenty of devices reject it at
-     * `AudioRecord` construction or return `STATE_UNINITIALIZED`. The only reliable check is
-     * to open one and release it.
+     * Two gates, and both are needed. The capability property is the only reliable answer
+     * to "does this hardware actually bypass processing" — without it a device silently
+     * substitutes `DEFAULT`. The construction probe then confirms the requested sample
+     * rate and channel layout work with that source, which the property says nothing about.
      */
+    private fun unprocessedIfSupported(
+        context: Context,
+        sampleRate: Int,
+        channelConfig: Int,
+        audioFormat: Int,
+    ): Resolution? {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        val supported = audioManager
+            ?.getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED)
+            ?.equals("true", ignoreCase = true) == true
+
+        if (!supported) {
+            LogUtils.d(CLASS_NAME, "PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED is not true")
+            return null
+        }
+        if (!isUsable(MediaRecorder.AudioSource.UNPROCESSED, sampleRate, channelConfig, audioFormat)) {
+            LogUtils.d(CLASS_NAME, "UNPROCESSED is supported but not usable at ${sampleRate}Hz")
+            return null
+        }
+        return Resolution(MediaRecorder.AudioSource.UNPROCESSED, "unprocessed", fellBack = false)
+    }
+
+    /** Can an AudioRecord actually be opened with this source and format? */
     private fun isUsable(
         source: Int,
         sampleRate: Int,
@@ -101,16 +133,16 @@ internal object AudioSourceResolver {
             record = AudioRecord(source, sampleRate, channelConfig, audioFormat, minBuffer)
             record.state == AudioRecord.STATE_INITIALIZED
         } catch (e: Exception) {
-            // Missing RECORD_AUDIO permission also lands here. Reporting "unusable" is right
-            // either way: the caller gets MIC, and the permission failure surfaces later
-            // through the normal recording path with a clearer message than this probe could give.
+            // Missing RECORD_AUDIO also lands here. Reporting "unusable" is right either
+            // way: the caller gets MIC, and the permission failure surfaces through the
+            // normal recording path with a clearer message than this probe could give.
             LogUtils.d(CLASS_NAME, "Audio source $source is not usable: ${e.message}")
             false
         } finally {
             try {
                 record?.release()
             } catch (_: Exception) {
-                // Releasing a never-initialized AudioRecord can throw; nothing to do about it.
+                // Releasing a never-initialized AudioRecord can throw; nothing to do.
             }
         }
     }
