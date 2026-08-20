@@ -36,11 +36,11 @@ const manifest = (pkg) => {
   }
 }
 
-// The scoped corpus excludes vendored upstream trees, which are never our published source.
-const tracked = git('ls-files', 'packages/')
-  .split('\n')
-  .filter(Boolean)
-  .filter((f) => !f.includes('/third_party/') && !f.includes('/node_modules/'))
+// Classify EVERY tracked path. An earlier version filtered third_party wholesale, which
+// hid packages/react-native-essentia/cpp/third_party/nlohmann/json.hpp — a header that is
+// packed and must stay enforced. Vendored checkouts that genuinely are not ours are
+// exempted by name in the classifier, where the decision is visible.
+const tracked = git('ls-files', '-z', 'packages/').split('\0').filter(Boolean)
 
 const enforces = (file) =>
   findMissing({
@@ -60,6 +60,10 @@ console.log(`  enforced: ${enforced.length}`)
 console.log(`  ignored:  ${ignored.length}`)
 
 let failed = 0
+if (tracked.length < 100) {
+  console.log(`FAIL  corpus is suspiciously small (${tracked.length} paths)`)
+  process.exitCode = 1
+}
 const check = (label, ok, detail) => {
   if (!ok) failed++
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${ok ? '' : `  -> ${detail}`}`)
@@ -81,8 +85,10 @@ const mustBeIgnored = [
   'packages/audio-studio/docs/TESTING_STRATEGY.md',
 ]
 for (const f of mustBeIgnored) {
-  if (!tracked.includes(f)) continue // file may not exist; the named-path check below covers that
-  check(`ignored: ${f}`, !enforces(f), 'wrongly enforced')
+  // Require the fixture to exist. Skipping absent paths let a renamed or deleted file turn
+  // a real assertion into a no-op.
+  check(`fixture exists: ${f}`, tracked.includes(f), 'fixture missing — update this list')
+  if (tracked.includes(f)) check(`ignored: ${f}`, !enforces(f), 'wrongly enforced')
 }
 
 // Things that genuinely shape published output must stay enforced.
@@ -90,11 +96,11 @@ const mustBeEnforced = [
   'packages/audio-studio/package.json',
   'packages/sherpa-onnx.rn/android/scripts/copy-libs.sh',
   'packages/audio-studio/tsconfig.cjs.json',
-  'packages/sherpa-onnx.rn/docs/API_REFERENCE.md',
+  'packages/react-native-essentia/cpp/third_party/nlohmann/json.hpp',
 ]
 for (const f of mustBeEnforced) {
-  if (!tracked.includes(f)) continue
-  check(`enforced: ${f}`, enforces(f), 'wrongly ignored')
+  check(`fixture exists: ${f}`, tracked.includes(f), 'fixture missing — update this list')
+  if (tracked.includes(f)) check(`enforced: ${f}`, enforces(f), 'wrongly ignored')
 }
 
 // Every published package's manifest must be enforced — the audit that missed these

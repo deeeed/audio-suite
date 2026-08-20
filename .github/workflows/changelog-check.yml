@@ -45,10 +45,12 @@ jobs:
             let changed
             try {
               mergeBase = git('merge-base', base, head).trim()
-              // --no-renames: rename detection reports only the destination, so a file
+              // -z: paths with non-ASCII or newline characters are otherwise C-quoted, and a
+              // quoted path no longer starts with "packages/", silently bypassing the prefix
+              // check. --no-renames: rename detection reports only the destination, so a file
               // moved out of a package would erase the package-side path.
-              changed = git('diff', '--name-only', '--no-renames', mergeBase, head)
-                .split('\n')
+              changed = git('diff', '--name-only', '--no-renames', '-z', mergeBase, head)
+                .split('\0')
                 .filter(Boolean)
             } catch (e) {
               core.setFailed(
@@ -59,7 +61,9 @@ jobs:
 
             const listTree = (ref, dir) => {
               try {
-                return git('ls-tree', '--name-only', `${ref}:${dir}`).split('\n').filter(Boolean)
+                return git('ls-tree', '--name-only', '-z', `${ref}:${dir}`)
+                  .split('\0')
+                  .filter(Boolean)
               } catch {
                 return []
               }

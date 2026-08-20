@@ -33,9 +33,16 @@ const IGNORED = [
   /^packages\/[^/]+\/test-assets\//,
   /^packages\/[^/]+\/jest\.setup\.[jt]s$/,
   /^packages\/[^/]+\/\.size-limit\.json$/,
-  /^packages\/[^/]+\/(.*\/)?(run_tests|ios-testing-info|test-[^/]*)\.(sh|js|mjs)$/,
-  /^packages\/[^/]+\/scripts\/README\.md$/,
-  /^packages\/[^/]+\/third_party\//,
+  // Exact paths, not package-wide patterns: a broad `test-*` or `INSTALL.md` rule also
+  // exempts shipped source that happens to match the name.
+  /^packages\/audio-studio\/scripts\/run_tests\.sh$/,
+  /^packages\/audio-studio\/scripts\/README\.md$/,
+  /^packages\/sherpa-onnx\.rn\/ios-testing-info\.sh$/,
+  /^packages\/moonshine\.rn\/scripts\/test-ios-artifacts-script\.mjs$/,
+  // Vendored upstream checkouts. NOT a blanket third_party rule: react-native-essentia
+  // packs cpp/third_party/nlohmann/json.hpp, which must stay enforced.
+  /^packages\/sherpa-onnx\.rn\/third_party\//,
+  /^packages\/moonshine\.rn\/third_party\//,
   // Storybook — dev-only, never built into published output.
   /^packages\/[^/]+\/\.storybook\//,
   /^packages\/[^/]+\/.*\.stories\.[jt]sx?$/,
@@ -46,8 +53,8 @@ const IGNORED = [
   /^packages\/[^/]+\/(.*\/)?tsconfig\.(eslint|test|spec)\.json$/,
   /^packages\/[^/]+\/(.*\/)?tsconfig\.tsbuildinfo$/,
   // Contributor-facing docs at the package root that are not packed.
-  /^packages\/[^/]+\/(ARCHITECTURE|CONTRIBUTE|CONTRIBUTING|PLAN|MIGRATION|TESTING|INSTALL)[^/]*\.md$/,
-  /^packages\/[^/]+\/src\/INSTALL\.md$/,
+  /^packages\/[^/]+\/(ARCHITECTURE|CONTRIBUTE|CONTRIBUTING|PLAN|MIGRATION|TESTING)[^/]*\.md$/,
+  /^packages\/audio-ui\/src\/INSTALL\.md$/,
 ]
 
 /** Packages that keep no changelog of their own; their changes are documented elsewhere. */
@@ -128,7 +135,13 @@ function findMissing(input) {
     if (!changed.includes(changelog)) {
       missing.push({ pkg, owner, changelog, example: touched[0], reason: 'not updated' })
     } else if (!existsAtHead(changelog)) {
-      missing.push({ pkg, owner, changelog, example: touched[0], reason: 'deleted or not a regular file' })
+      missing.push({
+        pkg,
+        owner,
+        changelog,
+        example: touched[0],
+        reason: 'deleted, not a regular file, or its content is unchanged',
+      })
     }
   }
 
