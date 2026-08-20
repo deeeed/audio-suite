@@ -2,7 +2,10 @@ name: Changelog Check
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+
+permissions:
+  contents: read
 
 jobs:
   changelog:
@@ -18,8 +21,6 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const fs = require('fs')
-            const path = require('path')
             const { execFileSync } = require('child_process')
 
             const labels = (context.payload.pull_request.labels || []).map((l) => l.name)
@@ -28,32 +29,77 @@ jobs:
               return
             }
 
-            // Derived, not hardcoded: a package is in scope when it is publishable
-            // (not private) and already keeps a CHANGELOG.md. That automatically
-            // picks up new packages, drops private ones, and excludes the
-            // re-export shims (expo-audio-stream, expo-audio-studio) — which are
-            // published but keep no changelog of their own.
-            const PACKAGES = fs
-              .readdirSync('packages', { withFileTypes: true })
-              .filter((e) => e.isDirectory())
-              .map((e) => e.name)
-              .filter((name) => {
-                const pkgJson = path.join('packages', name, 'package.json')
-                if (!fs.existsSync(pkgJson)) return false
-                if (!fs.existsSync(path.join('packages', name, 'CHANGELOG.md'))) return false
-                try {
-                  return !JSON.parse(fs.readFileSync(pkgJson, 'utf8')).private
-                } catch {
-                  return false
-                }
-              })
+            const base = context.payload.pull_request.base.sha
+            const head = context.payload.pull_request.head.sha
 
-            core.info(`In-scope packages: ${PACKAGES.join(', ') || '(none)'}`)
+            const git = (...args) => execFileSync('git', args).toString()
 
-            // Paths that cannot reach a consumer of the published package.
-            // Native test conventions matter here: this repo's suites are mostly
-            // Kotlin/Swift, not Jest, and every one of these is excluded from the
-            // npm tarball by the packages' own "files" fields.
+            let mergeBase
+            let changed
+            try {
+              mergeBase = git('merge-base', base, head).trim()
+              // --no-renames: a rename is reported as delete+add so a file moved OUT of a
+              // package still registers against that package. With rename detection the
+              // source path disappears and the change slips through.
+              changed = git('diff', '--name-only', '--no-renames', mergeBase, head)
+                .split('\n')
+                .filter(Boolean)
+            } catch (e) {
+              core.setFailed(
+                `Could not compute the changed-file list between ${base} and ${head}: ${e.message}`
+              )
+              return
+            }
+
+            // Scope is derived from the MERGE BASE, not the PR result. Deriving it from the
+            // PR tree fails open: deleting a package's CHANGELOG.md, flipping private:true,
+            // or corrupting its package.json would silently drop it from enforcement while
+            // its source changed in the same PR.
+            const listAtBase = (dir) => {
+              try {
+                return git('ls-tree', '--name-only', `${mergeBase}:${dir}`)
+                  .split('\n')
+                  .filter(Boolean)
+              } catch {
+                return []
+              }
+            }
+            const readAtBase = (path) => {
+              try {
+                return git('show', `${mergeBase}:${path}`)
+              } catch {
+                return null
+              }
+            }
+
+            const PACKAGES = listAtBase('packages').filter((name) => {
+              const raw = readAtBase(`packages/${name}/package.json`)
+              if (raw === null) return false
+              let manifest
+              try {
+                manifest = JSON.parse(raw)
+              } catch {
+                // Unparseable at base — enforce rather than skip, and say so.
+                core.warning(`packages/${name}/package.json is unparseable at the merge base; enforcing anyway.`)
+                return true
+              }
+              // Publishable is the criterion. A package that is published but keeps no
+              // changelog of its own (the expo-audio-* re-export shims) still has its
+              // consumer code covered — it is redirected to a partner changelog below.
+              return !manifest.private
+            })
+
+            // Packages with no CHANGELOG.md of their own. Their source changes must still be
+            // documented, so point them at the changelog consumers actually read.
+            const REDIRECT = {
+              'expo-audio-stream': 'audio-studio',
+              'expo-audio-studio': 'audio-studio',
+            }
+
+            core.info(`In-scope packages (from merge base): ${PACKAGES.join(', ') || '(none)'}`)
+
+            // Paths that cannot change what a consumer of the published package receives.
+            // Native test conventions matter here: these suites are mostly Kotlin/Swift.
             const IGNORED = [
               /^packages\/[^/]+\/CHANGELOG\.md$/,
               /^packages\/[^/]+\/README\.md$/,
@@ -65,46 +111,35 @@ jobs:
               /^packages\/[^/]+\/ios\/tests\//,
               /^packages\/[^/]+\/e2e\//,
               /^packages\/[^/]+\/test-assets\//,
-              // Repo hygiene and tooling that is never published. Nested, not just
-              // at the package root — e.g. plugin/tsconfig.json, scripts/*.sh.
-              /^packages\/[^/]+\/\./,
-              /^packages\/[^/]+\/.*\/\.[^/]+$/,
-              /^packages\/[^/]+\/.*(jest|babel|metro|eslint)\.config\./,
-              /^packages\/[^/]+\/.*tsconfig[^/]*\.(json|tsbuildinfo)$/,
-              /^packages\/[^/]+\/.*publisher\.config\.[jt]s$/,
+              // Storybook: dev-only, not built into the published output.
+              /^packages\/[^/]+\/\.storybook\//,
+              /^packages\/[^/]+\/.*\.stories\.[jt]sx?$/,
+              // Lint/editor/CI config. NOT build config — tsconfig.cjs/esm/types and
+              // bob/rollup inputs shape published JS and .d.ts, so they stay enforced.
+              /^packages\/[^/]+\/(.*\/)?\.(eslintrc|prettierrc|editorconfig|gitignore|npmignore)/,
+              /^packages\/[^/]+\/(.*\/)?(jest|babel|metro)\.config\./,
+              /^packages\/[^/]+\/(.*\/)?tsconfig\.(eslint|test|spec)\.json$/,
+              /^packages\/[^/]+\/(.*\/)?tsconfig\.tsbuildinfo$/,
             ]
 
-            // sherpa-onnx.rn ships docs/ in its npm tarball, so its docs are
-            // consumer-facing and must not be blanket-ignored.
+            // A package's docs are consumer-facing only when it ships them in its tarball.
+            // Read from base for the same fail-open reason as the scope list.
             const shipsDocs = (pkg) => {
+              const raw = readAtBase(`packages/${pkg}/package.json`)
+              if (raw === null) return false
+              let manifest
               try {
-                const j = JSON.parse(
-                  fs.readFileSync(path.join('packages', pkg, 'package.json'), 'utf8')
-                )
-                return (j.files || []).some((f) => f.replace(/^\.\//, '').split('/')[0] === 'docs')
+                manifest = JSON.parse(raw)
               } catch {
-                return false
+                return true // unknown — enforce
               }
-            }
-
-            const base = context.payload.pull_request.base.sha
-            const head = context.payload.pull_request.head.sha
-
-            let changed
-            try {
-              // execFileSync with an argv array — no shell, nothing to quote.
-              const mergeBase = execFileSync('git', ['merge-base', base, head])
-                .toString()
-                .trim()
-              changed = execFileSync('git', ['diff', '--name-only', mergeBase, head])
-                .toString()
-                .split('\n')
-                .filter(Boolean)
-            } catch (e) {
-              core.setFailed(
-                `Could not compute the changed-file list between ${base} and ${head}: ${e.message}`
-              )
-              return
+              const files = manifest.files
+              // No files field means npm packs everything, so docs ship.
+              if (!Array.isArray(files)) return true
+              return files.some((f) => {
+                const head = String(f).replace(/^\.\//, '').split('/')[0]
+                return head === 'docs' || head === '.' || head === '*'
+              })
             }
 
             const missing = []
@@ -120,8 +155,10 @@ jobs:
               )
               if (touched.length === 0) continue
 
-              if (!changed.includes(`${prefix}CHANGELOG.md`)) {
-                missing.push({ pkg, changelog: `${prefix}CHANGELOG.md`, example: touched[0] })
+              const owner = REDIRECT[pkg] || pkg
+              const changelog = `packages/${owner}/CHANGELOG.md`
+              if (!changed.includes(changelog)) {
+                missing.push({ pkg, owner, changelog, example: touched[0] })
               }
             }
 
@@ -131,10 +168,10 @@ jobs:
             }
 
             const details = missing
-              .map(
-                (m) =>
-                  `- **${m.pkg}** — changed \`${m.example}\` but did not update \`${m.changelog}\``
-              )
+              .map((m) => {
+                const via = m.owner === m.pkg ? '' : ` (documented in ${m.owner})`
+                return `- **${m.pkg}**${via} — changed \`${m.example}\` but did not update \`${m.changelog}\``
+              })
               .join('\n')
 
             core.setFailed(
