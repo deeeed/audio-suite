@@ -121,10 +121,10 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             }
             
             // Get time or byte range options
-            let startTimeMs = options["startTimeMs"] as? Double
-            let endTimeMs = options["endTimeMs"] as? Double
-            let position = options["position"] as? Int
-            let byteLength = options["length"] as? Int
+            let startTimeMs = bridgedDouble(options, "startTimeMs")
+            let endTimeMs = bridgedDouble(options, "endTimeMs")
+            let position = bridgedInt(options, "position")
+            let byteLength = bridgedInt(options, "length")
             
             // Validate ranges - can have time range OR byte range OR no range
             let hasTimeRange = startTimeMs != nil && endTimeMs != nil
@@ -138,7 +138,7 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             
             let features = options["features"] as? [String: Bool] ?? [:]
             let featureOptions = self.extractFeatureOptions(from: features)
-            let segmentDurationMs = options["segmentDurationMs"] as? Int ?? DEFAULT_SEGMENT_DURATION_MS // Default value of 100ms
+            let segmentDurationMs = bridgedInt(options, "segmentDurationMs") ?? DEFAULT_SEGMENT_DURATION_MS // Default value of 100ms
             
             DispatchQueue.global().async(execute: {
                 do {
@@ -505,9 +505,14 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             }
 
             let mode = options["mode"] as? String ?? "single"
-            let startTimeMs = options["startTimeMs"] as? Double
-            let endTimeMs = options["endTimeMs"] as? Double
-            let ranges = options["ranges"] as? [[String: Double]]
+            let startTimeMs = bridgedDouble(options, "startTimeMs")
+            let endTimeMs = bridgedDouble(options, "endTimeMs")
+            // Nested payload: read inner values through NSNumber, matching
+            // bridgedDouble, so they parse regardless of how the bridge boxed them.
+            // Absent `ranges` stays nil so the keep/remove guard below still fires.
+            let ranges = (options["ranges"] as? [[String: Any]])?.map { range in
+                range.compactMapValues { ($0 as? NSNumber)?.doubleValue }
+            }
             let outputFileName = options["outputFileName"] as? String
             let outputFormat = options["outputFormat"] as? [String: Any]
             let decodingOptions = options["decodingOptions"] as? [String: Any] ?? [:]
@@ -646,10 +651,10 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             }
 
             // Get time or byte range options
-            let startTimeMs = options["startTimeMs"] as? Double
-            let endTimeMs = options["endTimeMs"] as? Double
-            let position = options["position"] as? Int
-            let length = options["length"] as? Int
+            let startTimeMs = bridgedDouble(options, "startTimeMs")
+            let endTimeMs = bridgedDouble(options, "endTimeMs")
+            let position = bridgedInt(options, "position")
+            let length = bridgedInt(options, "length")
             let includeWavHeader = options["includeWavHeader"] as? Bool ?? false
             let includeNormalizedData = options["includeNormalizedData"] as? Bool ?? false
             let decodingOptions = options["decodingOptions"] as? [String: Any] ?? [:]
@@ -771,23 +776,23 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                     guard let fileUri = options["fileUri"] as? String else {
                         throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "fileUri is required"])
                     }
-                    guard let windowSizeMs = options["windowSizeMs"] as? Double else {
+                    guard let windowSizeMs = bridgedDouble(options, "windowSizeMs") else {
                         throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "windowSizeMs is required"])
                     }
-                    guard let hopLengthMs = options["hopLengthMs"] as? Double else {
+                    guard let hopLengthMs = bridgedDouble(options, "hopLengthMs") else {
                         throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "hopLengthMs is required"])
                     }
-                    guard let nMels = options["nMels"] as? Int ?? (options["nMels"] as? Double).map({ Int($0) }) else {
+                    guard let nMels = bridgedInt(options, "nMels") else {
                         throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "nMels is required"])
                     }
 
-                    let fMin = Float(options["fMin"] as? Double ?? 0.0)
-                    let fMaxParam = options["fMax"] as? Double
+                    let fMin = Float(bridgedDouble(options, "fMin") ?? 0.0)
+                    let fMaxParam = bridgedDouble(options, "fMax")
                     let windowType = options["windowType"] as? String ?? "hann"
                     let logScale = options["logScale"] as? Bool ?? true
                     let normalize = options["normalize"] as? Bool ?? false
-                    let startTimeMs = options["startTimeMs"] as? Double
-                    let endTimeMs = options["endTimeMs"] as? Double
+                    let startTimeMs = bridgedDouble(options, "startTimeMs")
+                    let endTimeMs = bridgedDouble(options, "endTimeMs")
 
                     let audioData = try loadAudioFile(fileUri)
                     let sampleRate = audioData.sampleRate
@@ -948,7 +953,7 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                 return
             }
 
-            let chunkDurationMs = options["chunkDurationMs"] as? Int ?? 1000
+            let chunkDurationMs = bridgedInt(options, "chunkDurationMs") ?? 1000
             guard (10...60000).contains(chunkDurationMs) else {
                 promise.reject(
                     "ERR_AUDIO_STREAM_INVALID_RANGE",
@@ -960,15 +965,15 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             let opts = AudioStreamDecoder.Options(
                 requestId: requestId,
                 fileUri: fileUri,
-                startTimeMs: options["startTimeMs"] as? Double,
-                endTimeMs: options["endTimeMs"] as? Double,
-                targetSampleRate: options["targetSampleRate"] as? Double,
-                channels: options["channels"] as? Int,
+                startTimeMs: bridgedDouble(options, "startTimeMs"),
+                endTimeMs: bridgedDouble(options, "endTimeMs"),
+                targetSampleRate: bridgedDouble(options, "targetSampleRate"),
+                channels: bridgedInt(options, "channels"),
                 normalizeAudio: options["normalizeAudio"] as? Bool ?? true,
                 chunkDurationMs: chunkDurationMs,
-                maxChunkBytes: options["maxChunkBytes"] as? Int,
-                maxBufferedChunks: options["maxBufferedChunks"] as? Int ?? 4,
-                backpressureTimeoutMs: options["backpressureTimeoutMs"] as? Double
+                maxChunkBytes: bridgedInt(options, "maxChunkBytes"),
+                maxBufferedChunks: bridgedInt(options, "maxBufferedChunks") ?? 4,
+                backpressureTimeoutMs: bridgedDouble(options, "backpressureTimeoutMs")
             )
 
             let decoder = AudioStreamDecoder(options: opts)

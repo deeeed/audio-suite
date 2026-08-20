@@ -2,6 +2,35 @@
 
 import AVFoundation
 
+/// Read an integer option out of a bridged JS payload.
+///
+/// The Expo bridge hands JS numbers to Swift as `Double`, so `dict["x"] as? Int`
+/// returns nil for every numeric option and the caller silently falls back to its
+/// default. That is what pinned `onAudioStream` at the 1s default no matter what
+/// `interval` was requested (issue #423). Going through `NSNumber` accepts Double,
+/// Int, and NSNumber alike.
+///
+/// Only numeric payloads are accepted; the TS API never promises numeric strings.
+///
+/// Note: `intValue` truncates toward zero. The TS contract documents a 10ms minimum
+/// for interval values and `AudioStreamManager` clamps with `max(10.0, ...)`, so
+/// sub-1ms fractions cannot silently disable emission.
+///
+/// This is the integer counterpart of the `Float` fix in #422.
+func bridgedInt(_ dict: [String: Any], _ key: String) -> Int? {
+    (dict[key] as? NSNumber)?.intValue
+}
+
+/// Int64 variant of `bridgedInt` for large values such as durations.
+func bridgedInt64(_ dict: [String: Any], _ key: String) -> Int64? {
+    (dict[key] as? NSNumber)?.int64Value
+}
+
+/// Double variant of `bridgedInt`, for symmetry and explicitness.
+func bridgedDouble(_ dict: [String: Any], _ key: String) -> Double? {
+    (dict[key] as? NSNumber)?.doubleValue
+}
+
 struct NotificationAction {
     var title: String
     var identifier: String
@@ -148,7 +177,7 @@ struct RecordingSettings {
                 outputSettings.compressed.enabled = compressedDict["enabled"] as? Bool ?? false
                 let format = (compressedDict["format"] as? String)?.lowercased() ?? "aac"
                 outputSettings.compressed.format = format
-                outputSettings.compressed.bitrate = compressedDict["bitrate"] as? Int ?? 128000
+                outputSettings.compressed.bitrate = bridgedInt(compressedDict, "bitrate") ?? 128000
 
                 // Validate compression settings if enabled
                 if outputSettings.compressed.enabled {
@@ -168,20 +197,20 @@ struct RecordingSettings {
 
         // Create settings
         var settings = RecordingSettings(
-            sampleRate: dict["sampleRate"] as? Double ?? 44100.0,
-            desiredSampleRate: dict["desiredSampleRate"] as? Double ?? 44100.0,
+            sampleRate: bridgedDouble(dict, "sampleRate") ?? 44100.0,
+            desiredSampleRate: bridgedDouble(dict, "desiredSampleRate") ?? 44100.0,
             autoResumeAfterInterruption: dict["autoResumeAfterInterruption"] as? Bool ?? false
         )
 
         settings.output = outputSettings
 
         // Parse core settings
-        settings.numberOfChannels = dict["channels"] as? Int ?? 1
-        settings.bitDepth = dict["bitDepth"] as? Int ?? 16
-        settings.interval = dict["interval"] as? Int
-        settings.intervalAnalysis = dict["intervalAnalysis"] as? Int
-        if let maxDurationNumber = dict["maxDurationMs"] as? NSNumber {
-            settings.maxDurationMs = maxDurationNumber.int64Value
+        settings.numberOfChannels = bridgedInt(dict, "channels") ?? 1
+        settings.bitDepth = bridgedInt(dict, "bitDepth") ?? 16
+        settings.interval = bridgedInt(dict, "interval")
+        settings.intervalAnalysis = bridgedInt(dict, "intervalAnalysis")
+        if let maxDurationMs = bridgedInt64(dict, "maxDurationMs") {
+            settings.maxDurationMs = maxDurationMs
         }
         settings.autoStopOnMaxDuration = dict["autoStopOnMaxDuration"] as? Bool ?? false
         // Parse feature flags
@@ -192,7 +221,7 @@ struct RecordingSettings {
         settings.featureOptions = dict["features"] as? [String: Bool]
 
         // Update segmentDurationMs parsing
-        settings.segmentDurationMs = dict["segmentDurationMs"] as? Int ?? 100
+        settings.segmentDurationMs = bridgedInt(dict, "segmentDurationMs") ?? 100
 
         // Parse iOS-specific config
         if let iosDict = dict["ios"] as? [String: Any],
@@ -305,7 +334,7 @@ struct RecordingSettings {
         settings.deviceId = deviceId
         settings.deviceDisconnectionBehavior = DeviceDisconnectionBehavior(rawValue: deviceDisconnectionBehaviorStr ?? "fallback") ?? .FALLBACK
 
-        if let bufferDuration = dict["bufferDurationSeconds"] as? Double {
+        if let bufferDuration = bridgedDouble(dict, "bufferDurationSeconds") {
             settings.bufferDurationSeconds = bufferDuration
         }
 
