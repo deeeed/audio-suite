@@ -2553,39 +2553,16 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         // would resolve stopRecording() with something nothing can open — the silent
         // success this issue is about.
         //
-        // The recording still stopped, though, and a compressed sidecar is written by a
-        // separate recorder that this failure does not touch. Returning nil would call
-        // that a failed stop, discard the compressed metadata, and — because the bridge
-        // rejects — leave the JS hook short of its listener cleanup and STOP transition.
-        // So hand back the compressed output the same way the primary-disabled path
-        // already does, and let the delegate error carry what went wrong. Only when there
-        // is nothing else to return does this become a failed stop.
+        // Fail the stop rather than substituting the compressed sidecar. The top-level
+        // result fields are documented as the primary output, and callers derive paths
+        // from them: the playground writes metadata to
+        // `fileUri.replace(/\.wav$/, '.json')`, which against an `.m4a` URI is a no-op
+        // that overwrites the surviving audio with JSON. A resolved promise carrying a
+        // different file is worse than a rejected one. The compressed file stays on disk,
+        // and the delegate error names what failed.
         if primaryUnusable {
-            guard let compression = compression else {
-                Logger.debug(
-                    "AudioStreamManager",
-                    "Primary WAV unusable and no compressed output; reporting a failed stop."
-                )
-                return nil
-            }
-
-            Logger.debug(
-                "AudioStreamManager",
-                "Primary WAV unusable; returning the compressed output instead."
-            )
-            return RecordingResult(
-                fileUri: compression.compressedFileUri,
-                // The captured URL, not the property: teardown above is asynchronous and
-                // may already have cleared it.
-                filename: capturedCompressedURL?.lastPathComponent ?? "compressed-audio",
-                mimeType: compression.mimeType,
-                duration: durationMs,
-                size: compression.size,
-                channels: capturedSettings?.numberOfChannels ?? 1,
-                bitDepth: capturedSettings?.bitDepth ?? 16,
-                sampleRate: capturedSettings?.sampleRate ?? 44100,
-                compression: compression
-            )
+            Logger.debug("AudioStreamManager", "Refusing to return an unusable primary WAV.")
+            return nil
         }
 
         return result
