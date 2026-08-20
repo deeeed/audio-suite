@@ -14,7 +14,6 @@ import UserNotifications
 import QuartzCore
 
 // Constants
-internal let WAV_HEADER_SIZE: Int64 = 44  // Standard WAV header is 44 bytes
 internal let MIN_AAC_COMPRESSED_SAMPLE_RATE: Double = 44100.0
 
 // Helper to convert to little-endian byte array
@@ -2404,33 +2403,73 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         // This is a bounded write (a seek plus WAV_HEADER_SIZE bytes at the head of
         // the file), not a re-encode. State teardown below stays asynchronous.
         var finalWavFileSize = capturedWavFileSize
+        var degradedPrimary: String?
         fileWriteQueue.sync {
-            // Size the header from the file itself, not from the counters. Once writes
-            // stop being accepted — a handle that cannot be recovered, or a file that
-            // shrank below what was counted (#420) — totalDataSize keeps the length the
-            // recording *would* have had. Trusting it here writes a header describing
-            // audio that is not in the file, and returns that as a successful result.
+            // Reconcile the counters against the file. Once writes stop being accepted —
+            // an unrecoverable handle, or a file that shrank below what was counted (#420)
+            // — totalDataSize keeps the length the recording *would* have had, and sizing
+            // the header from it describes audio that is not there. The file can also be
+            // longer, when a write committed a prefix and neither recovery nor truncation
+            // cleaned it up; those bytes are not known to be whole frames.
             let physicalSize = (
                 try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? NSNumber
             )??.int64Value
 
             let accountedSize = self.cachedWavFileSize
-            if let physicalSize = physicalSize, physicalSize != accountedSize {
-                Logger.debug(
-                    "AudioStreamManager",
-                    "Primary WAV is \(physicalSize) bytes but \(accountedSize) were counted; "
-                    + "finalizing against the file."
-                )
-            }
-
             finalWavFileSize = PrimaryWriteFailurePolicy.finalSize(
                 physicalSize: physicalSize,
                 accountedSize: accountedSize
             )
+
+            if physicalSize == nil {
+                degradedPrimary = "the primary WAV could not be measured at stop, "
+                    + "so its reported size may not match the file"
+            } else if let physicalSize = physicalSize, physicalSize != accountedSize {
+                degradedPrimary = "the primary WAV holds \(physicalSize) bytes but "
+                    + "\(accountedSize) were recorded"
+                Logger.debug(
+                    "AudioStreamManager",
+                    "Primary WAV mismatch: physical \(physicalSize), accounted \(accountedSize); "
+                    + "finalizing at \(finalWavFileSize)."
+                )
+            }
+
+            guard PrimaryWriteFailurePolicy.isUsableWav(finalSize: finalWavFileSize) else {
+                // Shorter than a header: nothing a decoder will open. Say so rather than
+                // returning it as a successful recording.
+                degradedPrimary = "the primary WAV is \(finalWavFileSize) bytes, "
+                    + "too short to be a valid file"
+                Logger.debug("AudioStreamManager", "Primary WAV unusable at \(finalWavFileSize) bytes.")
+                return
+            }
+
+            if let physicalSize = physicalSize, physicalSize > finalWavFileSize {
+                // Drop the unaccounted tail so the file matches the header written below.
+                if let handle = try? FileHandle(forWritingTo: fileURL) {
+                    try? handle.truncate(atOffset: UInt64(finalWavFileSize))
+                    try? handle.close()
+                }
+            }
+
             let finalDataChunkSize = finalWavFileSize - Int64(WAV_HEADER_SIZE)
-            if finalDataChunkSize > 0 {
+            if finalDataChunkSize >= 0 {
                 self.updateWavHeader(fileURL: fileURL, totalDataSize: finalDataChunkSize)
                 Logger.debug("WAV header finalized before return. Data chunk size: \(finalDataChunkSize)")
+            }
+        }
+
+        // A degradation only detectable at stop — a file that shrank, grew past what was
+        // counted, or cannot be measured — has not been reported yet: the write path
+        // reports what it observes while running, and these were not observable there.
+        // The returned size is truthful either way, but silence would read as a healthy
+        // recording, which is the failure #420 is about.
+        if let degradedPrimary = degradedPrimary {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.delegate?.audioStreamManager(
+                    self,
+                    didFailWithError: "Primary WAV output degraded: \(degradedPrimary)."
+                )
             }
         }
 

@@ -172,6 +172,36 @@ final class PrimaryWriteRecoveryTests: XCTestCase {
         )
     }
 
+    func testFinalSizeExcludesATailNothingAccountedFor() {
+        // The mirror of the shrunken case: a write committed a prefix and neither recovery
+        // nor truncation cleaned it up, so the file is longer than what was counted. Those
+        // bytes are not known to be whole frames, so claiming them as payload is the same
+        // corruption pointing the other way.
+        XCTAssertEqual(
+            PrimaryWriteFailurePolicy.finalSize(physicalSize: 1_580, accountedSize: 1_024),
+            1_024
+        )
+    }
+
+    func testFinalSizeAgreesWhenNothingDegraded() {
+        XCTAssertEqual(
+            PrimaryWriteFailurePolicy.finalSize(physicalSize: 1_024, accountedSize: 1_024),
+            1_024
+        )
+    }
+
+    func testAHeaderWithNoSamplesIsStillAUsableFile() {
+        // 44 bytes is a valid empty WAV, so it must not be treated as a failure.
+        XCTAssertTrue(PrimaryWriteFailurePolicy.isUsableWav(finalSize: 44))
+        XCTAssertTrue(PrimaryWriteFailurePolicy.isUsableWav(finalSize: 1_024))
+    }
+
+    func testAFileTooShortForAHeaderIsNotUsable() {
+        // Nothing will open these, so returning them as a successful recording is a lie.
+        XCTAssertFalse(PrimaryWriteFailurePolicy.isUsableWav(finalSize: 43))
+        XCTAssertFalse(PrimaryWriteFailurePolicy.isUsableWav(finalSize: 0))
+    }
+
     func testRecoveryCannotSucceedWhenTheFileIsGone() {
         // The case that must reach the delegate instead of stalling quietly.
         let url = directory.appendingPathComponent("missing.wav")
