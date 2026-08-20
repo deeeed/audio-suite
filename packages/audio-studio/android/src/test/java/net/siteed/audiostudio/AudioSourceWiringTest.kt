@@ -95,11 +95,20 @@ class AudioSourceWiringTest {
                 "audioSourceLifecycle\\.onBeginAttempt\\(\\)\\s*\\}"
         )
 
+        val body = bodyOf("private fun initializeAudioRecord(")
+        val guardAt = guarded.find(body)?.range?.first ?: -1
+
         assertTrue(
             "initializeAudioRecord() must discard a previous failed attempt and begin a " +
                 "fresh one, both inside the !_isRecording && !isPrepared guard, so neither " +
                 "a stale source nor a stale recorder is inherited by the next attempt.",
-            guarded.containsMatchIn(bodyOf("private fun initializeAudioRecord("))
+            guardAt >= 0
+        )
+        assertTrue(
+            "The guard must run before onInitializeRecorders. Resetting after resolution " +
+                "would discard the source just resolved, so a fresh attempt would carry no " +
+                "source at all.",
+            guardAt < body.indexOf("audioSourceLifecycle.onInitializeRecorders {")
         )
     }
 
@@ -119,9 +128,15 @@ class AudioSourceWiringTest {
                 body.contains("compressedFile = null")
         )
         assertTrue(
-            "The stale MediaRecorder must be reset() rather than stop()ed: it was prepared " +
-                "but never started, and stop() throws in that state.",
-            body.contains("recorder.reset()") && !body.contains("recorder.stop()")
+            "Both recorders must actually be released. Nulling the references without " +
+                "releasing leaks exactly what this function exists to reclaim.",
+            body.contains("record.release()") && body.contains("recorder.release()")
+        )
+        assertTrue(
+            "The stale MediaRecorder must be released directly, without stop() or reset() " +
+                "first: it was never started, stop() throws in that state, and anything " +
+                "that throws before release() leaks the recorder.",
+            !body.contains("recorder.stop()") && !body.contains("recorder.reset()")
         )
     }
 

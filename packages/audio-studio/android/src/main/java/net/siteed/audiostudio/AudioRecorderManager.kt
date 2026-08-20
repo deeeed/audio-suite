@@ -1006,9 +1006,9 @@ class AudioRecorderManager(
 
         compressedRecorder?.let { recorder ->
             try {
-                // Never started — this attempt never reached startRecording() — so reset()
-                // rather than stop(), which throws on a prepared-but-not-started recorder.
-                recorder.reset()
+                // release() alone, and not stop() or reset() first: this recorder was never
+                // started, stop() throws in that state, and anything that throws before
+                // release() would leak the recorder this function exists to reclaim.
                 recorder.release()
             } catch (e: Exception) {
                 LogUtils.w(CLASS_NAME, "Failed to release stale MediaRecorder: ${e.message}")
