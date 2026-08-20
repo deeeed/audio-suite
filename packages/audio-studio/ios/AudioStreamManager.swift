@@ -1514,7 +1514,33 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         self.fileHandle = nil
 
         let reopened = try FileHandle(forWritingTo: url)
-        try reopened.seekToEnd()
+
+        // Resume at the logical end, not the physical one. A write can commit a prefix
+        // before throwing, so the file on disk may already hold part of the buffer that
+        // is about to be retried; seeking to the physical end would append the whole
+        // buffer again and leave duplicated audio that the header's size field does not
+        // describe. totalDataSize counts the header plus every byte this recording has
+        // accounted for, so it is the only trustworthy length here.
+        let logicalEnd = UInt64(max(self.totalDataSize, WAV_HEADER_SIZE))
+        let physicalEnd = try reopened.seekToEnd()
+
+        switch PrimaryWriteFailurePolicy.resume(physicalEnd: physicalEnd, logicalEnd: logicalEnd) {
+        case .truncateTo(let offset):
+            try reopened.truncate(atOffset: offset)
+        case .refuse:
+            try? reopened.close()
+            throw NSError(
+                domain: "AudioStreamManager",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Primary WAV is shorter than the bytes already recorded "
+                    + "(\(physicalEnd) < \(logicalEnd)); refusing to append"]
+            )
+        case .append:
+            break
+        }
+
+        try reopened.seek(toOffset: logicalEnd)
         self.fileHandle = reopened
     }
 
@@ -1527,7 +1553,10 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
                 userInfo: [NSLocalizedDescriptionKey: "Primary file handle is nil"]
             )
         }
-        try handle.seekToEnd()
+        // Seek to the logical end rather than the physical one. If an earlier write
+        // committed a prefix before throwing, the physical end is past what has been
+        // accounted for, and appending there would duplicate those bytes.
+        try handle.seek(toOffset: UInt64(max(self.totalDataSize, WAV_HEADER_SIZE)))
         try handle.write(contentsOf: data)
         self.totalDataSize += Int64(data.count)
         self.cachedWavFileSize = self.totalDataSize
@@ -1537,6 +1566,11 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
     ///
     /// Caller must be on `fileWriteQueue`.
     private func handlePrimaryWriteFailure(_ error: Error, retrying data: Data) {
+        // Once recovery has failed, stop trying. Every buffer would otherwise reopen a
+        // file that is not coming back — filesystem work dozens of times a second, and a
+        // longer barrier for stopRecording() to drain.
+        guard !self.primaryWriteFailureReported else { return }
+
         Logger.debug(
             "AudioStreamManager",
             "Primary WAV append failed: \(error.localizedDescription). Reopening."

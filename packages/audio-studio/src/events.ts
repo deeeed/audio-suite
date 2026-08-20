@@ -80,19 +80,28 @@ export interface RecordingErrorEvent {
 }
 
 /**
- * Errors raised while recording is already running.
+ * Recording errors reported by the native layer.
  *
- * iOS has always emitted these, but there was no typed way to subscribe, so failures that
- * do not reject a call were effectively unobservable. That mattered for #420: when the
- * primary WAV stops accepting writes, the compressed output keeps going, and without this
- * a caller relying on the WAV for crash recovery had no signal it had gone stale.
+ * This is the existing generic iOS `error` event, which had no typed subscription until
+ * now — so a failure that does not reject a call was effectively unobservable. That
+ * mattered for #420: when the primary WAV stops accepting writes the compressed output
+ * keeps going, and a caller relying on the WAV for crash recovery had no signal.
  *
- * These do not stop the recording. Treat them as a degraded-state notification.
+ * The event is not limited to that case, and the severity varies. It currently carries:
+ * - a primary WAV that stopped and could not be recovered — recording continues, and any
+ *   compressed output is unaffected
+ * - a compressed recorder that failed to complete or hit an encode error — that output is
+ *   finished
+ * - a failed auto-resume or resume after an interruption
+ * - prepare/start refused during an active phone call, which **also** rejects the
+ *   originating call, so handling both will surface the same failure twice
  *
- * **iOS only for now.** Android does not declare this event, so the listener never fires
- * there; it is not a guarantee that recording is healthy on Android. Bringing Android to
- * parity is tracked separately — do not use this as the sole health check on either
- * platform.
+ * There is no machine-readable discriminator; `message` is prose and its wording is not a
+ * stable API. Do not branch on it. Treat this as a signal to check recording state rather
+ * than as a typed error channel.
+ *
+ * **iOS only.** Android does not declare this event, so the listener never fires there —
+ * silence is not evidence that recording is healthy. Parity is tracked in #447.
  */
 export function addRecordingErrorListener(
     listener: (event: RecordingErrorEvent) => void

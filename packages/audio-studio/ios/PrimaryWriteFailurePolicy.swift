@@ -16,4 +16,31 @@ internal struct PrimaryWriteFailurePolicy {
     static func shouldReport(alreadyReported: Bool) -> Bool {
         !alreadyReported
     }
+
+    /// How to resume writing at `logicalEnd` given what is physically on disk.
+    enum Resume: Equatable {
+        /// Physical and logical agree; append from here.
+        case append
+        /// Physical is longer: a write committed a prefix before throwing, or a flush was
+        /// interrupted. Cut back to `logicalEnd` before appending, or the retried buffer
+        /// duplicates those bytes and the header's size field stops describing the payload.
+        case truncateTo(UInt64)
+        /// Physical is shorter than what has been counted as written. The file and the
+        /// counters no longer describe the same recording, and appending would produce a
+        /// WAV whose header overstates its payload.
+        case refuse
+    }
+
+    /// - Parameters:
+    ///   - physicalEnd: the file's actual length on disk
+    ///   - logicalEnd: header plus every byte this recording has accounted for
+    static func resume(physicalEnd: UInt64, logicalEnd: UInt64) -> Resume {
+        if physicalEnd > logicalEnd {
+            return .truncateTo(logicalEnd)
+        }
+        if physicalEnd < logicalEnd {
+            return .refuse
+        }
+        return .append
+    }
 }
