@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- iOS `trimAudio` now rejects an `outputFileName` containing a path separator or `..`. The value is appended to the output directory, so `../../../../tmp/pwned` resolved outside it and the trim wrote there (#433).
 - iOS `extractMelSpectrogram` no longer crashes on a large `windowSizeMs`, `hopLengthMs`, `startTimeMs` or `endTimeMs`. Those options are validated as representable, but the value is then multiplied by the file's sample rate, and the product can overflow the type it is narrowed to — `windowSizeMs: 100000000` is 4.41e9 samples at 44.1 kHz, which fits `Int` and traps the `Int32` the native wrapper takes. The conversions now clamp where the sample rate is known, since no bound on the option alone can be correct (#433).
 
 ## [3.2.1] - 2026-06-20

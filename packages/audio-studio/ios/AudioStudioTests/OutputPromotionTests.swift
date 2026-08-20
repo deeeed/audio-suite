@@ -101,10 +101,51 @@ final class OutputPromotionTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
         let work = try makeWorkFile()
 
+        let missingTarget = directory.appendingPathComponent("missing-target")
         try OutputPromotion.promote(workURL: work, to: destination)
 
         XCTAssertEqual(try String(contentsOf: destination), "NEW AUDIO")
         XCTAssertFalse(FileManager.default.fileExists(atPath: work.path))
+        // The link itself was replaced, not followed: the target it pointed at must still
+        // not exist, and the destination must now be a regular file rather than a link.
+        XCTAssertFalse(FileManager.default.fileExists(atPath: missingTarget.path))
+        XCTAssertEqual(
+            (try FileManager.default.attributesOfItem(atPath: destination.path))[.type] as? FileAttributeType,
+            .typeRegular
+        )
+    }
+
+    // MARK: - The caller-supplied filename
+
+    func testOrdinaryFilenamesAreAccepted() {
+        for name in ["recording", "my-trim.wav", "trim 1", "réc", "a.b.c"] {
+            XCTAssertTrue(OutputPromotion.isSafeOutputFileName(name), name)
+        }
+    }
+
+    func testNamesThatEscapeTheOutputDirectoryAreRejected() {
+        // Probed: "../../../../tmp/pwned" appended to the temporary directory resolves to
+        // /var/tmp/pwned.wav, so the trim would write outside it entirely.
+        for name in ["../escaped", "a/b", "../../../../tmp/pwned", "/absolute", "..", ".", ""] {
+            XCTAssertFalse(OutputPromotion.isSafeOutputFileName(name), name)
+        }
+    }
+
+    func testNamesContainingNulAreRejected() {
+        XCTAssertFalse(OutputPromotion.isSafeOutputFileName("bad\0name"))
+    }
+
+    func testAFifoDestinationIsReplacedLikeAnyNonDirectory() throws {
+        // rename replaces a FIFO rather than refusing it, unlike the decision-enum version
+        // this replaced. Recorded rather than guarded: such a destination is outside the
+        // filename contract, which is now enforced at the bridge instead.
+        let destination = directory.appendingPathComponent("fifo.wav")
+        XCTAssertEqual(mkfifo(destination.path, 0o600), 0)
+        let work = try makeWorkFile()
+
+        try OutputPromotion.promote(workURL: work, to: destination)
+
+        XCTAssertEqual(try String(contentsOf: destination), "NEW AUDIO")
     }
 
     func testAMissingWorkFileFailsWithoutDisturbingTheDestination() throws {

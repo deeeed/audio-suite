@@ -23,7 +23,28 @@ import Foundation
 ///
 /// `replaceItemAt` was not usable regardless: it throws Cocoa error 4 for both live and
 /// dangling symlinks.
+///
+/// Note this is broader than the version it replaced, which refused FIFOs, sockets and
+/// device nodes: `rename` replaces those. That is acceptable because a destination like
+/// that cannot be reached through the documented contract — `outputFileName` is a single
+/// filename, enforced by `isSafeOutputFileName` at the bridge — and narrowing it again
+/// would mean reintroducing the inspect-then-act race this exists to remove.
 enum OutputPromotion {
+
+    /// Whether a caller-supplied output filename is a single, safe path component.
+    ///
+    /// `outputFileName` arrives from JS and is appended to a directory, so `/` and `..`
+    /// escape it: `../../../../tmp/pwned` resolves to `/var/tmp/pwned.wav`. The trim then
+    /// writes wherever that lands, which is both outside the documented contract — a name,
+    /// not a path — and a way to overwrite unrelated files (#433).
+    static func isSafeOutputFileName(_ name: String) -> Bool {
+        guard !name.isEmpty else { return false }
+        guard !name.contains("/") else { return false }
+        guard name != "." && name != ".." else { return false }
+        // Reject NUL and anything that would not survive as one path component.
+        guard !name.contains("\0") else { return false }
+        return true
+    }
 
     /// Promotes `workURL` onto `destination`, or throws describing why it did not.
     ///
