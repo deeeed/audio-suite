@@ -16,12 +16,18 @@ jobs:
           # Need the merge base to diff against the target branch.
           fetch-depth: 0
 
+      - name: Classifier self-test
+        run: node scripts/changelog-check/classify.test.js
+
       - name: Require a changelog entry for each touched package
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const { execFileSync } = require('child_process')
+            const { findMissing } = require(
+              `${process.env.GITHUB_WORKSPACE}/scripts/changelog-check/classify.js`
+            )
 
             const labels = (context.payload.pull_request.labels || []).map((l) => l.name)
             if (labels.includes('skip-changelog')) {
@@ -31,16 +37,14 @@ jobs:
 
             const base = context.payload.pull_request.base.sha
             const head = context.payload.pull_request.head.sha
-
             const git = (...args) => execFileSync('git', args).toString()
 
             let mergeBase
             let changed
             try {
               mergeBase = git('merge-base', base, head).trim()
-              // --no-renames: a rename is reported as delete+add so a file moved OUT of a
-              // package still registers against that package. With rename detection the
-              // source path disappears and the change slips through.
+              // --no-renames: rename detection reports only the destination, so a file
+              // moved out of a package would erase the package-side path.
               changed = git('diff', '--name-only', '--no-renames', mergeBase, head)
                 .split('\n')
                 .filter(Boolean)
@@ -51,116 +55,47 @@ jobs:
               return
             }
 
-            // Scope is derived from the MERGE BASE, not the PR result. Deriving it from the
-            // PR tree fails open: deleting a package's CHANGELOG.md, flipping private:true,
-            // or corrupting its package.json would silently drop it from enforcement while
-            // its source changed in the same PR.
-            const listAtBase = (dir) => {
+            const listTree = (ref, dir) => {
               try {
-                return git('ls-tree', '--name-only', `${mergeBase}:${dir}`)
-                  .split('\n')
-                  .filter(Boolean)
+                return git('ls-tree', '--name-only', `${ref}:${dir}`).split('\n').filter(Boolean)
               } catch {
                 return []
               }
             }
-            const readAtBase = (path) => {
+            // Returns the parsed manifest, null when present-but-unparseable (which the
+            // classifier treats as "enforce"), or undefined when absent.
+            const manifestAt = (ref) => (pkg) => {
+              let raw
               try {
-                return git('show', `${mergeBase}:${path}`)
+                raw = git('show', `${ref}:packages/${pkg}/package.json`)
               } catch {
+                return undefined
+              }
+              try {
+                return JSON.parse(raw)
+              } catch {
+                core.warning(`packages/${pkg}/package.json is unparseable at ${ref}; enforcing.`)
                 return null
               }
             }
-
-            const PACKAGES = listAtBase('packages').filter((name) => {
-              const raw = readAtBase(`packages/${name}/package.json`)
-              if (raw === null) return false
-              let manifest
+            // A path in the diff only proves it was touched — a deletion counts too. Require
+            // a real blob at head so deleting the changelog cannot pass as updating it.
+            const existsAtHead = (path) => {
               try {
-                manifest = JSON.parse(raw)
+                return git('cat-file', '-t', `${head}:${path}`).trim() === 'blob'
               } catch {
-                // Unparseable at base — enforce rather than skip, and say so.
-                core.warning(`packages/${name}/package.json is unparseable at the merge base; enforcing anyway.`)
-                return true
+                return false
               }
-              // Publishable is the criterion. A package that is published but keeps no
-              // changelog of its own (the expo-audio-* re-export shims) still has its
-              // consumer code covered — it is redirected to a partner changelog below.
-              return !manifest.private
+            }
+
+            const missing = findMissing({
+              changed,
+              basePackages: listTree(mergeBase, 'packages'),
+              headPackages: listTree(head, 'packages'),
+              baseManifest: manifestAt(mergeBase),
+              headManifest: manifestAt(head),
+              existsAtHead,
             })
-
-            // Packages with no CHANGELOG.md of their own. Their source changes must still be
-            // documented, so point them at the changelog consumers actually read.
-            const REDIRECT = {
-              'expo-audio-stream': 'audio-studio',
-              'expo-audio-studio': 'audio-studio',
-            }
-
-            core.info(`In-scope packages (from merge base): ${PACKAGES.join(', ') || '(none)'}`)
-
-            // Paths that cannot change what a consumer of the published package receives.
-            // Native test conventions matter here: these suites are mostly Kotlin/Swift.
-            const IGNORED = [
-              /^packages\/[^/]+\/CHANGELOG\.md$/,
-              /^packages\/[^/]+\/README\.md$/,
-              // Test suites — JS/TS and native.
-              /^packages\/[^/]+\/.*__(tests|fixtures|mocks)__\//,
-              /^packages\/[^/]+\/.*\.(test|spec)\.[jt]sx?$/,
-              /^packages\/[^/]+\/android\/src\/(test|androidTest)\//,
-              /^packages\/[^/]+\/ios\/[^/]*[Tt]ests?\//,
-              /^packages\/[^/]+\/ios\/tests\//,
-              /^packages\/[^/]+\/e2e\//,
-              /^packages\/[^/]+\/test-assets\//,
-              // Storybook: dev-only, not built into the published output.
-              /^packages\/[^/]+\/\.storybook\//,
-              /^packages\/[^/]+\/.*\.stories\.[jt]sx?$/,
-              // Lint/editor/CI config. NOT build config — tsconfig.cjs/esm/types and
-              // bob/rollup inputs shape published JS and .d.ts, so they stay enforced.
-              /^packages\/[^/]+\/(.*\/)?\.(eslintrc|prettierrc|editorconfig|gitignore|npmignore)/,
-              /^packages\/[^/]+\/(.*\/)?(jest|babel|metro)\.config\./,
-              /^packages\/[^/]+\/(.*\/)?tsconfig\.(eslint|test|spec)\.json$/,
-              /^packages\/[^/]+\/(.*\/)?tsconfig\.tsbuildinfo$/,
-            ]
-
-            // A package's docs are consumer-facing only when it ships them in its tarball.
-            // Read from base for the same fail-open reason as the scope list.
-            const shipsDocs = (pkg) => {
-              const raw = readAtBase(`packages/${pkg}/package.json`)
-              if (raw === null) return false
-              let manifest
-              try {
-                manifest = JSON.parse(raw)
-              } catch {
-                return true // unknown — enforce
-              }
-              const files = manifest.files
-              // No files field means npm packs everything, so docs ship.
-              if (!Array.isArray(files)) return true
-              return files.some((f) => {
-                const head = String(f).replace(/^\.\//, '').split('/')[0]
-                return head === 'docs' || head === '.' || head === '*'
-              })
-            }
-
-            const missing = []
-
-            for (const pkg of PACKAGES) {
-              const prefix = `packages/${pkg}/`
-              const ignored = shipsDocs(pkg)
-                ? IGNORED
-                : [...IGNORED, /^packages\/[^/]+\/docs\//]
-
-              const touched = changed.filter(
-                (f) => f.startsWith(prefix) && !ignored.some((re) => re.test(f))
-              )
-              if (touched.length === 0) continue
-
-              const owner = REDIRECT[pkg] || pkg
-              const changelog = `packages/${owner}/CHANGELOG.md`
-              if (!changed.includes(changelog)) {
-                missing.push({ pkg, owner, changelog, example: touched[0] })
-              }
-            }
 
             if (missing.length === 0) {
               core.info('Every touched package has a changelog entry.')
@@ -170,7 +105,7 @@ jobs:
             const details = missing
               .map((m) => {
                 const via = m.owner === m.pkg ? '' : ` (documented in ${m.owner})`
-                return `- **${m.pkg}**${via} — changed \`${m.example}\` but did not update \`${m.changelog}\``
+                return `- **${m.pkg}**${via} — changed \`${m.example}\`, but \`${m.changelog}\` was ${m.reason}`
               })
               .join('\n')
 
