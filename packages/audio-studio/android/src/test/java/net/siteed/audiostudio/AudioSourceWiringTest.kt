@@ -1,7 +1,6 @@
 package net.siteed.audiostudio
 
 import java.io.File
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -35,6 +34,30 @@ class AudioSourceWiringTest {
         found.readText()
     }
 
+    /**
+     * The body of one function, by brace matching from its signature. Assertions are scoped
+     * to a function so that moving a call to the wrong place fails rather than passing on a
+     * match found somewhere else in the file.
+     */
+    private fun bodyOf(signature: String): String {
+        val start = source.indexOf(signature)
+        require(start >= 0) {
+            "$signature not found in AudioRecorderManager.kt; update AudioSourceWiringTest."
+        }
+        var depth = 0
+        var seenOpen = false
+        for (i in start until source.length) {
+            when (source[i]) {
+                '{' -> { depth++; seenOpen = true }
+                '}' -> {
+                    depth--
+                    if (seenOpen && depth == 0) return source.substring(start, i + 1)
+                }
+            }
+        }
+        error("Unbalanced braces after $signature")
+    }
+
     @Test
     fun `resolving goes through the lifecycle rather than a bare field write`() {
         assertTrue(
@@ -50,9 +73,7 @@ class AudioSourceWiringTest {
     fun `the source is never cleared on the start path`() {
         // The round-2 defect: startRecording() cleared it above the isPrepared check, and a
         // prepared start skips initialization, so a non-mic recording reported mic.
-        val startBody = source
-            .substringAfter("fun startRecording(")
-            .substringBefore("\n    private fun isAudioFormatSupported(")
+        val startBody = bodyOf("fun startRecording(")
 
         assertTrue(
             "startRecording() must not clear the resolved source. Clearing belongs on the " +
@@ -62,39 +83,65 @@ class AudioSourceWiringTest {
     }
 
     @Test
-    fun `a fresh attempt is begun where a new recorder replaces the old one`() {
+    fun `a fresh attempt is begun inside the guard, in initializeAudioRecord`() {
         // Guards the failed-preparation defect: initializers catch their own exceptions and
         // return false, so callers return early without reaching any catch or cleanup.
-        assertTrue(
-            "initializeAudioRecord() must begin a fresh attempt when it is not resuming or " +
-                "reconstructing, so a failed attempt's source is not inherited by the next " +
-                "attempt on a different source.",
-            source.contains("audioSourceLifecycle.onBeginAttempt()")
+        // Both the discard and the reset must sit inside the guard — outside it they would
+        // also fire on device change, resume, and prepared start, tearing down recorders
+        // that belong to a live recording.
+        val guarded = Regex(
+            "if \\(!_isRecording\\.get\\(\\) && !isPrepared\\) \\{\\s*" +
+                "discardFailedAttempt\\(\\)\\s*" +
+                "audioSourceLifecycle\\.onBeginAttempt\\(\\)\\s*\\}"
         )
+
         assertTrue(
-            "The fresh-attempt reset must be guarded on !_isRecording && !isPrepared, or it " +
-                "would also fire on device change, resume, and prepared start.",
-            source.contains("if (!_isRecording.get() && !isPrepared) {")
+            "initializeAudioRecord() must discard a previous failed attempt and begin a " +
+                "fresh one, both inside the !_isRecording && !isPrepared guard, so neither " +
+                "a stale source nor a stale recorder is inherited by the next attempt.",
+            guarded.containsMatchIn(bodyOf("private fun initializeAudioRecord("))
         )
     }
 
     @Test
-    fun `teardown clears the source immediately after preparation state is reset`() {
-        // isPrepared and the resolved source have the same lifetime: both describe recorders
-        // that exist. The two teardown sites — stopRecording() and cleanup() — must reset
-        // both. prepareRecording()'s catch also sets isPrepared = false, but it delegates to
-        // cleanup() for the rest, so it is covered by cleanup()'s pairing rather than its own.
-        val paired = Regex(
-            "isPrepared = false[^\\n]*\\n\\s*audioSourceLifecycle\\.onTeardown\\(\\)"
-        ).findAll(source).count()
+    fun `discarding a failed attempt releases the recorders it left behind`() {
+        // cleanup() releases the compressed recorder only while _isRecording is true, which
+        // a failed attempt never sets, and startRecording() calls compressedRecorder?.start()
+        // unconditionally — so a survivor gets started by a later, unrelated attempt.
+        val body = bodyOf("private fun discardFailedAttempt()")
 
-        assertEquals(
-            "Both teardown sites must clear the resolved source right where they reset " +
-                "isPrepared. A teardown that leaves the source behind lets it outlive the " +
-                "recorder it describes.",
-            2,
-            paired
+        assertTrue(
+            "discardFailedAttempt() must null both recorders and the compressed file, or a " +
+                "later attempt can start a recorder it never configured and report " +
+                "compression it never produced.",
+            body.contains("audioRecord = null") &&
+                body.contains("compressedRecorder = null") &&
+                body.contains("compressedFile = null")
         )
+        assertTrue(
+            "The stale MediaRecorder must be reset() rather than stop()ed: it was prepared " +
+                "but never started, and stop() throws in that state.",
+            body.contains("recorder.reset()") && !body.contains("recorder.stop()")
+        )
+    }
+
+    @Test
+    fun `each teardown clears the source where it resets preparation state`() {
+        // isPrepared and the resolved source have the same lifetime: both describe recorders
+        // that exist. Checked per function so that moving a call from one teardown to the
+        // other — which keeps the file-wide count at two — still fails.
+        // prepareRecording()'s catch also sets isPrepared = false, but delegates the rest to
+        // cleanup(), so it is covered by cleanup()'s own pairing.
+        val paired = Regex("isPrepared = false[^\\n]*\\n\\s*audioSourceLifecycle\\.onTeardown\\(\\)")
+
+        for (signature in listOf("fun stopRecording(", "fun cleanup()")) {
+            assertTrue(
+                "$signature must clear the resolved source right where it resets isPrepared. " +
+                    "A teardown that leaves the source behind lets it outlive the recorder " +
+                    "it describes.",
+                paired.containsMatchIn(bodyOf(signature))
+            )
+        }
     }
 
     @Test

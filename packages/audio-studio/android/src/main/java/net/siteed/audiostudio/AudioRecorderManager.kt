@@ -980,6 +980,47 @@ class AudioRecorderManager(
     }
 
 
+    /**
+     * Releases recorders a previous failed attempt left behind.
+     *
+     * Bringing a recording up fails by returning false from an initializer, and the caller
+     * returns without reaching any catch — while `cleanup()` releases the compressed
+     * recorder only when `_isRecording` is true, which a failed attempt never sets. A
+     * MediaRecorder that reached `prepare()` therefore survives, and `startRecording()`
+     * calls `compressedRecorder?.start()` unconditionally: a later attempt on a different
+     * source, or with compression disabled, would start that stale recorder and report
+     * compression it did not configure.
+     *
+     * Only called where a new AudioRecord replaces the old one and no recording is live, so
+     * nothing here belongs to an active recording.
+     */
+    private fun discardFailedAttempt() {
+        audioRecord?.let { record ->
+            try {
+                record.release()
+            } catch (e: Exception) {
+                LogUtils.w(CLASS_NAME, "Failed to release stale AudioRecord: ${e.message}")
+            }
+        }
+        audioRecord = null
+
+        compressedRecorder?.let { recorder ->
+            try {
+                // Never started — this attempt never reached startRecording() — so reset()
+                // rather than stop(), which throws on a prepared-but-not-started recorder.
+                recorder.reset()
+                recorder.release()
+            } catch (e: Exception) {
+                LogUtils.w(CLASS_NAME, "Failed to release stale MediaRecorder: ${e.message}")
+            }
+        }
+        compressedRecorder = null
+        // The file itself is left on disk, matching what cleanup() does with a failed
+        // preparation's files today. Clearing the reference is what stops the next result
+        // from reporting compression it never produced.
+        compressedFile = null
+    }
+
     private fun initializeAudioRecord(promise: Promise): Boolean {
         if (!permissionUtils.checkRecordingPermission(enableBackgroundAudio)) {
             promise.reject(
@@ -996,9 +1037,10 @@ class AudioRecorderManager(
 
                 // A new AudioRecord replaces whatever was here, so this is a fresh attempt
                 // unless a device change or resume is rebuilding one that is still part of
-                // the current recording. Those keep their source; anything a failed attempt
-                // left behind is dropped, so the next attempt does not inherit it.
+                // the current recording. Those keep what they have; anything a failed
+                // attempt left behind is discarded so this attempt cannot inherit it.
                 if (!_isRecording.get() && !isPrepared) {
+                    discardFailedAttempt()
                     audioSourceLifecycle.onBeginAttempt()
                 }
 
