@@ -26,6 +26,8 @@ import {
 import { trimAudio } from './trimAudio'
 import { useAudioRecorder } from './useAudioRecorder'
 export { addMaxDurationReachedListener } from './events'
+export { addRecordingErrorListener } from './events'
+export type { RecordingErrorEvent } from './events'
 
 export * from './utils/convertPCMToFloat32'
 export * from './utils/getWavFileInfo'

@@ -73,3 +73,44 @@ export function addMaxDurationReachedListener(
         listener
     )
 }
+
+export interface RecordingErrorEvent {
+    /** Human-readable description of what failed. */
+    message: string
+}
+
+/**
+ * Recording errors reported by the native layer.
+ *
+ * This is the existing generic iOS `error` event, which had no typed subscription until
+ * now — so a failure that does not reject a call was effectively unobservable. That
+ * mattered for #420: when the primary WAV stops accepting writes the compressed output
+ * keeps going, and a caller relying on the WAV for crash recovery had no signal.
+ *
+ * The event is not limited to that case, and the severity varies. It currently carries:
+ * - a primary WAV that stopped and could not be recovered — recording continues, and any
+ *   compressed output is unaffected
+ * - a compressed recorder that failed to complete or hit an encode error — that output is
+ *   finished
+ * - a failed auto-resume or resume after an interruption
+ * - input hardware reporting an unusable format, so no tap was installed — this happens on
+ *   resume, device switching and foreground recovery as well as on prepare/start
+ * - prepare/start refused during an active phone call
+ *
+ * During prepare/start, either of those last two also accompanies the rejected call, so
+ * handling both surfaces the same failure twice.
+ *
+ * There is no machine-readable discriminator; `message` is prose and its wording is not a
+ * stable API. Do not branch on it, and note there is no state to poll in response either —
+ * `status()` reports whether recording is running, not whether an output is still healthy.
+ * Until the event carries a code, the practical use is logging and telemetry: surfacing
+ * that something degraded, not deciding what.
+ *
+ * **iOS only.** Android does not declare this event, so the listener never fires there —
+ * silence is not evidence that recording is healthy. Parity is tracked in #447.
+ */
+export function addRecordingErrorListener(
+    listener: (event: RecordingErrorEvent) => void
+): EventSubscription {
+    return emitter.addListener<RecordingErrorEvent>('error', listener)
+}

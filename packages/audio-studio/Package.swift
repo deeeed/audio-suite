@@ -21,12 +21,19 @@ let package = Package(
     targets: [
         .target(
             name: "AudioStudio",
-            path: "ios", sources: ["RecordingSettings.swift", "DeviceDisconnectionBehavior.swift"]
+            path: "ios", sources: [
+                "RecordingSettings.swift",
+                "DeviceDisconnectionBehavior.swift",
+                "PrimaryWriteFailurePolicy.swift",
+            ]
         ),
         .testTarget(
             name: "AudioStudioTests",
             dependencies: ["AudioStudio"],
-            path: "ios/AudioStudioTests", sources: ["BridgedNumericOptionsTests.swift"]
+            path: "ios/AudioStudioTests", sources: [
+                "BridgedNumericOptionsTests.swift",
+                "PrimaryWriteRecoveryTests.swift",
+            ]
         ),
     ]
 )

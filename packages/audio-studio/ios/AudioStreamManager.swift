@@ -14,7 +14,6 @@ import UserNotifications
 import QuartzCore
 
 // Constants
-internal let WAV_HEADER_SIZE: Int64 = 44  // Standard WAV header is 44 bytes
 internal let MIN_AAC_COMPRESSED_SAMPLE_RATE: Double = 44100.0
 
 // Helper to convert to little-endian byte array
@@ -41,6 +40,12 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
     internal var recordingFileURL: URL?
     private var audioProcessor: AudioProcessor?
     private var fileHandle: FileHandle?
+    /// Set once the primary WAV has stopped accepting writes and could not be recovered.
+    ///
+    /// Only read and written on `fileWriteQueue`. Without it a failing handle would report
+    /// on every dropped buffer — dozens per second — so the delegate is told once and the
+    /// remaining appends fail quietly (#420).
+    private var primaryWriteFailureReported = false
     private var startTime: Date?
     private var totalPausedDuration: TimeInterval = 0  // Track total paused time
     private var currentPauseStart: Date?              // Track current pause start
@@ -1039,6 +1044,9 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         resetAccumulated()
         totalDataSize = 0
         totalDataSizeAnalysis = 0
+        // Per recording: a previous recording's failure must not suppress this one's report.
+        // Synchronous so the reset is ordered before any append this recording enqueues.
+        fileWriteQueue.sync { self.primaryWriteFailureReported = false }
         totalPausedDuration = 0
         lastEmittedSize = 0
         lastEmittedCompressedSize = 0
@@ -1463,7 +1471,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
     /// crash-recovery backup — silently stopped (issue #420). If the handle cannot
     /// be restored the failure is surfaced to the delegate instead of being lost.
     private func reopenPrimaryFileHandleIfNeeded() {
-        guard let url = recordingFileURL else { return }
+        guard recordingFileURL != nil else { return }
 
         fileWriteQueue.sync {
             if let handle = self.fileHandle {
@@ -1479,26 +1487,170 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             }
 
             do {
-                // Reopen for appending; the header is rewritten at stop, so the
-                // bytes already on disk must be preserved here.
-                let reopened = try FileHandle(forWritingTo: url)
-                try reopened.seekToEnd()
-                self.fileHandle = reopened
+                try self.reopenPrimaryFileHandle()
                 Logger.debug("AudioStreamManager", "Primary file handle reopened after interruption.")
             } catch {
-                self.fileHandle = nil
-                Logger.debug(
-                    "AudioStreamManager",
-                    "Failed to reopen primary file handle after interruption: \(error.localizedDescription)"
-                )
-                DispatchQueue.main.async { [weak self] in
-                    guard let self = self else { return }
-                    self.delegate?.audioStreamManager(
-                        self,
-                        didFailWithError: "Primary WAV output stopped after an audio interruption: \(error.localizedDescription)"
-                    )
-                }
+                self.reportPrimaryWriteFailureOnce(error)
             }
+        }
+    }
+
+    /// Reopens the primary WAV handle for appending. Caller must be on `fileWriteQueue`.
+    ///
+    /// Every byte this recording has accounted for is kept — the header is only rewritten
+    /// at stop, so starting over would discard the recording so far. Bytes past that point
+    /// are not: a write can commit a prefix before throwing, and those uncounted bytes are
+    /// cut so the retry cannot duplicate them.
+    private func reopenPrimaryFileHandle() throws {
+        guard let url = recordingFileURL else {
+            throw NSError(
+                domain: "AudioStreamManager",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "No primary recording file to reopen"]
+            )
+        }
+
+        // Drop the old handle first: keeping it on failure would leave a descriptor that
+        // every later append retries against.
+        self.fileHandle = nil
+
+        let reopened = try FileHandle(forWritingTo: url)
+
+        // Resume at the logical end, not the physical one. A write can commit a prefix
+        // before throwing, so the file on disk may already hold part of the buffer that
+        // is about to be retried; seeking to the physical end would append the whole
+        // buffer again and leave duplicated audio that the header's size field does not
+        // describe. totalDataSize counts the header plus every byte this recording has
+        // accounted for, so it is the only trustworthy length here.
+        let logicalEnd: UInt64
+        do {
+            logicalEnd = try self.logicalEndOffset()
+        } catch {
+            try? reopened.close()
+            throw error
+        }
+        let physicalEnd = try reopened.seekToEnd()
+
+        switch PrimaryWriteFailurePolicy.resume(physicalEnd: physicalEnd, logicalEnd: logicalEnd) {
+        case .truncateTo(let offset):
+            try reopened.truncate(atOffset: offset)
+        case .refuse:
+            try? reopened.close()
+            throw NSError(
+                domain: "AudioStreamManager",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Primary WAV is shorter than the bytes already recorded "
+                    + "(\(physicalEnd) < \(logicalEnd)); refusing to append"]
+            )
+        case .append:
+            break
+        }
+
+        try reopened.seek(toOffset: logicalEnd)
+        self.fileHandle = reopened
+    }
+
+    /// Where this recording's accounted-for bytes end. Caller must be on `fileWriteQueue`.
+    ///
+    /// Refuses rather than clamping a counter below the header size. `stopRecording()`
+    /// resets `totalDataSize` from another queue, so a value that low means the counter no
+    /// longer describes this file — and clamping it to 44 would seek to the top and
+    /// overwrite real audio, which is exactly the corruption this path exists to avoid.
+    private func logicalEndOffset() throws -> UInt64 {
+        guard self.totalDataSize >= WAV_HEADER_SIZE else {
+            throw NSError(
+                domain: "AudioStreamManager",
+                code: 4,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Primary WAV byte count (\(self.totalDataSize)) is below the header size; "
+                    + "refusing to write"]
+            )
+        }
+        return UInt64(self.totalDataSize)
+    }
+
+    /// Appends one buffer to the primary WAV. Caller must be on `fileWriteQueue`.
+    private func appendToPrimary(_ data: Data) throws {
+        guard let handle = self.fileHandle else {
+            throw NSError(
+                domain: "AudioStreamManager",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Primary file handle is nil"]
+            )
+        }
+        let logicalEnd = try self.logicalEndOffset()
+
+        // Reconcile against what is physically there before every write, not only after a
+        // failure. Seeking past EOF succeeds and writes a zero-filled hole, so a file that
+        // shrank underneath a still-valid descriptor would silently gain silence; a file
+        // that is longer would keep bytes the header does not describe. This costs the same
+        // seekToEnd the original implementation already paid per buffer.
+        let physicalEnd = try handle.seekToEnd()
+        switch PrimaryWriteFailurePolicy.resume(physicalEnd: physicalEnd, logicalEnd: logicalEnd) {
+        case .truncateTo(let offset):
+            try handle.truncate(atOffset: offset)
+        case .refuse:
+            throw NSError(
+                domain: "AudioStreamManager",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Primary WAV is shorter than the bytes already recorded "
+                    + "(\(physicalEnd) < \(logicalEnd)); refusing to append"]
+            )
+        case .append:
+            break
+        }
+
+        try handle.seek(toOffset: logicalEnd)
+        try handle.write(contentsOf: data)
+        self.totalDataSize += Int64(data.count)
+        self.cachedWavFileSize = self.totalDataSize
+    }
+
+    /// Recovers from a failed append, or reports that the WAV has stopped.
+    ///
+    /// Caller must be on `fileWriteQueue`.
+    private func handlePrimaryWriteFailure(_ error: Error, retrying data: Data) {
+        // Once recovery has failed, stop trying. Every buffer would otherwise reopen a
+        // file that is not coming back — filesystem work dozens of times a second, and a
+        // longer barrier for stopRecording() to drain.
+        guard !self.primaryWriteFailureReported else { return }
+
+        Logger.debug(
+            "AudioStreamManager",
+            "Primary WAV append failed: \(error.localizedDescription). Reopening."
+        )
+        do {
+            try self.reopenPrimaryFileHandle()
+            try self.appendToPrimary(data)
+            Logger.debug("AudioStreamManager", "Primary WAV handle recovered mid-recording.")
+        } catch {
+            self.reportPrimaryWriteFailureOnce(error)
+        }
+    }
+
+    /// Reports that the primary WAV has stopped, at most once per recording.
+    ///
+    /// Caller must be on `fileWriteQueue`, which is what makes the once-only check safe.
+    private func reportPrimaryWriteFailureOnce(_ error: Error) {
+        self.fileHandle = nil
+
+        guard PrimaryWriteFailurePolicy.shouldReport(
+            alreadyReported: self.primaryWriteFailureReported
+        ) else { return }
+        self.primaryWriteFailureReported = true
+
+        Logger.debug(
+            "AudioStreamManager",
+            "Primary WAV output stopped: \(error.localizedDescription)"
+        )
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.delegate?.audioStreamManager(
+                self,
+                didFailWithError: "Primary WAV output stopped and could not be recovered: \(error.localizedDescription). Compressed output, if enabled, is unaffected."
+            )
         }
     }
 
@@ -1816,19 +1968,15 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             // Use the persistent fileHandle opened during preparation.
             // Serial queue so stopRecording() can barrier on outstanding appends.
             fileWriteQueue.async { [weak self] in
-                guard let self = self, let handle = self.fileHandle else {
-                    Logger.debug("BG Write Error: File handle is nil.")
-                    return
-                }
+                guard let self = self else { return }
+                // A failed append used to be logged and dropped. The compressed recorder
+                // kept running, so the M4A grew while the WAV silently stopped — and a
+                // caller using the WAV for crash recovery had no way to know it had gone
+                // stale (#420). Try to recover the handle, and if that fails, say so.
                 do {
-                    try handle.seekToEnd()
-                    try handle.write(contentsOf: dataToWrite)
-                    // Update total size state
-                    self.totalDataSize += Int64(dataToWrite.count)
-                    // Cache WAV file size for performance
-                    self.cachedWavFileSize = self.totalDataSize
+                    try self.appendToPrimary(dataToWrite)
                 } catch {
-                     Logger.debug("BG Write Error: Failed to seek/write: \(error.localizedDescription)")
+                    self.handlePrimaryWriteFailure(error, retrying: dataToWrite)
                 }
             }
         } else {
@@ -2255,12 +2403,109 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         // This is a bounded write (a seek plus WAV_HEADER_SIZE bytes at the head of
         // the file), not a re-encode. State teardown below stays asynchronous.
         var finalWavFileSize = capturedWavFileSize
+        var degradedPrimary: String?
+        var primaryUnusable = false
+        var alreadyReported = false
         fileWriteQueue.sync {
-            finalWavFileSize = self.cachedWavFileSize
-            let finalDataChunkSize = self.totalDataSize - Int64(WAV_HEADER_SIZE)
-            if finalDataChunkSize > 0 {
+            // The write path may already have reported a failure it could observe while
+            // running. One report per recording is the documented contract.
+            alreadyReported = self.primaryWriteFailureReported
+
+            // Reconcile the counters against the file. Once writes stop being accepted —
+            // an unrecoverable handle, or a file that shrank below what was counted (#420)
+            // — totalDataSize keeps the length the recording *would* have had, and sizing
+            // the header from it describes audio that is not there. The file can also be
+            // longer, when a write committed a prefix and neither recovery nor truncation
+            // cleaned it up; those bytes are not known to be whole frames.
+            let physicalSize = (
+                try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? NSNumber
+            )??.int64Value
+
+            let accountedSize = self.cachedWavFileSize
+            finalWavFileSize = PrimaryWriteFailurePolicy.finalSize(
+                physicalSize: physicalSize,
+                accountedSize: accountedSize
+            )
+
+            if physicalSize == nil {
+                degradedPrimary = "the primary WAV could not be measured at stop, "
+                    + "so its reported size may not match the file"
+            } else if let physicalSize = physicalSize, physicalSize != accountedSize {
+                degradedPrimary = "the primary WAV holds \(physicalSize) bytes but "
+                    + "\(accountedSize) were recorded"
+                Logger.debug(
+                    "AudioStreamManager",
+                    "Primary WAV mismatch: physical \(physicalSize), accounted \(accountedSize); "
+                    + "finalizing at \(finalWavFileSize)."
+                )
+            }
+
+            guard PrimaryWriteFailurePolicy.isUsableWav(finalSize: finalWavFileSize) else {
+                // Shorter than a header: nothing will open it. Leave the file alone and
+                // let the caller-facing check below refuse to return it as a recording.
+                primaryUnusable = true
+                degradedPrimary = "the primary WAV is \(finalWavFileSize) bytes, "
+                    + "too short to contain a header"
+                Logger.debug("AudioStreamManager", "Primary WAV unusable at \(finalWavFileSize) bytes.")
+                return
+            }
+
+            if let physicalSize = physicalSize, physicalSize > finalWavFileSize {
+                // Drop the unaccounted tail so the file matches the header written below.
+                // A failure here leaves the file longer than the header describes, which
+                // is the corruption this is preventing, so it is not swallowed.
+                do {
+                    let handle = try FileHandle(forWritingTo: fileURL)
+                    defer { try? handle.close() }
+                    try handle.truncate(atOffset: UInt64(finalWavFileSize))
+
+                    let remeasured = (
+                        try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? NSNumber
+                    )??.int64Value
+                    if remeasured != finalWavFileSize {
+                        throw NSError(
+                            domain: "AudioStreamManager",
+                            code: 5,
+                            userInfo: [NSLocalizedDescriptionKey:
+                                "Primary WAV is \(remeasured.map(String.init) ?? "unreadable") bytes "
+                                + "after truncating to \(finalWavFileSize)"]
+                        )
+                    }
+                } catch {
+                    primaryUnusable = true
+                    degradedPrimary = "the primary WAV could not be trimmed to the bytes that "
+                        + "were recorded: \(error.localizedDescription)"
+                    Logger.debug(
+                        "AudioStreamManager",
+                        "Failed to truncate primary WAV: \(error.localizedDescription)"
+                    )
+                    return
+                }
+            }
+
+            let finalDataChunkSize = finalWavFileSize - Int64(WAV_HEADER_SIZE)
+            if finalDataChunkSize >= 0 {
                 self.updateWavHeader(fileURL: fileURL, totalDataSize: finalDataChunkSize)
                 Logger.debug("WAV header finalized before return. Data chunk size: \(finalDataChunkSize)")
+            }
+        }
+
+
+        // A degradation only detectable at stop — a file that shrank, grew past what was
+        // counted, or cannot be measured — has not been reported yet: the write path
+        // reports what it observes while running, and these were not observable there.
+        // The returned size is truthful either way, but silence would read as a healthy
+        // recording, which is the failure #420 is about.
+        // Suppressed only when the write path already reported and the file is still
+        // usable — that is the same failure said twice. An unusable file is a different,
+        // worse fact than "writes stopped", so it is always reported.
+        if let degradedPrimary = degradedPrimary, !alreadyReported || primaryUnusable {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.delegate?.audioStreamManager(
+                    self,
+                    didFailWithError: "Primary WAV output degraded: \(degradedPrimary)."
+                )
             }
         }
 
@@ -2302,6 +2547,24 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         }
         
         stopping = false
+
+        // A primary WAV too short to hold a header, or one that could not be trimmed to
+        // the bytes recorded, is not a file a caller can use. Pointing the result at it
+        // would resolve stopRecording() with something nothing can open — the silent
+        // success this issue is about.
+        //
+        // Fail the stop rather than substituting the compressed sidecar. The top-level
+        // result fields are documented as the primary output, and callers derive paths
+        // from them: the playground writes metadata to
+        // `fileUri.replace(/\.wav$/, '.json')`, which against an `.m4a` URI is a no-op
+        // that overwrites the surviving audio with JSON. A resolved promise carrying a
+        // different file is worse than a rejected one. The compressed file stays on disk,
+        // and the delegate error names what failed.
+        if primaryUnusable {
+            Logger.debug("AudioStreamManager", "Refusing to return an unusable primary WAV.")
+            return nil
+        }
+
         return result
     }
 
