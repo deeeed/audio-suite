@@ -2,14 +2,10 @@ package net.siteed.sherpaonnx
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.facebook.react.ReactInstanceManager
 import com.facebook.react.ReactPackage
-import com.facebook.react.bridge.JavaScriptExecutor
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableMap
-import com.facebook.react.common.LifecycleState
-import com.facebook.react.shell.MainReactPackage
 import com.facebook.soloader.SoLoader
 import junit.framework.TestCase.*
 import net.siteed.sherpaonnx.utils.createPromise
@@ -18,6 +14,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import net.siteed.sherpaonnx.utils.createTestReactContext
 
 @RunWith(AndroidJUnit4::class)
 class SystemInfoTest {
@@ -37,23 +34,9 @@ class SystemInfoTest {
     fun setUp() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         
-        // Create a ReactInstanceManager for testing
-        val reactInstanceManager = ReactInstanceManager.builder()
-            .setApplication(context.applicationContext as android.app.Application)
-            .setBundleAssetName("index.android.bundle")
-            .setJSMainModulePath("index")
-            .addPackage(MainReactPackage())
-            .addPackage(object : ReactPackage {
-                override fun createNativeModules(reactContext: ReactApplicationContext) = listOf<com.facebook.react.bridge.NativeModule>()
-                override fun createViewManagers(reactContext: ReactApplicationContext) = listOf<com.facebook.react.uimanager.ViewManager<*, *>>()
-            })
-            .setUseDeveloperSupport(false)
-            .setInitialLifecycleState(LifecycleState.RESUMED)
-            .setJavaScriptExecutorFactory { JavaScriptExecutor { } }
-            .build()
         
         // Create ReactApplicationContext for testing
-        reactContext = ReactApplicationContext(context)
+        reactContext = createTestReactContext(context)
         
         // Initialize the SherpaOnnxImpl instance
         sherpaOnnxImpl = SherpaOnnxImpl(reactContext)

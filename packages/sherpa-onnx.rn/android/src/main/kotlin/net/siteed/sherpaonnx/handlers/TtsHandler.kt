@@ -19,13 +19,21 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
     
     private val executor = Executors.newSingleThreadExecutor()
     private var tts: OfflineTts? = null
-    private var isGenerating = false
+    // Read on the generation thread, written by stop()/release(). Volatile so the
+    // write is visible if either ever runs off the shared single-thread executor.
+    @Volatile private var isGenerating = false
     private var audioTrack: AudioTrack? = null
     private var ttsModelConfig: OfflineTtsModelConfig? = null
     private var currentSampleRate: Int = 22050 // Default to 22050 Hz (common for speech)
     
     companion object {
         private const val TAG = "SherpaOnnxTTS"
+
+        private fun prefillFrames(sampleRate: Int) = PrefillPolicy.prefillFrames(sampleRate)
+
+        /** True when startThresholdInFrames can be lowered on this device (API 31+). */
+        private fun canLowerThreshold() =
+            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
     }
     
     /**
@@ -298,9 +306,6 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                 currentSampleRate = tts!!.sampleRate()
                 Log.i(TAG, "Native model sample rate: $currentSampleRate Hz")
 
-                // Initialize audio track with the actual model sample rate
-                initAudioTrack(currentSampleRate)
-
                 // Return success result
                 val resultMap = Arguments.createMap()
                 resultMap.putBoolean("success", true)
@@ -434,8 +439,9 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                     // Release any existing audio track first
                     releaseAudioTrack()
                     
-                    // Create new audio track with the correct sample rate
-                    initAudioTrack(currentSampleRate)
+                    // Prefill the track before starting playback. Starting an empty stream
+                    // makes the first callback prone to an audible underrun.
+                    initAudioTrack(currentSampleRate, startPlayback = false)
                     
                     if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
                         Log.e(TAG, "Failed to initialize AudioTrack for playback!")
@@ -454,6 +460,13 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                     
                     var totalSamplesWritten = 0
                     var totalCalls = 0
+                    var playbackStarted = false
+                    // Frames buffered into the CURRENT AudioTrack. Distinct from
+                    // totalSamplesWritten, which is cumulative across the utterance: when a
+                    // track is replaced mid-generation the new one starts empty, so a
+                    // cumulative count would claim the prefill target was already met and
+                    // start a track holding far less than that.
+                    var framesInCurrentTrack = 0
                     
                     // Use explicit Function1 object instead of a lambda to prevent D8 from
                     // desugaring it into ExternalSyntheticLambda, which breaks the JNI lookup
@@ -468,12 +481,19 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                         totalCalls++
                         
                         // Check if AudioTrack is still valid and re-create if necessary
-                        if (audioTrack?.state != AudioTrack.STATE_INITIALIZED || 
-                            audioTrack?.playState == AudioTrack.PLAYSTATE_STOPPED) {
-                            Log.e(TAG, "AudioTrack invalid or stopped during playback, reinitializing...")
+                        if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
+                            Log.e(TAG, "AudioTrack invalid during playback, reinitializing...")
                             try {
                                 releaseAudioTrack()
-                                initAudioTrack(currentSampleRate)
+                                // A replacement track is empty, so it must earn its own
+                                // prefill before starting. Carrying playbackStarted over
+                                // would start it immediately and let a remainder below the
+                                // threshold play as silence — or not at all.
+                                initAudioTrack(currentSampleRate, startPlayback = false)
+                                PrefillPolicy.onTrackReplaced().let {
+                                    framesInCurrentTrack = it.framesInCurrentTrack
+                                    playbackStarted = it.playbackStarted
+                                }
                                 // Add a small delay to let AudioTrack initialize
                                 Thread.sleep(50)
                             } catch (e: Exception) {
@@ -507,7 +527,11 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                                 if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
                                     Log.w(TAG, "AudioTrack disabled during chunk write, reinitializing...")
                                     releaseAudioTrack()
-                                    initAudioTrack(currentSampleRate)
+                                    initAudioTrack(currentSampleRate, startPlayback = false)
+                                    PrefillPolicy.onTrackReplaced().let {
+                                        framesInCurrentTrack = it.framesInCurrentTrack
+                                        playbackStarted = it.playbackStarted
+                                    }
                                     // If AudioTrack couldn't be reinitialized, continue to next chunk
                                     if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
                                         offset += currentChunkSize
@@ -518,7 +542,23 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                                 val written = audioTrack?.write(shortSamples, offset, currentChunkSize, AudioTrack.WRITE_BLOCKING) ?: 0
                                 if (written > 0) {
                                     totalSamplesWritten += written
+                                    framesInCurrentTrack += written
                                     offset += written
+                                    if (PrefillPolicy.shouldStart(
+                                            playbackStarted,
+                                            framesInCurrentTrack,
+                                            currentSampleRate,
+                                            canLowerThreshold(),
+                                            audioTrack?.bufferSizeInFrames ?: 0
+                                        )
+                                    ) {
+                                        audioTrack?.play()
+                                        playbackStarted = true
+                                        // Head is expected to still be 0 here — output advances
+                                        // asynchronously. The value logged at generation end is
+                                        // the one that shows whether playback actually ran.
+                                        Log.d(TAG, "AudioTrack play() called after prefill: $framesInCurrentTrack frames buffered in current track")
+                                    }
                                 } else {
                                     // If write fails, skip this chunk and try the next one
                                     Log.w(TAG, "Failed to write chunk: error code $written")
@@ -539,7 +579,52 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                         } // end invoke
                     }) // end object / generateWithCallback
 
-                    Log.d(TAG, "Completed callback generation. Total samples: $totalSamplesWritten in $totalCalls callback calls")
+                    // Short utterances can finish before reaching the prefill threshold.
+                    //
+                    // The isGenerating check is defensive. stop() and release() clear the
+                    // flag, but both run on the same single-thread executor as this
+                    // generation, so today they queue behind it and cannot flip it here.
+                    // If any of them ever moves off that executor, an unguarded start
+                    // would play the buffered samples after the caller asked to stop,
+                    // because stop() only pauses a track already in PLAYSTATE_PLAYING and
+                    // a prefilling track is still STOPPED.
+                    if (isGenerating && !playbackStarted && framesInCurrentTrack > 0) {
+                        // The utterance ended below the prefill target, so the start
+                        // threshold will never be reached on its own. On API 31+ lower it
+                        // to what is actually buffered. Below API 31 the threshold is fixed
+                        // at the buffer size, so pad with silence up to that size instead —
+                        // otherwise play() waits on samples that never arrive and the
+                        // utterance is silently dropped.
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                            try {
+                                audioTrack?.startThresholdInFrames = framesInCurrentTrack
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Could not lower start threshold for short utterance: ${e.message}")
+                            }
+                        } else {
+                            val deficit = PrefillPolicy.tailPaddingFrames(
+                                framesInCurrentTrack,
+                                canLowerThreshold(),
+                                audioTrack?.bufferSizeInFrames ?: 0
+                            )
+                            if (deficit > 0) {
+                                val silence = ShortArray(minOf(deficit, currentSampleRate))
+                                var padded = 0
+                                while (padded < deficit) {
+                                    val n = minOf(silence.size, deficit - padded)
+                                    val w = audioTrack?.write(silence, 0, n, AudioTrack.WRITE_BLOCKING) ?: 0
+                                    if (w <= 0) break
+                                    padded += w
+                                }
+                                Log.d(TAG, "Padded short utterance with $padded silent frames to reach the pre-S start threshold")
+                            }
+                        }
+                        audioTrack?.play()
+                        playbackStarted = true
+                        Log.d(TAG, "AudioTrack playback started after short utterance prefill: $framesInCurrentTrack samples")
+                    }
+
+                    Log.d(TAG, "Completed callback generation. Total samples: $totalSamplesWritten in $totalCalls callback calls, head=${audioTrack?.playbackHeadPosition}, playState=${audioTrack?.playState}")
                 } else {
                     // Generate without playback
                     Log.d(TAG, "Using generate method without callback")
@@ -605,11 +690,16 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
      */
     private fun releaseAudioTrack() {
         try {
-            if (audioTrack?.state == AudioTrack.STATE_INITIALIZED) {
-                if (audioTrack?.playState == AudioTrack.PLAYSTATE_PLAYING) {
-                    audioTrack?.stop()
+            // Release whenever the track is non-null, not only when it reached
+            // STATE_INITIALIZED. A track whose build() succeeded but whose init
+            // failed still owns a native track; gating release on STATE_INITIALIZED
+            // dropped the reference without freeing it, and the reinit-on-failure
+            // paths leak once per retry.
+            audioTrack?.let { track ->
+                if (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                    track.stop()
                 }
-                audioTrack?.release()
+                track.release()
             }
             audioTrack = null
             Log.d(TAG, "AudioTrack released")
@@ -621,15 +711,17 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
     /**
      * Initialize audio track for playback
      */
-    private fun initAudioTrack(sampleRate: Int) {
+    private fun initAudioTrack(sampleRate: Int, startPlayback: Boolean = true) {
         try {
-            // Release any existing AudioTrack first to prevent resource conflicts
+            // Release any existing AudioTrack first to prevent resource conflicts.
+            // Same unconditional release as releaseAudioTrack(): an uninitialized
+            // track still owns native resources.
             try {
-                if (audioTrack?.state == AudioTrack.STATE_INITIALIZED) {
-                    if (audioTrack?.playState == AudioTrack.PLAYSTATE_PLAYING) {
-                        audioTrack?.stop()
+                audioTrack?.let { track ->
+                    if (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                        track.stop()
                     }
-                    audioTrack?.release()
+                    track.release()
                 }
                 audioTrack = null
                 Log.d(TAG, "AudioTrack released")
@@ -669,9 +761,28 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
 
+            // A MODE_STREAM track does not begin output when play() is called — it waits
+            // until the buffer holds startThresholdInFrames, which defaults to the full
+            // buffer capacity. With a 16x buffer that is well over a second, so prefilling
+            // 200ms and calling play() would still stall, and utterances shorter than the
+            // buffer would never start at all. Align the threshold with the prefill target.
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                try {
+                    audioTrack?.startThresholdInFrames = prefillFrames(sherpaModelSampleRate)
+                    Log.d(TAG, "AudioTrack start threshold set to ${prefillFrames(sherpaModelSampleRate)} frames")
+                } catch (e: Exception) {
+                    // Non-fatal: the track still plays, just with the default threshold.
+                    Log.w(TAG, "Could not set AudioTrack start threshold: ${e.message}")
+                }
+            }
+
             // Check if the AudioTrack was created successfully
             if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
                 Log.e(TAG, "Failed to initialize AudioTrack - not in initialized state")
+                // build() succeeded, so this track owns native resources even though init
+                // failed. Free them now rather than leaving it parked in the field until
+                // some later generate() or release() happens to clear it.
+                releaseAudioTrack()
                 return
             }
 
@@ -693,9 +804,12 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                     Log.e(TAG, "Error checking audio focus: ${e.message}")
                 }
                 
-                // Start playback
-                play()
-                Log.d(TAG, "AudioTrack created and started. State: ${if (state == AudioTrack.STATE_INITIALIZED) "INITIALIZED" else "NOT INITIALIZED"}")
+                if (startPlayback) {
+                    play()
+                    Log.d(TAG, "AudioTrack created and started. State: ${if (state == AudioTrack.STATE_INITIALIZED) "INITIALIZED" else "NOT INITIALIZED"}")
+                } else {
+                    Log.d(TAG, "AudioTrack created and waiting for prefill")
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize AudioTrack: ${e.message}")

@@ -19,6 +19,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.system.measureTimeMillis
 import net.siteed.sherpaonnx.handlers.ArchiveHandler
+import net.siteed.sherpaonnx.utils.createTestReactContext
 
 @RunWith(AndroidJUnit4::class)
 class RealTtsFunctionalityTest {
@@ -37,7 +38,7 @@ class RealTtsFunctionalityTest {
         
         private const val TEST_TEXT_SHORT = "Hello, this is a test."
         private const val TEST_TEXT_MEDIUM = "The quick brown fox jumps over the lazy dog. This sentence contains every letter of the alphabet."
-        private const val TEST_TEXT_LONG = """
+        private val TEST_TEXT_LONG = """
             Sherpa ONNX is a powerful library for speech synthesis and recognition. 
             It supports multiple models and provides high-quality audio output. 
             This test validates the text-to-speech functionality using a lightweight model.
@@ -47,7 +48,7 @@ class RealTtsFunctionalityTest {
     @Before
     fun setUp() {
         context = InstrumentationRegistry.getInstrumentation().targetContext
-        reactContext = ReactApplicationContext(context)
+        reactContext = createTestReactContext(context)
         sherpaOnnxImpl = SherpaOnnxImpl(reactContext)
         
         // Download and extract the lightweight TTS model
