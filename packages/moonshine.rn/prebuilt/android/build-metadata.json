@@ -6,5 +6,5 @@
   "onnxRuntimeIncludeDirOverride": "",
   "arm64ImportedOrtSymbolVersion": "stripped",
   "arm64PackagedOrtSymbolVersion": "1.23.0",
-  "aarSha256": "c68e66ec2cb69dd8967c7c05a3452f59579254930d234ab609bbff52b2b88711"
+  "aarSha256": "3e2bcecce90371e6428308415f5a5b380129e342ed898f8912888ad9d866fa6c"
 }
