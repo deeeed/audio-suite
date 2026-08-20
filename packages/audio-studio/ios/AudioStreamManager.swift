@@ -33,11 +33,6 @@ extension UInt16 {
 }
 
 // Define DeviceDisconnectionBehavior enum mirroring AudioStudio.types.ts
-enum DeviceDisconnectionBehavior: String {
-    case PAUSE = "pause"
-    case FALLBACK = "fallback"
-}
-
 class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
     private let audioEngine = AVAudioEngine()
     private var inputNode: AVAudioInputNode {
