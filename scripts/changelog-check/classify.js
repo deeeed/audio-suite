@@ -23,8 +23,11 @@ const IGNORED = [
   /^packages\/[^/]+\/CHANGELOG\.md$/,
   /^packages\/[^/]+\/README\.md$/,
   // Test suites — JS/TS and native.
-  /^packages\/[^/]+\/.*__(tests|fixtures|mocks)__\//,
-  /^packages\/[^/]+\/.*\.(test|spec)\.[jt]sx?$/,
+  /^packages\/[^/]+\/(?!src\/).*__(tests|fixtures|mocks)__\//,
+  // Not under src/: packages ship src/ (audio-studio, audio-ui, moonshine.rn,
+  // react-native-essentia, sherpa-onnx.rn all list it in `files`), so a packed
+  // src/foo.test.ts is consumer-visible.
+  /^packages\/[^/]+\/(?!src\/).*\.(test|spec)\.[jt]sx?$/,
   /^packages\/[^/]+\/android\/src\/(test|androidTest)\//,
   /^packages\/[^/]+\/ios\/[^/]*[Tt]ests?\//,
   /^packages\/[^/]+\/ios\/tests\//,
@@ -49,9 +52,11 @@ const IGNORED = [
   /^packages\/[^/]+\/assets\/Roboto\//,
   // Lint/editor config. NOT build config.
   /^packages\/[^/]+\/(.*\/)?\.(eslintrc|eslintignore|prettierrc|prettierignore|editorconfig|babelrc)/,
-  /^packages\/[^/]+\/(.*\/)?(jest|babel|metro)\.config\./,
-  /^packages\/[^/]+\/(.*\/)?tsconfig\.(eslint|test|spec)\.json$/,
-  /^packages\/[^/]+\/(.*\/)?tsconfig\.tsbuildinfo$/,
+  // Package root only. A `(.*\/)?` prefix also exempted packed source such as
+  // src/jest.config.ts, which npm pack includes.
+  /^packages\/[^/]+\/(jest|babel|metro)\.config\.[^/]+$/,
+  /^packages\/[^/]+\/([^/]+\/)?tsconfig\.(eslint|test|spec)\.json$/,
+  /^packages\/[^/]+\/([^/]+\/)?tsconfig\.tsbuildinfo$/,
   // Contributor-facing docs at the package root that are not packed.
   /^packages\/[^/]+\/(ARCHITECTURE|CONTRIBUTE|CONTRIBUTING|PLAN|MIGRATION|TESTING)[^/]*\.md$/,
   /^packages\/audio-ui\/src\/INSTALL\.md$/,

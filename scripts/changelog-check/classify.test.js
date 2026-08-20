@@ -113,6 +113,13 @@ const cases = [
   ['FALSE-FAILURE: src INSTALL doc', { changed: ['packages/audio-ui/src/INSTALL.md'] }, []],
   ['package.json changes are enforced', { changed: ['packages/audio-studio/package.json'] }, ['audio-studio']],
 
+  // --- packed src/ lookalikes must NOT be exempted by name-shaped rules ---
+  ['BYPASS: src/jest.config.ts is packed, so enforced', { changed: ['packages/audio-studio/src/jest.config.ts'] }, ['audio-studio']],
+  ['BYPASS: src/foo.test.ts is packed, so enforced', { changed: ['packages/audio-studio/src/foo.test.ts'] }, ['audio-studio']],
+  ['BYPASS: src/__tests__ is packed, so enforced', { changed: ['packages/audio-studio/src/__tests__/a.ts'] }, ['audio-studio']],
+  ['root jest.config.js is still ignored', { changed: ['packages/audio-studio/jest.config.js'] }, []],
+  ['native tests are still ignored', { changed: ['packages/audio-studio/android/src/test/java/X.kt'] }, []],
+
   // --- docs asymmetry: only sherpa ships docs/ ---
   ['sherpa docs are shipped, so enforced', { changed: ['packages/sherpa-onnx.rn/docs/API.md'] }, ['sherpa-onnx.rn']],
   ['audio-studio docs are not shipped', { changed: ['packages/audio-studio/docs/TESTING.md'] }, []],

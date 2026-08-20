@@ -69,11 +69,22 @@ const check = (label, ok, detail) => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${ok ? '' : `  -> ${detail}`}`)
 }
 
-// Nothing test-like, storybook-like, or vendored may require a changelog.
-const testLike = enforced.filter((f) =>
-  /androidTest\/|\/src\/test\/|Tests?\/|__tests__|\.(test|spec)\.[jt]sx?$|\.stories\.|\.storybook\/|test_models\/|test-assets\//.test(f)
+// Test paths that are NOT packed must never require a changelog. Tests under src/ are
+// excluded from this rule deliberately: `npm pack` on audio-studio ships 15 compiled test
+// files under build/cjs/, so a src/*.test.ts change is consumer-visible and is enforced.
+const testLike = enforced.filter(
+  (f) =>
+    !/^packages\/[^/]+\/src\//.test(f) &&
+    /androidTest\/|\/src\/test\/|Tests?\/|__tests__|\.(test|spec)\.[jt]sx?$|\.stories\.|\.storybook\/|test_models\/|test-assets\//.test(f)
 )
-check('no test/storybook path is enforced', testLike.length === 0, testLike.slice(0, 5).join(' '))
+check('no unpacked test/storybook path is enforced', testLike.length === 0, testLike.slice(0, 5).join(' '))
+
+// And the converse: a packed test source must be enforced, or the name-shaped rules have
+// crept back over shipped code.
+const packedTest = 'packages/audio-studio/src/errors/AudioStreamError.test.ts'
+if (tracked.includes(packedTest)) {
+  check(`enforced (packed test source): ${packedTest}`, enforces(packedTest), 'wrongly ignored')
+}
 
 // Named exceptions from review rounds two and three.
 const mustBeIgnored = [
@@ -83,6 +94,12 @@ const mustBeIgnored = [
   'packages/audio-studio/.size-limit.json',
   'packages/audio-ui/.storybook/main.ts',
   'packages/audio-studio/docs/TESTING_STRATEGY.md',
+  // The four exact exemptions added in review round four. Listed here so deleting or
+  // renaming any of them fails this test instead of leaving a stale rule behind.
+  'packages/audio-studio/scripts/run_tests.sh',
+  'packages/audio-studio/scripts/README.md',
+  'packages/moonshine.rn/scripts/test-ios-artifacts-script.mjs',
+  'packages/audio-ui/src/INSTALL.md',
 ]
 for (const f of mustBeIgnored) {
   // Require the fixture to exist. Skipping absent paths let a renamed or deleted file turn

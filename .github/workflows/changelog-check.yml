@@ -84,10 +84,25 @@ jobs:
                 return null
               }
             }
+            // Text under the "## [Unreleased]" heading, up to the next "## " heading.
+            const unreleasedSection = (ref, path) => {
+              let text
+              try {
+                text = git('show', `${ref}:${path}`)
+              } catch {
+                return ''
+              }
+              const m = text.match(/^##\s*\[Unreleased\][^\n]*\n([\s\S]*?)(?=^##\s|\Z)/m)
+              return m ? m[1] : ''
+            }
+            // Non-whitespace content, so reflowing or blank lines do not read as an entry.
+            const substantive = (section) => section.replace(/\s+/g, '')
+
             // A path in the diff only proves it was touched — a deletion counts too, and a
             // symlink is also a blob (mode 120000), so `cat-file -t` alone is not enough.
-            // Require a regular file whose content actually changed: a chmod leaves the blob
-            // id untouched, which would otherwise pass as an update.
+            // Require a regular file whose Unreleased section actually gained content: a
+            // chmod, a whitespace edit, or a change to an old release section would
+            // otherwise pass as "documented", which is not what the check promises.
             const changelogUpdatedAtHead = (path) => {
               let mode
               let headOid
@@ -111,8 +126,14 @@ jobs:
               } catch {
                 baseOid = null
               }
-              // New file counts as updated; otherwise content must differ.
-              return baseOid === null || baseOid !== headOid
+              // Unchanged blob: a chmod-only change.
+              if (baseOid !== null && baseOid === headOid) return false
+
+              // Require the Unreleased section to have gained substantive content. A new
+              // changelog with a populated Unreleased section also satisfies this.
+              const before = substantive(baseOid === null ? '' : unreleasedSection(mergeBase, path))
+              const after = substantive(unreleasedSection(head, path))
+              return after.length > before.length
             }
 
             const missing = findMissing({
