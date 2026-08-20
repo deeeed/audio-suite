@@ -739,10 +739,10 @@ public class AudioProcessor {
             Logger.debug("AudioProcessor", "Unsupported format '\(requestedFormat)', falling back to 'aac'")
         }
 
-        let targetSampleRate = outputFormat.flatMap { bridgedDouble($0, "sampleRate") } ?? inputSampleRate
-        let targetChannels = outputFormat.flatMap { bridgedInt($0, "channels") } ?? inputChannels
-        let targetBitDepth = outputFormat.flatMap { bridgedInt($0, "bitDepth") } ?? 16
-        let bitrate = outputFormat.flatMap { bridgedInt($0, "bitrate") } ?? 128000
+        let targetSampleRate = outputFormat.flatMap { bridgedDouble($0, "sampleRate", in: 1...768_000) } ?? inputSampleRate
+        let targetChannels = outputFormat.flatMap { bridgedInt($0, "channels", in: 1...2) } ?? inputChannels
+        let targetBitDepth = outputFormat.flatMap { bridgedInt($0, "bitDepth", in: 8...32) } ?? 16
+        let bitrate = outputFormat.flatMap { bridgedInt($0, "bitrate", in: 1...3_000_000) } ?? 128000
 
         let fileExtension = formatStr == "wav" ? "wav" : "aac"
         let outputURL = FileManager.default.temporaryDirectory

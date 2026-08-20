@@ -130,4 +130,57 @@ final class BridgedNumericOptionsTests: XCTestCase {
         }
         XCTAssertEqual(settings.output.compressed.bitrate, 96000)
     }
+
+    // MARK: - Range guards (regression from the #423 bridging fix)
+
+    func testNegativeChannelsFallsBackToDefault() {
+        // Before bridging was fixed, `channels: -1` failed the `as? Int` cast and
+        // silently defaulted to 1. Once the value parsed, it reached
+        // `UInt32(numberOfChannels)` in createWavHeader, which TRAPS on a negative
+        // value. The range guard restores the safe fallback deliberately.
+        guard case .success(let settings) = RecordingSettings.fromDictionary(["channels": Double(-1)]) else {
+            return XCTFail("fromDictionary rejected the payload")
+        }
+        XCTAssertEqual(settings.numberOfChannels, 1, "negative channels must not reach UInt32()")
+    }
+
+    func testOutOfRangeNumericOptionsFallBackToDefaults() {
+        let dict: [String: Any] = [
+            "channels": Double(99),
+            "bitDepth": Double(-8),
+            "sampleRate": Double(-1),
+            "segmentDurationMs": Double(0),
+        ]
+        guard case .success(let settings) = RecordingSettings.fromDictionary(dict) else {
+            return XCTFail("fromDictionary rejected the payload")
+        }
+        XCTAssertEqual(settings.numberOfChannels, 1)
+        XCTAssertEqual(settings.bitDepth, 16)
+        XCTAssertEqual(settings.sampleRate, 44100.0)
+        XCTAssertEqual(settings.segmentDurationMs, 100)
+    }
+
+    func testNonFiniteValuesAreRejected() {
+        // NSNumber.doubleValue happily returns NaN/inf, and UInt32(Double.nan) traps.
+        XCTAssertNil(bridgedDouble(["v": Double.nan], "v", in: 1...100))
+        XCTAssertNil(bridgedDouble(["v": Double.infinity], "v", in: 1...100))
+
+        guard case .success(let settings) = RecordingSettings.fromDictionary(["sampleRate": Double.nan]) else {
+            return XCTFail("fromDictionary rejected the payload")
+        }
+        XCTAssertEqual(settings.sampleRate, 44100.0, "NaN sampleRate must fall back")
+    }
+
+    func testInRangeValuesStillParse() {
+        // The guards must not reject legitimate input.
+        XCTAssertEqual(bridgedInt(["v": Double(2)], "v", in: 1...2), 2)
+        XCTAssertEqual(bridgedDouble(["v": Double(48000)], "v", in: 1...768_000), 48000.0)
+    }
+
+    func testNegativeMaxDurationIsIgnored() {
+        guard case .success(let settings) = RecordingSettings.fromDictionary(["maxDurationMs": Double(-5000)]) else {
+            return XCTFail("fromDictionary rejected the payload")
+        }
+        XCTAssertEqual(settings.maxDurationMs, 0, "negative maxDurationMs must not be applied")
+    }
 }

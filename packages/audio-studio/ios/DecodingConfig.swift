@@ -31,9 +31,9 @@ public struct DecodingConfig {
         }
         
         return DecodingConfig(
-            targetSampleRate: bridgedDouble(dict, "targetSampleRate"),
-            targetChannels: bridgedInt(dict, "targetChannels"),
-            targetBitDepth: bridgedInt(dict, "targetBitDepth"),
+            targetSampleRate: bridgedDouble(dict, "targetSampleRate", in: 1...768_000),
+            targetChannels: bridgedInt(dict, "targetChannels", in: 1...2),
+            targetBitDepth: bridgedInt(dict, "targetBitDepth", in: 8...32),
             normalizeAudio: dict["normalizeAudio"] as? Bool ?? false
         )
     }
