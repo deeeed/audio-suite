@@ -58,14 +58,20 @@ final class ConverterCapabilityTests: XCTestCase {
         XCTAssertEqual(scaled, 1.0, accuracy: 0.01, "sizing by the ratio preserves duration")
     }
 
-    func testADownsampleMustNotReconsumeItsInput() throws {
-        // Returning the same buffer with .haveData forever made the converter read it
-        // repeatedly, so a downsample emitted more audio than it was given.
-        let reconsumed = try convertOneSecond(to: 22_050, scaleOutputBuffer: false, singleShot: false)
-        XCTAssertEqual(reconsumed, 2.0, accuracy: 0.01, "re-consumption doubles the audio")
+    func testADownsampleOverfillsAnOversizedBuffer() throws {
+        // Measured, and not what it first looks like: a source-sized buffer is *larger*
+        // than a downsampled second needs, and the converter keeps pulling input to fill
+        // it, so one second came back as two. Holding capacity at the correct size fixes
+        // this on its own — the repeated-input callback does not cause it.
+        let oversized = try convertOneSecond(to: 22_050, scaleOutputBuffer: false, singleShot: false)
+        XCTAssertEqual(oversized, 2.0, accuracy: 0.01, "an oversized buffer gets overfilled")
 
-        let once = try convertOneSecond(to: 22_050, scaleOutputBuffer: true, singleShot: true)
-        XCTAssertEqual(once, 1.0, accuracy: 0.01, "supplying the input once preserves duration")
+        // Capacity held constant, callback varied: both give one second, which is why the
+        // sizing is the fix and the single-shot callback is belt and braces.
+        let sizedRepeating = try convertOneSecond(to: 22_050, scaleOutputBuffer: true, singleShot: false)
+        XCTAssertEqual(sizedRepeating, 1.0, accuracy: 0.01)
+        let sizedOnce = try convertOneSecond(to: 22_050, scaleOutputBuffer: true, singleShot: true)
+        XCTAssertEqual(sizedOnce, 1.0, accuracy: 0.01)
     }
 
     func testAnExtremeUpsamplePreservesDuration() throws {

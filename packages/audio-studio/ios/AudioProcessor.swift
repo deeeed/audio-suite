@@ -881,6 +881,19 @@ public class AudioProcessor {
                         AVLinearPCMIsBigEndianKey: false
                     ])
 
+                    // Convert to what the writer resolved, not what was asked for. A WAV
+                    // writer clamps a rate it will not serve — 384kHz becomes 192kHz — so
+                    // converting to the request and writing into the clamped file produced
+                    // twice the audio (#433).
+                    let writerFormat = outputFile.processingFormat
+                    if writerFormat.sampleRate != targetFormat.sampleRate {
+                        Logger.debug(
+                            "AudioProcessor",
+                            "Writer resolved \(targetFormat.sampleRate)Hz to "
+                            + "\(writerFormat.sampleRate)Hz; converting to that instead"
+                        )
+                    }
+
                     for range in keepRanges {
                         // Break down complex expressions
                         let startTimeInSeconds = range[0] / 1000
@@ -907,7 +920,7 @@ public class AudioProcessor {
                         // from a 44.1kHz source while 2MHz succeeds, and the answer differs
                         // between OS versions — so no static range can stand in for asking
                         // (#433).
-                        guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+                        guard let converter = AVAudioConverter(from: inputFormat, to: writerFormat) else {
                             Logger.debug(
                                 "AudioProcessor",
                                 "Cannot convert \(inputFormat.sampleRate)Hz to \(targetFormat.sampleRate)Hz"
@@ -916,20 +929,37 @@ public class AudioProcessor {
                                 domain: "AudioProcessor",
                                 code: -1,
                                 userInfo: [NSLocalizedDescriptionKey:
-                                    "Cannot convert to \(targetFormat.sampleRate)Hz "
+                                    "Cannot convert to \(writerFormat.sampleRate)Hz "
                                     + "from this file's \(inputFormat.sampleRate)Hz"]
                             )
+                        }
+                        // Mix the channels rather than taking the first. The default
+                        // discards the others, so right-only stereo material came back as
+                        // silence once a channel-only request started routing through here.
+                        if writerFormat.channelCount < inputFormat.channelCount {
+                            converter.downmix = true
                         }
                         // Size the output by the rate ratio. A source-sized buffer truncated
                         // every upsample — one second at 44.1kHz came back as 0.5s at 88.2kHz
                         // and 0.23s at 384kHz — because the converter can only write what
                         // the buffer holds (#433).
-                        let ratio = targetFormat.sampleRate / inputFormat.sampleRate
+                        let ratio = writerFormat.sampleRate / inputFormat.sampleRate
                         let scaled = (Double(frameCount) * ratio).rounded(.up)
-                        let outputFrameCapacity = AVAudioFrameCount(
-                            min(max(scaled, 1), Double(AVAudioFrameCount.max))
-                        )
-                        guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outputFrameCapacity) else {
+                        // Throw rather than clamp: a capacity above the maximum means the
+                        // request cannot be served, and clamping would silently truncate
+                        // exactly the way this sizing exists to prevent.
+                        guard scaled <= Double(AVAudioFrameCount.max) else {
+                            throw NSError(
+                                domain: "AudioProcessor",
+                                code: -1,
+                                userInfo: [NSLocalizedDescriptionKey:
+                                    "Converting \(frameCount) frames to "
+                                    + "\(writerFormat.sampleRate)Hz needs \(scaled) frames, "
+                                    + "more than one buffer can hold"]
+                            )
+                        }
+                        let outputFrameCapacity = AVAudioFrameCount(max(scaled, 1))
+                        guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: writerFormat, frameCapacity: outputFrameCapacity) else {
                             throw NSError(
                                 domain: "AudioProcessor",
                                 code: -1,
@@ -1020,6 +1050,10 @@ public class AudioProcessor {
                 }
             }
         } catch {
+            // Remove the partial output. Failing now throws where it used to skip a range
+            // and return, so a half-written temporary file would otherwise be left behind
+            // on every failure.
+            try? FileManager.default.removeItem(at: outputURL)
             reject("TRIM_ERROR", "Failed to trim audio: \(error.localizedDescription)")
             return nil
         }
