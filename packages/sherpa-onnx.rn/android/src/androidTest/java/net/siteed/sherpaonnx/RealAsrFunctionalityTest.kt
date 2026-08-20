@@ -23,6 +23,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.math.sin
 import kotlin.random.Random
+import net.siteed.sherpaonnx.utils.createTestReactContext
 
 @RunWith(AndroidJUnit4::class)
 class RealAsrFunctionalityTest {
@@ -47,7 +48,7 @@ class RealAsrFunctionalityTest {
     @Before
     fun setUp() {
         context = InstrumentationRegistry.getInstrumentation().targetContext
-        reactContext = ReactApplicationContext(context)
+        reactContext = createTestReactContext(context)
         sherpaOnnxImpl = SherpaOnnxImpl(reactContext)
         
         // Download and extract the lightweight ASR model

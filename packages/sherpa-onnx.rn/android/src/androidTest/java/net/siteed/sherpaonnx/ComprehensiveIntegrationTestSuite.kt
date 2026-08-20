@@ -18,6 +18,7 @@ import java.io.FileWriter
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.system.measureTimeMillis
+import net.siteed.sherpaonnx.utils.createTestReactContext
 
 @RunWith(AndroidJUnit4::class)
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
@@ -36,7 +37,7 @@ class ComprehensiveIntegrationTestSuite {
             context = InstrumentationRegistry.getInstrumentation().targetContext
             SoLoader.init(context, false)
             
-            reactContext = ReactApplicationContext(context)
+            reactContext = createTestReactContext(context)
             sherpaOnnxImpl = SherpaOnnxImpl(reactContext)
             
             // Create comprehensive test report
@@ -225,42 +226,9 @@ class ComprehensiveIntegrationTestSuite {
         }
     }
 
-    @Test
-    fun test02_ArchitectureDetection() {
-        runTestWithTracking("architecture_detection") {
-            val archTest = ArchitectureSpecificTest()
-            archTest.setUp()
-            archTest.testArchitectureDetection()
-        }
-    }
 
-    @Test
-    fun test03_ArchitectureSpecificBehavior() {
-        runTestWithTracking("architecture_specific_behavior") {
-            val archTest = ArchitectureSpecificTest()
-            archTest.setUp()
-            archTest.testPromiseBasedAsyncCalls()
-            archTest.testThreadingBehavior()
-        }
-    }
 
-    @Test
-    fun test04_MemoryManagementAcrossArchitectures() {
-        runTestWithTracking("memory_management_architectures") {
-            val archTest = ArchitectureSpecificTest()
-            archTest.setUp()
-            archTest.testMemoryManagementAcrossArchitectures()
-        }
-    }
 
-    @Test
-    fun test05_PerformanceComparison() {
-        runTestWithTracking("performance_comparison") {
-            val archTest = ArchitectureSpecificTest()
-            archTest.setUp()
-            archTest.testPerformanceComparison()
-        }
-    }
 
     @Test
     fun test06_SystemInfoPerformanceProfile() {

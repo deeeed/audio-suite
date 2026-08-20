@@ -20,6 +20,7 @@ import java.util.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.system.measureTimeMillis
+import net.siteed.sherpaonnx.utils.createTestReactContext
 
 @RunWith(AndroidJUnit4::class)
 class MemoryAndPerformanceProfilerTest {
@@ -40,7 +41,7 @@ class MemoryAndPerformanceProfilerTest {
     @Before
     fun setUp() {
         context = InstrumentationRegistry.getInstrumentation().targetContext
-        reactContext = ReactApplicationContext(context)
+        reactContext = createTestReactContext(context)
         sherpaOnnxImpl = SherpaOnnxImpl(reactContext)
         
         // Create profile data file

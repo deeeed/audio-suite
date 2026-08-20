@@ -28,6 +28,11 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
     
     companion object {
         private const val TAG = "SherpaOnnxTTS"
+
+        /** Prefill target before starting playback, as a fraction of one second. */
+        private const val PREFILL_DIVISOR = 5 // 1/5s = 200ms
+
+        private fun prefillFrames(sampleRate: Int) = sampleRate / PREFILL_DIVISOR
     }
     
     /**
@@ -519,10 +524,13 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                                 if (written > 0) {
                                     totalSamplesWritten += written
                                     offset += written
-                                    if (!playbackStarted && totalSamplesWritten >= currentSampleRate / 5) {
+                                    if (!playbackStarted && totalSamplesWritten >= prefillFrames(currentSampleRate)) {
                                         audioTrack?.play()
                                         playbackStarted = true
-                                        Log.d(TAG, "AudioTrack playback started after prefill: $totalSamplesWritten samples")
+                                        // playbackHeadPosition is the only proof output actually
+                                        // advanced; play() returning says nothing about whether
+                                        // the start threshold was met.
+                                        Log.d(TAG, "AudioTrack playback started after prefill: $totalSamplesWritten samples, head=${audioTrack?.playbackHeadPosition}")
                                     }
                                 } else {
                                     // If write fails, skip this chunk and try the next one
@@ -554,12 +562,23 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                     // because stop() only pauses a track already in PLAYSTATE_PLAYING and
                     // a prefilling track is still STOPPED.
                     if (isGenerating && !playbackStarted && totalSamplesWritten > 0) {
+                        // The utterance ended below the prefill target, so the start
+                        // threshold set at build time will never be reached. Lower it to
+                        // what is actually buffered, otherwise play() leaves the track
+                        // waiting on samples that will never arrive and nothing is heard.
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                            try {
+                                audioTrack?.startThresholdInFrames = totalSamplesWritten
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Could not lower start threshold for short utterance: ${e.message}")
+                            }
+                        }
                         audioTrack?.play()
                         playbackStarted = true
                         Log.d(TAG, "AudioTrack playback started after short utterance prefill: $totalSamplesWritten samples")
                     }
 
-                    Log.d(TAG, "Completed callback generation. Total samples: $totalSamplesWritten in $totalCalls callback calls")
+                    Log.d(TAG, "Completed callback generation. Total samples: $totalSamplesWritten in $totalCalls callback calls, head=${audioTrack?.playbackHeadPosition}, playState=${audioTrack?.playState}")
                 } else {
                     // Generate without playback
                     Log.d(TAG, "Using generate method without callback")
@@ -696,9 +715,28 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
 
+            // A MODE_STREAM track does not begin output when play() is called — it waits
+            // until the buffer holds startThresholdInFrames, which defaults to the full
+            // buffer capacity. With a 16x buffer that is well over a second, so prefilling
+            // 200ms and calling play() would still stall, and utterances shorter than the
+            // buffer would never start at all. Align the threshold with the prefill target.
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                try {
+                    audioTrack?.startThresholdInFrames = prefillFrames(sherpaModelSampleRate)
+                    Log.d(TAG, "AudioTrack start threshold set to ${prefillFrames(sherpaModelSampleRate)} frames")
+                } catch (e: Exception) {
+                    // Non-fatal: the track still plays, just with the default threshold.
+                    Log.w(TAG, "Could not set AudioTrack start threshold: ${e.message}")
+                }
+            }
+
             // Check if the AudioTrack was created successfully
             if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
                 Log.e(TAG, "Failed to initialize AudioTrack - not in initialized state")
+                // build() succeeded, so this track owns native resources even though init
+                // failed. Free them now rather than leaving it parked in the field until
+                // some later generate() or release() happens to clear it.
+                releaseAudioTrack()
                 return
             }
 
