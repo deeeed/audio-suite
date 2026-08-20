@@ -35,6 +35,7 @@ let package = Package(
                 "BridgedNumericOptionsTests.swift",
                 "PrimaryWriteRecoveryTests.swift",
                 "BridgedNarrowingTests.swift",
+                "ConverterCapabilityTests.swift",
             ]
         ),
     ]

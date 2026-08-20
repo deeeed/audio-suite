@@ -66,16 +66,6 @@ final class BridgedNarrowingTests: XCTestCase {
         XCTAssertFalse(r.contains(384_000))
     }
 
-    func testTheConverterAcceptsMoreThanTheReader() {
-        // AVAudioConverter converts a real file to 384 kHz with frames produced, so
-        // applying the reader's bound to trim would downgrade a request the platform can
-        // serve. The two ranges are deliberately different.
-        XCTAssertTrue(BridgedNarrowing.converterSampleRates.contains(384_000))
-        XCTAssertFalse(BridgedNarrowing.readerSampleRates.contains(384_000))
-        // Both still reject what returns nil.
-        XCTAssertFalse(BridgedNarrowing.converterSampleRates.contains(1e12))
-    }
-
     // MARK: - Present, absent, or unusable
 
     func testAMissingRateIsAbsentRatherThanInvalid() {
@@ -123,12 +113,12 @@ final class BridgedNarrowingTests: XCTestCase {
             ),
             .valid(48_000)
         )
-        // The same value against the wider converter range.
+        // The same value against a wider range, to show the bound is a parameter.
         XCTAssertEqual(
             BridgedNarrowing.requestedRate(
                 rawValue: NSNumber(value: 384_000),
                 parsed: 384_000,
-                permitted: BridgedNarrowing.converterSampleRates
+                permitted: 1...768_000
             ),
             .valid(384_000)
         )

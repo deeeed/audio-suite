@@ -60,19 +60,12 @@ enum BridgedNarrowing {
     /// so nothing downstream can catch it and the process dies. Probed against a real asset
     /// (#433): 1, 7999, 192001 and 384000 all terminate; 8000 and 192000 construct fine.
     ///
-    /// Deliberately narrower than what a converter accepts. 384 kHz is a real hardware rate
-    /// and converts without complaint, so applying this bound to the trim path would
-    /// silently downgrade a request the platform can actually serve.
+    /// This is the only rate range stated as a constant, and only because the reader's
+    /// failure is unrecoverable. Everywhere else — trimming, for one — the conversion is
+    /// attempted and the nil result handled, because support depends on the source/target
+    /// pair and on the OS: 1Hz gives a nil converter from a 44.1kHz source while 2MHz
+    /// succeeds. A static range there would reject what works and admit what does not.
     static let readerSampleRates: ClosedRange<Double> = 8_000...192_000
-
-    /// Sample rates `AVAudioConverter` can be constructed for, used by trim and decode.
-    ///
-    /// The converter returns nil rather than throwing, and that nil was force-unwrapped
-    /// (#433). It is far more permissive than the reader: 384 kHz succeeds with frames
-    /// produced, while 1e12 returns nil. The ceiling here is a sanity bound on what a
-    /// caller can mean, not a transcription of a platform limit — hence 4x the highest
-    /// consumer rate rather than something tighter.
-    static let converterSampleRates: ClosedRange<Double> = 1...768_000
 
     /// What a caller asked for, distinguishing "nothing" from "something unusable".
     enum RequestedRate: Equatable {

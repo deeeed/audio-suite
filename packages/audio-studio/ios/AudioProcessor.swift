@@ -761,24 +761,22 @@ public class AudioProcessor {
             Logger.debug("AudioProcessor", "Unsupported format '\(requestedFormat)', falling back to 'aac'")
         }
 
-        // An unusable rate falls back to the input rate rather than reaching
-        // AVAudioConverter, which returns nil for extreme values and was force-unwrapped
-        // downstream (#433). Trim uses the converter's range, which is far wider than the
-        // streaming reader's — 384 kHz converts fine, so bounding it at the reader's limit
-        // would silently downgrade a request the platform can serve.
-        let requestedOutputRate = BridgedNarrowing.requestedRate(
-            rawValue: outputFormat?["sampleRate"],
-            parsed: outputFormat.flatMap { bridgedFiniteDouble($0, "sampleRate") },
-            permitted: BridgedNarrowing.converterSampleRates
-        )
-        if requestedOutputRate == .invalid {
+        // No invented ceiling here. Whether a rate is usable depends on the source/target
+        // pair and on the OS — 1Hz returns a nil converter from a 44.1kHz source while 2MHz
+        // succeeds — so a static range would reject what works and admit what does not.
+        // Representability is already guaranteed by bridgedFiniteDouble, the positivity
+        // check below is this code's own — AVAudioFormat will happily describe 0Hz and
+        // negative rates, so it is not the gate it looks like — and the converter answers
+        // the rest at the point of use (#433).
+        let requestedOutputRate = outputFormat.flatMap { bridgedFiniteDouble($0, "sampleRate") }
+        if let requested = requestedOutputRate, requested <= 0 {
             Logger.debug(
                 "AudioProcessor",
-                "Ignoring unsupported output sampleRate; using the input rate"
+                "Ignoring non-positive output sampleRate \(requested); using the input rate"
             )
         }
         let targetSampleRate: Double = {
-            if case .valid(let rate) = requestedOutputRate { return rate }
+            if let requested = requestedOutputRate, requested > 0 { return requested }
             return inputSampleRate
         }()
         let targetChannels = outputFormat.flatMap { bridgedInt($0, "channels", in: 1...2) } ?? inputChannels
@@ -877,11 +875,34 @@ public class AudioProcessor {
                         let endFramePosition = endTimeInSeconds * inputSampleRate
                         let frameCount = AVAudioFrameCount(endFramePosition - Double(startFrame))
                         
-                        let buffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: frameCount)!
+                        guard let buffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: frameCount) else {
+                            Logger.debug("AudioProcessor", "Could not allocate a \(frameCount)-frame input buffer")
+                            continue
+                        }
                         audioFile.framePosition = startFrame
                         try audioFile.read(into: buffer, frameCount: frameCount)
-                        let converter = AVAudioConverter(from: inputFormat, to: targetFormat)!
-                        let convertedBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: frameCount)!
+                        // Fallible: whether a conversion is supported depends on the
+                        // source/target pair, not on the target rate alone. 1Hz returns nil
+                        // from a 44.1kHz source while 2MHz succeeds, and the answer differs
+                        // between OS versions — so no static range can stand in for asking
+                        // (#433).
+                        guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+                            Logger.debug(
+                                "AudioProcessor",
+                                "Cannot convert \(inputFormat.sampleRate)Hz to \(targetFormat.sampleRate)Hz"
+                            )
+                            throw NSError(
+                                domain: "AudioProcessor",
+                                code: -1,
+                                userInfo: [NSLocalizedDescriptionKey:
+                                    "Cannot convert to \(targetFormat.sampleRate)Hz "
+                                    + "from this file's \(inputFormat.sampleRate)Hz"]
+                            )
+                        }
+                        guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: frameCount) else {
+                            Logger.debug("AudioProcessor", "Could not allocate a \(frameCount)-frame output buffer")
+                            continue
+                        }
                         var error: NSError?
                         _ = converter.convert(to: convertedBuffer, error: &error) { inNumPackets, outStatus in
                             outStatus.pointee = .haveData
@@ -1005,16 +1026,34 @@ public class AudioProcessor {
     }
 
     private func createTrimResult(from url: URL, keepRanges: [[Double]], formatStr: String, sampleRate: Int, channels: Int, bitDepth: Int, bitrate: Int, compression: [String: Any]? = nil) -> TrimResult {
-        let durationMs = keepRanges.map { $0[1] - $0[0] }.reduce(0, +)
+        let requestedDurationMs = keepRanges.map { $0[1] - $0[0] }.reduce(0, +)
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64 ?? 0) ?? 0
         let fileExtension = formatStr == "wav" ? "wav" : "aac"
+
+        // Describe the file that was written, not the settings that were asked for.
+        // AVAudioFile can clamp a rate the writer will not accept, and reporting the
+        // request then claims properties the file does not have (#433).
+        let written = try? AVAudioFile(forReading: url)
+        let actualSampleRate = written.map { Int($0.fileFormat.sampleRate) } ?? sampleRate
+        let actualChannels = written.map { Int($0.fileFormat.channelCount) } ?? channels
+        let durationMs = written.map { Double($0.length) / $0.fileFormat.sampleRate * 1000.0 }
+            ?? requestedDurationMs
+
+        if let written = written, Int(written.fileFormat.sampleRate) != sampleRate {
+            Logger.debug(
+                "AudioProcessor",
+                "Requested \(sampleRate)Hz but the file was written at "
+                + "\(Int(written.fileFormat.sampleRate))Hz; reporting the file"
+            )
+        }
+
         return TrimResult(
             uri: url.absoluteString,
             filename: url.lastPathComponent,
             durationMs: durationMs,
             size: size,
-            sampleRate: sampleRate,
-            channels: channels,
+            sampleRate: actualSampleRate,
+            channels: actualChannels,
             bitDepth: bitDepth,
             mimeType: "audio/\(fileExtension)",
             requestedFormat: formatStr,
