@@ -647,8 +647,27 @@ func extractRawAudioData(
     // Convert to target format if different from source
     let finalBuffer: AVAudioPCMBuffer
     if targetFormat != format {
-        let converter = AVAudioConverter(from: format, to: targetFormat)!
-        finalBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: frameCount)!
+        // AVAudioConverter returns nil for a target the engine cannot reach — a bridged
+        // sampleRate of 1e12 or above, for one — so force-unwrapping it crashed on input
+        // the option guards let through (#433).
+        guard let converter = AVAudioConverter(from: format, to: targetFormat) else {
+            throw NSError(
+                domain: "AudioProcessor",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Cannot convert to the requested format "
+                    + "(\(targetFormat.sampleRate)Hz, \(targetFormat.channelCount)ch)"]
+            )
+        }
+        guard let converted = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: frameCount) else {
+            throw NSError(
+                domain: "AudioProcessor",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Cannot allocate a \(frameCount)-frame buffer for the requested format"]
+            )
+        }
+        finalBuffer = converted
         
         var error: NSError?
         _ = converter.convert(to: finalBuffer, error: &error) { inNumPackets, outStatus in

@@ -170,11 +170,14 @@ public class AudioProcessor {
             Int64(totalFrameCount) - effectiveOffset
         }
         
+        // Report the sum rather than computing it: both operands are bridged, and adding
+        // them can overflow before any validation runs (#433).
+        let (expectedEndFrame, endFrameOverflowed) = effectiveOffset.addingReportingOverflow(effectiveLength)
         NSLog("""
             [AudioProcessor] Calculated frame positions:
             - effectiveOffset: \(effectiveOffset)
             - effectiveLength: \(effectiveLength)
-            - expectedEndFrame: \(effectiveOffset + effectiveLength)
+            - expectedEndFrame: \(endFrameOverflowed ? "overflowed" : String(expectedEndFrame))
             - totalFrameCount: \(totalFrameCount)
         """)
         
@@ -191,9 +194,10 @@ public class AudioProcessor {
             return nil
         }
         
-        if effectiveOffset + effectiveLength > Int64(totalFrameCount) {
+        if endFrameOverflowed || expectedEndFrame > Int64(totalFrameCount) {
             NSLog("[AudioProcessor] ERROR: Requested range exceeds file length")
-            reject("INVALID_RANGE", "Requested range [\(effectiveOffset), \(effectiveOffset + effectiveLength)] exceeds file length \(totalFrameCount)")
+            let describedEnd = endFrameOverflowed ? "overflowed" : String(expectedEndFrame)
+            reject("INVALID_RANGE", "Requested range [\(effectiveOffset), \(describedEnd)] exceeds file length \(totalFrameCount)")
             return nil
         }
         
@@ -757,7 +761,24 @@ public class AudioProcessor {
             Logger.debug("AudioProcessor", "Unsupported format '\(requestedFormat)', falling back to 'aac'")
         }
 
-        let targetSampleRate = outputFormat.flatMap { bridgedFiniteDouble($0, "sampleRate").flatMap { $0 > 0 ? $0 : nil } } ?? inputSampleRate
+        // No invented ceiling here. Whether a rate is usable depends on the source/target
+        // pair and on the OS — 1Hz returns a nil converter from a 44.1kHz source while 2MHz
+        // succeeds — so a static range would reject what works and admit what does not.
+        // Representability is already guaranteed by bridgedFiniteDouble, the positivity
+        // check below is this code's own — AVAudioFormat will happily describe 0Hz and
+        // negative rates, so it is not the gate it looks like — and the converter answers
+        // the rest at the point of use (#433).
+        let requestedOutputRate = outputFormat.flatMap { bridgedFiniteDouble($0, "sampleRate") }
+        if let requested = requestedOutputRate, requested <= 0 {
+            Logger.debug(
+                "AudioProcessor",
+                "Ignoring non-positive output sampleRate \(requested); using the input rate"
+            )
+        }
+        let targetSampleRate: Double = {
+            if let requested = requestedOutputRate, requested > 0 { return requested }
+            return inputSampleRate
+        }()
         let targetChannels = outputFormat.flatMap { bridgedInt($0, "channels", in: 1...2) } ?? inputChannels
         let targetBitDepth = outputFormat.flatMap { bridgedInt($0, "bitDepth").flatMap { [16, 32].contains($0) ? $0 : nil } } ?? 16
         let bitrate = outputFormat.flatMap { bridgedInt($0, "bitrate").flatMap { $0 > 0 ? $0 : nil } } ?? 128000
@@ -767,14 +788,42 @@ public class AudioProcessor {
             .appendingPathComponent(outputFileName ?? UUID().uuidString)
             .appendingPathExtension(fileExtension)
 
+        // Write to a private work file and promote it only on success. The destination is
+        // caller-supplied, and AVAudioFile truncates it the moment the writer opens — a
+        // 14-byte file became a 4096-byte WAV header before a later failure — so writing
+        // there directly destroys the caller's data before anything can go wrong. Deciding
+        // afterwards whether to delete cannot undo that, and fileExists is not ownership
+        // anyway: it is false for a dangling symlink, and two concurrent calls with the
+        // same name would both claim it (#433).
+        let workURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("trim-\(UUID().uuidString)")
+            .appendingPathExtension(fileExtension)
+
+        /// Moves the finished work file onto the requested destination.
+        func promoteWorkFile() throws {
+            try OutputPromotion.promote(workURL: workURL, to: outputURL)
+        }
+
         let decodingConfig = DecodingConfig.fromDictionary(decodingOptions ?? [:])
-        let needFormatChange = decodingConfig.targetSampleRate != nil || decodingConfig.targetChannels != nil || decodingConfig.targetBitDepth != nil
+        // Compare what was actually resolved, not just decodingOptions. outputFormat is a
+        // separate parameter, so a sampleRate or channel change requested there took the
+        // WAV fast path and was silently ignored (#433).
+        let outputDiffersFromInput = targetSampleRate != inputSampleRate
+            || targetChannels != inputChannels
+        let needFormatChange = decodingConfig.targetSampleRate != nil
+            || decodingConfig.targetChannels != nil
+            || decodingConfig.targetBitDepth != nil
+            || outputDiffersFromInput
         let isWavInput = audioFile.fileFormat.settings[AVFormatIDKey] as? UInt32 == kAudioFormatLinearPCM
 
         do {
             if isWavInput && formatStr == "wav" && !needFormatChange {
                 // Fast path: WAV-to-WAV with no format changes
-                let outputFile = try AVAudioFile(forWriting: outputURL, settings: inputFormat.settings)
+                // Scoped so the writer is released before the result reads the file back.
+                // AVAudioFile reports length 0 for a file whose writer is still alive, so
+                // reopening too early reported durationMs: 0 for a successful trim (#433).
+                try autoreleasepool {
+                let outputFile = try AVAudioFile(forWriting: workURL, settings: inputFormat.settings)
                 var totalFrames: Int64 = 0
                 for range in keepRanges {
                     // Break down complex expression
@@ -805,15 +854,17 @@ public class AudioProcessor {
                 }
 
                 // When creating the output file
-                Logger.debug("AudioProcessor", "Creating output file at: \(outputURL.path)")
+                Logger.debug("AudioProcessor", "Creating output file at: \(workURL.path)")
                 
                 // After processing is complete
                 Logger.debug("AudioProcessor", "Trim operation completed")
-                Logger.debug("AudioProcessor", "- Output file: \(outputURL.path)")
-                Logger.debug("AudioProcessor", "- File exists: \(FileManager.default.fileExists(atPath: outputURL.path))")
-                Logger.debug("AudioProcessor", "- File size: \((try? FileManager.default.attributesOfItem(atPath: outputURL.path)[.size] as? Int64) ?? 0) bytes") // Fixed optional unwrapping
-                Logger.debug("AudioProcessor", "- File extension: \(outputURL.pathExtension)")
-                
+                Logger.debug("AudioProcessor", "- Output file: \(workURL.path)")
+                Logger.debug("AudioProcessor", "- File exists: \(FileManager.default.fileExists(atPath: workURL.path))")
+                Logger.debug("AudioProcessor", "- File size: \((try? FileManager.default.attributesOfItem(atPath: workURL.path)[.size] as? Int64) ?? 0) bytes")
+                Logger.debug("AudioProcessor", "- File extension: \(workURL.pathExtension)")
+                }
+
+                try promoteWorkFile()
                 return createTrimResult(from: outputURL, keepRanges: keepRanges, formatStr: formatStr, sampleRate: Int(inputSampleRate), channels: inputChannels, bitDepth: 16, bitrate: bitrate)
             } else {
                 // Non-fast path: Decode and re-encode
@@ -836,7 +887,9 @@ public class AudioProcessor {
                 var cumulativeFrames: Int64 = 0
 
                 if formatStr == "wav" {
-                    let outputFile = try AVAudioFile(forWriting: outputURL, settings: [
+                    // Scoped for the same reason as the fast path above.
+                    try autoreleasepool {
+                    let outputFile = try AVAudioFile(forWriting: workURL, settings: [
                         AVFormatIDKey: kAudioFormatLinearPCM,
                         AVSampleRateKey: targetSampleRate,
                         AVNumberOfChannelsKey: targetChannels,
@@ -844,6 +897,35 @@ public class AudioProcessor {
                         AVLinearPCMIsFloatKey: false,
                         AVLinearPCMIsBigEndianKey: false
                     ])
+
+                    // Convert to what the writer resolved, not what was asked for. A WAV
+                    // writer clamps a rate it will not serve — 384kHz becomes 192kHz — so
+                    // converting to the request and writing into the clamped file produced
+                    // twice the audio (#433).
+                    let writerFormat = outputFile.processingFormat
+
+                    // Ask about the requested format before deferring to the writer's.
+                    // The writer resolves an unsupported rate to one it likes — 1Hz becomes
+                    // 8kHz — and that resolved conversion succeeds, so checking only the
+                    // writer's format would silently produce 8kHz audio for a request the
+                    // platform cannot serve (#433).
+                    guard AVAudioConverter(from: inputFormat, to: targetFormat) != nil else {
+                        throw NSError(
+                            domain: "AudioProcessor",
+                            code: -1,
+                            userInfo: [NSLocalizedDescriptionKey:
+                                "Cannot convert to \(targetFormat.sampleRate)Hz "
+                                + "from this file's \(inputFormat.sampleRate)Hz"]
+                        )
+                    }
+
+                    if writerFormat.sampleRate != targetFormat.sampleRate {
+                        Logger.debug(
+                            "AudioProcessor",
+                            "Writer resolved \(targetFormat.sampleRate)Hz to "
+                            + "\(writerFormat.sampleRate)Hz; converting to that instead"
+                        )
+                    }
 
                     for range in keepRanges {
                         // Break down complex expressions
@@ -854,26 +936,101 @@ public class AudioProcessor {
                         let endFramePosition = endTimeInSeconds * inputSampleRate
                         let frameCount = AVAudioFrameCount(endFramePosition - Double(startFrame))
                         
-                        let buffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: frameCount)!
+                        // Throw rather than continue: skipping a range would return a
+                        // successful result missing the audio the caller asked to keep.
+                        guard let buffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: frameCount) else {
+                            throw NSError(
+                                domain: "AudioProcessor",
+                                code: -1,
+                                userInfo: [NSLocalizedDescriptionKey:
+                                    "Could not allocate a \(frameCount)-frame input buffer"]
+                            )
+                        }
                         audioFile.framePosition = startFrame
                         try audioFile.read(into: buffer, frameCount: frameCount)
-                        let converter = AVAudioConverter(from: inputFormat, to: targetFormat)!
-                        let convertedBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: frameCount)!
+                        // Fallible: whether a conversion is supported depends on the
+                        // source/target pair, not on the target rate alone. 1Hz returns nil
+                        // from a 44.1kHz source while 2MHz succeeds, and the answer differs
+                        // between OS versions — so no static range can stand in for asking
+                        // (#433).
+                        guard let converter = AVAudioConverter(from: inputFormat, to: writerFormat) else {
+                            Logger.debug(
+                                "AudioProcessor",
+                                "Cannot convert \(inputFormat.sampleRate)Hz to \(targetFormat.sampleRate)Hz"
+                            )
+                            throw NSError(
+                                domain: "AudioProcessor",
+                                code: -1,
+                                userInfo: [NSLocalizedDescriptionKey:
+                                    "Cannot convert to \(writerFormat.sampleRate)Hz "
+                                    + "from this file's \(inputFormat.sampleRate)Hz"]
+                            )
+                        }
+                        // Mix the channels rather than taking the first. The default
+                        // discards the others, so right-only stereo material came back as
+                        // silence once a channel-only request started routing through here.
+                        if writerFormat.channelCount < inputFormat.channelCount {
+                            converter.downmix = true
+                        }
+                        // Size the output by the rate ratio. A source-sized buffer truncated
+                        // every upsample — one second at 44.1kHz came back as 0.5s at 88.2kHz
+                        // and 0.23s at 384kHz — because the converter can only write what
+                        // the buffer holds (#433).
+                        let ratio = writerFormat.sampleRate / inputFormat.sampleRate
+                        let scaled = (Double(frameCount) * ratio).rounded(.up)
+                        // Throw rather than clamp: a capacity above the maximum means the
+                        // request cannot be served, and clamping would silently truncate
+                        // exactly the way this sizing exists to prevent.
+                        guard scaled <= Double(AVAudioFrameCount.max) else {
+                            throw NSError(
+                                domain: "AudioProcessor",
+                                code: -1,
+                                userInfo: [NSLocalizedDescriptionKey:
+                                    "Converting \(frameCount) frames to "
+                                    + "\(writerFormat.sampleRate)Hz needs \(scaled) frames, "
+                                    + "more than one buffer can hold"]
+                            )
+                        }
+                        let outputFrameCapacity = AVAudioFrameCount(max(scaled, 1))
+                        guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: writerFormat, frameCapacity: outputFrameCapacity) else {
+                            throw NSError(
+                                domain: "AudioProcessor",
+                                code: -1,
+                                userInfo: [NSLocalizedDescriptionKey:
+                                    "Could not allocate a \(outputFrameCapacity)-frame output buffer"]
+                            )
+                        }
+                        // Supply the input once, then report end of stream. Returning the
+                        // same buffer with .haveData forever made the converter re-consume
+                        // it, so a downsample emitted more audio than it was given.
+                        var suppliedInput = false
                         var error: NSError?
-                        _ = converter.convert(to: convertedBuffer, error: &error) { inNumPackets, outStatus in
+                        _ = converter.convert(to: convertedBuffer, error: &error) { _, outStatus in
+                            if suppliedInput {
+                                outStatus.pointee = .endOfStream
+                                return nil
+                            }
+                            suppliedInput = true
                             outStatus.pointee = .haveData
                             return buffer
                         }
                         if let error = error {
-                            Logger.debug("AudioProcessor", "Format conversion failed: \(error.localizedDescription)")
-                            Logger.debug("AudioProcessor", "Skipping this buffer")
-                            continue
+                            // Skipping produced a successful result missing this range.
+                            throw NSError(
+                                domain: "AudioProcessor",
+                                code: -1,
+                                userInfo: [NSLocalizedDescriptionKey:
+                                    "Format conversion failed: \(error.localizedDescription)"]
+                            )
                         }
                         try outputFile.write(from: convertedBuffer)
                         cumulativeFrames += Int64(frameCount)
                         let progress = Float(cumulativeFrames) / Float(totalFrames) * 100
                         progressCallback?(progress, 0, totalFrames * Int64(inputFormat.streamDescription.pointee.mBytesPerFrame))
                     }
+                    }
+
+                    try promoteWorkFile()
                     return createTrimResult(from: outputURL, keepRanges: keepRanges, formatStr: formatStr, sampleRate: Int(targetSampleRate), channels: targetChannels, bitDepth: targetBitDepth, bitrate: bitrate)
                 } else {
                     // Use AAC instead of Opus (Opus support removed)
@@ -895,7 +1052,7 @@ public class AudioProcessor {
                     // 5. Update the MIME type logic for AAC only
                     let _ = "audio/mp4" // Changed from mimeType
                     
-                    let outputFile = try AVAudioFile(forWriting: outputURL, settings: outputSettings)
+                    let outputFile = try AVAudioFile(forWriting: workURL, settings: outputSettings)
                     var totalFrames: Int64 = 0
                     for range in keepRanges {
                         // Break down complex expressions
@@ -914,6 +1071,8 @@ public class AudioProcessor {
                         let progress = Float(cumulativeFrames) / Float(totalFrames) * 100
                         progressCallback?(progress, 0, totalFrames * Int64(inputFormat.streamDescription.pointee.mBytesPerFrame))
                     }
+
+                    try promoteWorkFile()
                     return createTrimResult(
                         from: outputURL, 
                         keepRanges: keepRanges, 
@@ -927,12 +1086,38 @@ public class AudioProcessor {
                 }
             }
         } catch {
+            // Only ever the work file: the destination has not been touched, so a failure
+            // leaves whatever was there intact.
+            try? FileManager.default.removeItem(at: workURL)
             reject("TRIM_ERROR", "Failed to trim audio: \(error.localizedDescription)")
             return nil
         }
     }
     
+    /// Clamps a range to the file, so the frame conversions downstream cannot overflow.
+    ///
+    /// The bridged values are only checked for Int representability, and every caller then
+    /// multiplies them by a sample rate; the product need not fit (#433). Bounding here
+    /// covers all three modes and every conversion that reads these ranges, rather than
+    /// guarding each site. A range entirely past the end collapses to empty and is dropped.
+    private func clampRange(_ range: [Double], totalDurationMs: Double) -> [Double] {
+        let start = min(max(0, range[0]), totalDurationMs)
+        let end = min(max(start, range[1]), totalDurationMs)
+        return [start, end]
+    }
+
     private func computeKeepRanges(mode: String, startTimeMs: Double?, endTimeMs: Double?, ranges: [[String: Double]]?, totalDurationMs: Double) -> [[Double]] {
+        let clamped = computeRawKeepRanges(
+            mode: mode,
+            startTimeMs: startTimeMs,
+            endTimeMs: endTimeMs,
+            ranges: ranges,
+            totalDurationMs: totalDurationMs
+        ).map { clampRange($0, totalDurationMs: totalDurationMs) }
+        return clamped.filter { $0[1] > $0[0] }
+    }
+
+    private func computeRawKeepRanges(mode: String, startTimeMs: Double?, endTimeMs: Double?, ranges: [[String: Double]]?, totalDurationMs: Double) -> [[Double]] {
         switch mode {
         case "single":
             guard let start = startTimeMs, let end = endTimeMs else { return [] }
@@ -959,16 +1144,34 @@ public class AudioProcessor {
     }
 
     private func createTrimResult(from url: URL, keepRanges: [[Double]], formatStr: String, sampleRate: Int, channels: Int, bitDepth: Int, bitrate: Int, compression: [String: Any]? = nil) -> TrimResult {
-        let durationMs = keepRanges.map { $0[1] - $0[0] }.reduce(0, +)
+        let requestedDurationMs = keepRanges.map { $0[1] - $0[0] }.reduce(0, +)
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64 ?? 0) ?? 0
         let fileExtension = formatStr == "wav" ? "wav" : "aac"
+
+        // Describe the file that was written, not the settings that were asked for.
+        // AVAudioFile can clamp a rate the writer will not accept, and reporting the
+        // request then claims properties the file does not have (#433).
+        let written = try? AVAudioFile(forReading: url)
+        let actualSampleRate = written.map { Int($0.fileFormat.sampleRate) } ?? sampleRate
+        let actualChannels = written.map { Int($0.fileFormat.channelCount) } ?? channels
+        let durationMs = written.map { Double($0.length) / $0.fileFormat.sampleRate * 1000.0 }
+            ?? requestedDurationMs
+
+        if let written = written, Int(written.fileFormat.sampleRate) != sampleRate {
+            Logger.debug(
+                "AudioProcessor",
+                "Requested \(sampleRate)Hz but the file was written at "
+                + "\(Int(written.fileFormat.sampleRate))Hz; reporting the file"
+            )
+        }
+
         return TrimResult(
             uri: url.absoluteString,
             filename: url.lastPathComponent,
             durationMs: durationMs,
             size: size,
-            sampleRate: sampleRate,
-            channels: channels,
+            sampleRate: actualSampleRate,
+            channels: actualChannels,
             bitDepth: bitDepth,
             mimeType: "audio/\(fileExtension)",
             requestedFormat: formatStr,
@@ -1054,11 +1257,26 @@ public class AudioProcessor {
         let requestedBars = max(1, numberOfBars)
         let sampleRate = audioFile.fileFormat.sampleRate
         let totalDurationMs = Double(audioFile.length) / sampleRate * 1000
-        let effectiveStartMs = max(0, startTimeMs ?? 0)
+        // Bound the start by the file as well as by zero. endTimeMs is already capped at
+        // totalDurationMs, but startTimeMs was not, so a large value overflowed the
+        // narrowing below rather than being treated as past the end (#433).
+        let effectiveStartMs = min(max(0, startTimeMs ?? 0), totalDurationMs)
         let effectiveEndMs = min(endTimeMs ?? totalDurationMs, totalDurationMs)
         let durationMs = max(1, effectiveEndMs - effectiveStartMs)
-        let startFrame = AVAudioFramePosition(effectiveStartMs * sampleRate / 1000.0)
-        let endFrame = AVAudioFramePosition(effectiveEndMs * sampleRate / 1000.0)
+        let startFrame = AVAudioFramePosition(
+            BridgedNarrowing.sampleCount(
+                milliseconds: effectiveStartMs,
+                sampleRate: sampleRate,
+                minimum: 0
+            )
+        )
+        let endFrame = AVAudioFramePosition(
+            BridgedNarrowing.sampleCount(
+                milliseconds: effectiveEndMs,
+                sampleRate: sampleRate,
+                minimum: 0
+            )
+        )
         let samplesInRange = Int(endFrame - startFrame)
 
         guard samplesInRange > 0 else {

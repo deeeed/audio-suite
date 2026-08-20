@@ -152,9 +152,28 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                     let effectiveLength: Int?
                     
                     if hasTimeRange {
+                        // Validate the endpoints before converting. Clamping a negative
+                        // start to zero turned -200...-100ms into "the first 100ms" instead
+                        // of a rejected request (#433).
+                        guard startTimeMs! >= 0, endTimeMs! > startTimeMs! else {
+                            promise.reject(
+                                "INVALID_RANGE",
+                                "Invalid time range [\(startTimeMs!), \(endTimeMs!)]: "
+                                + "start must be non-negative and end must be greater than start"
+                            )
+                            return
+                        }
                         let bytesPerSecond = Int(sampleRate) * numberOfChannels * (bitDepth / 8)
-                        effectivePosition = Int(startTimeMs! * Double(bytesPerSecond) / 1000.0)
-                        effectiveLength = Int((endTimeMs! - startTimeMs!) * Double(bytesPerSecond) / 1000.0)
+                        // Clamp at the conversion: the option fits Int, the product with
+                        // bytesPerSecond need not (#433).
+                        effectivePosition = BridgedNarrowing.byteOffset(
+                            milliseconds: startTimeMs!,
+                            bytesPerSecond: bytesPerSecond
+                        )
+                        effectiveLength = BridgedNarrowing.byteOffset(
+                            milliseconds: endTimeMs! - startTimeMs!,
+                            bytesPerSecond: bytesPerSecond
+                        )
                     } else {
                         effectivePosition = position
                         effectiveLength = byteLength
@@ -544,6 +563,15 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                 }
             }
             let outputFileName = options["outputFileName"] as? String
+            // A name, not a path. A separator makes it a path, and a path can traverse:
+            // `../../../../tmp/pwned` would write to /var/tmp (#433).
+            if let name = outputFileName, !OutputPromotion.isSafeOutputFileName(name) {
+                promise.reject(
+                    "INVALID_OUTPUT_FILENAME",
+                    "outputFileName must be a single filename without path separators"
+                )
+                return
+            }
             let outputFormat = options["outputFormat"] as? [String: Any]
             let decodingOptions = options["decodingOptions"] as? [String: Any] ?? [:]
 
@@ -718,12 +746,41 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                     let endFrame: AVAudioFramePosition
 
                     if hasTimeRange {
-                        startFrame = AVAudioFramePosition(startTimeMs! * sampleRate / 1000.0)
-                        endFrame = AVAudioFramePosition(endTimeMs! * sampleRate / 1000.0)
+                        // Validate before converting. Clamping a negative start to zero let
+                        // a negative start with a positive end through, where it used to be
+                        // rejected (#433).
+                        guard startTimeMs! >= 0, endTimeMs! > startTimeMs! else {
+                            promise.reject(
+                                "INVALID_RANGE",
+                                "Invalid time range [\(startTimeMs!), \(endTimeMs!)]: "
+                                + "start must be non-negative and end must be greater than start"
+                            )
+                            return
+                        }
+                        // Clamp before narrowing; the range check below runs on values that
+                        // already had to survive the conversion (#433).
+                        startFrame = AVAudioFramePosition(
+                            BridgedNarrowing.sampleCount(
+                                milliseconds: startTimeMs!,
+                                sampleRate: sampleRate,
+                                minimum: 0
+                            )
+                        )
+                        endFrame = AVAudioFramePosition(
+                            BridgedNarrowing.sampleCount(
+                                milliseconds: endTimeMs!,
+                                sampleRate: sampleRate,
+                                minimum: 0
+                            )
+                        )
                     } else {
                         let bytesPerFrame = Int64(channels * (bitDepth / 8))
                         startFrame = AVAudioFramePosition(position!) / bytesPerFrame
-                        endFrame = startFrame + (AVAudioFramePosition(length!) / bytesPerFrame)
+                        // Additive, so it can overflow even when both operands are valid:
+                        // position = length = Int.max on 8-bit mono traps here.
+                        let frameCount = AVAudioFramePosition(length!) / bytesPerFrame
+                        let (sum, overflowed) = startFrame.addingReportingOverflow(frameCount)
+                        endFrame = overflowed ? AVAudioFramePosition.max : sum
                     }
 
                     guard startFrame >= 0 && endFrame <= audioFile.length && startFrame < endFrame else {
@@ -828,23 +885,67 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                     let sampleRate = audioData.sampleRate
                     var samples = audioData.samples
 
-                    if let startMs = startTimeMs {
-                        let startSample = Int(startMs * Double(sampleRate) / 1000.0)
-                        let endSample: Int
-                        if let endMs = endTimeMs {
-                            endSample = min(Int(endMs * Double(sampleRate) / 1000.0), samples.count)
-                        } else {
-                            endSample = samples.count
-                        }
-                        if startSample < endSample && startSample < samples.count {
-                            samples = Array(samples[startSample..<endSample])
-                        }
+                    switch BridgedNarrowing.timeRange(
+                        startMs: startTimeMs,
+                        endMs: endTimeMs,
+                        sampleRate: Double(sampleRate),
+                        availableSamples: samples.count
+                    ) {
+                    case .whole:
+                        break
+                    case .samples(let startSample, let endSample):
+                        samples = Array(samples[startSample..<endSample])
+                    case .invalid(let reason):
+                        throw NSError(
+                            domain: "AudioStudio",
+                            code: -1,
+                            userInfo: [NSLocalizedDescriptionKey: "Invalid time range: \(reason)"]
+                        )
                     }
 
                     let fMax = fMaxParam.map { Float($0) } ?? Float(sampleRate) / 2.0
 
-                    let windowSizeSamples = Int(windowSizeMs * Double(sampleRate) / 1000.0)
-                    let hopLengthSamples = Int(hopLengthMs * Double(sampleRate) / 1000.0)
+                    // Reject an oversized window instead of clamping it. The C++ side
+                    // resizes window_ to windowSizeSamples — Int32.max floats is ~8 GiB —
+                    // and then writes frameLen samples into fftInput_, which is only
+                    // fftLength (2048) floats, so anything larger overruns that buffer
+                    // (MelSpectrogram.cpp:35, :120, :135). Clamping would trade a trap for
+                    // a heap overflow.
+                    let fftLength = 2048
+                    let maxWindowSamples = min(samples.count, fftLength)
+                    let windowSizeSamples = BridgedNarrowing.sampleCount(
+                        milliseconds: windowSizeMs,
+                        sampleRate: Double(sampleRate)
+                    )
+                    guard windowSizeSamples <= maxWindowSamples else {
+                        throw NSError(
+                            domain: "AudioStudio",
+                            code: -1,
+                            userInfo: [NSLocalizedDescriptionKey:
+                                "windowSizeMs is \(windowSizeMs)ms (\(windowSizeSamples) samples "
+                                + "at \(sampleRate)Hz), above the maximum of \(maxWindowSamples) "
+                                + "samples for this file and a \(fftLength)-point FFT"]
+                        )
+                    }
+
+                    // Floor of 0, not 1: the C++ side treats a non-positive hop as "use the
+                    // 160-sample default", and a sub-sample hop rounding to 1 would instead
+                    // produce ~160x the frames.
+                    let hopLengthSamples = BridgedNarrowing.sampleCount(
+                        milliseconds: hopLengthMs,
+                        sampleRate: Double(sampleRate),
+                        minimum: 0
+                    )
+                    guard hopLengthSamples <= samples.count else {
+                        throw NSError(
+                            domain: "AudioStudio",
+                            code: -1,
+                            userInfo: [NSLocalizedDescriptionKey:
+                                "hopLengthMs is \(hopLengthMs)ms (\(hopLengthSamples) samples "
+                                + "at \(sampleRate)Hz), longer than the \(samples.count) samples "
+                                + "being analysed"]
+                        )
+                    }
 
                     let windowTypeInt: Int32 = windowType.lowercased() == "hamming" ? 1 : 0
 
@@ -855,6 +956,10 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                             numSamples: Int32(samples.count),
                             sampleRate: Int32(sampleRate),
                             fftLength: 2048,
+                            // Int32 traps well before Int does: 100_000_000 ms at 44.1 kHz
+                            // is 4.41e9 samples, fine as Int and past Int32.max (#433).
+                            // Both are already bounded above by the guards above, so these
+                            // conversions cannot trap.
                             windowSizeSamples: Int32(windowSizeSamples),
                             hopLengthSamples: Int32(hopLengthSamples),
                             nMels: Int32(nMels),
@@ -992,12 +1097,35 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                 return
             }
 
+            // Reject rather than silently falling back to the source rate. An absurd value
+            // reached AVAssetReaderTrackOutput, which raises an ObjC exception no Swift
+            // catch can recover from, and AVAudioConverter, which returns nil (#433).
+            // Present-but-unusable must reject, not fall through to the source rate.
+            let requested = BridgedNarrowing.requestedRate(
+                rawValue: options["targetSampleRate"],
+                parsed: bridgedFiniteDouble(options, "targetSampleRate"),
+                permitted: BridgedNarrowing.readerSampleRates
+            )
+            if requested == .invalid {
+                promise.reject(
+                    "ERR_AUDIO_STREAM_INVALID_RANGE",
+                    "targetSampleRate must be in "
+                    + "[\(BridgedNarrowing.readerSampleRates.lowerBound), "
+                    + "\(BridgedNarrowing.readerSampleRates.upperBound)]"
+                )
+                return
+            }
+            let requestedSampleRate: Double? = {
+                if case .valid(let rate) = requested { return rate }
+                return nil
+            }()
+
             let opts = AudioStreamDecoder.Options(
                 requestId: requestId,
                 fileUri: fileUri,
                 startTimeMs: bridgedFiniteDouble(options, "startTimeMs"),
                 endTimeMs: bridgedFiniteDouble(options, "endTimeMs"),
-                targetSampleRate: bridgedFiniteDouble(options, "targetSampleRate").flatMap { $0 > 0 ? $0 : nil },
+                targetSampleRate: requestedSampleRate,
                 channels: bridgedInt(options, "channels"),
                 normalizeAudio: options["normalizeAudio"] as? Bool ?? true,
                 chunkDurationMs: chunkDurationMs,
