@@ -18,8 +18,12 @@ struct RecordingResult {
 /// "Failed to start recording.", so callers could not tell a phone call from a missing
 /// microphone permission from an audio session that failed to configure (#419).
 enum StartRecordingError: Error {
-    /// Session configuration, file creation, or an active phone call blocked preparation.
+    /// Preparation failed for a reason with no more specific case.
     case preparationFailed
+    /// The output file could not be created or opened.
+    case fileCreationFailed
+    /// Settings were rejected during validation.
+    case invalidSettings
     /// The audio tap could not be installed on the engine's input node.
     case tapInstallationFailed
     /// A phone call became active between preparation and start.
@@ -38,7 +42,9 @@ enum StartRecordingError: Error {
     /// friends — so a caller switches on one set of codes rather than one per platform.
     var code: String {
         switch self {
-        case .preparationFailed: return "FILE_CREATION_FAILED"
+        case .preparationFailed: return "START_FAILED"
+        case .fileCreationFailed: return "FILE_CREATION_FAILED"
+        case .invalidSettings: return "INVALID_SETTINGS"
         case .tapInstallationFailed: return "START_FAILED"
         case .phoneCallActive: return "ONGOING_CALL"
         case .alreadyRecording: return "ALREADY_RECORDING"
@@ -51,7 +57,11 @@ enum StartRecordingError: Error {
     var message: String {
         switch self {
         case .preparationFailed:
-            return "Failed to prepare recording. The audio session could not be configured, the output file could not be created, or a phone call is active."
+            return "Failed to prepare recording. The audio session could not be configured."
+        case .fileCreationFailed:
+            return "Failed to create or open the recording output file."
+        case .invalidSettings:
+            return "The provided recording settings are invalid."
         case .tapInstallationFailed:
             return "Failed to install the audio tap on the input node."
         case .phoneCallActive:

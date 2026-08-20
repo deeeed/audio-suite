@@ -990,7 +990,17 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
     /// - Parameters:
     ///   - settings: The recording settings to use.
     /// - Returns: A boolean indicating if preparation was successful.
+    /// Why the last `prepareRecording` returned false.
+    ///
+    /// Preparation reports a bare Bool, so every reason — an active call, a file that
+    /// could not be opened, a tap that would not install — used to arrive at the caller
+    /// identical. Reporting all of them as one code is worse than the generic message it
+    /// replaced, since a phone call would read as a file-system problem (#419).
+    private var lastPreparationFailure: StartRecordingError?
+
     func prepareRecording(settings: RecordingSettings) -> Bool {
+        lastPreparationFailure = nil
+
         // Store settings first before doing anything else
         recordingSettings = settings
         
@@ -1004,6 +1014,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         if isPhoneCallActive() {
             Logger.debug("AudioStreamManager", "Cannot prepare recording during an active phone call")
             delegate?.audioStreamManager(self, didFailWithError: "Cannot prepare recording during an active phone call")
+            lastPreparationFailure = .phoneCallActive
             return false
         }
 
@@ -1057,6 +1068,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
                 } catch {
                     Logger.debug("AudioStreamManager", "Error creating/opening file handle: \(error.localizedDescription)")
                     // No need to call cleanupPreparation here, return false will handle it
+                    lastPreparationFailure = .fileCreationFailed
                     return false
                 }
             } else {
@@ -1112,6 +1124,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             guard tapInstall.installed else {
                 isPrepared = true
                 cleanupPreparation()
+                lastPreparationFailure = .tapInstallationFailed
                 return false
             }
             let tapFormat = tapInstall.format
@@ -1233,7 +1246,8 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
     /// Starts a new audio recording with the specified settings.
     /// - Parameters:
     ///   - settings: The recording settings to use.
-    /// - Returns: A StartRecordingResult object if recording starts successfully, or nil otherwise.
+    /// - Returns: A `StartRecordingResult` describing the started recording.
+    /// - Throws: `StartRecordingError` naming why recording could not start.
     func startRecording(settings: RecordingSettings) throws -> StartRecordingResult {
         // If already prepared, use the prepared state
         if isPrepared {
@@ -1252,7 +1266,9 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
             Logger.debug("Not prepared, preparing recording first")
             if !prepareRecording(settings: settings) {
                 Logger.debug("Failed to prepare recording")
-                throw StartRecordingError.preparationFailed
+                // Report why preparation failed rather than flattening a phone call or a
+                // tap failure into a file-system error.
+                throw lastPreparationFailure ?? .preparationFailed
             }
         }
         
