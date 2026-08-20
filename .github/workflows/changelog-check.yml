@@ -18,29 +18,9 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const { execSync } = require('child_process')
-
-            // Published libraries only. Deprecated re-export shims
-            // (expo-audio-stream, expo-audio-studio), the private agentic-dev
-            // helper, and the unpublished playgroundapi are excluded — nobody
-            // consumes their changelogs.
-            const PACKAGES = [
-              'audio-studio',
-              'audio-ui',
-              'moonshine.rn',
-              'react-native-essentia',
-              'sherpa-onnx.rn',
-            ]
-
-            // Changes that cannot affect a consumer of the published package.
-            const IGNORED = [
-              /^packages\/[^/]+\/CHANGELOG\.md$/,
-              /^packages\/[^/]+\/README\.md$/,
-              /^packages\/[^/]+\/docs\//,
-              /^packages\/[^/]+\/.*__tests__\//,
-              /^packages\/[^/]+\/.*\.test\.[jt]sx?$/,
-              /^packages\/[^/]+\/e2e\//,
-            ]
+            const fs = require('fs')
+            const path = require('path')
+            const { execFileSync } = require('child_process')
 
             const labels = (context.payload.pull_request.labels || []).map((l) => l.name)
             if (labels.includes('skip-changelog')) {
@@ -48,27 +28,100 @@ jobs:
               return
             }
 
+            // Derived, not hardcoded: a package is in scope when it is publishable
+            // (not private) and already keeps a CHANGELOG.md. That automatically
+            // picks up new packages, drops private ones, and excludes the
+            // re-export shims (expo-audio-stream, expo-audio-studio) — which are
+            // published but keep no changelog of their own.
+            const PACKAGES = fs
+              .readdirSync('packages', { withFileTypes: true })
+              .filter((e) => e.isDirectory())
+              .map((e) => e.name)
+              .filter((name) => {
+                const pkgJson = path.join('packages', name, 'package.json')
+                if (!fs.existsSync(pkgJson)) return false
+                if (!fs.existsSync(path.join('packages', name, 'CHANGELOG.md'))) return false
+                try {
+                  return !JSON.parse(fs.readFileSync(pkgJson, 'utf8')).private
+                } catch {
+                  return false
+                }
+              })
+
+            core.info(`In-scope packages: ${PACKAGES.join(', ') || '(none)'}`)
+
+            // Paths that cannot reach a consumer of the published package.
+            // Native test conventions matter here: this repo's suites are mostly
+            // Kotlin/Swift, not Jest, and every one of these is excluded from the
+            // npm tarball by the packages' own "files" fields.
+            const IGNORED = [
+              /^packages\/[^/]+\/CHANGELOG\.md$/,
+              /^packages\/[^/]+\/README\.md$/,
+              // Test suites — JS/TS and native.
+              /^packages\/[^/]+\/.*__(tests|fixtures|mocks)__\//,
+              /^packages\/[^/]+\/.*\.(test|spec)\.[jt]sx?$/,
+              /^packages\/[^/]+\/android\/src\/(test|androidTest)\//,
+              /^packages\/[^/]+\/ios\/[^/]*[Tt]ests?\//,
+              /^packages\/[^/]+\/ios\/tests\//,
+              /^packages\/[^/]+\/e2e\//,
+              /^packages\/[^/]+\/test-assets\//,
+              // Repo hygiene and tooling that is never published. Nested, not just
+              // at the package root — e.g. plugin/tsconfig.json, scripts/*.sh.
+              /^packages\/[^/]+\/\./,
+              /^packages\/[^/]+\/.*\/\.[^/]+$/,
+              /^packages\/[^/]+\/.*(jest|babel|metro|eslint)\.config\./,
+              /^packages\/[^/]+\/.*tsconfig[^/]*\.(json|tsbuildinfo)$/,
+              /^packages\/[^/]+\/.*publisher\.config\.[jt]s$/,
+            ]
+
+            // sherpa-onnx.rn ships docs/ in its npm tarball, so its docs are
+            // consumer-facing and must not be blanket-ignored.
+            const shipsDocs = (pkg) => {
+              try {
+                const j = JSON.parse(
+                  fs.readFileSync(path.join('packages', pkg, 'package.json'), 'utf8')
+                )
+                return (j.files || []).some((f) => f.replace(/^\.\//, '').split('/')[0] === 'docs')
+              } catch {
+                return false
+              }
+            }
+
             const base = context.payload.pull_request.base.sha
             const head = context.payload.pull_request.head.sha
-            execSync(`git fetch --no-tags origin ${base} ${head}`, { stdio: 'ignore' })
-            const mergeBase = execSync(`git merge-base ${base} ${head}`).toString().trim()
-            const changed = execSync(`git diff --name-only ${mergeBase} ${head}`)
-              .toString()
-              .split('\n')
-              .filter(Boolean)
+
+            let changed
+            try {
+              // execFileSync with an argv array — no shell, nothing to quote.
+              const mergeBase = execFileSync('git', ['merge-base', base, head])
+                .toString()
+                .trim()
+              changed = execFileSync('git', ['diff', '--name-only', mergeBase, head])
+                .toString()
+                .split('\n')
+                .filter(Boolean)
+            } catch (e) {
+              core.setFailed(
+                `Could not compute the changed-file list between ${base} and ${head}: ${e.message}`
+              )
+              return
+            }
 
             const missing = []
 
             for (const pkg of PACKAGES) {
               const prefix = `packages/${pkg}/`
+              const ignored = shipsDocs(pkg)
+                ? IGNORED
+                : [...IGNORED, /^packages\/[^/]+\/docs\//]
+
               const touched = changed.filter(
-                (f) => f.startsWith(prefix) && !IGNORED.some((re) => re.test(f))
+                (f) => f.startsWith(prefix) && !ignored.some((re) => re.test(f))
               )
               if (touched.length === 0) continue
 
-              const changelog = `${prefix}CHANGELOG.md`
-              if (!changed.includes(changelog)) {
-                missing.push({ pkg, changelog, example: touched[0] })
+              if (!changed.includes(`${prefix}CHANGELOG.md`)) {
+                missing.push({ pkg, changelog: `${prefix}CHANGELOG.md`, example: touched[0] })
               }
             }
 
@@ -87,5 +140,6 @@ jobs:
             core.setFailed(
               `Missing changelog entries:\n${details}\n\n` +
                 `Add an entry under "## [Unreleased]" in each listed CHANGELOG.md, ` +
-                `or apply the "skip-changelog" label if this PR cannot affect consumers.`
+                `or apply the "skip-changelog" label if this PR cannot affect consumers ` +
+                `(for example a release version bump).`
             )
