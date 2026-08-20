@@ -53,19 +53,120 @@ final class BridgedNarrowingTests: XCTestCase {
     // MARK: - Output sample rates
 
     func testOrdinarySampleRatesAreAccepted() {
-        for rate in [8_000.0, 44_100.0, 48_000.0, 192_000.0, 384_000.0] {
+        for rate in [8_000.0, 44_100.0, 48_000.0, 96_000.0, 192_000.0] {
             XCTAssertEqual(BridgedNarrowing.outputSampleRate(rate), rate)
         }
     }
 
+    func testTheBoundsAreTheReadersOwn() {
+        // Probed against AVAssetReaderTrackOutput with a real asset: 7999 and 192001 raise
+        // an uncaught NSException that terminates the process, while 8000 and 192000
+        // construct fine. The bound is the platform's, not a policy choice.
+        XCTAssertEqual(BridgedNarrowing.outputSampleRate(8_000), 8_000)
+        XCTAssertEqual(BridgedNarrowing.outputSampleRate(192_000), 192_000)
+        XCTAssertNil(BridgedNarrowing.outputSampleRate(7_999))
+        XCTAssertNil(BridgedNarrowing.outputSampleRate(192_001))
+    }
+
     func testRatesCoreAudioCannotServeAreRejected() {
-        // AVAudioConverter returns nil at 1e12 and above, which force-unwraps crashed on.
+        // 384000 is a real hardware rate but still crashes the reader, so it is out too.
+        XCTAssertNil(BridgedNarrowing.outputSampleRate(384_000))
         XCTAssertNil(BridgedNarrowing.outputSampleRate(1e12))
         XCTAssertNil(BridgedNarrowing.outputSampleRate(1e15))
-        XCTAssertNil(BridgedNarrowing.outputSampleRate(384_001))
+        XCTAssertNil(BridgedNarrowing.outputSampleRate(1))
         XCTAssertNil(BridgedNarrowing.outputSampleRate(0))
         XCTAssertNil(BridgedNarrowing.outputSampleRate(-44_100))
         XCTAssertNil(BridgedNarrowing.outputSampleRate(nil))
+    }
+
+    // MARK: - Time ranges
+
+    private let rate = 44_100.0
+    private let available = 44_100 // one second
+
+    func testNoBoundsMeansTheWholeFile() {
+        XCTAssertEqual(
+            BridgedNarrowing.timeRange(startMs: nil, endMs: nil, sampleRate: rate, availableSamples: available),
+            .whole
+        )
+    }
+
+    func testAnEndOnlyRangeIsHonoured() {
+        // The public API allows this, and gating on startTimeMs alone ignored it entirely.
+        XCTAssertEqual(
+            BridgedNarrowing.timeRange(startMs: nil, endMs: 500, sampleRate: rate, availableSamples: available),
+            .samples(start: 0, end: 22_050)
+        )
+    }
+
+    func testAnEndOnlyNegativeRangeIsRejectedRatherThanIgnored() {
+        // Previously this fell through and analysed the whole file.
+        guard case .invalid = BridgedNarrowing.timeRange(
+            startMs: nil, endMs: -100, sampleRate: rate, availableSamples: available
+        ) else {
+            return XCTFail("A negative end must be rejected")
+        }
+    }
+
+    func testAStartOnlyRangeRunsToTheEnd() {
+        XCTAssertEqual(
+            BridgedNarrowing.timeRange(startMs: 500, endMs: nil, sampleRate: rate, availableSamples: available),
+            .samples(start: 22_050, end: available)
+        )
+    }
+
+    func testANegativeStartIsRejectedRatherThanClampedToZero() {
+        // Clamping turned -200...-100ms into "the first 100ms" — a silently different
+        // request rather than a rejected one.
+        guard case .invalid = BridgedNarrowing.timeRange(
+            startMs: -200, endMs: -100, sampleRate: rate, availableSamples: available
+        ) else {
+            return XCTFail("A negative start must be rejected")
+        }
+        guard case .invalid = BridgedNarrowing.timeRange(
+            startMs: -200, endMs: 100, sampleRate: rate, availableSamples: available
+        ) else {
+            return XCTFail("A negative start with a positive end must be rejected")
+        }
+    }
+
+    func testAReversedRangeIsRejected() {
+        guard case .invalid = BridgedNarrowing.timeRange(
+            startMs: 800, endMs: 200, sampleRate: rate, availableSamples: available
+        ) else {
+            return XCTFail("end <= start must be rejected")
+        }
+    }
+
+    func testARangePastTheEndIsRejectedRatherThanSilentlyIgnored() {
+        // The old bounds check left the samples untouched here, so the call analysed the
+        // whole file instead of reporting that the request was outside it.
+        guard case .invalid = BridgedNarrowing.timeRange(
+            startMs: 5_000, endMs: 6_000, sampleRate: rate, availableSamples: available
+        ) else {
+            return XCTFail("A range past the end must be rejected")
+        }
+    }
+
+    func testAnEndBeyondTheFileIsTruncatedNotRejected() {
+        // Asking for more than exists is a normal request; asking to start past the end
+        // is not.
+        XCTAssertEqual(
+            BridgedNarrowing.timeRange(startMs: 500, endMs: 90_000, sampleRate: rate, availableSamples: available),
+            .samples(start: 22_050, end: available)
+        )
+    }
+
+    func testAnOverflowingRangeCannotTrap() {
+        // Both bounds pass bridgedFiniteDouble; the products do not fit Int.
+        guard case .invalid = BridgedNarrowing.timeRange(
+            startMs: 4.0816326530612243e17,
+            endMs: 4.0816326530612244e17,
+            sampleRate: rate,
+            availableSamples: available
+        ) else {
+            return XCTFail("An out-of-file range must be rejected, not trap")
+        }
     }
 
     // MARK: - Byte offsets

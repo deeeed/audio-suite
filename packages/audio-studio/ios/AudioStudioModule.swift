@@ -152,6 +152,17 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                     let effectiveLength: Int?
                     
                     if hasTimeRange {
+                        // Validate the endpoints before converting. Clamping a negative
+                        // start to zero turned -200...-100ms into "the first 100ms" instead
+                        // of a rejected request (#433).
+                        guard startTimeMs! >= 0, endTimeMs! > startTimeMs! else {
+                            promise.reject(
+                                "INVALID_RANGE",
+                                "Invalid time range [\(startTimeMs!), \(endTimeMs!)]: "
+                                + "start must be non-negative and end must be greater than start"
+                            )
+                            return
+                        }
                         let bytesPerSecond = Int(sampleRate) * numberOfChannels * (bitDepth / 8)
                         // Clamp at the conversion: the option fits Int, the product with
                         // bytesPerSecond need not (#433).
@@ -726,6 +737,17 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                     let endFrame: AVAudioFramePosition
 
                     if hasTimeRange {
+                        // Validate before converting. Clamping a negative start to zero let
+                        // a negative start with a positive end through, where it used to be
+                        // rejected (#433).
+                        guard startTimeMs! >= 0, endTimeMs! > startTimeMs! else {
+                            promise.reject(
+                                "INVALID_RANGE",
+                                "Invalid time range [\(startTimeMs!), \(endTimeMs!)]: "
+                                + "start must be non-negative and end must be greater than start"
+                            )
+                            return
+                        }
                         // Clamp before narrowing; the range check below runs on values that
                         // already had to survive the conversion (#433).
                         startFrame = AVAudioFramePosition(
@@ -854,46 +876,22 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                     let sampleRate = audioData.sampleRate
                     var samples = audioData.samples
 
-                    if let startMs = startTimeMs {
-                        // Reject rather than clamp. bridgedFiniteDouble proves the value fits
-                        // Int, but the product with the sample rate need not (#433) — and a
-                        // range that silently fails the old bounds check left `samples`
-                        // untouched, so an out-of-file or reversed range quietly analysed the
-                        // whole file instead of saying the request was wrong.
-                        guard startMs >= 0 else {
-                            throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "startTimeMs must not be negative"])
-                        }
-                        let startSample = BridgedNarrowing.sampleCount(
-                            milliseconds: startMs,
-                            sampleRate: Double(sampleRate),
-                            minimum: 0
-                        )
-                        let endSample: Int
-                        if let endMs = endTimeMs {
-                            guard endMs >= 0 else {
-                                throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "endTimeMs must not be negative"])
-                            }
-                            endSample = min(
-                                BridgedNarrowing.sampleCount(
-                                    milliseconds: endMs,
-                                    sampleRate: Double(sampleRate),
-                                    minimum: 0
-                                ),
-                                samples.count
-                            )
-                        } else {
-                            endSample = samples.count
-                        }
-                        guard startSample < endSample, startSample < samples.count else {
-                            throw NSError(
-                                domain: "AudioStudio",
-                                code: -1,
-                                userInfo: [NSLocalizedDescriptionKey:
-                                    "Requested range is empty or outside the file "
-                                    + "(\(startSample)..<\(endSample) of \(samples.count) samples)"]
-                            )
-                        }
+                    switch BridgedNarrowing.timeRange(
+                        startMs: startTimeMs,
+                        endMs: endTimeMs,
+                        sampleRate: Double(sampleRate),
+                        availableSamples: samples.count
+                    ) {
+                    case .whole:
+                        break
+                    case .samples(let startSample, let endSample):
                         samples = Array(samples[startSample..<endSample])
+                    case .invalid(let reason):
+                        throw NSError(
+                            domain: "AudioStudio",
+                            code: -1,
+                            userInfo: [NSLocalizedDescriptionKey: "Invalid time range: \(reason)"]
+                        )
                     }
 
                     let fMax = fMaxParam.map { Float($0) } ?? Float(sampleRate) / 2.0
@@ -1093,9 +1091,14 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             // Reject rather than silently falling back to the source rate. An absurd value
             // reached AVAssetReaderTrackOutput, which raises an ObjC exception no Swift
             // catch can recover from, and AVAudioConverter, which returns nil (#433).
+            // "Present but unparseable" must reject, not fall through to the source rate.
+            // bridgedFiniteDouble returns nil for 1e20, which is indistinguishable from the
+            // key being absent unless the raw value is checked first (#433).
+            let sampleRateWasProvided = options["targetSampleRate"] != nil
+                && !(options["targetSampleRate"] is NSNull)
             let requestedSampleRate = bridgedFiniteDouble(options, "targetSampleRate")
-            if let requested = requestedSampleRate,
-               BridgedNarrowing.outputSampleRate(requested) == nil {
+            if sampleRateWasProvided,
+               BridgedNarrowing.outputSampleRate(requestedSampleRate) == nil {
                 promise.reject(
                     "ERR_AUDIO_STREAM_INVALID_RANGE",
                     "targetSampleRate must be in "
