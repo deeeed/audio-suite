@@ -989,7 +989,7 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
     /// This reduces latency when startRecording is called later.
     /// - Parameters:
     ///   - settings: The recording settings to use.
-    /// - Returns: A boolean indicating if preparation was successful.
+    /// - Throws: `StartRecordingError` naming why preparation could not complete.
     /// Prepares the audio session, output file and tap.
     ///
     /// Throws rather than returning Bool: a bare Bool meant every reason — an active
@@ -1203,6 +1203,11 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
                 }
             }
             
+        } catch let error as StartRecordingError {
+            // A reason thrown from inside this block — a tap that would not install, for
+            // example — already names its cause. The generic catch below would replace it
+            // with .preparationFailed and lose that.
+            throw error
         } catch {
             Logger.debug("AudioStreamManager", "Error: Failed to set up audio session with preferred settings: \(error.localizedDescription)")
             throw StartRecordingError.preparationFailed

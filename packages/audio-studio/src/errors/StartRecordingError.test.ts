@@ -53,6 +53,29 @@ describe('isStartRecordingErrorCode', () => {
         }
     })
 
+    // Independent of the derived loops: those iterate the tuple, so deleting a code makes
+    // them stop checking it rather than fail. Both of these were genuinely missing from
+    // earlier revisions while the derived tests stayed green.
+    it('includes the validation codes that were previously omitted', () => {
+        expect(isStartRecordingErrorCode('INVALID_SETTINGS')).toBe(true)
+        expect(isStartRecordingErrorCode('INVALID_CONFIG')).toBe(true)
+        expect(startRecordingErrorCode({ code: 'INVALID_SETTINGS' })).toBe(
+            'INVALID_SETTINGS'
+        )
+        expect(startRecordingErrorCode({ code: 'INVALID_CONFIG' })).toBe('INVALID_CONFIG')
+    })
+
+    it('includes the permission and buffer codes that were previously omitted', () => {
+        for (const code of [
+            'PERMISSION_DENIED',
+            'NOTIFICATION_PERMISSION_DENIED',
+            'INITIALIZATION_FAILED',
+            'BUFFER_SIZE_ERROR',
+        ]) {
+            expect(isStartRecordingErrorCode(code)).toBe(true)
+        }
+    })
+
     it('rejects anything else', () => {
         expect(isStartRecordingErrorCode('NOPE')).toBe(false)
         expect(isStartRecordingErrorCode(42)).toBe(false)

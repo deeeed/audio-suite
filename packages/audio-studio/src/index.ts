@@ -88,6 +88,8 @@ export type {
 } from './errors/AudioStreamError'
 
 export {
+    RECOVERABLE_START_RECORDING_ERROR_CODES,
+    START_RECORDING_ERROR_CODES,
     isRecoverableStartRecordingError,
     isStartRecordingErrorCode,
     startRecordingErrorCode,

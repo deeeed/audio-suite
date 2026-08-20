@@ -26,7 +26,7 @@ enum StartRecordingError: Error {
     case invalidSettings
     /// The audio tap could not be installed on the engine's input node.
     case tapInstallationFailed
-    /// A phone call became active between preparation and start.
+    /// A phone call is active — detected during preparation or just before start.
     case phoneCallActive
     /// A recording is already running.
     case alreadyRecording
