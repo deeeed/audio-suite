@@ -33,14 +33,19 @@ enum OutputPromotion {
 
     /// Whether a caller-supplied output filename is a single, safe path component.
     ///
-    /// `outputFileName` arrives from JS and is appended to a directory, so a separator
-    /// escapes it: `../../../../tmp/pwned` resolves to `/var/tmp/pwned.wav`, and the trim
-    /// writes there. That is outside the documented contract — a name, not a path — and a
-    /// way to overwrite unrelated files (#433).
+    /// `outputFileName` arrives from JS and is appended to a directory. A separator makes
+    /// it a path rather than a name, and a path can traverse: `../../../../tmp/pwned`
+    /// resolves to `/var/tmp/pwned.wav`, where the trim then writes — outside the
+    /// documented contract, and a way to overwrite unrelated files (#433).
     ///
-    /// Bare `.` and `..` are rejected too, though they do not escape on their own: an
-    /// extension is appended, so they land as `..wav` and `...wav` inside the directory.
-    /// They are refused because they are not filenames, not because they traverse.
+    /// Not every rejected name escapes, and the difference is worth stating precisely,
+    /// having been described wrongly twice. Probed against `/tmp/base`:
+    /// - `../escaped` and `../../../../tmp/pwned` land outside it
+    /// - `a/b` nests inside it, `/absolute` is absorbed, `.` and `..` become `..wav` and
+    ///   `...wav` inside it
+    ///
+    /// All are refused, because the contract is a single filename and anything else writes
+    /// somewhere the caller did not name. Only the first group is a traversal.
     static func isSafeOutputFileName(_ name: String) -> Bool {
         guard !name.isEmpty else { return false }
         guard !name.contains("/") else { return false }

@@ -123,18 +123,19 @@ final class OutputPromotionTests: XCTestCase {
         }
     }
 
-    func testNamesThatEscapeTheOutputDirectoryAreRejected() {
-        // Probed: "../../../../tmp/pwned" appended to the temporary directory resolves to
-        // /var/tmp/pwned.wav, so the trim would write outside it entirely.
-        for name in ["../escaped", "a/b", "../../../../tmp/pwned", "/absolute"] {
+    func testNamesThatTraverseOutOfTheOutputDirectoryAreRejected() {
+        // Probed: appended to /tmp/base, these resolve to /tmp/escaped.wav and
+        // /tmp/pwned.wav — outside it entirely.
+        for name in ["../escaped", "../../../../tmp/pwned"] {
             XCTAssertFalse(OutputPromotion.isSafeOutputFileName(name), name)
         }
     }
 
-    func testDotComponentsAreRejectedEvenThoughTheyDoNotEscape() {
-        // An extension is appended, so these land as "..wav" and "...wav" inside the
-        // directory rather than traversing. Refused for not being filenames.
-        for name in [".", "..", ""] {
+    func testNonFilenamesAreRejectedEvenWhenTheyStayInside() {
+        // None of these traverse — "a/b" nests, "/absolute" is absorbed, and "." and ".."
+        // become "..wav" and "...wav" — but none is a filename, so each writes somewhere
+        // the caller did not name. Kept separate because I described this wrongly twice.
+        for name in ["a/b", "/absolute", ".", "..", ""] {
             XCTAssertFalse(OutputPromotion.isSafeOutputFileName(name), name)
         }
     }
