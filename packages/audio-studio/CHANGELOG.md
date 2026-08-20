@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `android.audioSource` controls which `MediaRecorder.AudioSource` Android captures from, so callers can bypass OEM voice processing. Recording was hardcoded to `MIC`, which applies noise suppression, AGC and — on Honor/Huawei and Xiaomi/Redmi devices — an aggressive enhancement pass that degrades speech-to-text and acoustic analysis. Accepts `'mic'` (default, unchanged), `'voiceRecognition'`, `'unprocessed'`, or `'auto'`. This is the Android counterpart to `ios.audioSession.mode: 'measurement'`.
+  `'unprocessed'` needs hardware support, and Android treats it as `DEFAULT` where absent — the recorder opens and reports success while processing stays on. Availability is therefore gated on `AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED`, with a construction probe confirming the requested format, falling back to `'mic'`. The source actually used is reported on the start result as `androidAudioSource`, so a fallback is visible instead of silent.
+
 ### Changed
 
 - **Breaking for error handling:** iOS `startRecording` and `prepareRecording` no longer reject with the code `"ERROR"` and a fixed message. Callers matching on that code or on the exact string must switch on `error.code` instead; use the exported `startRecordingErrorCode()` helper to narrow it.

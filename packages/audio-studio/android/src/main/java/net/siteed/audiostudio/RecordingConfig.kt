@@ -65,6 +65,8 @@ data class RecordingConfig(
     val deviceId: String? = null,
     val deviceDisconnectionBehavior: String? = null,
     val audioFocusStrategy: String? = null,
+    /** Requested MediaRecorder.AudioSource: mic, voiceRecognition, unprocessed, auto. */
+    val audioSource: String? = null,
     val bufferDurationSeconds: Double? = null,
     val streamFormat: String = "raw",
     val maxDurationMs: Long = 0L,
@@ -133,6 +135,7 @@ data class RecordingConfig(
             // Get Android-specific settings
             val androidConfig = options["android"] as? Map<String, Any>
             val audioFocusStrategy = androidConfig?.get("audioFocusStrategy") as? String
+            val audioSource = androidConfig?.get("audioSource") as? String
 
             // Initialize the recording configuration with cleaned directory path
             val tempRecordingConfig = RecordingConfig(
@@ -160,6 +163,7 @@ data class RecordingConfig(
                 deviceId = deviceId,
                 deviceDisconnectionBehavior = deviceDisconnectionBehavior,
                 audioFocusStrategy = audioFocusStrategy,
+                audioSource = audioSource,
                 bufferDurationSeconds = (options["bufferDurationSeconds"] as? Number)?.toDouble(),
                 streamFormat = options.getStringOrDefault("streamFormat", "raw"),
                 maxDurationMs = options.getNumberOrDefault("maxDurationMs", 0L),
