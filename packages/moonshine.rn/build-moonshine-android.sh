@@ -230,6 +230,18 @@ if [ "$needs_lfs_pull" = "1" ]; then
   git lfs pull --include="$LFS_INCLUDE_PATHS"
 fi
 
+# core/CMakeLists.txt lists speaker-embedding-model-data.cpp unconditionally. It is
+# an LFS file at the pinned commit, so the pull above normally materializes it, but
+# it does not exist at every upstream tag — a checkout moved off the pinned commit
+# resolves to a tree without it. Without this check gradle fails ~80s later with an
+# opaque CMake "Cannot find source file". Fail now, naming the override instead.
+if is_lfs_pointer_file "$speaker_embedding_data_path"; then
+  echo -e "${RED}Error: $speaker_embedding_data_path is missing or is an unmaterialized LFS pointer.${NC}" >&2
+  echo -e "${RED}Confirm third_party/moonshine is on the pinned commit and git-lfs fetched it,${NC}" >&2
+  echo -e "${RED}or point SITEED_MOONSHINE_SPEAKER_EMBEDDING_DATA_CPP at a copy of the file.${NC}" >&2
+  exit 1
+fi
+
 ./gradlew clean assembleRelease -Pandroid.useAndroidX=true
 
 AAR_SOURCE="$(find "$UPSTREAM_DIR/build/outputs/aar" -maxdepth 1 -name '*release.aar' | head -n1)"
