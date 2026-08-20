@@ -19,7 +19,9 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
     
     private val executor = Executors.newSingleThreadExecutor()
     private var tts: OfflineTts? = null
-    private var isGenerating = false
+    // Read on the generation thread, written by stop()/release(). Volatile so the
+    // write is visible if either ever runs off the shared single-thread executor.
+    @Volatile private var isGenerating = false
     private var audioTrack: AudioTrack? = null
     private var ttsModelConfig: OfflineTtsModelConfig? = null
     private var currentSampleRate: Int = 22050 // Default to 22050 Hz (common for speech)
@@ -623,11 +625,16 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
      */
     private fun releaseAudioTrack() {
         try {
-            if (audioTrack?.state == AudioTrack.STATE_INITIALIZED) {
-                if (audioTrack?.playState == AudioTrack.PLAYSTATE_PLAYING) {
-                    audioTrack?.stop()
+            // Release whenever the track is non-null, not only when it reached
+            // STATE_INITIALIZED. A track whose build() succeeded but whose init
+            // failed still owns a native track; gating release on STATE_INITIALIZED
+            // dropped the reference without freeing it, and the reinit-on-failure
+            // paths leak once per retry.
+            audioTrack?.let { track ->
+                if (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                    track.stop()
                 }
-                audioTrack?.release()
+                track.release()
             }
             audioTrack = null
             Log.d(TAG, "AudioTrack released")
@@ -641,13 +648,15 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
      */
     private fun initAudioTrack(sampleRate: Int, startPlayback: Boolean = true) {
         try {
-            // Release any existing AudioTrack first to prevent resource conflicts
+            // Release any existing AudioTrack first to prevent resource conflicts.
+            // Same unconditional release as releaseAudioTrack(): an uninitialized
+            // track still owns native resources.
             try {
-                if (audioTrack?.state == AudioTrack.STATE_INITIALIZED) {
-                    if (audioTrack?.playState == AudioTrack.PLAYSTATE_PLAYING) {
-                        audioTrack?.stop()
+                audioTrack?.let { track ->
+                    if (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                        track.stop()
                     }
-                    audioTrack?.release()
+                    track.release()
                 }
                 audioTrack = null
                 Log.d(TAG, "AudioTrack released")
