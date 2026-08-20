@@ -36,7 +36,7 @@ internal object AudioSourceResolver {
         val fellBack: Boolean,
     )
 
-    val MIC = Resolution(MediaRecorder.AudioSource.MIC, "mic", fellBack = false)
+    private val MIC = Resolution(MediaRecorder.AudioSource.MIC, "mic", fellBack = false)
 
     /**
      * @param requested one of mic, voiceRecognition, unprocessed, auto, or null for the default

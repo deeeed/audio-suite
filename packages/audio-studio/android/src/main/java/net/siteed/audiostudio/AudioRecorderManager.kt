@@ -81,21 +81,21 @@ class AudioRecorderManager(
     
     private var audioRecord: AudioRecord? = null
     /**
-     * Which audio source recording actually opened, reported back to JS so a caller can
-     * tell an honoured request from a fallback (#428).
+     * The source recording actually opened, shared by the PCM AudioRecord and the compressed
+     * MediaRecorder and reported to JS so a caller can tell an honoured request from a
+     * fallback (#428). See [AudioSourceLifecycle] for when it is resolved and dropped.
      */
+    private val audioSourceLifecycle = AudioSourceLifecycle<AudioSourceResolver.Resolution>()
+
     /**
-     * The source resolved for the current recording, shared by the PCM AudioRecord and the
-     * compressed MediaRecorder. Resolving separately let the two capture through different
-     * sources while the result reported only the PCM choice (#428).
+     * The resolved source, for use after the recorders exist. Reading this before resolution
+     * is a lifecycle bug rather than a fallback case, so it fails loudly instead of quietly
+     * reporting or opening MIC.
      */
-    /**
-     * The source resolved for the current recording, shared by the PCM AudioRecord and the
-     * compressed MediaRecorder. Null between recordings: resolving separately per
-     * reconstruction let the two capture through different sources while the result
-     * reported only the PCM choice (#428).
-     */
-    private var activeAudioSource: AudioSourceResolver.Resolution? = null
+    private val requireAudioSource: AudioSourceResolver.Resolution
+        get() = checkNotNull(audioSourceLifecycle.resolved) {
+            "Audio source read before it was resolved"
+        }
     private var bufferSizeInBytes = 0
     private val _isRecording = AtomicBoolean(false)
     private val isPaused = AtomicBoolean(false)
@@ -570,13 +570,6 @@ class AudioRecorderManager(
                 return
             }
 
-            // Clear the previous recording's resolved source so this one resolves fresh.
-            // Resuming a paused recording must keep it, since the compressed recorder is
-            // still open on the source chosen then.
-            if (!isPaused.get()) {
-                activeAudioSource = null
-            }
-            
             // If already prepared, we can skip initialization
             if (!isPrepared) {
                 LogUtils.d(CLASS_NAME, "Not prepared, preparing recording first")
@@ -673,7 +666,7 @@ class AudioRecorderManager(
                 "mimeType" to mimeType,
                 // The source actually opened, which may differ from the request when the
                 // device does not support it (#428).
-                "androidAudioSource" to (activeAudioSource ?: AudioSourceResolver.MIC).name,
+                "androidAudioSource" to requireAudioSource.name,
                 "compression" to if (compressedFile != null) bundleOf(
                     "mimeType" to if (recordingConfig.output.compressed.format == "aac") "audio/aac" else "audio/opus",
                     "bitrate" to recordingConfig.output.compressed.bitrate,
@@ -1008,11 +1001,12 @@ class AudioRecorderManager(
                 // Honour androidConfig.audioSource so callers can bypass OEM voice
                 // processing for ASR or analysis (#428). Falls back to MIC when the
                 // requested source is not usable on this device.
-                // Resolve once per recording. initializeAudioRecord() also runs on device
-                // change and resume, and re-resolving there could flip PCM to MIC while the
-                // compressed recorder — which is only paused, never rebuilt — keeps the
-                // original source, with androidAudioSource reporting a stale value.
-                if (activeAudioSource == null) {
+                // Resolve once per recording, then reuse. This also runs on device change and
+                // resume, and re-resolving there could flip PCM to MIC while the compressed
+                // recorder — only paused, never rebuilt — keeps the original source, with
+                // androidAudioSource reporting a stale value. Cleared on teardown, so a
+                // prepared start keeps what prepareRecording() resolved.
+                audioSourceLifecycle.onInitializeRecorders {
                     val resolved = AudioSourceResolver.resolve(
                         requested = recordingConfig.audioSource,
                         context = context,
@@ -1020,15 +1014,15 @@ class AudioRecorderManager(
                         channelConfig = channelConfig,
                         audioFormat = audioFormat,
                     )
-                    activeAudioSource = resolved
                     if (resolved.fellBack) {
                         LogUtils.w(
                             CLASS_NAME,
                             "Requested audio source '${recordingConfig.audioSource}' is unavailable; using '${resolved.name}'"
                         )
                     }
+                    resolved
                 }
-                val currentSource = activeAudioSource ?: AudioSourceResolver.MIC
+                val currentSource = requireAudioSource
 
                 audioRecord = AudioRecord(
                     currentSource.source,
@@ -1208,7 +1202,8 @@ class AudioRecorderManager(
 
                 _isRecording.set(false)
                 isPrepared = false  // Reset preparation state
-                
+                audioSourceLifecycle.onTeardown()  // Next recording resolves fresh
+
                 // Use a reasonable fixed timeout for all cases
                 // The recording thread should exit quickly with non-blocking read
                 val timeoutMs = 2000L // 2 seconds should be more than enough
@@ -1953,7 +1948,8 @@ class AudioRecorderManager(
                 isPaused.set(false)
                 pausedBySystemInterruption.set(false)
                 isPrepared = false  // Reset prepared state
-                
+                audioSourceLifecycle.onTeardown()  // Next recording resolves fresh
+
                 if (::recordingConfig.isInitialized && recordingConfig.showNotification) {
                     notificationManager.stopUpdates()
                     AudioRecordingService.stopService(context)
@@ -2019,11 +2015,9 @@ class AudioRecorderManager(
             }
 
             compressedRecorder?.apply {
-                // Keep the compressed recorder on the same source as the PCM path, so the
-                // two outputs are not captured through different processing chains (#428).
                 // Reuse the resolution the PCM path already made, so both outputs capture
-                // through the same source rather than resolving independently.
-                setAudioSource((activeAudioSource ?: AudioSourceResolver.MIC).source)
+                // through the same source rather than resolving independently (#428).
+                setAudioSource(requireAudioSource.source)
                 
                 // Choose output format based on codec and preferRawStream flag
                 val outputFormat = when (recordingConfig.output.compressed.format) {
@@ -2390,6 +2384,42 @@ internal object AndroidCallState {
             else -> audioMode == AudioManager.MODE_IN_CALL ||
                 audioMode == AudioManager.MODE_IN_COMMUNICATION
         }
+    }
+}
+
+/**
+ * The lifecycle of the resolved audio source, as a state machine over recorder events.
+ *
+ * Two review rounds found bugs here rather than in the resolving itself, both the same
+ * shape: a path re-resolved or discarded the source while a recorder built on the old one
+ * was still open, so the two outputs captured through different sources and the reported
+ * value stopped matching what was recording. The manager mirrors these transitions; this
+ * models them without Android types so the sequences can actually be tested.
+ */
+internal class AudioSourceLifecycle<T> {
+
+    /** The resolved source, or null when nothing is resolved. */
+    var resolved: T? = null
+        private set
+
+    /**
+     * Building the recorders. Resolves only when nothing holds a previous value: this also
+     * runs on device change and on resume, where the compressed recorder is paused rather
+     * than rebuilt and still holds the original source.
+     */
+    fun onInitializeRecorders(resolve: () -> T) {
+        if (resolved == null) {
+            resolved = resolve()
+        }
+    }
+
+    /**
+     * Tearing the recorders down. The only place the source is dropped — clearing it on the
+     * start path instead would wipe what preparation resolved, and a prepared start skips
+     * initialization, so it would report `mic` while non-MIC recorders were running.
+     */
+    fun onTeardown() {
+        resolved = null
     }
 }
 
