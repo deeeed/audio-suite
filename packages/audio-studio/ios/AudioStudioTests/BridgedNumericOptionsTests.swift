@@ -287,10 +287,20 @@ final class BridgedNumericOptionsTests: XCTestCase {
         }
     }
 
-    func testSegmentDurationBeyondUInt32FallsBack() {
-        guard case .success(let settings) = RecordingSettings.fromDictionary(["segmentDurationMs": Double(5_000_000_000)]) else {
+    func testSegmentDurationKeepsOnlyAPositivityCheck() {
+        // segmentDurationMs is narrowed as AVAudioFrameCount(sampleRate * ms / 1000),
+        // so the safe value depends on the FILE's sample rate — no bound on the
+        // option alone can make that conversion safe. The clamp therefore lives at
+        // the narrowing site in AudioProcessor; here we only reject non-positive
+        // input and confirm large values are not silently rewritten.
+        guard case .success(let zero) = RecordingSettings.fromDictionary(["segmentDurationMs": Double(0)]) else {
             return XCTFail("fromDictionary rejected the payload")
         }
-        XCTAssertEqual(settings.segmentDurationMs, 100, "unrepresentable segmentDurationMs must fall back")
+        XCTAssertEqual(zero.segmentDurationMs, 100, "non-positive must fall back to the default")
+
+        guard case .success(let large) = RecordingSettings.fromDictionary(["segmentDurationMs": Double(3_600_000)]) else {
+            return XCTFail("fromDictionary rejected the payload")
+        }
+        XCTAssertEqual(large.segmentDurationMs, 3_600_000, "a 1h segment is valid and must not be clamped")
     }
 }

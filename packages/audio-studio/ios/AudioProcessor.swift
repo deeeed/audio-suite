@@ -201,7 +201,14 @@ public class AudioProcessor {
         let endFrame: AVAudioFramePosition = effectiveOffset + effectiveLength
         
         // Calculate frames per segment based on segment duration
-        let framesPerSegment = AVAudioFrameCount(Float(audioFile.fileFormat.sampleRate) * Float(segmentDurationMs) / 1000.0)
+        // Clamp before narrowing: AVAudioFrameCount(_:) traps on a value it cannot
+        // represent, and the product depends on the file's sample rate, so no bound
+        // on segmentDurationMs alone can make this safe.
+        let rawFramesPerSegment = (Double(audioFile.fileFormat.sampleRate) * Double(segmentDurationMs) / 1000.0)
+            .rounded(.towardZero)
+        let framesPerSegment = AVAudioFrameCount(
+            min(max(rawFramesPerSegment, 1), Double(AVAudioFrameCount.max))
+        )
         
         if let numberOfSamples = numberOfSamples {
             framesPerBuffer = AVAudioFrameCount(max(1, effectiveLength / Int64(numberOfSamples)))

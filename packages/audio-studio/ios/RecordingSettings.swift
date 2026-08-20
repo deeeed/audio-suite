@@ -309,7 +309,7 @@ struct RecordingSettings {
         settings.featureOptions = dict["features"] as? [String: Bool]
 
         // Update segmentDurationMs parsing
-        settings.segmentDurationMs = bridgedInt(dict, "segmentDurationMs").flatMap { $0 > 0 && $0 <= Int(UInt32.max / 8) ? $0 : nil } ?? 100
+        settings.segmentDurationMs = bridgedInt(dict, "segmentDurationMs").flatMap { $0 > 0 ? $0 : nil } ?? 100
 
         // Parse iOS-specific config
         if let iosDict = dict["ios"] as? [String: Any],
