@@ -2549,12 +2549,43 @@ class AudioStreamManager: NSObject, AudioDeviceManagerDelegate {
         stopping = false
 
         // A primary WAV too short to hold a header, or one that could not be trimmed to
-        // the bytes actually recorded, is not a recording. Returning it would resolve
-        // stopRecording() with a file nothing can open — the silent-success outcome this
-        // issue is about. Teardown above still ran, and the delegate error was emitted.
+        // the bytes recorded, is not a file a caller can use. Pointing the result at it
+        // would resolve stopRecording() with something nothing can open — the silent
+        // success this issue is about.
+        //
+        // The recording still stopped, though, and a compressed sidecar is written by a
+        // separate recorder that this failure does not touch. Returning nil would call
+        // that a failed stop, discard the compressed metadata, and — because the bridge
+        // rejects — leave the JS hook short of its listener cleanup and STOP transition.
+        // So hand back the compressed output the same way the primary-disabled path
+        // already does, and let the delegate error carry what went wrong. Only when there
+        // is nothing else to return does this become a failed stop.
         if primaryUnusable {
-            Logger.debug("AudioStreamManager", "Refusing to return an unusable primary WAV.")
-            return nil
+            guard let compression = compression else {
+                Logger.debug(
+                    "AudioStreamManager",
+                    "Primary WAV unusable and no compressed output; reporting a failed stop."
+                )
+                return nil
+            }
+
+            Logger.debug(
+                "AudioStreamManager",
+                "Primary WAV unusable; returning the compressed output instead."
+            )
+            return RecordingResult(
+                fileUri: compression.compressedFileUri,
+                // The captured URL, not the property: teardown above is asynchronous and
+                // may already have cleared it.
+                filename: capturedCompressedURL?.lastPathComponent ?? "compressed-audio",
+                mimeType: compression.mimeType,
+                duration: durationMs,
+                size: compression.size,
+                channels: capturedSettings?.numberOfChannels ?? 1,
+                bitDepth: capturedSettings?.bitDepth ?? 16,
+                sampleRate: capturedSettings?.sampleRate ?? 44100,
+                compression: compression
+            )
         }
 
         return result

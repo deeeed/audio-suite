@@ -526,11 +526,35 @@ export function useAudioRecorder({
                 return stopFinalizationRef.current
             }
 
+            // Release the subscription and settle recording state. Runs on every outcome,
+            // including a native stop that rejected: the recorder is not running either
+            // way, and leaving the listener installed means the next processing-enabled
+            // recording adds a second one and loses this reference, so analysis callbacks
+            // arrive twice.
+            const releaseRecordingResources = () => {
+                if (analysisListenerRef.current) {
+                    analysisListenerRef.current.remove()
+                    analysisListenerRef.current = null
+                }
+                onAudioStreamRef.current = null
+                stateRef.current.isRecording = false
+                stateRef.current.isPaused = false
+                maxDurationHandledRef.current = false
+            }
+
             const finalizePromise = (async () => {
-                const nativeStopResult: AudioRecording | null =
-                    await audioStudio.stopRecording()
+                let nativeStopResult: AudioRecording | null
+                try {
+                    nativeStopResult = await audioStudio.stopRecording()
+                } catch (error) {
+                    releaseRecordingResources()
+                    dispatch({ type: 'STOP', payload: { reason } })
+                    throw error
+                }
 
                 if (!nativeStopResult) {
+                    releaseRecordingResources()
+                    dispatch({ type: 'STOP', payload: { reason } })
                     throw new Error('Failed to stop recording')
                 }
 
@@ -547,18 +571,10 @@ export function useAudioRecorder({
                     delete stopResult.analysisData
                 }
 
-                if (analysisListenerRef.current) {
-                    analysisListenerRef.current.remove()
-                    analysisListenerRef.current = null
-                }
-                onAudioStreamRef.current = null
-
-                stateRef.current.isRecording = false
-                stateRef.current.isPaused = false
+                releaseRecordingResources()
 
                 // Note: We deliberately DON'T clear recordingConfigRef here to preserve callbacks.
                 logger?.debug(`recording stopped`, stopResult)
-                maxDurationHandledRef.current = false
                 dispatch({
                     type: 'STOP',
                     payload: { reason },
