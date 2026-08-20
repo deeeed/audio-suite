@@ -9,9 +9,10 @@ import XCTest
 /// sits outside one and converts fine. The answers also differ between macOS and iOS, so
 /// they are a property of the platform and the source/target pair, not a constant.
 ///
-/// These assert the shape of that behaviour rather than exact rates, so they document why
-/// the production code asks instead of assuming, without failing when Apple changes a
-/// limit. The one place a constant is still used — the streaming reader — is covered in
+/// These do assert specific outcomes, which is a deliberate trade: if Apple changes one,
+/// the test fails and someone re-checks the assumption rather than the production code
+/// quietly relying on a stale one. They are a record of measured behaviour, not a
+/// guarantee it will hold. The one place a constant is still used — the streaming reader — is covered in
 /// `BridgedNarrowingTests`, and only because that failure is an uncatchable ObjC exception.
 final class ConverterCapabilityTests: XCTestCase {
 
@@ -41,18 +42,72 @@ final class ConverterCapabilityTests: XCTestCase {
     }
 
     func testSupportIsNotDescribedByAnUpperBound() {
-        // The reason trimAudio has no ceiling: a rate far above any hardware still
-        // converts, so rejecting it would refuse work the platform is willing to do.
-        XCTAssertNotNil(converter(to: 384_000))
+        // The reason trimAudio has no ceiling. 2MHz is well past the 768kHz bound a
+        // previous version of this PR invented, and still converts — so that bound would
+        // have refused work the platform is willing to do.
+        XCTAssertNotNil(converter(to: 2_000_000))
     }
 
-    func testConverterConstructionIsFallibleByContract() {
-        // The reason trim constructs fallibly rather than range-checking: this returns an
-        // Optional, and which pairs yield nil varies by OS — 1Hz from a 44.1kHz source is
-        // nil on macOS. Asserting the type, not a specific rate, keeps this honest when
-        // Apple changes a limit.
-        let result: AVAudioConverter? = converter(to: 1)
-        XCTAssertTrue(type(of: result) == Optional<AVAudioConverter>.self)
+    func testAnUpsampleNeedsAnOutputBufferSizedByTheRatio() throws {
+        // The truncation this PR fixes. A source-sized output buffer cannot hold an
+        // upsampled second, so the converter fills what it can and the rest is lost.
+        let converted = try convertOneSecond(to: 88_200, scaleOutputBuffer: false)
+        XCTAssertEqual(converted, 0.5, accuracy: 0.01, "a source-sized buffer truncates")
+
+        let scaled = try convertOneSecond(to: 88_200, scaleOutputBuffer: true)
+        XCTAssertEqual(scaled, 1.0, accuracy: 0.01, "sizing by the ratio preserves duration")
+    }
+
+    func testADownsampleMustNotReconsumeItsInput() throws {
+        // Returning the same buffer with .haveData forever made the converter read it
+        // repeatedly, so a downsample emitted more audio than it was given.
+        let reconsumed = try convertOneSecond(to: 22_050, scaleOutputBuffer: false, singleShot: false)
+        XCTAssertEqual(reconsumed, 2.0, accuracy: 0.01, "re-consumption doubles the audio")
+
+        let once = try convertOneSecond(to: 22_050, scaleOutputBuffer: true, singleShot: true)
+        XCTAssertEqual(once, 1.0, accuracy: 0.01, "supplying the input once preserves duration")
+    }
+
+    func testAnExtremeUpsamplePreservesDuration() throws {
+        // 384kHz is the case from the report: it used to come back as 0.11s.
+        let scaled = try convertOneSecond(to: 384_000, scaleOutputBuffer: true, singleShot: true)
+        XCTAssertEqual(scaled, 1.0, accuracy: 0.01)
+    }
+
+    /// Converts one second of silence and returns the output duration in seconds.
+    private func convertOneSecond(
+        to rate: Double,
+        scaleOutputBuffer: Bool,
+        singleShot: Bool = true
+    ) throws -> Double {
+        let target = try XCTUnwrap(AVAudioFormat(
+            commonFormat: .pcmFormatFloat32, sampleRate: rate,
+            channels: source.channelCount, interleaved: false
+        ))
+        let converter = try XCTUnwrap(AVAudioConverter(from: source, to: target))
+
+        let frames = AVAudioFrameCount(source.sampleRate)
+        let input = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: source, frameCapacity: frames))
+        input.frameLength = frames
+
+        let capacity = scaleOutputBuffer
+            ? AVAudioFrameCount((Double(frames) * rate / source.sampleRate).rounded(.up))
+            : frames
+        let output = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity))
+
+        var supplied = false
+        var error: NSError?
+        _ = converter.convert(to: output, error: &error) { _, status in
+            if singleShot && supplied {
+                status.pointee = .endOfStream
+                return nil
+            }
+            supplied = true
+            status.pointee = .haveData
+            return input
+        }
+        XCTAssertNil(error)
+        return Double(output.frameLength) / rate
     }
 
     func testAVAudioFormatIsNotAGateOnNonsenseRates() {

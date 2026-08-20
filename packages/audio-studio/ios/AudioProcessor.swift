@@ -789,12 +789,24 @@ public class AudioProcessor {
             .appendingPathExtension(fileExtension)
 
         let decodingConfig = DecodingConfig.fromDictionary(decodingOptions ?? [:])
-        let needFormatChange = decodingConfig.targetSampleRate != nil || decodingConfig.targetChannels != nil || decodingConfig.targetBitDepth != nil
+        // Compare what was actually resolved, not just decodingOptions. outputFormat is a
+        // separate parameter, so a sampleRate or channel change requested there took the
+        // WAV fast path and was silently ignored (#433).
+        let outputDiffersFromInput = targetSampleRate != inputSampleRate
+            || targetChannels != inputChannels
+        let needFormatChange = decodingConfig.targetSampleRate != nil
+            || decodingConfig.targetChannels != nil
+            || decodingConfig.targetBitDepth != nil
+            || outputDiffersFromInput
         let isWavInput = audioFile.fileFormat.settings[AVFormatIDKey] as? UInt32 == kAudioFormatLinearPCM
 
         do {
             if isWavInput && formatStr == "wav" && !needFormatChange {
                 // Fast path: WAV-to-WAV with no format changes
+                // Scoped so the writer is released before the result reads the file back.
+                // AVAudioFile reports length 0 for a file whose writer is still alive, so
+                // reopening too early reported durationMs: 0 for a successful trim (#433).
+                try autoreleasepool {
                 let outputFile = try AVAudioFile(forWriting: outputURL, settings: inputFormat.settings)
                 var totalFrames: Int64 = 0
                 for range in keepRanges {
@@ -834,7 +846,8 @@ public class AudioProcessor {
                 Logger.debug("AudioProcessor", "- File exists: \(FileManager.default.fileExists(atPath: outputURL.path))")
                 Logger.debug("AudioProcessor", "- File size: \((try? FileManager.default.attributesOfItem(atPath: outputURL.path)[.size] as? Int64) ?? 0) bytes") // Fixed optional unwrapping
                 Logger.debug("AudioProcessor", "- File extension: \(outputURL.pathExtension)")
-                
+                }
+
                 return createTrimResult(from: outputURL, keepRanges: keepRanges, formatStr: formatStr, sampleRate: Int(inputSampleRate), channels: inputChannels, bitDepth: 16, bitrate: bitrate)
             } else {
                 // Non-fast path: Decode and re-encode
@@ -857,6 +870,8 @@ public class AudioProcessor {
                 var cumulativeFrames: Int64 = 0
 
                 if formatStr == "wav" {
+                    // Scoped for the same reason as the fast path above.
+                    try autoreleasepool {
                     let outputFile = try AVAudioFile(forWriting: outputURL, settings: [
                         AVFormatIDKey: kAudioFormatLinearPCM,
                         AVSampleRateKey: targetSampleRate,
@@ -875,9 +890,15 @@ public class AudioProcessor {
                         let endFramePosition = endTimeInSeconds * inputSampleRate
                         let frameCount = AVAudioFrameCount(endFramePosition - Double(startFrame))
                         
+                        // Throw rather than continue: skipping a range would return a
+                        // successful result missing the audio the caller asked to keep.
                         guard let buffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: frameCount) else {
-                            Logger.debug("AudioProcessor", "Could not allocate a \(frameCount)-frame input buffer")
-                            continue
+                            throw NSError(
+                                domain: "AudioProcessor",
+                                code: -1,
+                                userInfo: [NSLocalizedDescriptionKey:
+                                    "Could not allocate a \(frameCount)-frame input buffer"]
+                            )
                         }
                         audioFile.framePosition = startFrame
                         try audioFile.read(into: buffer, frameCount: frameCount)
@@ -899,25 +920,53 @@ public class AudioProcessor {
                                     + "from this file's \(inputFormat.sampleRate)Hz"]
                             )
                         }
-                        guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: frameCount) else {
-                            Logger.debug("AudioProcessor", "Could not allocate a \(frameCount)-frame output buffer")
-                            continue
+                        // Size the output by the rate ratio. A source-sized buffer truncated
+                        // every upsample — one second at 44.1kHz came back as 0.5s at 88.2kHz
+                        // and 0.23s at 384kHz — because the converter can only write what
+                        // the buffer holds (#433).
+                        let ratio = targetFormat.sampleRate / inputFormat.sampleRate
+                        let scaled = (Double(frameCount) * ratio).rounded(.up)
+                        let outputFrameCapacity = AVAudioFrameCount(
+                            min(max(scaled, 1), Double(AVAudioFrameCount.max))
+                        )
+                        guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outputFrameCapacity) else {
+                            throw NSError(
+                                domain: "AudioProcessor",
+                                code: -1,
+                                userInfo: [NSLocalizedDescriptionKey:
+                                    "Could not allocate a \(outputFrameCapacity)-frame output buffer"]
+                            )
                         }
+                        // Supply the input once, then report end of stream. Returning the
+                        // same buffer with .haveData forever made the converter re-consume
+                        // it, so a downsample emitted more audio than it was given.
+                        var suppliedInput = false
                         var error: NSError?
-                        _ = converter.convert(to: convertedBuffer, error: &error) { inNumPackets, outStatus in
+                        _ = converter.convert(to: convertedBuffer, error: &error) { _, outStatus in
+                            if suppliedInput {
+                                outStatus.pointee = .endOfStream
+                                return nil
+                            }
+                            suppliedInput = true
                             outStatus.pointee = .haveData
                             return buffer
                         }
                         if let error = error {
-                            Logger.debug("AudioProcessor", "Format conversion failed: \(error.localizedDescription)")
-                            Logger.debug("AudioProcessor", "Skipping this buffer")
-                            continue
+                            // Skipping produced a successful result missing this range.
+                            throw NSError(
+                                domain: "AudioProcessor",
+                                code: -1,
+                                userInfo: [NSLocalizedDescriptionKey:
+                                    "Format conversion failed: \(error.localizedDescription)"]
+                            )
                         }
                         try outputFile.write(from: convertedBuffer)
                         cumulativeFrames += Int64(frameCount)
                         let progress = Float(cumulativeFrames) / Float(totalFrames) * 100
                         progressCallback?(progress, 0, totalFrames * Int64(inputFormat.streamDescription.pointee.mBytesPerFrame))
                     }
+                    }
+
                     return createTrimResult(from: outputURL, keepRanges: keepRanges, formatStr: formatStr, sampleRate: Int(targetSampleRate), channels: targetChannels, bitDepth: targetBitDepth, bitrate: bitrate)
                 } else {
                     // Use AAC instead of Opus (Opus support removed)
