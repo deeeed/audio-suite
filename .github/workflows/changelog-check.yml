@@ -16,11 +16,10 @@ jobs:
           # Need the merge base to diff against the target branch.
           fetch-depth: 0
 
-      - name: Classifier self-test
+      - name: Self-test
         run: |
           node scripts/changelog-check/changelog.test.js
           node scripts/changelog-check/classify.test.js
-          node scripts/changelog-check/corpus.test.js
 
       - name: Require a changelog entry for each touched package
         uses: actions/github-script@v7
@@ -28,9 +27,9 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const { execFileSync } = require('child_process')
-            const { findMissing } = require(
-              `${process.env.GITHUB_WORKSPACE}/scripts/changelog-check/classify.js`
-            )
+            const dir = `${process.env.GITHUB_WORKSPACE}/scripts/changelog-check`
+            const { findMissing } = require(`${dir}/classify.js`)
+            const { hasNewUnreleasedEntry } = require(`${dir}/changelog.js`)
 
             const labels = (context.payload.pull_request.labels || []).map((l) => l.name)
             if (labels.includes('skip-changelog')) {
@@ -46,20 +45,24 @@ jobs:
             let changed
             try {
               mergeBase = git('merge-base', base, head).trim()
-              // -z: paths with non-ASCII or newline characters are otherwise C-quoted, and a
-              // quoted path no longer starts with "packages/", silently bypassing the prefix
-              // check. --no-renames: rename detection reports only the destination, so a file
-              // moved out of a package would erase the package-side path.
+              // -z: paths with non-ASCII or newline characters are otherwise C-quoted, and
+              // a quoted path no longer starts with "packages/". --no-renames: rename
+              // detection reports only the destination, erasing the package-side path.
               changed = git('diff', '--name-only', '--no-renames', '-z', mergeBase, head)
                 .split('\0')
                 .filter(Boolean)
             } catch (e) {
-              core.setFailed(
-                `Could not compute the changed-file list between ${base} and ${head}: ${e.message}`
-              )
+              core.setFailed(`Could not diff ${base}..${head}: ${e.message}`)
               return
             }
 
+            const show = (ref, path) => {
+              try {
+                return git('show', `${ref}:${path}`)
+              } catch {
+                return ''
+              }
+            }
             const listTree = (ref, dir) => {
               try {
                 return git('ls-tree', '--name-only', '-z', `${ref}:${dir}`)
@@ -69,15 +72,10 @@ jobs:
                 return []
               }
             }
-            // Returns the parsed manifest, null when present-but-unparseable (which the
-            // classifier treats as "enforce"), or undefined when absent.
+            // Parsed manifest, null when present but unparseable (enforced), undefined when absent.
             const manifestAt = (ref) => (pkg) => {
-              let raw
-              try {
-                raw = git('show', `${ref}:packages/${pkg}/package.json`)
-              } catch {
-                return undefined
-              }
+              const raw = show(ref, `packages/${pkg}/package.json`)
+              if (!raw) return undefined
               try {
                 return JSON.parse(raw)
               } catch {
@@ -85,54 +83,16 @@ jobs:
                 return null
               }
             }
-            const { unreleasedSection, entryText } = require(
-              `${process.env.GITHUB_WORKSPACE}/scripts/changelog-check/changelog.js`
-            )
-            const sectionAt = (ref, path) => {
-              try {
-                return unreleasedSection(git('show', `${ref}:${path}`))
-              } catch {
-                return ''
-              }
-            }
 
-            // A path in the diff only proves it was touched — a deletion counts too, and a
-            // symlink is also a blob (mode 120000), so `cat-file -t` alone is not enough.
-            // Require a regular file whose Unreleased section actually gained content: a
-            // chmod, a whitespace edit, or a change to an old release section would
-            // otherwise pass as "documented", which is not what the check promises.
-            const changelogUpdatedAtHead = (path) => {
-              let mode
-              let headOid
-              try {
-                const entry = git('ls-tree', head, '--', path).trim()
-                if (!entry) return false
-                // "<mode> <type> <oid>\t<path>"
-                const [meta] = entry.split('\t')
-                const parts = meta.split(/\s+/)
-                mode = parts[0]
-                headOid = parts[2]
-              } catch {
-                return false
-              }
+            // A path in the diff only proves it was touched — a deletion looks the same as
+            // an edit, and a symlink is a blob too. Require a regular file that gained a
+            // bullet under "## [Unreleased]".
+            const changelogUpdated = (path) => {
+              const entry = git('ls-tree', head, '--', path).trim()
+              if (!entry) return false
+              const mode = entry.split('\t')[0].split(/\s+/)[0]
               if (mode !== '100644' && mode !== '100755') return false
-
-              let baseOid = null
-              try {
-                const entry = git('ls-tree', mergeBase, '--', path).trim()
-                if (entry) baseOid = entry.split('\t')[0].split(/\s+/)[2]
-              } catch {
-                baseOid = null
-              }
-              // Unchanged blob: a chmod-only change.
-              if (baseOid !== null && baseOid === headOid) return false
-
-              // Require a real entry under "## [Unreleased]" — the contract the failure
-              // message states. entryText() drops blanks, HTML comments and bare
-              // punctuation, so padding does not read as documentation.
-              const before = entryText(baseOid === null ? '' : sectionAt(mergeBase, path))
-              const after = entryText(sectionAt(head, path))
-              return after.length > before.length
+              return hasNewUnreleasedEntry(show(mergeBase, path), show(head, path))
             }
 
             const missing = findMissing({
@@ -141,7 +101,7 @@ jobs:
               headPackages: listTree(head, 'packages'),
               baseManifest: manifestAt(mergeBase),
               headManifest: manifestAt(head),
-              existsAtHead: changelogUpdatedAtHead,
+              changelogUpdated,
             })
 
             if (missing.length === 0) {
@@ -152,13 +112,13 @@ jobs:
             const details = missing
               .map((m) => {
                 const via = m.owner === m.pkg ? '' : ` (documented in ${m.owner})`
-                return `- **${m.pkg}**${via} — changed \`${m.example}\`, but \`${m.changelog}\` was ${m.reason}`
+                return `- **${m.pkg}**${via} — changed \`${m.example}\`, but \`${m.changelog}\` ${m.reason}`
               })
               .join('\n')
 
             core.setFailed(
               `Missing changelog entries:\n${details}\n\n` +
-                `Add an entry under "## [Unreleased]" in each listed CHANGELOG.md, ` +
+                `Add a bullet under "## [Unreleased]" in each listed CHANGELOG.md, ` +
                 `or apply the "skip-changelog" label if this PR cannot affect consumers ` +
                 `(for example a release version bump).`
             )

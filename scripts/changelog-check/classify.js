@@ -3,60 +3,41 @@
 /**
  * Decision logic for the changelog PR check.
  *
- * Lives here rather than inline in the workflow so it can be tested directly. Three
- * review rounds each found a different bypass in the embedded version; regex lists
- * buried in YAML are not something you can meaningfully verify by reading.
+ * Deliberately simple and fail-closed: if a published package's tree changed at all, it
+ * needs a changelog entry, unless the path is on a short explicit allowlist of things that
+ * provably cannot reach a consumer.
  *
- * Everything is pure: callers supply the base and head trees, and get back the list of
- * packages that changed without a changelog entry.
+ * Earlier versions tried to be clever about what "cannot affect consumers" means, using
+ * path conventions like `*.test.ts` and `androidTest/`. Review found that wrong in both
+ * directions — audio-studio compiles its src tests into build/cjs/ and ships them,
+ * sherpa-onnx.rn ships androidTest sources outright, moonshine.rn ships none — and the
+ * attempt to fix it by snapshotting `npm pack` output recorded local build artifacts
+ * rather than repository state.
+ *
+ * So the boundary is no longer inferred. Asking someone to add a changelog line for a test
+ * edit costs them one line or a `skip-changelog` label; silently letting published source
+ * through is the failure that actually matters.
  */
 
 /**
- * Paths that cannot change what a consumer of the published package receives.
+ * Paths that cannot reach a consumer under any packaging arrangement.
  *
- * Deliberately NOT ignored, because they do shape published output:
- *   - tsconfig.cjs/esm/types/build.json and bob/rollup configs (compiler inputs)
- *   - android/scripts/*.sh (assemble the shipped native libraries)
- *   - .npmignore and .gitignore (decide tarball contents when `files` is absent)
+ * Every entry is an exact path or a directory that exists solely for repository tooling.
+ * Anything requiring a judgement call about whether it ships is NOT here — it is enforced.
  */
 const IGNORED = [
+  // The changelog itself, and the file a reader would check instead.
   /^packages\/[^/]+\/CHANGELOG\.md$/,
   /^packages\/[^/]+\/README\.md$/,
-  // Test suites — JS/TS and native.
-  /^packages\/[^/]+\/.*__(tests|fixtures|mocks)__\//,
-  /^packages\/[^/]+\/.*\.(test|spec)\.[jt]sx?$/,
-  /^packages\/[^/]+\/android\/src\/(test|androidTest)\//,
-  /^packages\/[^/]+\/ios\/[^/]*[Tt]ests?\//,
-  /^packages\/[^/]+\/ios\/tests\//,
-  /^packages\/[^/]+\/ios\/test_models\//,
-  /^packages\/[^/]+\/e2e\//,
-  /^packages\/[^/]+\/test-assets\//,
-  /^packages\/[^/]+\/jest\.setup\.[jt]s$/,
-  /^packages\/[^/]+\/\.size-limit\.json$/,
-  // Exact paths, not package-wide patterns: a broad `test-*` or `INSTALL.md` rule also
-  // exempts shipped source that happens to match the name.
-  /^packages\/audio-studio\/scripts\/run_tests\.sh$/,
-  /^packages\/audio-studio\/scripts\/README\.md$/,
-  /^packages\/sherpa-onnx\.rn\/ios-testing-info\.sh$/,
-  /^packages\/moonshine\.rn\/scripts\/test-ios-artifacts-script\.mjs$/,
-  // Vendored upstream checkouts. NOT a blanket third_party rule: react-native-essentia
-  // packs cpp/third_party/nlohmann/json.hpp, which must stay enforced.
+  // Vendored upstream checkouts. These are third-party source we do not document.
   /^packages\/sherpa-onnx\.rn\/third_party\//,
   /^packages\/moonshine\.rn\/third_party\//,
-  // Storybook — dev-only, never built into published output.
-  /^packages\/[^/]+\/\.storybook\//,
-  /^packages\/[^/]+\/.*\.stories\.[jt]sx?$/,
-  /^packages\/[^/]+\/assets\/Roboto\//,
-  // Lint/editor config. NOT build config.
-  /^packages\/[^/]+\/(.*\/)?\.(eslintrc|eslintignore|prettierrc|prettierignore|editorconfig|babelrc)/,
-  // Package root only. A `(.*\/)?` prefix also exempted packed source such as
-  // src/jest.config.ts, which npm pack includes.
+  // Editor and lint configuration at the package root.
+  /^packages\/[^/]+\/\.(eslintrc|eslintignore|prettierrc|prettierignore|editorconfig|babelrc)[^/]*$/,
   /^packages\/[^/]+\/(jest|babel|metro)\.config\.[^/]+$/,
-  /^packages\/[^/]+\/([^/]+\/)?tsconfig\.(eslint|test|spec)\.json$/,
-  /^packages\/[^/]+\/([^/]+\/)?tsconfig\.tsbuildinfo$/,
-  // Contributor-facing docs at the package root that are not packed.
+  /^packages\/[^/]+\/tsconfig\.(eslint|test|spec)\.json$/,
+  // Contributor-facing docs at the package root.
   /^packages\/[^/]+\/(ARCHITECTURE|CONTRIBUTE|CONTRIBUTING|PLAN|MIGRATION|TESTING)[^/]*\.md$/,
-  /^packages\/audio-ui\/src\/INSTALL\.md$/,
 ]
 
 /** Packages that keep no changelog of their own; their changes are documented elsewhere. */
@@ -66,65 +47,13 @@ const REDIRECT = {
 }
 
 /**
- * Files each package actually ships, captured from `npm pack --dry-run`.
- *
- * Path conventions are not the publish boundary, and guessing at them was wrong twice:
- * audio-studio ships 15 compiled tests under build/cjs/, sherpa-onnx.rn ships its
- * androidTest sources outright, and moonshine.rn ships none. So the real manifest wins
- * over any name-shaped ignore rule. Refresh with refresh-packed-manifest.js.
- */
-let PACKED = null
-function packedFiles(pkg) {
-  if (PACKED === null) {
-    try {
-      PACKED = require('./packed-manifest.json')
-    } catch {
-      PACKED = {}
-    }
-  }
-  return PACKED[pkg] || null
-}
-
-/**
- * Is this path shipped to consumers?
- *
- * Compiled sources do not appear verbatim in a tarball, so compare basenames too:
- * src/errors/AudioStreamError.test.ts ships as build/cjs/errors/AudioStreamError.test.js.
- */
-function isPacked(pkg, file) {
-  const packed = packedFiles(pkg)
-  if (packed === null) return false
-  const rel = file.slice(`packages/${pkg}/`.length)
-  if (packed.includes(rel)) return true
-
-  // Compiled output keeps the directory tail, so match on that rather than the bare
-  // filename: src/errors/Foo.test.ts -> build/cjs/errors/Foo.test.js. Matching filenames
-  // alone was too loose — scripts/README.md would have matched the packed root README.md.
-  const parts = rel.replace(/\.[jt]sx?$/, '').split('/')
-  if (parts.length < 2) return false
-  const tail = parts.slice(1).join('/') // drop the leading src/ or equivalent
-  if (!tail) return false
-  return packed.some((q) => q.replace(/\.[jt]sx?$/, '').endsWith(`/${tail}`))
-}
-
-function shipsDocs(manifest) {
-  if (!manifest) return true // unknown — enforce
-  const files = manifest.files
-  if (!Array.isArray(files)) return true // npm packs everything
-  return files.some((f) => {
-    const head = String(f).replace(/^\.\//, '').split('/')[0]
-    return head === 'docs' || head === '.' || head === '*' || head === '**'
-  })
-}
-
-/**
  * @param {object} input
  * @param {string[]} input.changed        paths changed between merge base and head
  * @param {string[]} input.basePackages   package dir names present at the merge base
  * @param {string[]} input.headPackages   package dir names present at head
  * @param {(pkg: string) => object|null|undefined} input.baseManifest  parsed package.json at base
  * @param {(pkg: string) => object|null|undefined} input.headManifest  parsed package.json at head
- * @param {(path: string) => boolean} input.existsAtHead  is this a regular file at head?
+ * @param {(path: string) => boolean} input.changelogUpdated  did this changelog gain an entry?
  * @returns {{pkg: string, owner: string, changelog: string, example: string, reason: string}[]}
  */
 function findMissing(input) {
@@ -134,18 +63,18 @@ function findMissing(input) {
     headPackages,
     baseManifest,
     headManifest,
-    existsAtHead,
+    changelogUpdated,
   } = input
 
-  const publishable = (manifest) => manifest !== null && manifest !== undefined && !manifest.private
+  const publishable = (m) => m !== null && m !== undefined && !m.private
 
-  // Union of base-publishable and head-publishable. Base alone fails open when a PR adds
-  // a package or flips private:true -> false; head alone fails open when a PR deletes a
-  // package's manifest or marks it private while changing its source.
+  // Union of base-publishable and head-publishable. Base alone fails open when a PR adds a
+  // package or flips private:true -> false; head alone fails open when a PR deletes a
+  // manifest or marks a package private while changing its source.
   const inScope = new Set()
   for (const pkg of basePackages) {
     const m = baseManifest(pkg)
-    // A manifest that is unparseable at base is enforced rather than skipped.
+    // Unparseable at base is enforced, not skipped.
     if (m === null || publishable(m)) inScope.add(pkg)
   }
   for (const pkg of headPackages) {
@@ -157,37 +86,23 @@ function findMissing(input) {
 
   for (const pkg of [...inScope].sort()) {
     const prefix = `packages/${pkg}/`
-    // A head manifest that is present-but-unparseable (null) must not inherit the base
-    // manifest's docs behaviour; treat it as unknown so shipsDocs() enforces.
-    const headM = headManifest(pkg)
-    const manifest = headM === undefined ? baseManifest(pkg) : headM
-    const ignored = shipsDocs(manifest)
-      ? IGNORED
-      : [...IGNORED, /^packages\/[^/]+\/docs\//]
-
-    const touched = changed.filter((f) => {
-      if (!f.startsWith(prefix)) return false
-      // A genuinely packed file is consumer-visible whatever its name suggests.
-      if (isPacked(pkg, f)) return true
-      return !ignored.some((re) => re.test(f))
-    })
+    const touched = changed.filter(
+      (f) => f.startsWith(prefix) && !IGNORED.some((re) => re.test(f))
+    )
     if (touched.length === 0) continue
 
     const owner = REDIRECT[pkg] || pkg
     const changelog = `packages/${owner}/CHANGELOG.md`
 
-    // A path appearing in the diff only means it was touched — a deletion counts too.
-    // Require an actual regular file at head, so deleting the changelog (or replacing it
-    // with a symlink or directory) cannot pass as "updated".
     if (!changed.includes(changelog)) {
       missing.push({ pkg, owner, changelog, example: touched[0], reason: 'not updated' })
-    } else if (!existsAtHead(changelog)) {
+    } else if (!changelogUpdated(changelog)) {
       missing.push({
         pkg,
         owner,
         changelog,
         example: touched[0],
-        reason: 'deleted, not a regular file, or its content is unchanged',
+        reason: 'has no new entry under "## [Unreleased]"',
       })
     }
   }
@@ -195,4 +110,4 @@ function findMissing(input) {
   return missing
 }
 
-module.exports = { findMissing, shipsDocs, isPacked, IGNORED, REDIRECT }
+module.exports = { findMissing, IGNORED, REDIRECT }
