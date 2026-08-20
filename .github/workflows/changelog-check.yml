@@ -1,0 +1,91 @@
+name: Changelog Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need the merge base to diff against the target branch.
+          fetch-depth: 0
+
+      - name: Require a changelog entry for each touched package
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { execSync } = require('child_process')
+
+            // Published libraries only. Deprecated re-export shims
+            // (expo-audio-stream, expo-audio-studio), the private agentic-dev
+            // helper, and the unpublished playgroundapi are excluded — nobody
+            // consumes their changelogs.
+            const PACKAGES = [
+              'audio-studio',
+              'audio-ui',
+              'moonshine.rn',
+              'react-native-essentia',
+              'sherpa-onnx.rn',
+            ]
+
+            // Changes that cannot affect a consumer of the published package.
+            const IGNORED = [
+              /^packages\/[^/]+\/CHANGELOG\.md$/,
+              /^packages\/[^/]+\/README\.md$/,
+              /^packages\/[^/]+\/docs\//,
+              /^packages\/[^/]+\/.*__tests__\//,
+              /^packages\/[^/]+\/.*\.test\.[jt]sx?$/,
+              /^packages\/[^/]+\/e2e\//,
+            ]
+
+            const labels = (context.payload.pull_request.labels || []).map((l) => l.name)
+            if (labels.includes('skip-changelog')) {
+              core.info('skip-changelog label present — nothing to enforce.')
+              return
+            }
+
+            const base = context.payload.pull_request.base.sha
+            const head = context.payload.pull_request.head.sha
+            execSync(`git fetch --no-tags origin ${base} ${head}`, { stdio: 'ignore' })
+            const mergeBase = execSync(`git merge-base ${base} ${head}`).toString().trim()
+            const changed = execSync(`git diff --name-only ${mergeBase} ${head}`)
+              .toString()
+              .split('\n')
+              .filter(Boolean)
+
+            const missing = []
+
+            for (const pkg of PACKAGES) {
+              const prefix = `packages/${pkg}/`
+              const touched = changed.filter(
+                (f) => f.startsWith(prefix) && !IGNORED.some((re) => re.test(f))
+              )
+              if (touched.length === 0) continue
+
+              const changelog = `${prefix}CHANGELOG.md`
+              if (!changed.includes(changelog)) {
+                missing.push({ pkg, changelog, example: touched[0] })
+              }
+            }
+
+            if (missing.length === 0) {
+              core.info('Every touched package has a changelog entry.')
+              return
+            }
+
+            const details = missing
+              .map(
+                (m) =>
+                  `- **${m.pkg}** — changed \`${m.example}\` but did not update \`${m.changelog}\``
+              )
+              .join('\n')
+
+            core.setFailed(
+              `Missing changelog entries:\n${details}\n\n` +
+                `Add an entry under "## [Unreleased]" in each listed CHANGELOG.md, ` +
+                `or apply the "skip-changelog" label if this PR cannot affect consumers.`
+            )
