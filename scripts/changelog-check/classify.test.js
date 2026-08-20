@@ -111,5 +111,58 @@ for (const [name, input, expected] of cases) {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}  -> [${got}] expected [${expected}]`)
 }
 
-console.log(failed ? `\n${failed} of ${cases.length} FAILED` : `\nall ${cases.length} pass`)
+// Audit the real repository: every path the check ignores must be one we can name.
+// This is what catches an over-broad rule quietly exempting shipped source.
+const fs = require('fs')
+const path = require('path')
+const { execFileSync } = require('child_process')
+const repoRoot = path.resolve(__dirname, '../..')
+const realPkgs = fs
+  .readdirSync(path.join(repoRoot, 'packages'), { withFileTypes: true })
+  .filter((e) => e.isDirectory())
+  .map((e) => e.name)
+const realManifest = (pkg) => {
+  try {
+    return JSON.parse(
+      fs.readFileSync(path.join(repoRoot, 'packages', pkg, 'package.json'), 'utf8')
+    )
+  } catch {
+    return undefined
+  }
+}
+const tracked = execFileSync('git', ['ls-files', 'packages/'], {
+  cwd: repoRoot,
+  maxBuffer: 64 * 1024 * 1024,
+}).toString().split('\n').filter(Boolean)
+
+const ignoredReal = tracked.filter(
+  (f) =>
+    findMissing({
+      changed: [f],
+      basePackages: realPkgs,
+      headPackages: realPkgs,
+      baseManifest: realManifest,
+      headManifest: realManifest,
+      changelogUpdated: () => true,
+    }).length === 0
+)
+// Allowed shapes: the allowlist, plus anything inside a private package.
+const privatePkgs = realPkgs.filter((p) => (realManifest(p) || {}).private)
+const explicable = (f) =>
+  privatePkgs.some((p) => f.startsWith(`packages/${p}/`)) ||
+  /\/(README|CHANGELOG|ARCHITECTURE[^/]*|CONTRIBUTE|CONTRIBUTING|PLAN|MIGRATION|TESTING)[^/]*\.md$/.test(f) ||
+  /\/\.(eslintrc|eslintignore|prettierrc|prettierignore|editorconfig|babelrc)[^/]*$/.test(f) ||
+  /\/(jest|babel|metro)\.config\.[^/]+$/.test(f) ||
+  /\/tsconfig\.(eslint|test|spec)\.json$/.test(f)
+
+const unexplained = ignoredReal.filter((f) => !explicable(f))
+const auditOk = unexplained.length === 0
+if (!auditOk) failed++
+console.log(
+  `${auditOk ? 'PASS' : 'FAIL'}  every ignored real path is explicable ` +
+    `(${ignoredReal.length} ignored of ${tracked.length})` +
+    (auditOk ? '' : ` -> ${unexplained.slice(0, 5).join(' ')}`)
+)
+
+console.log(failed ? `\n${failed} FAILED` : `\nall ${cases.length + 1} pass`)
 assert.strictEqual(failed, 0, `${failed} changelog-check cases failed`)
