@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Android `minSdkVersion` floor lowered from 35 to 26, so the package can be consumed by apps below Android 15. The bundled AAR is rebuilt at minSdk 26, and upstream's hardcoded value is now configurable via `SITEED_MOONSHINE_ANDROID_MIN_SDK`.
+
+### Fixed
+
+- `build-moonshine-android.sh` now fails immediately with an actionable message when the `speaker-embedding-model-data.cpp` LFS asset is unmaterialized, instead of letting gradle run on into an opaque CMake "Cannot find source file" error.
+
 ## [0.4.0] - 2026-05-15
 
 Long-streaming release focused on keeping Moonshine transcription memory bounded for very long recordings.
