@@ -37,6 +37,20 @@ data class OfflineTtsKokoroModelConfig(
     var lengthScale: Float = 1.0f,
 )
 
+// MODIFIED(v1.13.0): added to match JNI ABI; upstream Kotlin bundled here was missing this class
+data class OfflineTtsZipVoiceModelConfig(
+    var tokens: String = "",
+    var encoder: String = "",
+    var decoder: String = "",
+    var vocoder: String = "",
+    var dataDir: String = "",
+    var lexicon: String = "",
+    var featScale: Float = 0.1f,
+    var tShift: Float = 0.5f,
+    var targetRms: Float = 0.1f,
+    var guidanceScale: Float = 1.0f,
+)
+
 data class OfflineTtsKittenModelConfig(
     var model: String = "",
     var voices: String = "",
@@ -56,13 +70,29 @@ data class OfflineTtsPocketModelConfig(
     var voiceEmbeddingCacheCapacity: Int = 0,
 )
 
+// MODIFIED(v1.13.0): added to match JNI ABI; upstream Kotlin bundled here was missing this class
+data class OfflineTtsSupertonicModelConfig(
+    var durationPredictor: String = "",
+    var textEncoder: String = "",
+    var vectorEstimator: String = "",
+    var vocoder: String = "",
+    var ttsJson: String = "",
+    var unicodeIndexer: String = "",
+    var voiceStyle: String = "",
+)
+
 data class OfflineTtsModelConfig(
     var vits: OfflineTtsVitsModelConfig = OfflineTtsVitsModelConfig(),
     var matcha: OfflineTtsMatchaModelConfig = OfflineTtsMatchaModelConfig(),
     var kokoro: OfflineTtsKokoroModelConfig = OfflineTtsKokoroModelConfig(),
+    // MODIFIED(v1.13.0): added zipvoice to match JNI ABI; without it initTts aborts the process
+    // with NoSuchFieldError before any model loads. Field order must match upstream.
+    var zipvoice: OfflineTtsZipVoiceModelConfig = OfflineTtsZipVoiceModelConfig(),
     // MODIFIED(v1.12.28): added kitten and pocket fields to match JNI ABI; upstream was missing these
     var kitten: OfflineTtsKittenModelConfig = OfflineTtsKittenModelConfig(),
     var pocket: OfflineTtsPocketModelConfig = OfflineTtsPocketModelConfig(),
+    // MODIFIED(v1.13.0): added supertonic to match JNI ABI
+    var supertonic: OfflineTtsSupertonicModelConfig = OfflineTtsSupertonicModelConfig(),
     var numThreads: Int = 1,
     var debug: Boolean = false,
     var provider: String = "cpu",
