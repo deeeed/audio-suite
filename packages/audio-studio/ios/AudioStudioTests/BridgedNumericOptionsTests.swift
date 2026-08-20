@@ -17,8 +17,8 @@ import XCTest
 /// crosses the dictionary boundary where the bug lived.
 ///
 /// Run with `yarn workspace @siteed/audio-studio test:ios`, which compiles these
-/// through `SettingsTests/` — a SwiftPM package that symlinks the real production
-/// sources, so the assertions run against shipped code rather than a copy.
+/// through `packages/audio-studio/Package.swift` against the real sources in
+/// `ios/` — so the assertions run on shipped code, never a copy.
 final class BridgedNumericOptionsTests: XCTestCase {
 
     // MARK: - The exact failure mode from #423
@@ -260,5 +260,37 @@ final class BridgedNumericOptionsTests: XCTestCase {
         // The representability guard must not become a de-facto ceiling.
         let thirtyDaysMs = Double(30 * 24 * 60 * 60 * 1000)
         XCTAssertEqual(bridgedInt64(["v": thirtyDaysMs], "v"), Int64(thirtyDaysMs))
+    }
+
+    // MARK: - UInt32 narrowing (final review blocker)
+
+    func testSampleRateBeyondUInt32FallsBack() {
+        // createWavHeader does UInt32(sampleRate) and byteRate = sampleRate * blockAlign,
+        // also UInt32. Int representability is NOT enough: 5e9 is a valid Int and
+        // still traps at UInt32(...).
+        let hugeRate = Double(5_000_000_000)
+        XCTAssertNotNil(Int(exactly: hugeRate), "precondition: passes an Int-only guard")
+        XCTAssertNil(UInt32(exactly: hugeRate), "precondition: UInt32() would trap")
+
+        guard case .success(let settings) = RecordingSettings.fromDictionary(["sampleRate": hugeRate]) else {
+            return XCTFail("fromDictionary rejected the payload")
+        }
+        XCTAssertEqual(settings.sampleRate, 44100.0, "unrepresentable sampleRate must fall back")
+    }
+
+    func testRealisticSampleRatesStillParse() {
+        for rate in [Double(8_000), Double(44_100), Double(48_000), Double(192_000), Double(768_000)] {
+            guard case .success(let settings) = RecordingSettings.fromDictionary(["sampleRate": rate]) else {
+                return XCTFail("fromDictionary rejected sampleRate \(rate)")
+            }
+            XCTAssertEqual(settings.sampleRate, rate, "legitimate sample rates must not be clamped")
+        }
+    }
+
+    func testSegmentDurationBeyondUInt32FallsBack() {
+        guard case .success(let settings) = RecordingSettings.fromDictionary(["segmentDurationMs": Double(5_000_000_000)]) else {
+            return XCTFail("fromDictionary rejected the payload")
+        }
+        XCTAssertEqual(settings.segmentDurationMs, 100, "unrepresentable segmentDurationMs must fall back")
     }
 }

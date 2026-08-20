@@ -58,6 +58,21 @@ func bridgedDouble(_ dict: [String: Any], _ key: String, in range: ClosedRange<D
     return value
 }
 
+/// Read a bridged value that is later narrowed to an unsigned 32-bit type.
+///
+/// `sampleRate` feeds `UInt32(...)` in createWavHeader and the derived
+/// `byteRate = sampleRate * blockAlign`, which is also UInt32. Int
+/// representability is not enough — 5e9 is a valid Int and still traps at
+/// `UInt32(...)`. Bounds to what the header arithmetic can actually hold.
+func bridgedUInt32SafeDouble(_ dict: [String: Any], _ key: String) -> Double? {
+    guard let value = bridgedFiniteDouble(dict, key), value > 0 else { return nil }
+    // Leave headroom so `sampleRate * blockAlign` (max blockAlign = 2ch * 4B = 8)
+    // cannot overflow UInt32 either.
+    let ceiling = Double(UInt32.max / 8)
+    guard value <= ceiling else { return nil }
+    return value
+}
+
 /// `bridgedDouble` that rejects only NaN and infinity, with no range ceiling.
 ///
 /// For values where the API deliberately imposes no maximum — media timestamps in
@@ -268,8 +283,8 @@ struct RecordingSettings {
 
         // Create settings
         var settings = RecordingSettings(
-            sampleRate: bridgedFiniteDouble(dict, "sampleRate").flatMap { $0 > 0 ? $0 : nil } ?? 44100.0,
-            desiredSampleRate: bridgedFiniteDouble(dict, "desiredSampleRate").flatMap { $0 > 0 ? $0 : nil } ?? 44100.0,
+            sampleRate: bridgedUInt32SafeDouble(dict, "sampleRate") ?? 44100.0,
+            desiredSampleRate: bridgedUInt32SafeDouble(dict, "desiredSampleRate") ?? 44100.0,
             autoResumeAfterInterruption: dict["autoResumeAfterInterruption"] as? Bool ?? false
         )
 
@@ -294,7 +309,7 @@ struct RecordingSettings {
         settings.featureOptions = dict["features"] as? [String: Bool]
 
         // Update segmentDurationMs parsing
-        settings.segmentDurationMs = bridgedInt(dict, "segmentDurationMs").flatMap { $0 > 0 ? $0 : nil } ?? 100
+        settings.segmentDurationMs = bridgedInt(dict, "segmentDurationMs").flatMap { $0 > 0 && $0 <= Int(UInt32.max / 8) ? $0 : nil } ?? 100
 
         // Parse iOS-specific config
         if let iosDict = dict["ios"] as? [String: Any],

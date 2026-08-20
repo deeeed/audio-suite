@@ -17,9 +17,9 @@ This directory contains unit tests for the AudioStudio iOS module.
 yarn workspace @siteed/audio-studio test:ios
 ```
 
-That runs the settings-parsing tests through `SettingsTests/`, a small SwiftPM
-package that symlinks the real production sources (so tests always run against
-shipped code, never a copy). No Xcode project required.
+That runs the settings-parsing tests through `packages/audio-studio/Package.swift`,
+a SwiftPM package whose targets point directly at the real sources in `ios/` — so
+tests always run against shipped code, never a copy. No Xcode project required.
 
 ### Why a separate package
 
@@ -39,8 +39,8 @@ bug lived.
 
 ### Coverage boundary
 
-`SettingsTests/` compiles only files that are pure parsing logic — no
-AVAudioEngine, no UIKit, no ExpoModulesCore. Tests needing a live audio graph
+The package compiles only files that are pure parsing logic — no AVAudioEngine,
+no UIKit, no ExpoModulesCore. Tests needing a live audio graph
 (`AudioStreamDecoderTests`, `CompressedOnlyOutputTests`, `SimpleAudioTest`) are
 still not executed automatically and remain manual/Xcode-only.
 

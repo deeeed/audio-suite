@@ -511,7 +511,13 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             // bridgedDouble, so they parse regardless of how the bridge boxed them.
             // Absent `ranges` stays nil so the keep/remove guard below still fires.
             let ranges = (options["ranges"] as? [[String: Any]])?.map { range in
-                range.compactMapValues { ($0 as? NSNumber)?.doubleValue }
+                // Same finite + Int-representable rule as the scalar reads: these
+                // values are later narrowed for frame-position math.
+                range.compactMapValues { value -> Double? in
+                    guard let d = (value as? NSNumber)?.doubleValue, d.isFinite,
+                          Int(exactly: d.rounded(.towardZero)) != nil else { return nil }
+                    return d
+                }
             }
             let outputFileName = options["outputFileName"] as? String
             let outputFormat = options["outputFormat"] as? [String: Any]
@@ -782,7 +788,7 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
                     guard let hopLengthMs = bridgedFiniteDouble(options, "hopLengthMs"), hopLengthMs > 0 else {
                         throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "hopLengthMs is required"])
                     }
-                    guard let nMels = bridgedInt(options, "nMels") else {
+                    guard let nMels = bridgedInt(options, "nMels"), nMels > 0, nMels <= Int(Int32.max) else {
                         throw NSError(domain: "AudioStudio", code: -1, userInfo: [NSLocalizedDescriptionKey: "nMels is required"])
                     }
 

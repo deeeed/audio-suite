@@ -9,9 +9,12 @@ import PackageDescription
 // Podfile entry to attach `:testspecs` to. The suite was documentation, not
 // enforcement, and could not fail CI. That is how #423 shipped.
 //
-// This package compiles the files that are pure parsing logic — no AVAudioEngine,
-// no UIKit, no ExpoModulesCore — so `swift test` runs them anywhere, including CI,
-// with no Xcode project and nothing inside the gitignored ios/ directory.
+// This package compiles only the files that are pure parsing logic, so the tests
+// need no Xcode project and nothing inside the gitignored apps/playground/ios/.
+//
+// It targets the iOS simulator, not macOS: RecordingSettings imports AVAudioSession,
+// which is unavailable on macOS, so plain `swift test` will not work. Run it with
+// `yarn workspace @siteed/audio-studio test:ios`.
 let package = Package(
     name: "AudioStudio",
     platforms: [.iOS(.v16)],
