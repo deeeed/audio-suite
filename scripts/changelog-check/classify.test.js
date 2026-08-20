@@ -68,7 +68,10 @@ const cases = [
   ['root jest.config is ignored', { changed: ['packages/audio-studio/jest.config.js'] }, []],
   ['tsconfig.eslint is ignored', { changed: ['packages/audio-ui/tsconfig.eslint.json'] }, []],
   ['CONTRIBUTE.md is ignored', { changed: ['packages/audio-studio/CONTRIBUTE.md'] }, []],
-  ['vendored upstream is ignored', { changed: ['packages/sherpa-onnx.rn/third_party/x.cc'] }, []],
+  // third_party is NOT exempt: the build scripts compile these gitlinks into the shipped
+  // native artifacts, so bumping one changes what consumers receive.
+  ['a third_party gitlink bump is enforced', { changed: ['packages/sherpa-onnx.rn/third_party/sherpa-onnx'] }, ['sherpa-onnx.rn']],
+  ['a moonshine third_party bump is enforced', { changed: ['packages/moonshine.rn/third_party/moonshine'] }, ['moonshine.rn']],
 
   // Bypasses found in review.
   ['BYPASS: changelog touched but gained no entry', {

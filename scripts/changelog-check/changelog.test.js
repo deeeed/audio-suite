@@ -17,6 +17,12 @@ const cases = [
   ['whitespace after an old release does not', base.replace('- old thing\n', '- old thing\n\n'), false],
   ['editing an old entry does not', base.replace('- old thing', '- old thing edited'), false],
   ['moving a released bullet into Unreleased does not', withUnreleased('\n- old thing\n'), false],
+  ['a bullet hidden in an HTML comment does not', withUnreleased('\n<!--\n- fake entry\n-->\n'), false],
+  ['a bullet hidden in an unterminated comment does not', withUnreleased('\n<!--\n- fake entry\n'), false],
+  ['a bullet inside a fenced block does not', withUnreleased('\n```\n- fake entry\n```\n'), false],
+
+  ['a released bullet copied up with a trailing period does not',
+    withUnreleased('\n- old thing.\n'), true],
 ]
 
 let failed = 0
@@ -26,6 +32,14 @@ for (const [name, head, expected] of cases) {
   if (!ok) failed++
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`)
 }
+
+// Editing an existing Unreleased bullet is not new work. Needs its own base, since the
+// shared one has an empty Unreleased section.
+const editBase = '# CL\n\n## [Unreleased]\n\n- existing\n\n## [1.0.0]\n\n- old thing\n'
+const editHead = editBase.replace('- existing', '- existing reworded')
+const editOk = hasNewUnreleasedEntry(editBase, editHead) === false
+if (!editOk) failed++
+console.log(`${editOk ? 'PASS' : 'FAIL'}  editing an existing Unreleased bullet does not count`)
 
 // `\Z` regression: a final Unreleased section whose text contains a capital Z.
 const zCase = unreleasedSection('# CL\n\n## [1.0.0]\n\n- old\n\n## [Unreleased]\n\n- Zebra fix\n')
@@ -41,5 +55,5 @@ const cjkOk = hasNewUnreleasedEntry(base, withUnreleased('\n- 修复音频\n'))
 if (!cjkOk) failed++
 console.log(`${cjkOk ? 'PASS' : 'FAIL'}  a non-ASCII entry counts`)
 
-console.log(failed ? `\n${failed} FAILED` : `\nall ${cases.length + 3} pass`)
+console.log(failed ? `\n${failed} FAILED` : `\nall ${cases.length + 4} pass`)
 assert.strictEqual(failed, 0, `${failed} changelog cases failed`)

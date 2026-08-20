@@ -29,9 +29,6 @@ const IGNORED = [
   // The changelog itself, and the file a reader would check instead.
   /^packages\/[^/]+\/CHANGELOG\.md$/,
   /^packages\/[^/]+\/README\.md$/,
-  // Vendored upstream checkouts. These are third-party source we do not document.
-  /^packages\/sherpa-onnx\.rn\/third_party\//,
-  /^packages\/moonshine\.rn\/third_party\//,
   // Editor and lint configuration at the package root.
   /^packages\/[^/]+\/\.(eslintrc|eslintignore|prettierrc|prettierignore|editorconfig|babelrc)[^/]*$/,
   /^packages\/[^/]+\/(jest|babel|metro)\.config\.[^/]+$/,

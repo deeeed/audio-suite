@@ -63,14 +63,30 @@ jobs:
                 return ''
               }
             }
+            // Only real directories are packages. A gitlink (160000) or symlink (120000)
+            // child of packages/ cannot be traversed by `git show`, so its manifest reads
+            // as absent and the package silently leaves scope.
             const listTree = (ref, dir) => {
+              let out
               try {
-                return git('ls-tree', '--name-only', '-z', `${ref}:${dir}`)
-                  .split('\0')
-                  .filter(Boolean)
+                out = git('ls-tree', '-z', `${ref}:${dir}`)
               } catch {
                 return []
               }
+              const names = []
+              for (const entry of out.split('\0').filter(Boolean)) {
+                const [meta, name] = entry.split('\t')
+                const [mode, type] = meta.split(/\s+/)
+                if (type === 'tree' && mode === '040000') {
+                  names.push(name)
+                } else {
+                  core.warning(
+                    `packages/${name} is a ${type} (mode ${mode}), not a directory; ` +
+                      `it cannot be scanned for a changelog.`
+                  )
+                }
+              }
+              return names
             }
             // Parsed manifest, null when present but unparseable (enforced), undefined when absent.
             const manifestAt = (ref) => (pkg) => {

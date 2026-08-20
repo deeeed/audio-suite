@@ -20,13 +20,20 @@ function unreleasedSection(text) {
   return m ? m[1] : ''
 }
 
-/** Lines in a section that read as entries: bullets with actual words in them. */
+/** Strips content Markdown does not render as text: HTML comments and fenced code. */
+function stripNonRendered(section) {
+  return String(section)
+    .replace(/<!--[\s\S]*?(?:-->|$)/g, '') // unterminated comments too
+    .replace(/^[^\S\n]*```[\s\S]*?(?:^[^\S\n]*```[^\n]*$|(?![\s\S]))/gm, '')
+}
+
+/** Lines in a section that read as entries: list items with actual words in them. */
 function entries(section) {
   if (!section) return []
-  return String(section)
+  return stripNonRendered(section)
     .split('\n')
     .map((l) => l.trim())
-    .filter((l) => /^[-*]\s/.test(l))
+    .filter((l) => /^(?:[-*+]|\d+\.)\s/.test(l))
     .filter((l) => /\p{L}|\p{N}/u.test(l))
 }
 
@@ -37,10 +44,18 @@ function entries(section) {
  * from a released section into Unreleased does not count, and neither does editing one.
  */
 function hasNewUnreleasedEntry(baseText, headText) {
-  // Compare against every bullet anywhere in the base file, not just its Unreleased
-  // section, so moving a released entry up into Unreleased does not read as new work.
-  const before = new Set(entries(String(baseText || '').replace(/\r\n/g, '\n')))
-  return entries(unreleasedSection(headText)).some((e) => !before.has(e))
+  const beforeAll = entries(String(baseText || '').replace(/\r\n/g, '\n'))
+  const beforeUnreleased = entries(unreleasedSection(baseText))
+  const afterUnreleased = entries(unreleasedSection(headText))
+
+  // Require MORE bullets under Unreleased than before. Exact-text comparison alone let an
+  // edit pass: rewording an existing bullet produces a string the base did not contain.
+  if (afterUnreleased.length <= beforeUnreleased.length) return false
+
+  // And require at least one that does not already exist anywhere in the base file, so
+  // copying a released bullet up into Unreleased does not read as new work.
+  const seen = new Set(beforeAll)
+  return afterUnreleased.some((e) => !seen.has(e))
 }
 
-module.exports = { unreleasedSection, entries, hasNewUnreleasedEntry }
+module.exports = { unreleasedSection, entries, stripNonRendered, hasNewUnreleasedEntry }
