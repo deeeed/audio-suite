@@ -18,6 +18,7 @@ jobs:
 
       - name: Classifier self-test
         run: |
+          node scripts/changelog-check/changelog.test.js
           node scripts/changelog-check/classify.test.js
           node scripts/changelog-check/corpus.test.js
 
@@ -84,19 +85,16 @@ jobs:
                 return null
               }
             }
-            // Text under the "## [Unreleased]" heading, up to the next "## " heading.
-            const unreleasedSection = (ref, path) => {
-              let text
+            const { unreleasedSection, entryText } = require(
+              `${process.env.GITHUB_WORKSPACE}/scripts/changelog-check/changelog.js`
+            )
+            const sectionAt = (ref, path) => {
               try {
-                text = git('show', `${ref}:${path}`)
+                return unreleasedSection(git('show', `${ref}:${path}`))
               } catch {
                 return ''
               }
-              const m = text.match(/^##\s*\[Unreleased\][^\n]*\n([\s\S]*?)(?=^##\s|\Z)/m)
-              return m ? m[1] : ''
             }
-            // Non-whitespace content, so reflowing or blank lines do not read as an entry.
-            const substantive = (section) => section.replace(/\s+/g, '')
 
             // A path in the diff only proves it was touched — a deletion counts too, and a
             // symlink is also a blob (mode 120000), so `cat-file -t` alone is not enough.
@@ -129,10 +127,11 @@ jobs:
               // Unchanged blob: a chmod-only change.
               if (baseOid !== null && baseOid === headOid) return false
 
-              // Require the Unreleased section to have gained substantive content. A new
-              // changelog with a populated Unreleased section also satisfies this.
-              const before = substantive(baseOid === null ? '' : unreleasedSection(mergeBase, path))
-              const after = substantive(unreleasedSection(head, path))
+              // Require a real entry under "## [Unreleased]" — the contract the failure
+              // message states. entryText() drops blanks, HTML comments and bare
+              // punctuation, so padding does not read as documentation.
+              const before = entryText(baseOid === null ? '' : sectionAt(mergeBase, path))
+              const after = entryText(sectionAt(head, path))
               return after.length > before.length
             }
 

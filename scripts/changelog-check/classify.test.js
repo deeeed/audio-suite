@@ -115,8 +115,11 @@ const cases = [
 
   // --- packed src/ lookalikes must NOT be exempted by name-shaped rules ---
   ['BYPASS: src/jest.config.ts is packed, so enforced', { changed: ['packages/audio-studio/src/jest.config.ts'] }, ['audio-studio']],
-  ['BYPASS: src/foo.test.ts is packed, so enforced', { changed: ['packages/audio-studio/src/foo.test.ts'] }, ['audio-studio']],
-  ['BYPASS: src/__tests__ is packed, so enforced', { changed: ['packages/audio-studio/src/__tests__/a.ts'] }, ['audio-studio']],
+  // Real packed paths, verified against npm pack. audio-studio compiles src tests into
+  // build/cjs/, so they ship; moonshine.rn ships none of its src/__tests__.
+  ['BYPASS: packed src test is enforced', { changed: ['packages/audio-studio/src/errors/AudioStreamError.test.ts'] }, ['audio-studio']],
+  ['unpacked src test stays ignored', { changed: ['packages/moonshine.rn/src/__tests__/MoonshineService.test.ts'] }, []],
+  ['BYPASS: packed androidTest source is enforced', { changed: ['packages/sherpa-onnx.rn/android/src/androidTest/java/net/siteed/sherpaonnx/ArchitectureCompatibilityTest.kt'] }, ['sherpa-onnx.rn']],
   ['root jest.config.js is still ignored', { changed: ['packages/audio-studio/jest.config.js'] }, []],
   ['native tests are still ignored', { changed: ['packages/audio-studio/android/src/test/java/X.kt'] }, []],
 

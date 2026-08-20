@@ -23,11 +23,8 @@ const IGNORED = [
   /^packages\/[^/]+\/CHANGELOG\.md$/,
   /^packages\/[^/]+\/README\.md$/,
   // Test suites — JS/TS and native.
-  /^packages\/[^/]+\/(?!src\/).*__(tests|fixtures|mocks)__\//,
-  // Not under src/: packages ship src/ (audio-studio, audio-ui, moonshine.rn,
-  // react-native-essentia, sherpa-onnx.rn all list it in `files`), so a packed
-  // src/foo.test.ts is consumer-visible.
-  /^packages\/[^/]+\/(?!src\/).*\.(test|spec)\.[jt]sx?$/,
+  /^packages\/[^/]+\/.*__(tests|fixtures|mocks)__\//,
+  /^packages\/[^/]+\/.*\.(test|spec)\.[jt]sx?$/,
   /^packages\/[^/]+\/android\/src\/(test|androidTest)\//,
   /^packages\/[^/]+\/ios\/[^/]*[Tt]ests?\//,
   /^packages\/[^/]+\/ios\/tests\//,
@@ -66,6 +63,48 @@ const IGNORED = [
 const REDIRECT = {
   'expo-audio-stream': 'audio-studio',
   'expo-audio-studio': 'audio-studio',
+}
+
+/**
+ * Files each package actually ships, captured from `npm pack --dry-run`.
+ *
+ * Path conventions are not the publish boundary, and guessing at them was wrong twice:
+ * audio-studio ships 15 compiled tests under build/cjs/, sherpa-onnx.rn ships its
+ * androidTest sources outright, and moonshine.rn ships none. So the real manifest wins
+ * over any name-shaped ignore rule. Refresh with refresh-packed-manifest.js.
+ */
+let PACKED = null
+function packedFiles(pkg) {
+  if (PACKED === null) {
+    try {
+      PACKED = require('./packed-manifest.json')
+    } catch {
+      PACKED = {}
+    }
+  }
+  return PACKED[pkg] || null
+}
+
+/**
+ * Is this path shipped to consumers?
+ *
+ * Compiled sources do not appear verbatim in a tarball, so compare basenames too:
+ * src/errors/AudioStreamError.test.ts ships as build/cjs/errors/AudioStreamError.test.js.
+ */
+function isPacked(pkg, file) {
+  const packed = packedFiles(pkg)
+  if (packed === null) return false
+  const rel = file.slice(`packages/${pkg}/`.length)
+  if (packed.includes(rel)) return true
+
+  // Compiled output keeps the directory tail, so match on that rather than the bare
+  // filename: src/errors/Foo.test.ts -> build/cjs/errors/Foo.test.js. Matching filenames
+  // alone was too loose — scripts/README.md would have matched the packed root README.md.
+  const parts = rel.replace(/\.[jt]sx?$/, '').split('/')
+  if (parts.length < 2) return false
+  const tail = parts.slice(1).join('/') // drop the leading src/ or equivalent
+  if (!tail) return false
+  return packed.some((q) => q.replace(/\.[jt]sx?$/, '').endsWith(`/${tail}`))
 }
 
 function shipsDocs(manifest) {
@@ -126,9 +165,12 @@ function findMissing(input) {
       ? IGNORED
       : [...IGNORED, /^packages\/[^/]+\/docs\//]
 
-    const touched = changed.filter(
-      (f) => f.startsWith(prefix) && !ignored.some((re) => re.test(f))
-    )
+    const touched = changed.filter((f) => {
+      if (!f.startsWith(prefix)) return false
+      // A genuinely packed file is consumer-visible whatever its name suggests.
+      if (isPacked(pkg, f)) return true
+      return !ignored.some((re) => re.test(f))
+    })
     if (touched.length === 0) continue
 
     const owner = REDIRECT[pkg] || pkg
@@ -153,4 +195,4 @@ function findMissing(input) {
   return missing
 }
 
-module.exports = { findMissing, shipsDocs, IGNORED, REDIRECT }
+module.exports = { findMissing, shipsDocs, isPacked, IGNORED, REDIRECT }

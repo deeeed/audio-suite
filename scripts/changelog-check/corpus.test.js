@@ -69,22 +69,29 @@ const check = (label, ok, detail) => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${ok ? '' : `  -> ${detail}`}`)
 }
 
-// Test paths that are NOT packed must never require a changelog. Tests under src/ are
-// excluded from this rule deliberately: `npm pack` on audio-studio ships 15 compiled test
-// files under build/cjs/, so a src/*.test.ts change is consumer-visible and is enforced.
-const testLike = enforced.filter(
-  (f) =>
-    !/^packages\/[^/]+\/src\//.test(f) &&
-    /androidTest\/|\/src\/test\/|Tests?\/|__tests__|\.(test|spec)\.[jt]sx?$|\.stories\.|\.storybook\/|test_models\/|test-assets\//.test(f)
-)
-check('no unpacked test/storybook path is enforced', testLike.length === 0, testLike.slice(0, 5).join(' '))
+// Test paths that are NOT packed must never require a changelog — and packed ones always
+// must. Both directions are checked against the real tarball contents rather than a path
+// convention, because conventions were wrong in three different directions: audio-studio
+// compiles src tests into build/cjs/, sherpa-onnx.rn ships androidTest sources outright,
+// and moonshine.rn ships none of its src/__tests__.
+const { isPacked } = require('./classify')
+const pkgOf = (f) => f.split('/')[1]
+const testShaped = (f) =>
+  /androidTest\/|\/src\/test\/|Tests?\/|__tests__|\.(test|spec)\.[jt]sx?$|\.stories\.|\.storybook\/|test_models\/|test-assets\//.test(f)
 
-// And the converse: a packed test source must be enforced, or the name-shaped rules have
-// crept back over shipped code.
-const packedTest = 'packages/audio-studio/src/errors/AudioStreamError.test.ts'
-if (tracked.includes(packedTest)) {
-  check(`enforced (packed test source): ${packedTest}`, enforces(packedTest), 'wrongly ignored')
-}
+const wronglyEnforced = enforced.filter((f) => testShaped(f) && !isPacked(pkgOf(f), f))
+check(
+  'no unpacked test/storybook path is enforced',
+  wronglyEnforced.length === 0,
+  wronglyEnforced.slice(0, 5).join(' ')
+)
+
+const wronglyIgnored = ignored.filter((f) => testShaped(f) && isPacked(pkgOf(f), f))
+check(
+  'every packed test path is enforced',
+  wronglyIgnored.length === 0,
+  wronglyIgnored.slice(0, 5).join(' ')
+)
 
 // Named exceptions from review rounds two and three.
 const mustBeIgnored = [
