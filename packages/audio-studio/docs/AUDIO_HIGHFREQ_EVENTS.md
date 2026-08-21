@@ -123,11 +123,14 @@ const config = {
 ### CDP Bridge Validation
 ```bash
 # Test high-frequency capabilities via CDP bridge
-scripts/agentic/app-state.sh eval "__AGENTIC__.startRecording({ sampleRate: 48000, intervalAnalysis: 25, interval: 10 })"
+# Recording via CDP must be fire-and-store: an eval held open while audio starts
+# flowing crashes the app (#436). See CLAUDE.md "Recording via CDP".
+scripts/agentic/app-state.sh eval "(() => { globalThis.__V = {}; setTimeout(async () => { try { const r = await __AGENTIC__.startRecording({ sampleRate: 48000, intervalAnalysis: 25, interval: 10 }); if (r && r.error) { globalThis.__V = { err: r.error }; return } await new Promise(r2 => setTimeout(r2, 3000)); const s = await __AGENTIC__.stopRecording(); globalThis.__V = (s && s.error) ? { err: s.error } : { uri: s.fileUri, size: s.size, dur: s.durationMs } } catch (e) { globalThis.__V = { err: String(e) } } }, 1500); return 'scheduled' })()"
+sleep 10
+scripts/agentic/app-state.sh eval "JSON.stringify(globalThis.__V)"
 scripts/agentic/app-state.sh state
 # Android results: Analysis ~41ms actual, Stream ~21ms actual
 # iOS results: Both Analysis and Stream ~100ms actual (expected)
-scripts/agentic/app-state.sh eval "__AGENTIC__.stopRecording()"
 ```
 
 ### E2E Testing

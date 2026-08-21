@@ -230,12 +230,13 @@ What "covered" means, per platform:
 - Android/iOS runtime code (`packages/*/android/`, `packages/*/ios/`, `packages/*/cpp/`,
   `packages/*/src/**` that ships in the app bundle): validate on that platform's device
   or simulator.
-- Web-only runtime (`*.web.ts`): validate in the web playground; a mobile run proves
-  nothing about it.
+- Web-only runtime (`*.web.ts`, `*.web.tsx`, any `*.web.*`): validate in the web
+  playground; a mobile run proves nothing about it.
 - Docs, tests, and CI config inside `packages/**`: no device run required — but nothing
   else rides along in the same PR.
-- Files outside `packages/**` that change what gets built into the app (config plugins,
-  metro config, podspecs referenced by autolinking): covered, on the affected platform.
+- Anything that changes what gets built into the app — config plugins, metro config,
+  podspecs, `build.gradle`, `package.json` `files`/deps — wherever it lives, inside
+  `packages/**` or not: covered, on the affected platform.
 
 Before merging a covered change:
 1. Build and install from the branch, and prove the install is fresh:
@@ -269,19 +270,23 @@ data crosses into JS. So for anything that starts audio flowing:
 - ✅ fire-and-store: schedule the call so the eval returns first, stash results in a
   global, poll in separate short evals
 
-Working recipe, exactly as run (from `apps/playground/`):
+Working recipe, exactly as run (from `apps/playground/`). Substitute a real device
+name — `--device <name>` unquoted is shell redirection, not a placeholder:
 
 ```bash
 # 1. Fire. The eval returns "scheduled" immediately; recording starts 1.5s later
 #    with no CDP evaluation in flight.
-scripts/agentic/app-state.sh --device <name> eval \
-  "(() => { globalThis.__V = {}; setTimeout(async () => { try { await __AGENTIC__.startRecording({ sampleRate: 44100, channels: 1 }); await new Promise(r => setTimeout(r, 3000)); const s = await __AGENTIC__.stopRecording(); globalThis.__V = { uri: s.fileUri, size: s.size, dur: s.durationMs } } catch (e) { globalThis.__V = { err: String(e) } } }, 1500); return 'scheduled' })()"
+scripts/agentic/app-state.sh --device "Pixel 6a" eval "(() => { globalThis.__V = {}; setTimeout(async () => { try { const r = await __AGENTIC__.startRecording({ sampleRate: 44100, channels: 1 }); if (r && r.error) { globalThis.__V = { err: r.error }; return } await new Promise(r2 => setTimeout(r2, 3000)); const s = await __AGENTIC__.stopRecording(); globalThis.__V = (s && s.error) ? { err: s.error } : { uri: s.fileUri, size: s.size, dur: s.durationMs } } catch (e) { globalThis.__V = { err: String(e) } } }, 1500); return 'scheduled' })()"
 
 # 2. Wait past the scheduled work, then poll with fresh, short evals.
 sleep 10
-scripts/agentic/app-state.sh --device <name> state                      # isRecording, durationMs
-scripts/agentic/app-state.sh --device <name> eval "JSON.stringify(globalThis.__V)"
+scripts/agentic/app-state.sh --device "Pixel 6a" state                      # isRecording, durationMs
+scripts/agentic/app-state.sh --device "Pixel 6a" eval "JSON.stringify(globalThis.__V)"
 ```
+
+The bridge catches internally and **returns** `{ error }` rather than rejecting, so a
+bare `catch` never fires — check the returned value explicitly, as above, or a failed
+recording reads as an empty `{}`.
 
 The stashing callback writes `__V` on both success and error, so the poll always has a
 terminal value; repeat the poll if it still reads `{}`. For the built-in extract/trim

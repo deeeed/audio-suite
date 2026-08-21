@@ -119,8 +119,10 @@ if [[ "$SKIP_RECORDING" == "true" ]]; then
     echo "[BENCH] Skipping recording (idle baseline mode)"
 else
     echo "[BENCH] Starting recording with config: $CONFIG"
-    "$SCRIPT_DIR/app-state.sh" eval "__AGENTIC__.startRecording($CONFIG)" $DEVICE_FLAG 2>/dev/null || true
-    sleep 2
+    # Fire-and-store: an eval held open while audio starts flowing crashes the app
+    # (#436). Schedule the call so the eval returns before the first buffer lands.
+    "$SCRIPT_DIR/app-state.sh" eval "(() => { globalThis.__BENCH = {}; setTimeout(async () => { const r = await __AGENTIC__.startRecording($CONFIG); globalThis.__BENCH = (r && r.error) ? { err: r.error } : { started: true } }, 500); return 'scheduled' })()" $DEVICE_FLAG 2>/dev/null || true
+    sleep 3
     if [[ -n "$POST_START_EVAL" ]]; then
         echo "[BENCH] Running post-start eval: $POST_START_EVAL"
         "$SCRIPT_DIR/app-state.sh" eval "$POST_START_EVAL" $DEVICE_FLAG 2>/dev/null || true
@@ -167,7 +169,9 @@ if [[ "$SKIP_RECORDING" == "true" ]]; then
     echo "[BENCH] Idle baseline complete, no recording to stop"
 else
     echo "[BENCH] Stopping recording..."
-    "$SCRIPT_DIR/app-state.sh" eval "__AGENTIC__.stopRecording()" $DEVICE_FLAG 2>/dev/null || true
+    # Fire-and-store, same reason as the start above (#436).
+    "$SCRIPT_DIR/app-state.sh" eval "(() => { setTimeout(async () => { const s = await __AGENTIC__.stopRecording(); globalThis.__BENCH = (s && s.error) ? { err: s.error } : { uri: s.fileUri, size: s.size, dur: s.durationMs } }, 500); return 'scheduled' })()" $DEVICE_FLAG 2>/dev/null || true
+    sleep 3
     sleep 3
 fi
 
