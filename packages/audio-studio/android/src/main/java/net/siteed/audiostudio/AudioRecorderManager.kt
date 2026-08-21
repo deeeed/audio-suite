@@ -1990,6 +1990,12 @@ class AudioRecorderManager(
                                     // would have a later state failure suppressed (#447).
                                     reportedRecordingErrors.remove(RecordingErrorKind.INPUT_READ)
                                     reportedRecordingErrors.remove(RecordingErrorKind.INPUT_STATE)
+                                    // The retry budget has to clear with the latch. After
+                                    // three failed deliveries the counter is at its cap, so
+                                    // un-latching alone leaves a recovered episode with no
+                                    // budget left and its next failure silently suppressed.
+                                    failedDeliveryAttempts.remove(RecordingErrorKind.INPUT_READ)
+                                    failedDeliveryAttempts.remove(RecordingErrorKind.INPUT_STATE)
                                 }
                             }
                         } ?: -1 // Handle null case
