@@ -174,13 +174,31 @@ class AudioRecorderManager(
             LogUtils.w(CLASS_NAME, "Failed to emit recording error event: ${e.message}")
             false
         }
-        if (!delivered) {
+        if (delivered) {
+            // Reset on success: without this, two earlier failures plus a later transient
+            // one reach the cap and latch this kind permanently for the recording.
+            failedDeliveryAttempts.remove(kind)
+        } else {
             // A failed send is not a report, so this kind should get another chance — but
             // not unboundedly. The read-failure path does not sleep on a negative result,
             // so with an unavailable emitter an unconditional un-latch retries on every
             // loop iteration: an event and log storm at buffer rate. Retry a few times,
             // then leave it latched (#447).
-            val attempts = failedDeliveryAttempts.merge(kind, 1, Int::plus) ?: 1
+            // Not Map.merge: that is API 24+ and this module declares minSdk 21 with no
+            // core-library desugaring, so it would crash the recording thread with
+            // NoSuchMethodError on API 21-23. A CAS loop over get/putIfAbsent/replace is
+            // equivalent and available everywhere.
+            var attempts: Int
+            while (true) {
+                val current = failedDeliveryAttempts[kind]
+                if (current == null) {
+                    if (failedDeliveryAttempts.putIfAbsent(kind, 1) == null) { attempts = 1; break }
+                } else {
+                    if (failedDeliveryAttempts.replace(kind, current, current + 1)) {
+                        attempts = current + 1; break
+                    }
+                }
+            }
             if (attempts < MAX_ERROR_DELIVERY_ATTEMPTS) {
                 reportedRecordingErrors.remove(kind)
             } else {
@@ -2208,6 +2226,12 @@ class AudioRecorderManager(
         // stopRecording() joins separately, before flushing its final chunk, so by the
         // time it calls cleanup() this is already finished.
         val wasRecording = _isRecording.getAndSet(false)
+        // Skipped on the stop path: stopRecording() joins the thread itself and calls this
+        // while still holding audioRecordLock, so joining again here is nested inside that
+        // monitor — if the worker is queued for the lock, neither join can succeed and the
+        // two 2s timeouts stack. The flag that marks that path is compressedFinalizationPending.
+        val threadOwnedByCaller = compressedFinalizationPending
+        if (threadOwnedByCaller) recordingThread = null
         recordingThread?.let { thread ->
             if (thread.isAlive) {
                 thread.interrupt()
