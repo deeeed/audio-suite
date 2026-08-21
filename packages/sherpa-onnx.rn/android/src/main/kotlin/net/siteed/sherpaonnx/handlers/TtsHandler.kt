@@ -821,13 +821,21 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
      * Stop TTS generation
      */
     fun stop(promise: Promise) {
+        // Clear the flag on the CALLING thread, not the executor. init/generate/stop/release
+        // share one single-threaded executor, so queueing this behind an in-flight generate()
+        // meant it could not run until that generation had already finished — the
+        // isGenerating checks inside the callback loop could never fire during the generation
+        // they exist to interrupt, making stopTts() a no-op (#440). isGenerating is @Volatile,
+        // so the loop observes this write immediately.
+        isGenerating = false
+
         executor.execute {
             try {
                 Log.i(TAG, "Stopping TTS generation")
-                
-                // Set flag to stop callback-based generation
-                isGenerating = false
-                
+
+                // Already cleared above; the executor body handles the AudioTrack, which must
+                // stay on this thread because the generation loop writes to it from here.
+
                 // Stop audio playback
                 if (audioTrack?.playState == AudioTrack.PLAYSTATE_PLAYING) {
                     audioTrack?.pause()
@@ -856,12 +864,13 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
      * Release TTS resources
      */
     fun release(promise: Promise) {
+        // Same reason as stop(): clear the flag before queueing, so an in-flight generation
+        // stops feeding the executor rather than blocking this call behind itself (#440).
+        isGenerating = false
+
         executor.execute {
             try {
                 Log.i(TAG, "Releasing TTS resources")
-                
-                // Set flag to stop any ongoing generation
-                isGenerating = false
                 
                 // Release TTS resources
                 releaseTtsResources()
