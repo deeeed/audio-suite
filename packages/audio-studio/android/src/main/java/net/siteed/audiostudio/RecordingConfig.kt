@@ -95,6 +95,18 @@ data class RecordingConfig(
             val outputMap = options.getTypedMap<Any?>("output") { true }
             val outputConfig = OutputConfig.fromMap(outputMap)
 
+            // A name, not a path. createRecordingFile does File(baseDir, "$name.$ext"),
+            // and File resolves "..", so a separator writes outside filesDir (#452).
+            // Validated here so startRecording and prepareRecording are both covered.
+            val requestedFilename = options["filename"] as? String
+            if (requestedFilename != null && !SafeFilename.isValid(requestedFilename)) {
+                return Result.failure(
+                    IllegalArgumentException(
+                        "filename must be a single filename without path separators"
+                    )
+                )
+            }
+
             // Validate bitrate if compression is enabled
             if (outputConfig.compressed.enabled) {
                 when {
@@ -159,7 +171,7 @@ data class RecordingConfig(
                         .trim('/')
                         .replace("//", "/")
                 },
-                filename = options["filename"] as? String,
+                filename = requestedFilename,
                 deviceId = deviceId,
                 deviceDisconnectionBehavior = deviceDisconnectionBehavior,
                 audioFocusStrategy = audioFocusStrategy,

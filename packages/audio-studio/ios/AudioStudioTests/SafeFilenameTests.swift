@@ -9,7 +9,9 @@ import XCTest
 final class SafeFilenameTests: XCTestCase {
 
     func testOrdinaryFilenamesAreAccepted() {
-        for name in ["recording", "my-trim.wav", "trim 1", "réc", "a.b.c", "..leading"] {
+        // Same vectors as SafeFilenameTest.kt. A backslash is accepted on both: Darwin
+        // and Linux alike treat it as an ordinary filename character, not a separator.
+        for name in ["recording", "my-trim.wav", "trim 1", "réc", "a.b.c", "..leading", "a\\b"] {
             XCTAssertTrue(SafeFilename.isValid(name), name)
         }
     }

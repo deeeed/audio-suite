@@ -16,7 +16,10 @@ class SafeFilenameTest {
 
     @Test
     fun `ordinary filenames are accepted`() {
-        for (name in listOf("recording", "my-trim.wav", "trim 1", "réc", "a.b.c")) {
+        // Same vectors as SafeFilenameTests.swift, plus the backslash: Android is Unix,
+        // so "\\" is an ordinary filename character rather than a separator, and
+        // rejecting it would refuse a legal name.
+        for (name in listOf("recording", "my-trim.wav", "trim 1", "réc", "a.b.c", "..leading", "a\\b")) {
             assertTrue(SafeFilename.isValid(name), name)
         }
     }
@@ -38,6 +41,28 @@ class SafeFilenameTest {
     @Test
     fun `names containing NUL are rejected`() {
         assertFalse(SafeFilename.isValid("bad\u0000name"))
+    }
+
+    @Test
+    fun `RecordingConfig rejects a traversing filename`() {
+        // The guard is in fromMap rather than at the bridge, so startRecording and
+        // prepareRecording are both covered. Without a test here, removing it still
+        // compiles and nothing fails (#452).
+        val result = RecordingConfig.fromMap(
+            mapOf("filename" to "../../../../tmp/pwned")
+        )
+        assertTrue(result.isFailure, "a traversing filename must be rejected")
+        assertTrue(
+            result.exceptionOrNull()?.message?.contains("single filename") == true,
+            "expected the reason, got: ${result.exceptionOrNull()?.message}"
+        )
+    }
+
+    @Test
+    fun `RecordingConfig accepts an ordinary filename`() {
+        val result = RecordingConfig.fromMap(mapOf("filename" to "my-recording"))
+        assertTrue(result.isSuccess, "an ordinary filename must be accepted")
+        assertEquals("my-recording", result.getOrNull()?.first?.filename)
     }
 
     @Test

@@ -188,13 +188,16 @@ struct IOSConfig {
     var audioSession: IOSAudioSessionConfig?
 }
 
-enum RecordingError: Error {
+/// Conforms to LocalizedError, not just Error: a same-named `localizedDescription`
+/// is shadowed once the value is stored as `Error`, which is how the bridge receives
+/// it — the caller then sees "RecordingError error 3." instead of the reason (#452).
+enum RecordingError: LocalizedError {
     case unsupportedFormat(String)
     case invalidBitrate(Int)
     case invalidOutputDirectory(String)
     case invalidFilename(String)
 
-    var localizedDescription: String {
+    var errorDescription: String? {
         switch self {
         case .unsupportedFormat(let format):
             return "Unsupported compression format: \(format). iOS only supports AAC."
