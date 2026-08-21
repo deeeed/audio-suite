@@ -139,11 +139,11 @@ class RealTtsFunctionalityTest {
         var error: String? = null
         
         val config = Arguments.createMap().apply {
-            putString("modelDir", "$extractedModelPath/vits-icefall-en-low")
+            putString("modelDir", "$extractedModelPath/vits-icefall-en_US-ljspeech-low")
             putString("ttsModelType", "vits")
             putString("modelFile", "model.onnx")
             putString("tokensFile", "tokens.txt")
-            putString("dataDir", "$extractedModelPath/vits-icefall-en-low/espeak-ng-data")
+            putString("dataDir", "$extractedModelPath/vits-icefall-en_US-ljspeech-low/espeak-ng-data")
             putInt("numThreads", 2)
             putBoolean("debug", true)
             putString("provider", "cpu")
@@ -424,11 +424,11 @@ class RealTtsFunctionalityTest {
         var success = false
         
         val config = Arguments.createMap().apply {
-            putString("modelDir", "$extractedModelPath/vits-icefall-en-low")
+            putString("modelDir", "$extractedModelPath/vits-icefall-en_US-ljspeech-low")
             putString("ttsModelType", "vits")
             putString("modelFile", "model.onnx")
             putString("tokensFile", "tokens.txt")
-            putString("dataDir", "$extractedModelPath/vits-icefall-en-low/espeak-ng-data")
+            putString("dataDir", "$extractedModelPath/vits-icefall-en_US-ljspeech-low/espeak-ng-data")
             putInt("numThreads", 2)
             putBoolean("debug", false)
             putString("provider", "cpu")
@@ -455,11 +455,11 @@ class RealTtsFunctionalityTest {
         
         // Re-init to get speaker count
         val config = Arguments.createMap().apply {
-            putString("modelDir", "$extractedModelPath/vits-icefall-en-low")
+            putString("modelDir", "$extractedModelPath/vits-icefall-en_US-ljspeech-low")
             putString("ttsModelType", "vits")
             putString("modelFile", "model.onnx")
             putString("tokensFile", "tokens.txt")
-            putString("dataDir", "$extractedModelPath/vits-icefall-en-low/espeak-ng-data")
+            putString("dataDir", "$extractedModelPath/vits-icefall-en_US-ljspeech-low/espeak-ng-data")
             putInt("numThreads", 2)
             putBoolean("debug", false)
             putString("provider", "cpu")

@@ -43,7 +43,7 @@ object LightweightModelDownloader {
             description = "Lightweight English TTS model for testing"
         ),
         
-        // VAD Model - 2.2MB
+        // VAD Model - ~0.6MB
         SILERO_VAD(
             modelName = "silero-vad",
             url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx",
@@ -61,7 +61,7 @@ object LightweightModelDownloader {
             description = "Tiny audio tagging model for event detection"
         ),
         
-        // Lightweight ASR model - for future use
+        // ASR model, ~112MB: whisper-tiny.en ships fp32 and int8 variants in one archive
         WHISPER_TINY(
             modelName = "whisper-tiny",
             url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-tiny.en.tar.bz2",
