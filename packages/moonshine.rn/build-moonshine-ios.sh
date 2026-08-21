@@ -24,7 +24,11 @@ is_lfs_pointer_file() {
   fi
 
   if [ "$(wc -c < "$file_path" | tr -d ' ')" -lt 1024 ]; then
-    if rg -q '^version https://git-lfs.github.com/spec/v1' "$file_path"; then
+    # grep, not rg: ripgrep is not declared as a dependency and is absent from a stock
+    # macOS or CI image. Inside an `if` under `set -e`, a missing binary makes the
+    # condition false rather than aborting, so an unmaterialized pointer file would be
+    # treated as real content and this guard would silently never fire (#443).
+    if grep -q '^version https://git-lfs.github.com/spec/v1' "$file_path"; then
       return 0
     fi
   fi
