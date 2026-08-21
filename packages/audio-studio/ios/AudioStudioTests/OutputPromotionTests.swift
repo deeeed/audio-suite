@@ -115,42 +115,6 @@ final class OutputPromotionTests: XCTestCase {
         )
     }
 
-    // MARK: - The caller-supplied filename
-
-    func testOrdinaryFilenamesAreAccepted() {
-        for name in ["recording", "my-trim.wav", "trim 1", "réc", "a.b.c"] {
-            XCTAssertTrue(OutputPromotion.isSafeOutputFileName(name), name)
-        }
-    }
-
-    func testNamesThatTraverseOutOfTheOutputDirectoryAreRejected() {
-        // Probed: appended to /tmp/base, these resolve to /tmp/escaped.wav and
-        // /tmp/pwned.wav — outside it entirely.
-        for name in ["../escaped", "../../../../tmp/pwned"] {
-            XCTAssertFalse(OutputPromotion.isSafeOutputFileName(name), name)
-        }
-    }
-
-    func testAnEmptyNameLandsBesideTheOutputDirectoryRatherThanInsideIt() {
-        // Its own case: appending "" leaves the base URL unchanged, so the extension goes
-        // onto the directory itself — /tmp/base.wav, a sibling of /tmp/base. Outside
-        // without traversing.
-        XCTAssertFalse(OutputPromotion.isSafeOutputFileName(""))
-    }
-
-    func testNonFilenamesAreRejectedEvenWhenTheyStayInside() {
-        // These do land inside — "a/b" nests, "/absolute" is absorbed, and "." and ".."
-        // become "..wav" and "...wav" — but none is a filename, so each writes somewhere
-        // the caller did not name.
-        for name in ["a/b", "/absolute", ".", ".."] {
-            XCTAssertFalse(OutputPromotion.isSafeOutputFileName(name), name)
-        }
-    }
-
-    func testNamesContainingNulAreRejected() {
-        XCTAssertFalse(OutputPromotion.isSafeOutputFileName("bad\0name"))
-    }
-
     func testAFifoDestinationIsReplacedLikeAnyNonDirectory() throws {
         // rename replaces a FIFO rather than refusing it, unlike the decision-enum version
         // this replaced. Recorded rather than guarded: such a destination is outside the

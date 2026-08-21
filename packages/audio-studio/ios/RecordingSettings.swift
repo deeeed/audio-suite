@@ -192,6 +192,7 @@ enum RecordingError: Error {
     case unsupportedFormat(String)
     case invalidBitrate(Int)
     case invalidOutputDirectory(String)
+    case invalidFilename(String)
 
     var localizedDescription: String {
         switch self {
@@ -201,6 +202,8 @@ enum RecordingError: Error {
             return "Invalid bitrate: \(bitrate). Must be between 8000 and 960000 bps."
         case .invalidOutputDirectory(let directory):
             return "Invalid output directory: \(directory). Directory does not exist, is not a directory, or is not writable."
+        case .invalidFilename(let reason):
+            return reason
         }
     }
 }
@@ -416,7 +419,17 @@ struct RecordingSettings {
             settings.outputDirectory = cleanDirectory
         }
 
-        settings.filename = dict["filename"] as? String
+        // A name, not a path. It is appended to the output directory, so a separator can
+        // traverse out of it: "../../../../tmp/pwned" escapes even after the extension
+        // rewrite below (#452).
+        if let filename = dict["filename"] as? String {
+            guard SafeFilename.isValid(filename) else {
+                return .failure(RecordingError.invalidFilename(
+                    "filename must be a single filename without path separators"
+                ))
+            }
+            settings.filename = filename
+        }
 
         // Set new properties
         settings.deviceId = deviceId

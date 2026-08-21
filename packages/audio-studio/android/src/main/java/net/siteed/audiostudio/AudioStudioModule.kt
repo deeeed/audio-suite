@@ -403,6 +403,16 @@ class AudioStudioModule : Module(), EventSender, AudioStreamDecoderDelegate {
                     }
 
                     val outputFileName = options["outputFileName"] as? String
+                    // A name, not a path: File(filesDir, "$outputFileName.$ext") resolves
+                    // "..", so a separator writes outside filesDir (#452).
+                    if (outputFileName != null && !SafeFilename.isValid(outputFileName)) {
+                        promise.reject(
+                            "INVALID_OUTPUT_FILENAME",
+                            "outputFileName must be a single filename without path separators",
+                            null
+                        )
+                        return@launch
+                    }
 
                     @Suppress("UNCHECKED_CAST")
                     var outputFormatMap = options["outputFormat"] as? Map<String, Any>

@@ -565,7 +565,7 @@ public class AudioStudioModule: Module, AudioStreamManagerDelegate, AudioDeviceM
             let outputFileName = options["outputFileName"] as? String
             // A name, not a path. A separator makes it a path, and a path can traverse:
             // `../../../../tmp/pwned` would write to /var/tmp (#433).
-            if let name = outputFileName, !OutputPromotion.isSafeOutputFileName(name) {
+            if let name = outputFileName, !SafeFilename.isValid(name) {
                 promise.reject(
                     "INVALID_OUTPUT_FILENAME",
                     "outputFileName must be a single filename without path separators"
