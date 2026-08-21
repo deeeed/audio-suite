@@ -14,11 +14,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MANIFEST_DIR="$ROOT/.package-manifests"
 
-PACKAGES=(
-  "packages/sherpa-onnx.rn"
-  "packages/audio-studio"
-  "packages/audio-ui"
-)
+# Every workspace under packages/ that is actually published (not "private": true),
+# discovered rather than hand-listed: a hard-coded list silently omits new packages, and
+# omitted moonshine.rn and react-native-essentia when it was one.
+PACKAGES=()
+while IFS= read -r pkg_json; do
+  dir="$(dirname "${pkg_json#"$ROOT/"}")"
+  is_private="$(node -p "require('$pkg_json').private === true" 2>/dev/null || echo true)"
+  [[ "$is_private" == "true" ]] && continue
+  PACKAGES+=("$dir")
+done < <(find "$ROOT/packages" -maxdepth 2 -name package.json -not -path "*/node_modules/*" | sort)
 
 # Packages whose manifest is only meaningful after a build, because they publish compiled
 # output but have no `prepare` hook for `npm pack` to trigger. audio-ui publishes `dist`
@@ -71,16 +76,46 @@ for pkg in "${PACKAGES[@]}"; do
   if ! actual="$(printf '%s' "$pack_json" | node -e "
       let d='';
       process.stdin.on('data', c => d += c).on('end', () => {
-        const start = d.indexOf('\n[');
-        const j = JSON.parse(start === -1 ? d : d.slice(start + 1));
-        if (!Array.isArray(j) || !j[0] || !Array.isArray(j[0].files) || !j[0].files.length) {
-          process.exit(1);
+        // A prepare script can print bracketed tags like [prepare], so the first '['
+        // is not reliably the JSON. Try each candidate offset and keep the one that
+        // parses into the expected shape.
+        let j = null;
+        for (let i = d.indexOf('['); i !== -1; i = d.indexOf('[', i + 1)) {
+          try {
+            const cand = JSON.parse(d.slice(i));
+            if (Array.isArray(cand) && cand[0] && Array.isArray(cand[0].files)) { j = cand; break; }
+          } catch { /* not the start of the payload */ }
         }
+        if (!j) process.exit(1);
+        if (!j[0].files.length) process.exit(1);
         console.log(j[0].files.map(f => f.path).sort().join('\n'));
       });
     ")"; then
     echo "FATAL: could not parse npm pack output for $pkg (or it listed no files)." >&2
     exit 1
+  fi
+
+  # Untracked published paths. `npm pack` includes them when a local build has produced
+  # them and omits them otherwise, so they cannot be part of a stable manifest — recording
+  # them makes every clean checkout fail. They are reported rather than dropped silently:
+  # a package publishing files that no clean checkout can reproduce is worth knowing about.
+  untracked_published=""
+  while IFS= read -r rel; do
+    [[ -z "$rel" ]] && continue
+    if ! git -C "$ROOT" ls-files --error-unmatch "$pkg/$rel" >/dev/null 2>&1; then
+      case "$rel" in
+        build/*|lib/*|dist/*|plugin/build/*) ;;   # produced by prepare, always reproducible
+        *) untracked_published+="$rel"$'\n' ;;
+      esac
+    fi
+  done <<< "$actual"
+
+  if [[ -n "$untracked_published" ]]; then
+    count="$(printf '%s' "$untracked_published" | grep -c . || true)"
+    echo "note: $pkg publishes $count file(s) that are untracked and not build output;" >&2
+    echo "      excluded from the manifest because npm pack only sees them after a native build:" >&2
+    printf '%s' "$untracked_published" | sed 's/^/        /' >&2
+    actual="$(printf '%s\n' "$actual" | grep -vxF -f <(printf '%s' "$untracked_published") || true)"
   fi
 
   if $WRITE; then
