@@ -45,8 +45,8 @@ Successfully implemented and tested model configurations for CI-friendly testing
 
 | Model ID | Type | Size | Purpose | Test Status |
 |----------|------|------|---------|-------------|
-| `vits-icefall-en-low` | TTS | 30.3MB | Basic text-to-speech | ✅ Validated |
-| `silero-vad` | VAD | 2.2MB | Voice activity detection | ✅ Validated |
+| `vits-icefall-en-low` | TTS | ~30MB | Basic text-to-speech | ✅ Validated |
+| `silero-vad` | VAD | ~0.6MB | Voice activity detection | ✅ Validated |
 | `ced-tiny` | Audio Tagging | 27.2MB | Basic audio classification | ✅ Validated |
 
 **Total Size**: 59.5MB (well under 100MB CI limit)

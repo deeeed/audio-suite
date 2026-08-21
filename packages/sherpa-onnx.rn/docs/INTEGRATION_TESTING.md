@@ -32,9 +32,9 @@ Tests the comprehensive system info API:
 ### 3. Real Model Integration Tests ✅
 
 **Android Only**: Tests with lightweight ONNX models
-- TTS functionality with vits-icefall-en-low (30.3MB)
-- ASR functionality with whisper-tiny (37.3MB)  
-- VAD with silero-vad (2.2MB)
+- TTS with vits-icefall-en_US-ljspeech-low (~30MB)
+- ASR with sherpa-onnx-whisper-tiny.en (~112MB — the archive carries fp32 and int8)
+- VAD with silero-vad (~0.6MB)
 - Model lifecycle management
 - Memory leak detection
 

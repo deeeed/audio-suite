@@ -155,13 +155,12 @@ NSLog(@"🔍 [SherpaOnnx] getSystemInfo called");
 
 ### Validation Commands
 
-```bash
-# Validate iOS build
-cd packages/sherpa-onnx.rn
-./validate_ios_build.sh
+There is no iOS validation script. `validate_ios_build.sh` and
+`validate_ios_turbomodule.sh` were documented here but do not exist anywhere in the repo
+(#458). Build and exercise the app instead:
 
-# Validate TurboModule integration
-./validate_ios_turbomodule.sh
+```bash
+(cd apps/sherpa-voice && yarn ios)
 ```
 
 ## Dependencies
