@@ -106,8 +106,12 @@ extract_ort_symbol_version() {
     return
   fi
 
+  # grep -oE + head, not `rg -o -m1`: ripgrep is undeclared and absent from a stock
+  # macOS or CI image, and `|| true` here would turn its absence into an empty version
+  # string rather than a failure (#443).
   llvm-readobj --dyn-symbols "$library_path" 2>/dev/null \
-    | rg -o 'OrtGetApiBase[^ ]*VERS_[0-9.]+' -m1 \
+    | grep -oE 'OrtGetApiBase[^ ]*VERS_[0-9.]+' \
+    | head -1 \
     | sed -E 's/.*VERS_//' \
     || true
 }
@@ -139,7 +143,11 @@ is_lfs_pointer_file() {
   fi
 
   if [ "$(wc -c < "$file_path" | tr -d ' ')" -lt 1024 ]; then
-    if rg -q '^version https://git-lfs.github.com/spec/v1' "$file_path"; then
+    # grep, not rg: ripgrep is not declared as a dependency and is absent from a stock
+    # macOS or CI image. Inside an `if` under `set -e`, a missing binary makes the
+    # condition false rather than aborting, so an unmaterialized pointer file would be
+    # treated as real content and this guard would silently never fire (#443).
+    if grep -q '^version https://git-lfs.github.com/spec/v1' "$file_path"; then
       return 0
     fi
   fi
