@@ -784,11 +784,17 @@ public class AudioProcessor {
         // 24-bit input look like 16, so an explicit bitDepth: 16 request compared equal,
         // took the fast path, kept 24 bits and reported 16 (#451).
         let inputBitDepth = Int(audioFile.fileFormat.streamDescription.pointee.mBitsPerChannel)
-        // What a WAV writer here can actually emit. An omitted request preserves the input
-        // where that is expressible, rather than silently forcing 16 during any rate or
-        // channel change.
-        let defaultBitDepth = [16, 32].contains(inputBitDepth) ? inputBitDepth : 16
-        let targetBitDepth = outputFormat.flatMap { bridgedInt($0, "bitDepth").flatMap { [16, 32].contains($0) ? $0 : nil } } ?? defaultBitDepth
+        // What a WAV writer here can actually emit. Probed against AVAudioFile: 8, 16, 24
+        // and 32 each round-trip at the requested depth, so an omitted request preserves
+        // any of them rather than silently forcing 16 during a rate or channel change.
+        // The earlier [16, 32] allowlist downconverted 8- and 24-bit sources nobody asked
+        // to convert, contradicting the documented preserve-input contract (#451).
+        // Resolved by TrimFormatResolution so the rule is covered by tests: this file
+        // cannot join the SwiftPM test target, and every bit-depth bug in #451 lived here.
+        let targetBitDepth = TrimFormatResolution.targetBitDepth(
+            requested: outputFormat.flatMap { bridgedInt($0, "bitDepth") },
+            inputBitDepth: inputBitDepth
+        )
         let requestedBitrate = outputFormat.flatMap { bridgedInt($0, "bitrate").flatMap { $0 > 0 ? $0 : nil } }
         let bitrate = requestedBitrate ?? 128000
 
@@ -817,13 +823,13 @@ public class AudioProcessor {
         // Compare what was actually resolved, not just decodingOptions. outputFormat is a
         // separate parameter, so a sampleRate or channel change requested there took the
         // WAV fast path and was silently ignored (#433).
-        let outputDiffersFromInput = targetSampleRate != inputSampleRate
-            || targetChannels != inputChannels
-            // The fast path writes with inputFormat.settings, so a depth change must not
-            // take it — a bitDepth-only request was previously ignored outright. Compared
-            // against the file's real depth: a 24-bit source asked for 16 must convert,
-            // not pass through as 24 (#451).
-            || targetBitDepth != inputBitDepth
+        // Includes bitDepth, compared against the file's real depth: a bitDepth-only
+        // request used to take the fast path and be ignored outright (#451).
+        let outputDiffersFromInput = TrimFormatResolution.outputDiffersFromInput(
+            targetSampleRate: targetSampleRate, inputSampleRate: inputSampleRate,
+            targetChannels: targetChannels, inputChannels: inputChannels,
+            targetBitDepth: targetBitDepth, inputBitDepth: inputBitDepth
+        )
         let needFormatChange = decodingConfig.targetSampleRate != nil
             || decodingConfig.targetChannels != nil
             || decodingConfig.targetBitDepth != nil
@@ -837,7 +843,12 @@ public class AudioProcessor {
                 // AVAudioFile reports length 0 for a file whose writer is still alive, so
                 // reopening too early reported durationMs: 0 for a successful trim (#433).
                 try autoreleasepool {
-                let outputFile = try AVAudioFile(forWriting: workURL, settings: inputFormat.settings)
+                // fileFormat.settings, not inputFormat (== processingFormat) .settings.
+                // processingFormat is float32 for every PCM WAV, so writing its settings
+                // turned a 16-bit source into a 32-bit float file while the result below
+                // still reported 16 — the fast path was the one place claiming to preserve
+                // the input and the one place not doing it (#451).
+                let outputFile = try AVAudioFile(forWriting: workURL, settings: audioFile.fileFormat.settings)
                 var totalFrames: Int64 = 0
                 for range in keepRanges {
                     // Break down complex expression
@@ -1148,7 +1159,20 @@ public class AudioProcessor {
                         )
                     }
 
+                    // Total input frames to process, computed up front so progress has a
+                    // fixed denominator. It previously started at zero and grew as work
+                    // completed, while cumulativeFrames was never incremented in this block
+                    // at all — the progress fraction was a stale outer value over a moving
+                    // total. Written frames are tracked separately below.
                     var totalFrames: Int64 = 0
+                    for range in keepRanges {
+                        let startFrame = AVAudioFramePosition(range[0] / 1000 * inputSampleRate)
+                        let endFramePosition = range[1] / 1000 * inputSampleRate
+                        totalFrames += Int64(AVAudioFrameCount(endFramePosition - Double(startFrame)))
+                    }
+                    var processedFrames: Int64 = 0
+                    var writtenFrames: Int64 = 0
+
                     for range in keepRanges {
                         let startTimeInSeconds = range[0] / 1000
                         let startFrame = AVAudioFramePosition(startTimeInSeconds * inputSampleRate)
@@ -1206,7 +1230,7 @@ public class AudioProcessor {
 
                         var suppliedInput = false
                         var conversionError: NSError?
-                        _ = converter.convert(to: converted, error: &conversionError) { _, outStatus in
+                        let conversionStatus = converter.convert(to: converted, error: &conversionError) { _, outStatus in
                             if suppliedInput {
                                 outStatus.pointee = .endOfStream
                                 return nil
@@ -1223,12 +1247,50 @@ public class AudioProcessor {
                                     "Format conversion failed: \(conversionError.localizedDescription)"]
                             )
                         }
+                        if conversionStatus == .error {
+                            // .error with no NSError set. Continuing here would write an
+                            // unpopulated buffer and report success.
+                            throw NSError(
+                                domain: "AudioProcessor",
+                                code: -1,
+                                userInfo: [NSLocalizedDescriptionKey: "Format conversion failed."]
+                            )
+                        }
+
+                        // Progress tracks input consumed, so it advances even for a range
+                        // that produces no output.
+                        processedFrames += Int64(frameCount)
+                        let progress = totalFrames > 0
+                            ? Float(processedFrames) / Float(totalFrames) * 100
+                            : 100
+                        progressCallback?(progress, 0, totalFrames * Int64(inputFormat.streamDescription.pointee.mBytesPerFrame))
+
+                        // A downsampling converter given very few input frames returns
+                        // .endOfStream with no error and zero output frames — probed at
+                        // 44.1kHz to 8kHz, which produces nothing for inputs of 1 to 4
+                        // frames. Writing that buffer added no audio while its input frames
+                        // were still counted, so the reported duration described audio the
+                        // file does not contain (#451). Skip it, and count what was
+                        // actually written rather than what was read.
+                        guard converted.frameLength > 0 else { continue }
 
                         try outputFile.write(from: converted)
-                        totalFrames += Int64(frameCount)
-                        let progress = Float(cumulativeFrames) / Float(totalFrames) * 100
-                        progressCallback?(progress, 0, totalFrames * Int64(inputFormat.streamDescription.pointee.mBytesPerFrame))
+                        writtenFrames += Int64(converted.frameLength)
                     }
+                    }
+
+                    // Nothing was written: every conversion produced zero frames. Promoting
+                    // here would hand back a file with no audio and a duration derived from
+                    // the requested ranges (#451).
+                    guard writtenFrames > 0 else {
+                        throw NSError(
+                            domain: "AudioProcessor",
+                            code: -1,
+                            userInfo: [NSLocalizedDescriptionKey:
+                                "Trimming produced no audio: converting "
+                                + "\(Int(inputSampleRate))Hz to \(Int(targetSampleRate))Hz "
+                                + "yielded no output frames for the requested ranges"]
+                        )
                     }
 
                     try promoteWorkFile()
@@ -1553,7 +1615,11 @@ public class AudioProcessor {
         var minAmplitude: Float = .greatestFiniteMagnitude
         var maxAmplitude: Float = -.greatestFiniteMagnitude
 
-        let bytesPerSample = audioFile.fileFormat.settings[AVLinearPCMBitDepthKey] as? Int ?? 16 / 8
+        // `?? 16 / 8` parsed as `?? (16 / 8)`, so a present 16-bit key made this 16 rather
+        // than 2 and every byte position below came out eight times too large. The divide
+        // has to apply to the resolved depth, not just the fallback. Unrelated to #451,
+        // found while auditing the bit-depth reads.
+        let bytesPerSample = (audioFile.fileFormat.settings[AVLinearPCMBitDepthKey] as? Int ?? 16) / 8
 
         for i in 0..<numberOfPoints {
             let pointStartFrame = startFrame + Int64(i * samplesPerPoint)

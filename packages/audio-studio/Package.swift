@@ -28,6 +28,7 @@ let package = Package(
                 "BridgedNarrowing.swift",
                 "OutputPromotion.swift",
                 "SafeFilename.swift",
+                "TrimFormatResolution.swift",
             ]
         ),
         .testTarget(
@@ -40,6 +41,7 @@ let package = Package(
                 "ConverterCapabilityTests.swift",
                 "OutputPromotionTests.swift",
                 "SafeFilenameTests.swift",
+                "TrimFormatResolutionTests.swift",
             ]
         ),
     ]
