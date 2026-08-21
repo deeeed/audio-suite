@@ -1,0 +1,96 @@
+name: Tests
+
+# Nothing ran the test suites until now, so a regression only surfaced if someone
+# happened to run the right command locally and read the output (#449).
+#
+# The Android suite is not here. `test:android:unit` cd's into apps/playground/android,
+# which is gitignored and has no tracked files, and the library's build.gradle needs
+# project(":expo-modules-core") — so it only builds inside a generated app project.
+# Running it in CI means a full `expo prebuild` plus the Android SDK, which is its own
+# change rather than another job. Tracked in #449.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # yarn install fails outright without this — .yarnrc.yml interpolates it for the
+  # npm registry entry, and Yarn errors on an undefined variable rather than
+  # treating it as empty. An empty value is enough; no secret is needed to install
+  # public packages.
+  AUDIOLAB_NPM_TOKEN: ""
+
+jobs:
+  js:
+    name: JS and TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        # The suites here read no LFS assets, so skip the pointer materialisation.
+        with:
+          lfs: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # The runner image ships Yarn 1.22 while package.json pins 4.9.1; without this
+      # the install fails on a Corepack version error before any test runs.
+      - name: Enable Corepack
+        run: corepack enable
+
+      # --mode=skip-build: this install would otherwise run dependency lifecycle
+      # scripts, which here include unrelated Sherpa and Essentia downloads. Sonar
+      # flags that as a medium-severity issue (githubactions:S6505) and it is right —
+      # the suites need none of it, and both pass without.
+      - name: Install
+        run: yarn install --immutable --mode=skip-build
+
+      - name: Typecheck
+        run: yarn workspace @siteed/audio-studio typecheck
+
+      - name: Test
+        run: yarn workspace @siteed/audio-studio test
+
+  ios:
+    name: iOS unit tests
+    # macOS minutes bill at a multiple of Linux, so this job is deliberately
+    # narrow: the SwiftPM package compiles a handful of dependency-free policy
+    # files, with no simulator boot beyond what `xcodebuild test` needs.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      # test:ios defaults to IOS_SIMULATOR=audiolab-1, a personal simulator name that
+      # will not exist on a runner. Hardcoding a model instead would break whenever
+      # the runner image moves on, so ask the machine what it has.
+      - name: Pick an available simulator
+        id: sim
+        run: |
+          NAME=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          for runtime, devices in json.load(sys.stdin)['devices'].items():
+              if 'iOS' not in runtime:
+                  continue
+              for device in devices:
+                  if device.get('isAvailable') and 'iPhone' in device['name']:
+                      print(device['name'])
+                      raise SystemExit
+          raise SystemExit('no available iPhone simulator')
+          ")
+          echo "Using simulator: $NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+      # Through the package script, so a broken test:ios definition fails CI — but via
+      # npm --prefix rather than `yarn workspace`, which would need a full install for a
+      # command that touches no node_modules.
+      - name: Test
+        run: npm --prefix packages/audio-studio run test:ios
+        env:
+          IOS_SIMULATOR: ${{ steps.sim.outputs.name }}
