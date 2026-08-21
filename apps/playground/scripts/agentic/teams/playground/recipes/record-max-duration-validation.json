@@ -47,7 +47,7 @@
           },
           "timeout_ms": 30000,
           "poll_ms": 250,
-          "next": "assert-startNotifyOnly-ok",
+          "next": "wait-startNotifyOnly-recorded",
           "_comment": "isRecording first: maxDurationReached and maxDurationMs survive a previous run, so without it a rerun can match stale values before this run's recording has started."
         },
         "assert-notify-only-still-recording": {
@@ -80,7 +80,7 @@
           },
           "timeout_ms": 10000,
           "poll_ms": 250,
-          "next": "assert-stopNotifyOnly-ok"
+          "next": "wait-stopNotifyOnly-recorded"
         },
         "start-auto-stop-recording": {
           "action": "eval_sync",
@@ -140,7 +140,7 @@
           },
           "timeout_ms": 30000,
           "poll_ms": 250,
-          "next": "assert-startAutoStop-ok"
+          "next": "wait-startAutoStop-recorded"
         },
         "done": {
           "action": "end",
@@ -188,6 +188,45 @@
           "poll_ms": 250,
           "next": "wait-auto-stop-stopped",
           "_comment": "Wait for THIS run to start before waiting for it to stop. Without it a rerun satisfies the stopped/max-duration assertions from the previous run's leftover state at t=0, before startAutoStop has even resolved."
+        },
+        "wait-stopNotifyOnly-recorded": {
+          "action": "wait_for",
+          "expression": "(function () { var r = (globalThis.__RECIPE || {})['stopNotifyOnly']; return JSON.stringify({ recorded: r !== null && r !== undefined }); })()",
+          "assert": {
+            "operator": "eq",
+            "field": "recorded",
+            "value": true
+          },
+          "timeout_ms": 10000,
+          "poll_ms": 200,
+          "next": "assert-stopNotifyOnly-ok",
+          "_comment": "The state flag flips before the promise result lands, so asserting the stored outcome straight after observing it reproduced a false failure. Wait for the outcome to exist, then assert what it says."
+        },
+        "wait-startNotifyOnly-recorded": {
+          "action": "wait_for",
+          "expression": "(function () { var r = (globalThis.__RECIPE || {})['startNotifyOnly']; return JSON.stringify({ recorded: r !== null && r !== undefined }); })()",
+          "assert": {
+            "operator": "eq",
+            "field": "recorded",
+            "value": true
+          },
+          "timeout_ms": 10000,
+          "poll_ms": 200,
+          "next": "assert-startNotifyOnly-ok",
+          "_comment": "The state flag flips before the promise result lands, so asserting the stored outcome straight after observing it reproduced a false failure. Wait for the outcome to exist, then assert what it says."
+        },
+        "wait-startAutoStop-recorded": {
+          "action": "wait_for",
+          "expression": "(function () { var r = (globalThis.__RECIPE || {})['startAutoStop']; return JSON.stringify({ recorded: r !== null && r !== undefined }); })()",
+          "assert": {
+            "operator": "eq",
+            "field": "recorded",
+            "value": true
+          },
+          "timeout_ms": 10000,
+          "poll_ms": 200,
+          "next": "assert-startAutoStop-ok",
+          "_comment": "The state flag flips before the promise result lands, so asserting the stored outcome straight after observing it reproduced a false failure. Wait for the outcome to exist, then assert what it says."
         }
       }
     }

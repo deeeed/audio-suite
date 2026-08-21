@@ -40,10 +40,12 @@ resolve_serial() {
     if [[ -n "$DEVICE_NAME" ]]; then
         local dev_name="$DEVICE_NAME"
         local serial
-        # adb prints model:Pixel_6a, so "Pixel 6a" needs its spaces treated as underscores
-        # too. Without this the lookup missed and fell through to another USB device,
-        # benchmarking a phone the caller did not name.
-        local dev_pattern="${dev_name// /[ _]}"
+        # adb prints `model:Pixel_6a`, while the CDP bridge labels the same phone
+        # "Pixel 6a - 17 - API 37". Accept either: take the part before the first " - ",
+        # then match spaces against underscores too. Without the first step the bridge's
+        # own device name — the one every other script here takes — was rejected outright.
+        local dev_short="${dev_name%% - *}"
+        local dev_pattern="${dev_short// /[ _]}"
         serial=$(adb devices -l | grep -iE "$dev_pattern" | awk '{print $1}' | head -1)
         if [[ -n "$serial" ]]; then
             echo "$serial"

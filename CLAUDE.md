@@ -251,7 +251,7 @@ Before merging a covered change:
    - iOS simulator: reinstall via `xcrun simctl install <udid> <path-to .app>` and
      relaunch; a rebuilt app that was never reinstalled validates nothing
    - iOS physical device: `xcrun devicectl device install app --device <UDID> <path-to .app>`,
-     then launch per the `--payload-url` recipe in the connectivity rules below. Confirm
+     then launch per the `--payload-url` recipe in the iOS connectivity rules above. Confirm
      with `xcrun devicectl device info apps --device <UDID>` that the bundle version is
      the one you just built
 2. Exercise the changed path and capture concrete evidence: a file URI, a byte count, a
