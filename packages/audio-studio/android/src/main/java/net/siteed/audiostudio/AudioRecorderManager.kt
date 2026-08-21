@@ -155,10 +155,20 @@ class AudioRecorderManager(
         // The sender never throws — it catches internally and reports failure through its
         // return value, which is why an earlier catch-based version here could not work.
         val delivered = try {
-            eventSender.sendExpoEventChecked(
-                Constants.RECORDING_ERROR_EVENT,
-                bundleOf("message" to message)
-            )
+            // Type check rather than an interface method: see
+            // AudioStudioModule.sendExpoEventReportingDelivery for why adding one to
+            // EventSender would be an ABI break. Any other implementor takes the
+            // best-effort path and is assumed delivered.
+            val sender = eventSender
+            if (sender is AudioStudioModule) {
+                sender.sendExpoEventReportingDelivery(
+                    Constants.RECORDING_ERROR_EVENT,
+                    bundleOf("message" to message)
+                )
+            } else {
+                sender.sendExpoEvent(Constants.RECORDING_ERROR_EVENT, bundleOf("message" to message))
+                true
+            }
         } catch (e: Exception) {
             // Never let reporting a failure become a second failure inside the audio loop.
             LogUtils.w(CLASS_NAME, "Failed to emit recording error event: ${e.message}")
@@ -641,9 +651,20 @@ class AudioRecorderManager(
     @RequiresApi(Build.VERSION_CODES.R)
     fun startRecording(options: Map<String, Any?>, promise: Promise) {
         try {
-            // Check if already recording
-            if (_isRecording.get() && !isPaused.get()) {
-                promise.reject("ALREADY_RECORDING", "Recording is already in progress", null)
+            // Any live recording, paused or not, is rejected. Allowing a start while
+            // paused meant this path re-ran initialization against recorders the paused
+            // recording still owns: compressed init overwrote the retained recorder and
+            // leaked the old one, and either failure path then released the live
+            // AudioRecord while _isRecording stayed true, leaving resume and stop running
+            // against broken state. resumeRecording() is the API for a paused recording
+            // (#446).
+            if (_isRecording.get()) {
+                val reason = if (isPaused.get()) {
+                    "Recording is paused; call resumeRecording() instead of startRecording()"
+                } else {
+                    "Recording is already in progress"
+                }
+                promise.reject("ALREADY_RECORDING", reason, null)
                 return
             }
 
@@ -1263,11 +1284,10 @@ class AudioRecorderManager(
      * own: each initializer returns false and the caller returns early. So a failure there
      * leaks both unless something reclaims them (#446).
      *
-     * The exception is a paused recording. startRecording() is allowed while paused, and
-     * initializeAudioRecord keeps the existing AudioRecord in that state rather than
-     * building a new one — so an unconditional rollback released and nulled a recorder
-     * still belonging to a live recording, with _isRecording left true, and resume/stop
-     * then ran against broken state.
+     * The guard is belt-and-braces: startRecording() now rejects a paused recording
+     * outright, so this should never see a live one. It stays because the failure it
+     * prevents — releasing a recorder that belongs to a running recording — is silent,
+     * and a future caller could reintroduce the path.
      */
     private fun discardFreshAttempt() {
         if (_isRecording.get()) {
