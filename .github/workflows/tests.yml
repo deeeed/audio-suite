@@ -1,0 +1,113 @@
+name: Tests
+
+# Nothing ran the test suites until now, so a regression only surfaced if someone
+# happened to run the right command locally and read the output (#449).
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # yarn install fails outright without this — .yarnrc.yml interpolates it for the
+  # npm registry entry, and Yarn errors on an undefined variable rather than
+  # treating it as empty. An empty value is enough; no secret is needed to install
+  # public packages.
+  AUDIOLAB_NPM_TOKEN: ""
+
+jobs:
+  js:
+    name: JS and TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        # The suites here read no LFS assets, so skip the pointer materialisation.
+        with:
+          lfs: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install
+        run: yarn install --immutable
+
+      - name: Typecheck
+        run: yarn workspace @siteed/audio-studio typecheck
+
+      - name: Test
+        run: yarn workspace @siteed/audio-studio test
+
+  android:
+    name: Android unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install
+        run: yarn install --immutable
+
+      # APP_VARIANT is only needed for the app build, not for these unit tests.
+      - name: Test
+        run: yarn workspace @siteed/audio-studio test:android:unit
+
+  ios:
+    name: iOS unit tests
+    # macOS minutes bill at a multiple of Linux, so this job is deliberately
+    # narrow: the SwiftPM package compiles a handful of dependency-free policy
+    # files, with no simulator boot beyond what `xcodebuild test` needs.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # The script itself is a bare xcodebuild against Package.swift, but invoking
+      # it through `yarn workspace` needs node_modules to exist.
+      - name: Install
+        run: yarn install --immutable
+
+      # test:ios defaults to IOS_SIMULATOR=audiolab-1, a personal simulator name that
+      # will not exist on a runner. Hardcoding a model instead would break whenever
+      # the runner image moves on, so ask the machine what it has.
+      - name: Pick an available simulator
+        id: sim
+        run: |
+          NAME=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          for runtime, devices in json.load(sys.stdin)['devices'].items():
+              if 'iOS' not in runtime:
+                  continue
+              for device in devices:
+                  if device.get('isAvailable') and 'iPhone' in device['name']:
+                      print(device['name'])
+                      raise SystemExit
+          raise SystemExit('no available iPhone simulator')
+          ")
+          echo "Using simulator: $NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Test
+        run: yarn workspace @siteed/audio-studio test:ios
+        env:
+          IOS_SIMULATOR: ${{ steps.sim.outputs.name }}
