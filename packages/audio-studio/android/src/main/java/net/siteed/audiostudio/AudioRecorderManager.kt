@@ -1962,9 +1962,14 @@ class AudioRecorderManager(
                                         "Audio input read failed with error code $bytes."
                                     )
                                 } else if (bytes > 0) {
-                                    // Audio is flowing again: re-arm this kind only, so a
-                                    // later read fault is reported rather than swallowed.
+                                    // Audio is flowing again, so the input is healthy:
+                                    // re-arm both input latches. INPUT_STATE also has to
+                                    // clear here, or a recorder that recovers through a
+                                    // device change or resume — both of which replace and
+                                    // restart AudioRecord while _isRecording stays true —
+                                    // would have a later state failure suppressed (#447).
                                     reportedRecordingErrors.remove(RecordingErrorKind.INPUT_READ)
+                                    reportedRecordingErrors.remove(RecordingErrorKind.INPUT_STATE)
                                 }
                             }
                         } ?: -1 // Handle null case
@@ -2236,23 +2241,32 @@ class AudioRecorderManager(
         // stopRecording() joins separately, before flushing its final chunk, so by the
         // time it calls cleanup() this is already finished.
         val wasRecording = _isRecording.getAndSet(false)
-        // Skipped whenever the caller already owns audioRecordLock. The join is nested
-        // inside that monitor, so if the worker is queued for the lock it cannot exit and
-        // the join burns its full 2s while the caller holds the lock — stacking with
-        // stopRecording's own join, and stalling getStatus() behind a concurrent teardown.
-        if (callerHoldsRecordLock) recordingThread = null
-        recordingThread?.let { thread ->
+
+        // Capture into a local before deciding anything. Clearing the shared field to opt
+        // out of the join let a concurrent cleanup(callerHoldsRecordLock = true) — from
+        // getStatus's orphan path — take the reference away from a cleanup that had
+        // already cleared _isRecording but not yet read it, so that one skipped the
+        // interrupt entirely and the worker survived teardown (#446).
+        val thread = recordingThread
+
+        // The join is skipped when the caller already owns audioRecordLock: it would be
+        // nested inside that monitor, where a worker queued for the lock cannot exit, so
+        // it would burn its full 2s — stacking with stopRecording's own join and stalling
+        // getStatus() behind a concurrent teardown. Those callers either terminated the
+        // thread themselves or know it is already gone.
+        if (!callerHoldsRecordLock && thread != null && thread.isAlive) {
+            thread.interrupt()
+            // Same 2s budget stopRecording uses. The loop reads non-blocking, so it exits
+            // promptly once _isRecording is false.
+            thread.join(2000L)
             if (thread.isAlive) {
-                thread.interrupt()
-                // Same 2s budget stopRecording uses. The loop reads non-blocking, so it
-                // exits promptly once _isRecording is false.
-                thread.join(2000L)
-                if (thread.isAlive) {
-                    LogUtils.w(CLASS_NAME, "Recording thread did not exit within 2s of cleanup")
-                }
+                LogUtils.w(CLASS_NAME, "Recording thread did not exit within 2s of cleanup")
             }
         }
-        recordingThread = null
+
+        // Only drop the field if it still refers to the thread this call handled; a
+        // concurrent start may already have installed a new one.
+        if (recordingThread === thread) recordingThread = null
 
         synchronized(audioRecordLock) {
             try {
