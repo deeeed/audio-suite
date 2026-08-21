@@ -586,7 +586,12 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                                     totalSamplesWritten += written
                                     framesInCurrentTrack += written
                                     offset += written
-                                    if (PrefillPolicy.shouldStart(
+                                    // isActive first: the AudioTrack.write() above blocks,
+                                    // so a stop can land between the callback's entry check
+                                    // and here. stop()'s pause/flush is queued behind this
+                                    // generation and cannot undo a play() that already
+                                    // ran (#440).
+                                    if (isActive(requestId) && PrefillPolicy.shouldStart(
                                             playbackStarted,
                                             framesInCurrentTrack,
                                             currentSampleRate,
@@ -660,9 +665,17 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                                 Log.d(TAG, "Padded short utterance with $padded silent frames to reach the pre-S start threshold")
                             }
                         }
-                        audioTrack?.play()
-                        playbackStarted = true
-                        Log.d(TAG, "AudioTrack playback started after short utterance prefill: $framesInCurrentTrack samples")
+                        // Re-checked immediately before play(): the padding writes above
+                        // block, so a stop can land between the guard on this branch and
+                        // here. stop()'s pause/flush is queued behind this generation, so
+                        // audio started now would keep playing after the cancel (#440).
+                        if (isActive(requestId)) {
+                            audioTrack?.play()
+                            playbackStarted = true
+                            Log.d(TAG, "AudioTrack playback started after short utterance prefill: $framesInCurrentTrack samples")
+                        } else {
+                            Log.i(TAG, "Skipping playback start: generation was cancelled during prefill")
+                        }
                     }
 
                     Log.d(TAG, "Completed callback generation. Total samples: $totalSamplesWritten in $totalCalls callback calls, head=${audioTrack?.playbackHeadPosition}, playState=${audioTrack?.playState}")
@@ -671,6 +684,14 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                     Log.d(TAG, "Using generate method without callback")
                     val generatedAudio = tts?.generate(text, speakerId, speakingRate)
                     audio = generatedAudio?.samples
+                }
+
+                // Both branches above can block for the whole synthesis — tts.generate()
+                // cannot be interrupted at all — so a stop that arrives during one of them
+                // is only observable here. Without this check the cancelled request still
+                // fell through to promise.resolve({success: true}) below (#440).
+                if (!isActive(requestId)) {
+                    throw Exception("TTS generation was cancelled")
                 }
 
                 val endTime = System.currentTimeMillis()
