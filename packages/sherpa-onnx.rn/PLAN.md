@@ -21,7 +21,10 @@ Branch: `feat/sherpa-onnx-upgrade`
 - `sherpa-onnx-rn.podspec`: removed `fabric_enabled` conditionals; iOS min `11.0` → `13.4`
 - `ios/bridge/SherpaOnnxRnModule.h`: removed `#ifdef RCT_NEW_ARCH_ENABLED` guards
 - `ios/bridge/SherpaOnnxRnModule.mm`: removed old-arch `#ifdef` blocks and `RCT_EXPORT_METHOD` macros
-- `react-native.config.js`: removed Android package registration
+- `react-native.config.js`: **still registers the Android package** — `packageImportPath`
+  and `packageInstance` are both present, and required. An earlier revision claimed this
+  was removed, which is the same wrong assumption that made the Kotlin module look dead
+  (#458).
 - `src/NativeSherpaOnnxSpec.ts`: removed fallback chain; simplified to `TurboModuleRegistry.getEnforcing`
 
 ### Verification
