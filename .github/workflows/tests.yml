@@ -2,6 +2,12 @@ name: Tests
 
 # Nothing ran the test suites until now, so a regression only surfaced if someone
 # happened to run the right command locally and read the output (#449).
+#
+# The Android suite is not here. `test:android:unit` cd's into apps/playground/android,
+# which is gitignored and has no tracked files, and the library's build.gradle needs
+# project(":expo-modules-core") — so it only builds inside a generated app project.
+# Running it in CI means a full `expo prebuild` plus the Android SDK, which is its own
+# change rather than another job. Tracked in #449.
 on:
   push:
     branches: [main]
@@ -32,6 +38,11 @@ jobs:
         with:
           node-version: 20
 
+      # The runner image ships Yarn 1.22 while package.json pins 4.9.1; without this
+      # the install fails on a Corepack version error before any test runs.
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Install
         run: yarn install --immutable
 
@@ -40,32 +51,6 @@ jobs:
 
       - name: Test
         run: yarn workspace @siteed/audio-studio test
-
-  android:
-    name: Android unit tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          lfs: false
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-
-      - uses: gradle/actions/setup-gradle@v4
-
-      - name: Install
-        run: yarn install --immutable
-
-      # APP_VARIANT is only needed for the app build, not for these unit tests.
-      - name: Test
-        run: yarn workspace @siteed/audio-studio test:android:unit
 
   ios:
     name: iOS unit tests
@@ -77,15 +62,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           lfs: false
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      # The script itself is a bare xcodebuild against Package.swift, but invoking
-      # it through `yarn workspace` needs node_modules to exist.
-      - name: Install
-        run: yarn install --immutable
 
       # test:ios defaults to IOS_SIMULATOR=audiolab-1, a personal simulator name that
       # will not exist on a runner. Hardcoding a model instead would break whenever
@@ -107,7 +83,11 @@ jobs:
           echo "Using simulator: $NAME"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
 
+      # xcodebuild directly rather than through `yarn workspace`: the script touches
+      # no node_modules, so an install would be pure cost.
       - name: Test
-        run: yarn workspace @siteed/audio-studio test:ios
-        env:
-          IOS_SIMULATOR: ${{ steps.sim.outputs.name }}
+        working-directory: packages/audio-studio
+        run: |
+          xcodebuild test \
+            -scheme AudioStudio-Package \
+            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.name }}"
