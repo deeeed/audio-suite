@@ -23,7 +23,11 @@ Branch: `feat/sherpa-onnx-upgrade`
 ### Verification
 - `npx expo-doctor` shows no SDK mismatches in `apps/sherpa-voice`
 - App builds on Android + iOS without errors
-- `grep -r "ReactContextBaseJavaModule\|RCT_EXPORT_METHOD\|ReactPackage" packages/sherpa-onnx.rn/` returns nothing
+- The Kotlin module still extends `ReactContextBaseJavaModule` and `SherpaOnnxPackage`
+  still implements `ReactPackage`, and both are still registered. That is correct: under
+  RN 0.86's interop layer this is how the module registers, and removing it breaks
+  registration. An earlier revision of this line claimed the grep returned nothing, which
+  was false and read as evidence the Kotlin module was dead code (#458).
 - Home screen shows system info from native module
 
 ---

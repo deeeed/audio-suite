@@ -6,17 +6,20 @@ This guide covers integration testing for sherpa-onnx.rn across all platforms, w
 
 ## Test Categories
 
-### 1. Architecture Compatibility Tests ✅
+### 1. Module registration and system info
 
-**Android**: `packages/sherpa-onnx.rn/android/src/androidTest/java/net/siteed/sherpaonnx/ArchitectureCompatibilityTest.kt`
+**Android**: `android/src/androidTest/java/net/siteed/sherpaonnx/SystemInfoTest.kt`
 
-**iOS**: `packages/sherpa-onnx.rn/ios/SherpaOnnxTests/SystemInfoIntegrationTest.swift`
+**iOS**: `ios/SherpaOnnxTests/SystemInfoIntegrationTest.swift`
 
-These tests validate:
-- Old Architecture (Bridge) vs New Architecture (TurboModules)
-- JSI availability and functionality  
-- Module registration differences
-- Performance characteristics across architectures
+There is no old-vs-new architecture comparison. `ArchitectureCompatibilityTest.kt` and
+`ArchitectureSpecificTest.kt` were deleted in #434 when the repo went new-architecture
+only (#457), and nothing replaced them — the comparison had nothing left to compare.
+
+Note that `SherpaOnnxModule` still extends `ReactContextBaseJavaModule` and
+`SherpaOnnxPackage` still implements `ReactPackage`. That is not leftover old-architecture
+code: under RN 0.86's interop layer it is how the module registers, and removing it breaks
+registration.
 
 ### 2. System Information Validation ✅
 
@@ -39,24 +42,41 @@ Tests the comprehensive system info API:
 
 ### Android Integration Tests
 
+The package ships a script that already has the right app directory and module name:
+
 ```bash
-# Full test suite
-cd apps/playground/android  
-./gradlew :siteed-expo-audio-studio:connectedAndroidTest
-
-# Architecture tests only
-./gradlew :siteed-expo-audio-studio:connectedAndroidTest --tests "*ArchitectureCompatibilityTest"
-
-# Real model tests (requires device)
-./gradlew :siteed-expo-audio-studio:connectedAndroidTest --tests "*RealModelIntegrationTest*"
+yarn workspace @siteed/sherpa-onnx.rn test:android
 ```
+
+which runs:
+
+```bash
+cd apps/sherpa-voice/android && ./gradlew :siteed_sherpa-onnx.rn:connectedAndroidTest
+```
+
+Sherpa's Android module lives under `apps/sherpa-voice`, not `apps/playground`, and the
+gradle project is `:siteed_sherpa-onnx.rn`. The previously documented
+`:siteed-expo-audio-studio` does not resolve from either app.
+
+To run one class:
+
+```bash
+cd apps/sherpa-voice/android
+APP_VARIANT=development ./gradlew :siteed_sherpa-onnx.rn:connectedAndroidTest \
+  --tests "*RealTtsFunctionalityTest"
+```
+
+The classes that exist: `AudioTrackPrefillTest`, `BasicIntegrationTest`,
+`ComprehensiveIntegrationTestSuite`, `MemoryAndPerformanceProfilerTest`,
+`RealAsrFunctionalityTest`, `RealTtsFunctionalityTest`, `SystemInfoTest`,
+`TestModelManagementTest`, `TestReactContextDispatchTest`, `TtsIntegrationTest`,
+`WaveReaderJniTest`. There is no `RealModelIntegrationTest`.
 
 ### iOS Integration Tests
 
 ```bash
-# XCTest via CLI
-cd apps/sherpa-voice/ios
-./run-integration-tests.sh
+# What the iOS suite needs, and why it is not a one-liner
+yarn workspace @siteed/sherpa-onnx.rn test:ios:info
 
 # Via Xcode
 open sherpaonnxdemo.xcworkspace
@@ -79,13 +99,11 @@ Useful browser-side checks:
 
 ## Test Results Summary
 
+These are historical results from when the suite last ran in full. Re-run before
+trusting them; the architecture-comparison lines are from before #434 removed those tests.
+
 ### Android (Real Device - Pixel 6a) ✅
 ```
-Architecture Compatibility: ✅ PASS
-- Old Architecture: Bridge module working
-- New Architecture: TurboModule working  
-- Performance: <100ms average response time
-
 System Information: ✅ PASS
 - Device info: Complete
 - GPU: Vulkan support detected
@@ -100,11 +118,6 @@ Real Model Integration: ✅ PASS (26/26 tests)
 
 ### iOS (Simulator - iPhone 16 Pro) ✅
 ```
-Architecture Compatibility: ✅ PASS
-- Old Architecture: Bridge module working
-- New Architecture: TurboModule working
-- Methods: getSystemInfo, getArchitectureInfo functional
-
 System Information: ✅ PASS
 - Device info: Complete iOS system info
 - GPU: Metal support detected  
