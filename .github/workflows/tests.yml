@@ -53,6 +53,12 @@ jobs:
       - name: Typecheck
         run: yarn workspace @siteed/audio-studio typecheck
 
+      # The package tsconfig excludes plugin/src and jest disables ts-jest
+      # diagnostics, so a type error in the Expo config plugin — the code that
+      # rewrites native manifests during prebuild — failed nothing anywhere (#456).
+      - name: Typecheck config plugin
+        run: npx tsc --noEmit -p packages/audio-studio/plugin/tsconfig.json
+
       - name: Test
         run: yarn workspace @siteed/audio-studio test
 
