@@ -43,7 +43,7 @@ class OpusRangeDecodeRegressionInstrumentedTest {
             permissionUtils = PermissionUtils(context),
             audioDataEncoder = AudioDataEncoder(),
             eventSender = object : EventSender {
-                override fun sendExpoEvent(eventName: String, params: android.os.Bundle) = Unit
+                override fun sendExpoEvent(eventName: String, params: android.os.Bundle): Boolean = true
             },
             enablePhoneStateHandling = false,
             enableBackgroundAudio = false

@@ -137,17 +137,22 @@ class AudioRecorderManager(
         // add() returns false when the kind is already latched, making the check and the
         // set one atomic step.
         if (!reportedRecordingErrors.add(kind)) return
-        try {
+        // The sender never throws — it catches internally and reports failure through its
+        // return value, which is why an earlier catch-based version here could not work.
+        val delivered = try {
             eventSender.sendExpoEvent(
                 Constants.RECORDING_ERROR_EVENT,
                 bundleOf("message" to message)
             )
         } catch (e: Exception) {
             // Never let reporting a failure become a second failure inside the audio loop.
-            // Un-latch: delivery failed, so this kind was not actually reported and a later
-            // occurrence should still get the chance to be.
-            reportedRecordingErrors.remove(kind)
             LogUtils.w(CLASS_NAME, "Failed to emit recording error event: ${e.message}")
+            false
+        }
+        if (!delivered) {
+            // Un-latch: nothing was reported, so a later occurrence of this kind should
+            // still get its chance rather than being suppressed forever.
+            reportedRecordingErrors.remove(kind)
         }
     }
     private var recordingStartTime: Long = 0
@@ -2104,14 +2109,21 @@ class AudioRecorderManager(
                     }
                 }
 
-                // Outside the gate: a failed preparation never sets _isRecording, so gating
-                // release() here is what let destroy() strand a native MediaRecorder (#446).
-                try {
-                    compressedRecorder?.release()
-                } catch (e: Exception) {
-                    LogUtils.w(CLASS_NAME, "Failed to release compressed recorder: ${e.message}")
+                // Reclaim only what nobody else will. stopRecording() clears _isRecording
+                // and calls cleanup() *before* its own finalization block, which is what
+                // stops and releases an active compressed recorder and writes out the
+                // file — so releasing here unconditionally took the recorder away from it
+                // and truncated normal AAC/M4A/Opus output. `isPrepared` distinguishes the
+                // case #446 is about: a preparation that never started has no finalization
+                // coming, so its recorder is stranded unless cleanup() takes it.
+                if (isPrepared && !_isRecording.get()) {
+                    try {
+                        compressedRecorder?.release()
+                    } catch (e: Exception) {
+                        LogUtils.w(CLASS_NAME, "Failed to release compressed recorder: ${e.message}")
+                    }
+                    compressedRecorder = null
                 }
-                compressedRecorder = null
                 
                 _isRecording.set(false)
                 isPaused.set(false)

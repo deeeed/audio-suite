@@ -1242,8 +1242,8 @@ class AudioStudioModule : Module(), EventSender, AudioStreamDecoderDelegate {
         audioProcessor = AudioProcessor(filesDir)
     }
     
-    private fun safeSendEvent(eventName: String, params: Bundle) {
-        AndroidEventEmitter.safeSend(CLASS_NAME, eventName) {
+    private fun safeSendEvent(eventName: String, params: Bundle): Boolean {
+        return AndroidEventEmitter.safeSend(CLASS_NAME, eventName) {
             sendEvent(eventName, params)
         }
     }
@@ -1357,9 +1357,9 @@ class AudioStudioModule : Module(), EventSender, AudioStreamDecoderDelegate {
         LogUtils.d(CLASS_NAME, "📱 handleDeviceDisconnection completed")
     }
 
-    override fun sendExpoEvent(eventName: String, params: Bundle) {
+    override fun sendExpoEvent(eventName: String, params: Bundle): Boolean {
         LogUtils.d(CLASS_NAME, "Sending event: $eventName")
-        safeSendEvent(eventName, params)
+        return safeSendEvent(eventName, params)
     }
 }
 

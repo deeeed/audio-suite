@@ -43,8 +43,9 @@ class AudioRecorderInstrumentedTest {
     private class TestEventSender : EventSender {
         val events = mutableListOf<Pair<String, Bundle>>()
         
-        override fun sendExpoEvent(eventName: String, params: Bundle) {
+        override fun sendExpoEvent(eventName: String, params: Bundle): Boolean {
             events.add(eventName to params)
+            return true
         }
         
         fun clearEvents() {

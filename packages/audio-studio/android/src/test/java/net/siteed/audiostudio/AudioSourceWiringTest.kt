@@ -114,9 +114,10 @@ class AudioSourceWiringTest {
 
     @Test
     fun `discarding a failed attempt releases the recorders it left behind`() {
-        // cleanup() releases the compressed recorder only while _isRecording is true, which
-        // a failed attempt never sets, and startRecording() calls compressedRecorder?.start()
-        // unconditionally — so a survivor gets started by a later, unrelated attempt.
+        // cleanup() reclaims the compressed recorder only for a prepared-but-never-started
+        // recording (#446) — an active stop finalizes its own, and a failed attempt is
+        // neither. startRecording() calls compressedRecorder?.start() unconditionally, so a
+        // survivor gets started by a later, unrelated attempt.
         val body = bodyOf("private fun discardFailedAttempt()")
 
         assertTrue(
