@@ -64,4 +64,6 @@ Lightweight model strategy optimized for different testing environments:
 
 ## Next Steps
 
-See [`../architecture/next-validation-phase.md`](../architecture/next-validation-phase.md) for planned React Native architecture-specific testing and real ONNX functionality validation.
+Architecture-specific testing is no longer planned: the repo is new-architecture only
+(#457), and the old-vs-new comparison tests were deleted in #434. The
+`next-validation-phase.md` this used to link to does not exist (#458).

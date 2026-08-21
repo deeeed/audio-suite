@@ -15,13 +15,15 @@ These models are suitable for continuous integration testing where download time
 | `vits-icefall-en-low` | VITS Icefall English (Low Quality) | TTS | ~30MB | Basic text-to-speech functionality |
 | `silero-vad` | Silero VAD | VAD | ~0.6MB | Voice activity detection |
 | `ced-tiny` | CED Tiny Audio Tagging | Audio Tagging | ~27MB | Basic audio classification |
-
-The Model ID column is a local identifier and the directory the archive extracts
-into — it is deliberately not the upstream archive name, which differs for several
-of these. The download URLs live in `LightweightModelDownloader.kt` (#458).
 | `kws-zipformer` | KWS Zipformer | Keyword Spotting | 14.9MB | Keyword detection |
 
-**Total Size: ~74MB**
+**Total Size: ~72MB**
+
+The Model ID column is a local identifier and the directory the archive extracts into. It
+is deliberately not the upstream archive name, which differs for several of these —
+conflating the two is what broke the instrumented tests in #458. Download URLs for the
+first three live in `LightweightModelDownloader.kt`; `kws-zipformer` has no entry there
+and is not downloaded by that path.
 
 ### 2. Development Models (< 500MB Total)
 

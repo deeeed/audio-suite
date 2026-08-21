@@ -52,6 +52,19 @@ cd apps/sherpa-voice && yarn expo prebuild        # both platforms
 `--platform android` is enough for the Gradle commands below, but the iOS section further
 down needs the iOS half.
 
+**These tests do not currently run.** Verified on a Pixel 6a: the library module's test
+APK does not bundle React Native's native libraries, so anything touching the bridge dies
+before reaching its assertions:
+
+```
+java.lang.UnsatisfiedLinkError: dlopen failed: library "libreactnativejni_common.so" not found
+java.lang.NoClassDefFoundError: com.facebook.react.bridge.WritableNativeMap
+```
+
+The downloader-backed tests additionally lack the `INTERNET` permission in the test
+manifest. Both are harness gaps tracked in #449, not something a different command works
+around. The commands below are the right ones for when the harness can run them.
+
 Then the package ships a script that already has the right app directory and module name:
 
 ```bash

@@ -75,7 +75,7 @@ xcodebuild test -workspace SherpaOnnx.xcworkspace -scheme SherpaOnnxTests -desti
 android/
 ├── src/
 │   ├── androidTest/
-│   │   └── java/com/siteed/sherpaonnx/
+│   │   └── java/net/siteed/sherpaonnx/
 │   │       ├── BasicIntegrationTest.kt
 │   │       └── TtsIntegrationTest.kt
 │   └── test/
@@ -86,8 +86,8 @@ android/
 ### First Android Test
 
 ```kotlin
-// android/src/androidTest/java/com/siteed/sherpaonnx/BasicIntegrationTest.kt
-package com.siteed.sherpaonnx
+// android/src/androidTest/java/net/siteed/sherpaonnx/BasicIntegrationTest.kt
+package net.siteed.sherpaonnx
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Test
@@ -125,10 +125,13 @@ class BasicIntegrationTest {
 cd android
 
 # Run instrumented tests on connected device
-./gradlew connectedAndroidTest
+(cd ../../apps/sherpa-voice/android && APP_VARIANT=development \
+  ./gradlew :siteed_sherpa-onnx.rn:connectedAndroidTest)
 
 # Run specific test
-./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.siteed.sherpaonnx.BasicIntegrationTest
+(cd ../../apps/sherpa-voice/android && APP_VARIANT=development \
+  ./gradlew :siteed_sherpa-onnx.rn:connectedAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=net.siteed.sherpaonnx.BasicIntegrationTest)
 ```
 
 ## Key Native Tests to Implement
@@ -211,8 +214,8 @@ The native integration testing framework has been implemented with the following
 - `ios/test_models/` - Directory for test models with setup docs
 
 ### Android Test Structure ✅  
-- `android/src/androidTest/java/com/siteed/sherpaonnx/BasicIntegrationTest.kt` - Basic library tests
-- `android/src/androidTest/java/com/siteed/sherpaonnx/TtsIntegrationTest.kt` - TTS-specific tests
+- `android/src/androidTest/java/net/siteed/sherpaonnx/BasicIntegrationTest.kt` - Basic library tests
+- `android/src/androidTest/java/net/siteed/sherpaonnx/TtsIntegrationTest.kt` - TTS-specific tests
 - `android/src/test/resources/` - Directory for test models with setup docs
 - Updated `android/build.gradle` with test dependencies and instrumentation runner
 

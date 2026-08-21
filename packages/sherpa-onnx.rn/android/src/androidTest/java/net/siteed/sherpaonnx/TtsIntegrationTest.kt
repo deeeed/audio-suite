@@ -19,7 +19,7 @@ class TtsIntegrationTest {
             "vits-icefall-en-low" to mapOf(
                 "name" to "VITS Icefall English (Low Quality)",
                 "type" to "tts",
-                "size" to 30 * 1024 * 1024, // 30.3MB
+                "size" to 30 * 1024 * 1024, // CI budget, not a measured archive size
                 "files" to listOf("model.onnx", "tokens.txt", "lexicon.txt"),
                 "ttsModelType" to "vits",
                 "provider" to "cpu"
@@ -27,14 +27,14 @@ class TtsIntegrationTest {
             "silero-vad" to mapOf(
                 "name" to "Silero VAD",
                 "type" to "vad", 
-                "size" to 2 * 1024 * 1024, // 2.2MB
+                "size" to 2 * 1024 * 1024, // CI budget; silero-vad is actually ~0.6MB
                 "files" to listOf("silero_vad.onnx"),
                 "provider" to "cpu"
             ),
             "ced-tiny" to mapOf(
                 "name" to "CED Tiny Audio Tagging",
                 "type" to "audio-tagging",
-                "size" to 27 * 1024 * 1024, // 27.2MB
+                "size" to 27 * 1024 * 1024, // CI budget, not a measured archive size
                 "files" to listOf("model.onnx", "labels.txt"),
                 "provider" to "cpu"
             )

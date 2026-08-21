@@ -39,9 +39,12 @@ Branch: `feat/sherpa-onnx-upgrade`
 
 ---
 
-## Phase 2: sherpa-onnx C++ Library Upgrade to v1.12.28
+## Phase 2: sherpa-onnx C++ Library Upgrade
 
-**Status**: Not started
+**Status**: Overtaken by events. This was written targeting v1.12.28; `package.json`
+now pins `sherpaOnnxVersion: 1.13.0`, so the upgrade happened and went past that
+target. The steps below describe the v1.12.28 move and are kept for history, not as
+work to do (#458).
 
 ### Strategy
 Switch from the stale `deeeed/sherpa-onnx#webwasm` fork to official `k2-fsa/sherpa-onnx` releases.

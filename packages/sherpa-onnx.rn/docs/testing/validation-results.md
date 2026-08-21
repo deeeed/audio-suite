@@ -49,7 +49,7 @@ Successfully implemented and tested model configurations for CI-friendly testing
 | `silero-vad` | VAD | ~0.6MB | Voice activity detection | ✅ Validated |
 | `ced-tiny` | Audio Tagging | 27.2MB | Basic audio classification | ✅ Validated |
 
-**Total Size**: 59.5MB (well under 100MB CI limit)
+**Total Size**: ~58MB of real assets, against a declared 59MB CI budget (the registry in TtsIntegrationTest declares budgets, not measurements)
 
 ### Model Configuration Testing
 ✅ **Configuration Generation**: Successfully validates VITS TTS configuration  
@@ -115,7 +115,7 @@ Before building native libraries:
 ### Phase 3: Model Strategy Implementation
 ```bash
 # Added model management strategy
-- Created lightweight model registry (59.5MB total)
+- Created lightweight model registry (~58MB total)
 - Added TTS configuration generation tests
 - Implemented multi-model type support
 - Added native library integration validation
@@ -191,7 +191,7 @@ After building native libraries + model strategy:
 
 ### 📋 **INTEGRATION_TEST_MODEL_STRATEGY.md**
 Complete model management strategy document covering:
-- Lightweight model registry (3 models, 59.5MB total)
+- Lightweight model registry (3 models, ~58MB total)
 - Development model set (8 models, <500MB)
 - Full test suite (12+ models, <1.5GB)
 - Testing phases and CI/CD integration
@@ -230,7 +230,7 @@ The native integration testing framework is **successfully implemented and fully
 
 - ✅ **100% test success rate** with proper native library setup
 - ✅ **Complete feedback loop** from failing tests → build → model strategy → passing tests  
-- ✅ **Scalable model management** from CI (59.5MB) to production (1.5GB+)
+- ✅ **Scalable model management** from CI (~58MB) to production (1.5GB+)
 - ✅ **CI-friendly approach** with fast, reliable validation in 0.049s
 - ✅ **Comprehensive documentation** with clear implementation guidelines
 - ✅ **Production-ready architecture** based on proven sherpa-voice patterns

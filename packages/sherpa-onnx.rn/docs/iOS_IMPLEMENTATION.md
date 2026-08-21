@@ -7,8 +7,9 @@ This document provides comprehensive information about the iOS implementation of
 ## ✅ Current Status
 
 - **iOS TurboModule Support**: ✅ Fully implemented and working
-- **Old Architecture (Bridge)**: ✅ Supported  
-- **New Architecture (TurboModules)**: ✅ Supported
+- **Architecture**: new architecture only. The old-architecture `#ifdef
+  RCT_NEW_ARCH_ENABLED` guards were removed from the module in #457, and this document
+  claimed dual support long after that (#458).
 - **Integration Testing**: ✅ Available
 - **System Information API**: ✅ Complete with Metal GPU support
 
@@ -23,9 +24,12 @@ The iOS implementation fully supports React Native's new architecture with Turbo
 - **Method Mapping**: All methods properly exposed via codegen
 - **Performance**: Direct JSI calls for optimal performance
 
-### Old Architecture (Bridge) ✅
+### Bridge types under the interop layer
 
-Legacy bridge support is maintained for backward compatibility:
+The module still extends `RCTEventEmitter` and adopts `RCTBridgeModule`, and that is not
+leftover old-architecture support — under RN's interop layer it is how the module
+registers and how it emits events. Removing them breaks registration, which is the same
+mistake the Android side nearly made with `ReactContextBaseJavaModule` (#458).
 
 - **Bridge Module**: Extends `RCTEventEmitter` with `RCTBridgeModule`
 - **Promise-based APIs**: All methods use Promise-based async calls
@@ -35,20 +39,21 @@ Legacy bridge support is maintained for backward compatibility:
 
 ### Module Registration
 
-```objc
-// Main module class
-@interface SherpaOnnxRnModule : RCTEventEmitter <RCTBridgeModule
-#ifdef RCT_NEW_ARCH_ENABLED
-, NativeSherpaOnnxSpecSpec
-#endif
->
+`SherpaOnnxRnModule.h` has no `#ifdef RCT_NEW_ARCH_ENABLED` guards — the protocol is
+conformed to unconditionally, because there is no old-architecture path any more. The
+codegen spec header is included only in the `.mm`, since its C++ types would break Swift
+module compilation if pulled into the `.h`.
 
+```objc
 // TurboModule support
 - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:(const facebook::react::ObjCTurboModule::InitParams &)params
 {
   return std::make_shared<facebook::react::NativeSherpaOnnxSpecSpecJSI>(params);
 }
 ```
+
+`ios/bridge/SherpaOnnxLegacySpec.h` still contains those guards. It is a published
+public header (see #455) rather than live module code, so it is left alone.
 
 ### Codegen Configuration
 
