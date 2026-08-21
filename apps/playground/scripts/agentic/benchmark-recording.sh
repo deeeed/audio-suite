@@ -17,7 +17,10 @@ DURATION=600
 LABEL="benchmark"
 CONFIG='{"enableProcessing": false}'
 INTERVAL=30
-DEVICE_FLAG=""
+# Bash 3.2 (macOS /bin/bash) errors on "${empty[@]}" under `set -u`, so keep a
+# placeholder element and expand from index 1.
+DEVICE_ARGS=("")
+DEVICE_NAME=""
 POST_START_EVAL=""
 
 while [[ $# -gt 0 ]]; do
@@ -26,7 +29,7 @@ while [[ $# -gt 0 ]]; do
         --label) LABEL="$2"; shift 2 ;;
         --config) CONFIG="$2"; shift 2 ;;
         --interval) INTERVAL="$2"; shift 2 ;;
-        --device) DEVICE_FLAG="--device $2"; shift 2 ;;
+        --device) DEVICE_NAME="$2"; DEVICE_ARGS=("" --device "$2"); shift 2 ;;
         --post-start-eval) POST_START_EVAL="$2"; shift 2 ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
@@ -34,8 +37,8 @@ done
 
 # Helper: run adb (with optional device filter)
 resolve_serial() {
-    if [[ -n "$DEVICE_FLAG" ]]; then
-        local dev_name="${DEVICE_FLAG#--device }"
+    if [[ -n "$DEVICE_NAME" ]]; then
+        local dev_name="$DEVICE_NAME"
         local serial
         serial=$(adb devices -l | grep -i "$dev_name" | awk '{print $1}' | head -1)
         if [[ -n "$serial" ]]; then
@@ -98,6 +101,27 @@ kb_to_mb() {
     echo $(( ${1:-0} / 1024 ))
 }
 
+# Poll the stored fire-and-store outcome. Without this the benchmark reports a summary
+# even when startRecording/stopRecording failed outright.
+await_bench() {
+    local what="$1" tries=0 raw
+    while (( tries < 20 )); do
+        raw=$("$SCRIPT_DIR/app-state.sh" eval "JSON.stringify(globalThis.__BENCH || null)" "${DEVICE_ARGS[@]:1}" 2>/dev/null | tr -d '\n' || true)
+        if echo "$raw" | grep -q '"err"'; then
+            echo "[BENCH] FATAL: $what failed: $raw" >&2
+            exit 1
+        fi
+        if echo "$raw" | grep -qE '"(started|uri|size)"'; then
+            echo "[BENCH] $what ok: $raw"
+            return 0
+        fi
+        sleep 1
+        tries=$(( tries + 1 ))
+    done
+    echo "[BENCH] FATAL: $what produced no result within 20s (last: ${raw:-<none>})" >&2
+    exit 1
+}
+
 # ── Check for skipRecording mode ──
 SKIP_RECORDING=false
 if echo "$CONFIG" | grep -qE '"skipRecording"\s*:\s*true'; then
@@ -106,7 +130,7 @@ fi
 
 # ── Navigate to record screen ──
 echo "[BENCH] Navigating to record screen..."
-"$SCRIPT_DIR/app-navigate.sh" "/(tabs)/record" $DEVICE_FLAG 2>/dev/null || true
+"$SCRIPT_DIR/app-navigate.sh" "/(tabs)/record" "${DEVICE_ARGS[@]:1}" 2>/dev/null || true
 sleep 2
 
 # ── Baseline memory ──
@@ -121,11 +145,11 @@ else
     echo "[BENCH] Starting recording with config: $CONFIG"
     # Fire-and-store: an eval held open while audio starts flowing crashes the app
     # (#436). Schedule the call so the eval returns before the first buffer lands.
-    "$SCRIPT_DIR/app-state.sh" eval "(() => { globalThis.__BENCH = {}; setTimeout(async () => { const r = await __AGENTIC__.startRecording($CONFIG); globalThis.__BENCH = (r && r.error) ? { err: r.error } : { started: true } }, 500); return 'scheduled' })()" $DEVICE_FLAG 2>/dev/null || true
-    sleep 3
+    "$SCRIPT_DIR/app-state.sh" eval "(() => { globalThis.__BENCH = null; setTimeout(async () => { try { const r = await __AGENTIC__.startRecording($CONFIG); globalThis.__BENCH = (r && r.error) ? { err: String(r.error) } : { started: true } } catch (e) { globalThis.__BENCH = { err: String(e) } } }, 500); return 'scheduled' })()" "${DEVICE_ARGS[@]:1}" 2>/dev/null || true
+    await_bench "startRecording"
     if [[ -n "$POST_START_EVAL" ]]; then
         echo "[BENCH] Running post-start eval: $POST_START_EVAL"
-        "$SCRIPT_DIR/app-state.sh" eval "$POST_START_EVAL" $DEVICE_FLAG 2>/dev/null || true
+        "$SCRIPT_DIR/app-state.sh" eval "$POST_START_EVAL" "${DEVICE_ARGS[@]:1}" 2>/dev/null || true
         sleep 1
     fi
 fi
@@ -157,7 +181,7 @@ while (( elapsed < DURATION )); do
 
     # Also grab recording state (skip in idle mode)
     if [[ "$SKIP_RECORDING" != "true" ]]; then
-        state=$("$SCRIPT_DIR/app-state.sh" eval "__AGENTIC__.getState()" $DEVICE_FLAG 2>/dev/null | tr '\n' ' ' || echo "{}")
+        state=$("$SCRIPT_DIR/app-state.sh" eval "__AGENTIC__.getState()" "${DEVICE_ARGS[@]:1}" 2>/dev/null | tr '\n' ' ' || echo "{}")
         duration_ms=$(echo "$state" | grep -oE '"durationMs"\s*:\s*[0-9]+' | tail -1 | grep -oE '[0-9]+' || echo "?")
         size_bytes=$(echo "$state" | grep -oE '"size"\s*:\s*[0-9]+' | tail -1 | grep -oE '[0-9]+' || echo "?")
         echo "[BENCH]   state: durationMs=$duration_ms, size=$size_bytes"
@@ -170,9 +194,8 @@ if [[ "$SKIP_RECORDING" == "true" ]]; then
 else
     echo "[BENCH] Stopping recording..."
     # Fire-and-store, same reason as the start above (#436).
-    "$SCRIPT_DIR/app-state.sh" eval "(() => { setTimeout(async () => { const s = await __AGENTIC__.stopRecording(); globalThis.__BENCH = (s && s.error) ? { err: s.error } : { uri: s.fileUri, size: s.size, dur: s.durationMs } }, 500); return 'scheduled' })()" $DEVICE_FLAG 2>/dev/null || true
-    sleep 3
-    sleep 3
+    "$SCRIPT_DIR/app-state.sh" eval "(() => { globalThis.__BENCH = null; setTimeout(async () => { try { const s = await __AGENTIC__.stopRecording(); globalThis.__BENCH = (s && s.error) ? { err: String(s.error) } : { uri: s.fileUri, size: s.size, dur: s.durationMs } } catch (e) { globalThis.__BENCH = { err: String(e) } } }, 500); return 'scheduled' })()" "${DEVICE_ARGS[@]:1}" 2>/dev/null || true
+    await_bench "stopRecording"
 fi
 
 # ── Final memory ──

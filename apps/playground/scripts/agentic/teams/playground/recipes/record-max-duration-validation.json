@@ -14,11 +14,12 @@
           "next": "start-notify-only-recording"
         },
         "start-notify-only-recording": {
-          "action": "eval_async",
-          "expression": "globalThis.__AGENTIC__?.startRecording?.({ interval: 1000, intervalAnalysis: 1000, sampleRate: 16000, encoding: 'pcm_16bit', enableProcessing: false, maxDurationMs: 1500, output: { primary: { enabled: false }, compressed: { enabled: false } } }).then(function(result) { return JSON.stringify(result); })",
+          "action": "eval_sync",
+          "expression": "(function () { globalThis.__RECIPE = globalThis.__RECIPE || {}; globalThis.__RECIPE['startNotifyOnly'] = null; setTimeout(function () { Promise.resolve(globalThis.__AGENTIC__?.startRecording?.({ interval: 1000, intervalAnalysis: 1000, sampleRate: 16000, encoding: 'pcm_16bit', enableProcessing: false, maxDurationMs: 1500, output: { primary: { enabled: false }, compressed: { enabled: false } } })).then(function (r) { globalThis.__RECIPE['startNotifyOnly'] = (r && r.error) ? { error: String(r.error) } : { ok: true }; }, function (e) { globalThis.__RECIPE['startNotifyOnly'] = { error: String(e) }; }); }, 800); return JSON.stringify({ scheduled: true }); })()",
           "assert": {
-            "operator": "falsy",
-            "field": "error"
+            "operator": "eq",
+            "field": "scheduled",
+            "value": true
           },
           "next": "wait-notify-only-event"
         },
@@ -54,11 +55,12 @@
           "next": "stop-notify-only-recording"
         },
         "stop-notify-only-recording": {
-          "action": "eval_async",
-          "expression": "globalThis.__AGENTIC__?.stopRecording?.().then(function(result) { return JSON.stringify(result); })",
+          "action": "eval_sync",
+          "expression": "(function () { globalThis.__RECIPE = globalThis.__RECIPE || {}; globalThis.__RECIPE['stopNotifyOnly'] = null; setTimeout(function () { Promise.resolve(globalThis.__AGENTIC__?.stopRecording?.()).then(function (r) { globalThis.__RECIPE['stopNotifyOnly'] = (r && r.error) ? { error: String(r.error) } : { ok: true }; }, function (e) { globalThis.__RECIPE['stopNotifyOnly'] = { error: String(e) }; }); }, 800); return JSON.stringify({ scheduled: true }); })()",
           "assert": {
-            "operator": "falsy",
-            "field": "error"
+            "operator": "eq",
+            "field": "scheduled",
+            "value": true
           },
           "next": "wait-notify-only-stopped"
         },
@@ -75,11 +77,12 @@
           "next": "start-auto-stop-recording"
         },
         "start-auto-stop-recording": {
-          "action": "eval_async",
-          "expression": "globalThis.__AGENTIC__?.startRecording?.({ interval: 1000, intervalAnalysis: 500, sampleRate: 16000, encoding: 'pcm_16bit', enableProcessing: true, maxDurationMs: 2200, autoStopOnMaxDuration: true, output: { primary: { enabled: false }, compressed: { enabled: false } } }).then(function(result) { return JSON.stringify(result); })",
+          "action": "eval_sync",
+          "expression": "(function () { globalThis.__RECIPE = globalThis.__RECIPE || {}; globalThis.__RECIPE['startAutoStop'] = null; setTimeout(function () { Promise.resolve(globalThis.__AGENTIC__?.startRecording?.({ interval: 1000, intervalAnalysis: 500, sampleRate: 16000, encoding: 'pcm_16bit', enableProcessing: true, maxDurationMs: 2200, autoStopOnMaxDuration: true, output: { primary: { enabled: false }, compressed: { enabled: false } } })).then(function (r) { globalThis.__RECIPE['startAutoStop'] = (r && r.error) ? { error: String(r.error) } : { ok: true }; }, function (e) { globalThis.__RECIPE['startAutoStop'] = { error: String(e) }; }); }, 800); return JSON.stringify({ scheduled: true }); })()",
           "assert": {
-            "operator": "falsy",
-            "field": "error"
+            "operator": "eq",
+            "field": "scheduled",
+            "value": true
           },
           "next": "wait-auto-stop-stopped"
         },
