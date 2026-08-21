@@ -257,14 +257,18 @@ Before merging a covered change:
 2. Exercise the changed path and capture concrete evidence: a file URI, a byte count, a
    duration, a returned field — not "it did not crash"
 3. Capture native logs across the run, not after it:
-   - Android: `adb logcat` covers the whole session retroactively
+   - Android: `adb -s "$SERIAL" logcat` covers the whole session retroactively. The
+     `-s` is not optional here either: bare `adb logcat` errors or captures the wrong
+     device when several are attached
    - iOS simulator: `xcrun simctl spawn <udid> log show --last <n>m --predicate
      'processImagePath CONTAINS "AudioDevPlayground"'` — `native-logs.sh ios` streams
      forward only, so started after the fact it misses everything
-   - iOS physical device: there is no retroactive equivalent. `xcrun devicectl device
-     process view --device <UDID>` and Console.app both stream forward only, so start
-     the capture *before* exercising the path, or collect the sysdiagnose afterwards.
-     If you did not, say so rather than presenting a partial log as full coverage
+   - iOS physical device: there is no retroactive equivalent, and no devicectl
+     subcommand streams logs — `devicectl device process` offers only launch, resume,
+     signal, suspend, terminate and sendMemoryWarning. Use Console.app (streams forward
+     only, so start it *before* exercising the path) or collect
+     `xcrun devicectl device sysdiagnose --device <UDID>` afterwards. If you captured
+     neither, say so rather than presenting a partial log as full coverage
 4. State in the PR exactly what the evidence proves and what it does not
 5. `.task.md` status stays `needs-validation` until this is done, and nothing merges in
    that state

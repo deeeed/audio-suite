@@ -90,7 +90,7 @@
             "field": "scheduled",
             "value": true
           },
-          "next": "wait-auto-stop-stopped"
+          "next": "wait-auto-stop-started"
         },
         "wait-auto-stop-stopped": {
           "action": "wait_for",
@@ -175,6 +175,19 @@
             "value": true
           },
           "next": "done"
+        },
+        "wait-auto-stop-started": {
+          "action": "wait_for",
+          "expression": "JSON.stringify(globalThis.__AGENTIC__?.getState?.() || null)",
+          "assert": {
+            "operator": "eq",
+            "field": "isRecording",
+            "value": true
+          },
+          "timeout_ms": 15000,
+          "poll_ms": 250,
+          "next": "wait-auto-stop-stopped",
+          "_comment": "Wait for THIS run to start before waiting for it to stop. Without it a rerun satisfies the stopped/max-duration assertions from the previous run's leftover state at t=0, before startAutoStop has even resolved."
         }
       }
     }
