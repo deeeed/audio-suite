@@ -44,7 +44,9 @@ All agent commands run from `apps/playground/`. See `apps/playground/docs/AGENT_
 node scripts/agentic/cdp-bridge.mjs list-devices     # List connected devices
 scripts/agentic/app-navigate.sh "/(tabs)/record"      # Navigate
 scripts/agentic/app-state.sh state                    # Query state
-scripts/agentic/app-state.sh eval "__AGENTIC__.startRecording({ sampleRate: 44100, channels: 1 })"
+# Recording: NEVER call startRecording in a bare eval — see the fire-and-store
+# recipe under "Recording via CDP" below (#436). Non-audio evals are fine:
+scripts/agentic/app-state.sh eval "__AGENTIC__.getState()"
 scripts/agentic/screenshot.sh my-label                # Screenshot
 scripts/agentic/reload-metro.sh                       # Hot reload after edits
 scripts/agentic/native-logs.sh android|ios            # Kotlin/Swift logs
@@ -198,7 +200,7 @@ Format:
 <one-liner describing the goal>
 
 ## Status
-working|blocked|done|idle
+working|blocked|needs-validation|done|idle
 
 ## Approach
 <1-2 sentences on HOW you're solving it — enough to judge direction>
@@ -216,7 +218,7 @@ This file is read by the orchestrator to track progress across sessions. Keep it
 
 ## HARD RULE: no library change merges without on-device validation
 
-**Anything touching `packages/**` must be validated on a real device or simulator before
+**A change to library runtime code must be validated on every platform it affects before
 merging. No exceptions. Not "tests pass", not "the reviewer approved", not "I flagged the
 gap in the PR body".**
 
@@ -224,42 +226,73 @@ This was already written here and I broke it six times in one session — #434, 
 #445, #448, #450 all merged with unit tests and an external review but no device proof. I
 noted the gap each time and merged anyway. Noting it is not doing it.
 
-Before merging a `packages/**` change:
-1. Build and install from the branch — check `lastUpdateTime` in
-   `adb shell dumpsys package <pkg>`; a stale install validates nothing
-2. Exercise the actual changed path on device and capture concrete evidence: a file URI,
-   a byte count, a duration, a returned field — not "it did not crash"
-3. Check `native-logs.sh android|ios` for native-side errors
+What "covered" means, per platform:
+- Android/iOS runtime code (`packages/*/android/`, `packages/*/ios/`, `packages/*/cpp/`,
+  `packages/*/src/**` that ships in the app bundle): validate on that platform's device
+  or simulator.
+- Web-only runtime (`*.web.ts`): validate in the web playground; a mobile run proves
+  nothing about it.
+- Docs, tests, and CI config inside `packages/**`: no device run required — but nothing
+  else rides along in the same PR.
+- Files outside `packages/**` that change what gets built into the app (config plugins,
+  metro config, podspecs referenced by autolinking): covered, on the affected platform.
+
+Before merging a covered change:
+1. Build and install from the branch, and prove the install is fresh:
+   - Android: `adb shell dumpsys package net.siteed.audioplayground.development | grep lastUpdateTime`
+     (the app id, not an npm name) and compare to your build time
+   - iOS simulator: reinstall via `xcrun simctl install <udid> <path-to .app>` and
+     relaunch; a rebuilt app that was never reinstalled validates nothing
+2. Exercise the changed path and capture concrete evidence: a file URI, a byte count, a
+   duration, a returned field — not "it did not crash"
+3. Capture native logs across the run, not after it:
+   - Android: `adb logcat` covers the whole session retroactively
+   - iOS: `xcrun simctl spawn <udid> log show --last <n>m --predicate
+     'processImagePath CONTAINS "AudioDevPlayground"'` — `native-logs.sh ios` streams
+     forward only, so started after the fact it misses everything
 4. State in the PR exactly what the evidence proves and what it does not
+5. `.task.md` status stays `needs-validation` until this is done, and nothing merges in
+   that state
 
-If validation seems impossible, that conclusion is probably wrong. See the CDP crash
-workaround below: I declared device validation blocked by #436 for an entire session, and
-the workaround took four minutes to find once I actually tried.
+If validation seems impossible, that conclusion is probably wrong. I declared it blocked
+by #436 for an entire session; the workaround took four minutes to find once I tried.
 
-### CDP evaluations must not be held open while audio flows
+### Recording via CDP: fire-and-store only
 
-The Hermes SIGSEGV in #436 is *not* caused by recording. It needs a CDP evaluation live at
-the moment audio data starts crossing into JS. Fire-and-poll avoids it entirely:
+The Hermes SIGSEGV in #436 is *not* caused by recording. It fires when any CDP evaluation
+is open — including `eval-async`, which holds the client and polls — at the moment audio
+data crosses into JS. So for anything that starts audio flowing:
+
+- ❌ `scripts/agentic/app-state.sh eval "__AGENTIC__.startRecording(...).then(...)"`
+- ❌ `scripts/agentic/app-state.sh eval-async "..."` around recording — it keeps the
+  connection open, which is the trigger
+- ✅ fire-and-store: schedule the call so the eval returns first, stash results in a
+  global, poll in separate short evals
+
+Working recipe, exactly as run (from `apps/playground/`):
 
 ```bash
-# WRONG — the eval is still open when the first buffer arrives; process dies in ~90ms
-app-state.sh eval "__AGENTIC__.startRecording({...}).then(r => globalThis.x = r)"
+# 1. Fire. The eval returns "scheduled" immediately; recording starts 1.5s later
+#    with no CDP evaluation in flight.
+scripts/agentic/app-state.sh --device <name> eval \
+  "(() => { globalThis.__V = {}; setTimeout(async () => { try { await __AGENTIC__.startRecording({ sampleRate: 44100, channels: 1 }); await new Promise(r => setTimeout(r, 3000)); const s = await __AGENTIC__.stopRecording(); globalThis.__V = { uri: s.fileUri, size: s.size, dur: s.durationMs } } catch (e) { globalThis.__V = { err: String(e) } } }, 1500); return 'scheduled' })()"
 
-# RIGHT — schedule it, let the eval return, then poll separately
-app-state.sh eval "(() => { setTimeout(() => { __AGENTIC__.startRecording({...}) }, 1500); return 'scheduled' })()"
-sleep 6
-app-state.sh state                       # isRecording, durationMs
-app-state.sh eval "JSON.stringify(globalThis.__V)"   # results stashed by an earlier scheduled call
+# 2. Wait past the scheduled work, then poll with fresh, short evals.
+sleep 10
+scripts/agentic/app-state.sh --device <name> state                      # isRecording, durationMs
+scripts/agentic/app-state.sh --device <name> eval "JSON.stringify(globalThis.__V)"
 ```
 
-Verified: a 39s recording with a 3.48 MB WAV written and zero crashes.
+The stashing callback writes `__V` on both success and error, so the poll always has a
+terminal value; repeat the poll if it still reads `{}`. For the built-in extract/trim
+helpers use their fire-and-store form: `__AGENTIC__.test*()` then poll
+`__AGENTIC__.getLastResult()` until `status` is not `pending`.
 
-A fix is NOT done until validated on-device. Do not mark status `done` until:
-- Code changes are built and deployed to the device(s)
-- The bug scenario is reproduced and confirmed fixed
-- Regressions are checked
-Use status: `needs-validation` for code-complete but unverified fixes — and do not merge
-anything in that state.
+Verified with this pattern on Pixel 6a: 39s recording, 3.48 MB WAV, zero crashes — where
+the held-open form dies in ~90ms.
+
+Canonical agentic-loop documentation lives in `apps/playground/docs/AGENTIC_FEEDBACK_LOOPS.md`;
+if that file and this section disagree, fix the disagreement rather than picking one.
 
 **Fast Android builds for native module changes**
 - ❌ `yarn android` for single-module Kotlin/Java changes — full rebuild, 5-10 min

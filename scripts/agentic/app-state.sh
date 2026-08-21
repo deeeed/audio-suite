@@ -17,12 +17,14 @@ source "$(cd "$APP_ROOT" && git rev-parse --show-toplevel)/scripts/agentic/_lib.
 cd "$APP_ROOT"
 
 # -- Parse --device flag ---------------------------------------------------
-DEVICE_FLAG=""
+# Array, not a string: a device name containing spaces ("Pixel 6a") word-split
+# and its tail was parsed as the command ("Unknown command: 6a").
+DEVICE_ARGS=()
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --device)
-      DEVICE_FLAG="--device $2"
+      DEVICE_ARGS=(--device "$2")
       shift 2
       ;;
     *) POSITIONAL+=("$1"); shift ;;
@@ -34,9 +36,8 @@ COMMAND="${POSITIONAL[0]:-route}"
 EXTRA_ARGS=("${POSITIONAL[@]:1}")
 
 # All platforms go through cdp-bridge.mjs (unified entry point)
-# shellcheck disable=SC2086
 BRIDGE_CMD=(node "${APP_ROOT}/scripts/agentic/cdp-bridge.mjs")
-[[ -n "$DEVICE_FLAG" ]] && BRIDGE_CMD+=($DEVICE_FLAG)
+[[ ${#DEVICE_ARGS[@]} -gt 0 ]] && BRIDGE_CMD+=("${DEVICE_ARGS[@]}")
 export WATCHER_PORT="$PORT"
 
 case "$COMMAND" in

@@ -52,10 +52,13 @@ Read file before editing. Minimal diff. After each edit: `scripts/agentic/reload
 ## Step 5 — Validate
 
 ```bash
-# Recording
-scripts/agentic/app-state.sh eval "__AGENTIC__.startRecording({ sampleRate: 44100, channels: 1 })"
+# Recording — fire-and-store ONLY. A bare eval held open while audio starts
+# flowing crashes the app (#436, Hermes SIGSEGV). Schedule the work so the eval
+# returns first, stash results in a global, poll separately:
+scripts/agentic/app-state.sh eval "(() => { globalThis.__V = {}; setTimeout(async () => { try { await __AGENTIC__.startRecording({ sampleRate: 44100, channels: 1 }); await new Promise(r => setTimeout(r, 3000)); const s = await __AGENTIC__.stopRecording(); globalThis.__V = { uri: s.fileUri, size: s.size, dur: s.durationMs } } catch (e) { globalThis.__V = { err: String(e) } } }, 1500); return 'scheduled' })()"
+sleep 10
 scripts/agentic/app-state.sh state
-scripts/agentic/app-state.sh eval "__AGENTIC__.stopRecording()"
+scripts/agentic/app-state.sh eval "JSON.stringify(globalThis.__V)"
 
 # UI interaction
 scripts/agentic/app-state.sh press start-recording-button   # → { ok: true }
