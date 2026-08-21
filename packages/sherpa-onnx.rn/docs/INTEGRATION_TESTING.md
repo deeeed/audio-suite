@@ -107,11 +107,20 @@ Useful browser-side checks:
 
 ## Test Results Summary
 
-These are historical results from when the suite last ran in full, and they are **not
-reproducible from this tree today**: the downloader URLs for `vits-icefall-en-low.tar.bz2`
-and `whisper-tiny.tar.bz2` both return 404, so the TTS and ASR tests fail during setup.
-Treat the numbers below as a record of a past run, not a claim about the current state.
-The architecture-comparison lines are from before #434 removed those tests.
+These are historical results from when the suite last ran in full. Re-run before trusting
+them; the architecture-comparison lines are from before #434 removed those tests.
+
+Model names in this repo are inconsistent and some 404. Checked against the upstream
+release:
+
+| name | status |
+|---|---|
+| `vits-icefall-en_US-ljspeech-low.tar.bz2` | HTTP 200 |
+| `matcha-icefall-en_US-ljspeech.tar.bz2` | HTTP 200 |
+| `vits-icefall-en-low.tar.bz2` | HTTP 404 |
+| `vits-icefall-en-ljspeech-low.tar.bz2` | HTTP 404 |
+
+Use an `en_US` name. If a download 404s, that is the likely reason.
 
 ### Android (Real Device - Pixel 6a) ✅
 ```
