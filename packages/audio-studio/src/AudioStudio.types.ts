@@ -580,8 +580,8 @@ export interface RecordingConfig {
     /**
      * Optional filename for the recording (uses a UUID if not provided).
      *
-     * A single filename, not a path: it is appended to the output directory, so a value
-     * containing a separator is rejected rather than written elsewhere.
+     * A single filename, not a path — it is appended to the output directory. Passing a
+     * path is not supported and native platforms reject it.
      */
     filename?: string
 
@@ -900,8 +900,8 @@ export interface TrimAudioOptions {
     /**
      * The name of the output file. If not provided, a default name will be generated.
      *
-     * A single filename, not a path: it is appended to the output directory, so a value
-     * containing a separator is rejected rather than written elsewhere.
+     * A single filename, not a path — it is appended to the output directory. Passing a
+     * path is not supported and native platforms reject it.
      */
     outputFileName?: string
 

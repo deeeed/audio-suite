@@ -66,14 +66,36 @@ class SafeFilenameTest {
     }
 
     @Test
-    fun `a traversing filename is rejected whichever key it arrives under`() {
-        // The prepared paths previously skipped this: startRecording ignored a parse
-        // failure when already prepared, and prepareRecording returned true before
-        // parsing. Both now consult fromMap, so this is the single check they share.
+    fun `the config parser rejects a traversing filename`() {
+        // Parser coverage only. Both prepared paths now route through fromMap, so this is
+        // the check they share — but the manager's own transitions are not exercised here,
+        // since faking its hardware state is what the harness gap in #449 is about.
         for (name in listOf("../escaped", "a/b", "", ".")) {
             val result = RecordingConfig.fromMap(mapOf("filename" to name))
             assertTrue(result.isFailure, "expected \"$name\" to be rejected")
         }
+    }
+
+    @Test
+    fun `both prepared paths honour a config failure`() {
+        // Source assertions, in the style of AudioSourceWiringTest: the manager needs real
+        // AudioRecord state to exercise these transitions, so this guards the wiring rather
+        // than the behaviour. Both bypasses were live until #452 — prepared startRecording
+        // wrapped the parse in `if (configResult.isSuccess)` and dropped failures, and
+        // prepareRecording returned true before parsing.
+        val source = File("src/main/java/net/siteed/audiostudio/AudioRecorderManager.kt")
+            .takeIf { it.exists() }
+            ?: File("packages/audio-studio/android/src/main/java/net/siteed/audiostudio/AudioRecorderManager.kt")
+        val text = source.readText()
+
+        assertFalse(
+            text.contains("if (configResult.isSuccess) {"),
+            "prepared startRecording must not silently ignore a config failure"
+        )
+        assertTrue(
+            text.contains("val recheck = RecordingConfig.fromMap(options)"),
+            "prepareRecording must re-validate when already prepared"
+        )
     }
 
     @Test
