@@ -14,6 +14,19 @@ permissions:
 
 jobs:
   validate:
+    # Only validate issues from people without write access. The template this enforces
+    # is a bug-report form, and it fits an external bug report — it does not fit a
+    # maintainer's engineering write-up, which uses "## Summary" and has no
+    # "expo-audio-studio version:" line because it is not a version-specific report.
+    #
+    # This matters because the trigger includes `edited`: with the workflow closing
+    # issues, editing any of the repo's own open issues would close it. That was not
+    # visible before, because the workflow lacked write permission and every run failed
+    # (fixed in #470). #436 was auto-closed the first time it was edited afterwards.
+    if: >-
+      github.event.issue.author_association != 'OWNER' &&
+      github.event.issue.author_association != 'MEMBER' &&
+      github.event.issue.author_association != 'COLLABORATOR'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
