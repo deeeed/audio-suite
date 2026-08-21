@@ -83,11 +83,10 @@ jobs:
           echo "Using simulator: $NAME"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
 
-      # xcodebuild directly rather than through `yarn workspace`: the script touches
-      # no node_modules, so an install would be pure cost.
+      # Through the package script, so a broken test:ios definition fails CI — but via
+      # npm --prefix rather than `yarn workspace`, which would need a full install for a
+      # command that touches no node_modules.
       - name: Test
-        working-directory: packages/audio-studio
-        run: |
-          xcodebuild test \
-            -scheme AudioStudio-Package \
-            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.name }}"
+        run: npm --prefix packages/audio-studio run test:ios
+        env:
+          IOS_SIMULATOR: ${{ steps.sim.outputs.name }}
