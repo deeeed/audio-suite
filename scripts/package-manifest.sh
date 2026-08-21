@@ -140,4 +140,27 @@ for pkg in "${PACKAGES[@]}"; do
   fi
 done
 
+# Reconcile the other direction: a manifest whose package has been deleted or marked
+# private drops out of PACKAGES entirely, so nothing above ever looks at it and it lingers
+# describing a package that no longer publishes.
+expected=""
+for pkg in "${PACKAGES[@]}"; do
+  expected+="$(node -p "require('$ROOT/$pkg/package.json').name.replace('@','').replace('/','__')").txt"$'\n'
+done
+
+for manifest in "$MANIFEST_DIR"/*.txt; do
+  [[ -e "$manifest" ]] || continue
+  base="$(basename "$manifest")"
+  if ! printf '%s' "$expected" | grep -qxF "$base"; then
+    if $WRITE; then
+      rm -f "$manifest"
+      echo "removed $base (no longer a published package)"
+    else
+      echo "ORPHAN: $base has no matching published package." >&2
+      echo "If intended, re-run: scripts/package-manifest.sh --write" >&2
+      status=1
+    fi
+  fi
+done
+
 exit $status
