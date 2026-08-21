@@ -66,6 +66,17 @@ class SafeFilenameTest {
     }
 
     @Test
+    fun `a traversing filename is rejected whichever key it arrives under`() {
+        // The prepared paths previously skipped this: startRecording ignored a parse
+        // failure when already prepared, and prepareRecording returned true before
+        // parsing. Both now consult fromMap, so this is the single check they share.
+        for (name in listOf("../escaped", "a/b", "", ".")) {
+            val result = RecordingConfig.fromMap(mapOf("filename" to name))
+            assertTrue(result.isFailure, "expected \"$name\" to be rejected")
+        }
+    }
+
+    @Test
     fun `a rejected name would otherwise escape filesDir`() {
         // The reason this validator exists, checked against the API AudioTrimmer uses
         // rather than taken on faith from the iOS behaviour.

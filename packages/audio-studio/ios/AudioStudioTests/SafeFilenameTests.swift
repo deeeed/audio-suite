@@ -44,6 +44,15 @@ final class SafeFilenameTests: XCTestCase {
         XCTAssertFalse(SafeFilename.isValid("bad\0name"))
     }
 
+    func testTheRejectionReasonSurvivesCoercionToError() {
+        // The bridge receives the failure typed as `Error`, where a same-named
+        // localizedDescription is shadowed — the caller saw "RecordingError error 3."
+        // instead of the reason until RecordingError conformed to LocalizedError (#452).
+        let typed = RecordingError.invalidFilename("filename must be a single filename")
+        let asError: Error = typed
+        XCTAssertEqual(asError.localizedDescription, "filename must be a single filename")
+    }
+
     func testTheRecordingPathIsCoveredToo() {
         // createRecordingFile strips a trailing extension before appending ".wav", which
         // mangles some of these differently than the trim path — "../escaped" becomes

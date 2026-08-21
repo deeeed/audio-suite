@@ -627,9 +627,20 @@ class AudioRecorderManager(
             } else {
                 LogUtils.d(CLASS_NAME, "Using prepared recording state")
                 
-                // Even when prepared, update device settings from the new options
+                // Even when prepared, update device settings from the new options.
+                // A parse failure is rejected rather than ignored: swallowing it accepted
+                // an invalid filename on the prepared path while the unprepared one
+                // refused the same value (#452).
                 val configResult = RecordingConfig.fromMap(options)
-                if (configResult.isSuccess) {
+                if (configResult.isFailure) {
+                    promise.reject(
+                        "INVALID_CONFIG",
+                        configResult.exceptionOrNull()?.message ?: "Invalid configuration",
+                        configResult.exceptionOrNull()
+                    )
+                    return
+                }
+                run {
                     val (tempRecordingConfig, _) = configResult.getOrNull()!!
                     // Update device-related settings
                     selectedDeviceId = tempRecordingConfig.deviceId ?: selectedDeviceId
@@ -2359,6 +2370,14 @@ class AudioRecorderManager(
         }
         
         if (isPrepared) {
+            // Still validate: returning early accepted a traversing filename that a
+            // first preparation would have refused (#452). The prepared file itself is
+            // safe, but the caller must not be told an invalid request succeeded.
+            val recheck = RecordingConfig.fromMap(options)
+            if (recheck.isFailure) {
+                LogUtils.e(CLASS_NAME, "Invalid configuration: ${recheck.exceptionOrNull()?.message}")
+                return false
+            }
             LogUtils.d(CLASS_NAME, "Already prepared")
             return true
         }
