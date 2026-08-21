@@ -27,6 +27,7 @@ let package = Package(
                 "PrimaryWriteFailurePolicy.swift",
                 "BridgedNarrowing.swift",
                 "OutputPromotion.swift",
+                "SafeFilename.swift",
             ]
         ),
         .testTarget(
@@ -38,6 +39,7 @@ let package = Package(
                 "BridgedNarrowingTests.swift",
                 "ConverterCapabilityTests.swift",
                 "OutputPromotionTests.swift",
+                "SafeFilenameTests.swift",
             ]
         ),
     ]

@@ -577,8 +577,13 @@ export interface RecordingConfig {
 
     /** Optional directory path where output files will be saved */
     outputDirectory?: string // If not provided, uses default app directory
-    /** Optional filename for the recording (uses UUID if not provided) */
-    filename?: string // If not provided, uses UUID
+    /**
+     * Optional filename for the recording (uses a UUID if not provided).
+     *
+     * A single filename, not a path — it is appended to the output directory. Passing a
+     * path is not supported and native platforms reject it.
+     */
+    filename?: string
 
     /** ID of the device to use for recording (if not specified, uses default) */
     deviceId?: string
@@ -894,6 +899,9 @@ export interface TrimAudioOptions {
 
     /**
      * The name of the output file. If not provided, a default name will be generated.
+     *
+     * A single filename, not a path — it is appended to the output directory. Passing a
+     * path is not supported and native platforms reject it.
      */
     outputFileName?: string
 

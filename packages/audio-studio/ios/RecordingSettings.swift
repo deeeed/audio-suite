@@ -188,12 +188,16 @@ struct IOSConfig {
     var audioSession: IOSAudioSessionConfig?
 }
 
-enum RecordingError: Error {
+/// Conforms to LocalizedError, not just Error: a same-named `localizedDescription`
+/// is shadowed once the value is stored as `Error`, which is how the bridge receives
+/// it — the caller then sees "RecordingError error 3." instead of the reason (#452).
+enum RecordingError: LocalizedError {
     case unsupportedFormat(String)
     case invalidBitrate(Int)
     case invalidOutputDirectory(String)
+    case invalidFilename(String)
 
-    var localizedDescription: String {
+    var errorDescription: String? {
         switch self {
         case .unsupportedFormat(let format):
             return "Unsupported compression format: \(format). iOS only supports AAC."
@@ -201,6 +205,8 @@ enum RecordingError: Error {
             return "Invalid bitrate: \(bitrate). Must be between 8000 and 960000 bps."
         case .invalidOutputDirectory(let directory):
             return "Invalid output directory: \(directory). Directory does not exist, is not a directory, or is not writable."
+        case .invalidFilename(let reason):
+            return reason
         }
     }
 }
@@ -416,7 +422,17 @@ struct RecordingSettings {
             settings.outputDirectory = cleanDirectory
         }
 
-        settings.filename = dict["filename"] as? String
+        // A name, not a path. It is appended to the output directory, so a separator can
+        // traverse out of it: "../../../../tmp/pwned" escapes even after the extension
+        // rewrite below (#452).
+        if let filename = dict["filename"] as? String {
+            guard SafeFilename.isValid(filename) else {
+                return .failure(RecordingError.invalidFilename(
+                    "filename must be a single filename without path separators"
+                ))
+            }
+            settings.filename = filename
+        }
 
         // Set new properties
         settings.deviceId = deviceId

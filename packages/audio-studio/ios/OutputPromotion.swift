@@ -27,35 +27,9 @@ import Foundation
 /// Note this is broader than the version it replaced, which refused FIFOs, sockets and
 /// device nodes: `rename` replaces those. That is acceptable because a destination like
 /// that cannot be reached through the documented contract — `outputFileName` is a single
-/// filename, enforced by `isSafeOutputFileName` at the bridge — and narrowing it again
+/// filename, enforced by `SafeFilename` at the bridge — and narrowing it again
 /// would mean reintroducing the inspect-then-act race this exists to remove.
 enum OutputPromotion {
-
-    /// Whether a caller-supplied output filename is a single, safe path component.
-    ///
-    /// `outputFileName` arrives from JS and is appended to a directory. A separator makes
-    /// it a path rather than a name, and a path can traverse: `../../../../tmp/pwned`
-    /// resolves to `/var/tmp/pwned.wav`, where the trim then writes — outside the
-    /// documented contract, and a way to overwrite unrelated files (#433).
-    ///
-    /// Rejected names fail in three different ways, worth stating exactly because this
-    /// was described wrongly three times. Probed against `/tmp/base`:
-    /// - traversing out: `../escaped` and `../../../../tmp/pwned` land in `/tmp`
-    /// - outside without traversing: `""` leaves the base URL unchanged, so the extension
-    ///   goes onto the directory itself — `/tmp/base.wav`, a sibling
-    /// - inside but not a filename: `a/b` nests, `/absolute` is absorbed, `.` and `..`
-    ///   become `..wav` and `...wav`
-    ///
-    /// All are refused: the contract is a single filename, and every one of these writes
-    /// somewhere the caller did not name.
-    static func isSafeOutputFileName(_ name: String) -> Bool {
-        guard !name.isEmpty else { return false }
-        guard !name.contains("/") else { return false }
-        guard name != "." && name != ".." else { return false }
-        // Reject NUL and anything that would not survive as one path component.
-        guard !name.contains("\0") else { return false }
-        return true
-    }
 
     /// Promotes `workURL` onto `destination`, or throws describing why it did not.
     ///
