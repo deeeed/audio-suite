@@ -96,7 +96,8 @@ class AudioStudioModule : Module(), EventSender, AudioStreamDecoderDelegate {
             Constants.AUDIO_STREAM_CHUNK_EVENT,
             Constants.AUDIO_STREAM_PROGRESS_EVENT,
             Constants.AUDIO_STREAM_COMPLETE_EVENT,
-            Constants.AUDIO_STREAM_ERROR_EVENT
+            Constants.AUDIO_STREAM_ERROR_EVENT,
+            Constants.RECORDING_ERROR_EVENT
         )
 
         // Initialize Managers

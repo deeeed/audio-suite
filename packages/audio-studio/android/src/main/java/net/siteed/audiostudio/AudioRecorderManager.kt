@@ -102,6 +102,39 @@ class AudioRecorderManager(
     private var streamUuid: String? = null
     private var audioFile: File? = null
     private var recordingThread: Thread? = null
+
+    /**
+     * Whether the current recording has already reported a degradation to JS (#447).
+     *
+     * The read-failure path below does not break the loop — it continues and reads again —
+     * so emitting on every iteration would deliver one event per buffer for as long as the
+     * fault lasts. One event per episode is the useful signal; recovery clears the latch so
+     * a later, separate failure is still reported. Written from the recording thread and
+     * cleared from the caller's, hence @Volatile.
+     */
+    @Volatile
+    private var hasReportedRecordingError = false
+
+    /**
+     * Report a live recording degradation on the same `error` event iOS uses (#447).
+     *
+     * Only for failures that cannot reject a call because the call already returned.
+     * Anything that can still reject one should reject instead: a rejection carries a code,
+     * and this event carries only prose.
+     */
+    private fun emitRecordingError(message: String) {
+        if (hasReportedRecordingError) return
+        hasReportedRecordingError = true
+        try {
+            eventSender.sendExpoEvent(
+                Constants.RECORDING_ERROR_EVENT,
+                bundleOf("message" to message)
+            )
+        } catch (e: Exception) {
+            // Never let reporting a failure become a second failure inside the audio loop.
+            LogUtils.w(CLASS_NAME, "Failed to emit recording error event: ${e.message}")
+        }
+    }
     private var recordingStartTime: Long = 0
     private var totalRecordedTime: Long = 0
     private var totalDataSize = 0
@@ -1156,10 +1189,16 @@ class AudioRecorderManager(
 
         } catch (e: IOException) {
             releaseWakeLock()
+            // Both callers allocate AudioRecord (and the MediaRecorder, when compressed
+            // output is on) before reaching here, and neither has a catch of its own: each
+            // initializer returns false and the caller returns early. Reclaiming here is
+            // what keeps a failure from leaking both native recorders (#446).
+            discardFailedAttempt()
             promise.reject("FILE_CREATION_FAILED", "Failed to create the audio file", e)
             return false
         } catch (e: Exception) {
             releaseWakeLock()
+            discardFailedAttempt()
             LogUtils.e(CLASS_NAME, "Unexpected error in startRecording", e)
             promise.reject("UNEXPECTED_ERROR", "Unexpected error: ${e.message}", e)
             return false
@@ -1216,6 +1255,9 @@ class AudioRecorderManager(
             }
 
             _isRecording.set(true)
+            // Fresh recording, fresh latch: otherwise a degradation in the previous
+            // recording would suppress this one's first error (#447).
+            hasReportedRecordingError = false
             recordingThread = Thread { recordingProcess() }.apply { start() }
 
             return true
@@ -1760,12 +1802,20 @@ class AudioRecorderManager(
                         audioRecord?.let {
                             if (it.state != AudioRecord.STATE_INITIALIZED) {
                                 LogUtils.e(CLASS_NAME, "AudioRecord not initialized")
+                                emitRecordingError(
+                                    "Audio input stopped: the recorder is no longer initialized. No further audio will be captured."
+                                )
                                 return@let -1
                             }
                             // Use non-blocking read mode to allow quick thread exit
                             it.read(audioData, 0, bufferSizeInBytes, AudioRecord.READ_NON_BLOCKING).also { bytes ->
                                 if (bytes < 0) {
                                     LogUtils.e(CLASS_NAME, "AudioRecord read error: $bytes")
+                                    emitRecordingError("Audio input read failed with error code $bytes.")
+                                } else if (bytes > 0) {
+                                    // Audio is flowing again: re-arm so a later, separate
+                                    // fault is reported rather than swallowed by the latch.
+                                    hasReportedRecordingError = false
                                 }
                             }
                         } ?: -1 // Handle null case
@@ -1864,6 +1914,9 @@ class AudioRecorderManager(
                     LogUtils.d(CLASS_NAME, "FileOutputStream flushed successfully")
                 } catch (e: Exception) {
                     LogUtils.e(CLASS_NAME, "Error flushing FileOutputStream", e)
+                    emitRecordingError(
+                        "Primary WAV output could not be flushed: ${e.message}. The file may be truncated."
+                    )
                 }
                 fos?.close()
             }
@@ -1874,6 +1927,7 @@ class AudioRecorderManager(
             // Ensure wake lock is released if the thread is interrupted
             if (!isPaused.get()) {
                 releaseWakeLock()
+                emitRecordingError("Recording stopped unexpectedly: ${e.message}")
             }
             LogUtils.e(CLASS_NAME, "Error in recording process", e)
         }
@@ -2001,9 +2055,23 @@ class AudioRecorderManager(
             try {
                 if (_isRecording.get()) {
                     audioRecord?.stop()
-                    compressedRecorder?.stop()
-                    compressedRecorder?.release()
+                    // stop() only inside the gate: it throws on a recorder that was
+                    // prepared but never started. release() is unconditional below.
+                    try {
+                        compressedRecorder?.stop()
+                    } catch (e: Exception) {
+                        LogUtils.w(CLASS_NAME, "Failed to stop compressed recorder: ${e.message}")
+                    }
                 }
+
+                // Outside the gate: a failed preparation never sets _isRecording, so gating
+                // release() here is what let destroy() strand a native MediaRecorder (#446).
+                try {
+                    compressedRecorder?.release()
+                } catch (e: Exception) {
+                    LogUtils.w(CLASS_NAME, "Failed to release compressed recorder: ${e.message}")
+                }
+                compressedRecorder = null
                 
                 _isRecording.set(false)
                 isPaused.set(false)
@@ -2104,6 +2172,17 @@ class AudioRecorderManager(
             }
             return true
         } catch (e: Exception) {
+            // The recorder is constructed above, so a throw from any setter or from
+            // prepare() strands it. Release here rather than via discardFailedAttempt():
+            // the AudioRecord this attempt already opened belongs to the caller's own
+            // rollback, and releasing it here would reclaim it twice (#446).
+            try {
+                compressedRecorder?.release()
+            } catch (releaseError: Exception) {
+                LogUtils.w(CLASS_NAME, "Failed to release compressed recorder after init failure: ${releaseError.message}")
+            }
+            compressedRecorder = null
+            compressedFile = null
             LogUtils.e(CLASS_NAME, "Failed to initialize compressed recorder", e)
             promise.reject("COMPRESSED_INIT_FAILED", "Failed to initialize compressed recorder", e)
             return false
