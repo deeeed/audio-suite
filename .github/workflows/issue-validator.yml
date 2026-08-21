@@ -4,6 +4,14 @@ on:
   issues:
     types: [opened, edited]
 
+# Without this the default GITHUB_TOKEN is read-only and every write fails with
+# "Resource not accessible by integration" — which is why this workflow has failed on
+# every run. The script calls issues.addLabels, issues.createComment and issues.update,
+# so `issues: write` is the whole requirement; contents stays read-only.
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   validate:
     runs-on: ubuntu-latest
