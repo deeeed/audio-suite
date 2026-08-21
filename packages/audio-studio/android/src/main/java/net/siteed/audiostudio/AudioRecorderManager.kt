@@ -103,17 +103,28 @@ class AudioRecorderManager(
     private var audioFile: File? = null
     private var recordingThread: Thread? = null
 
+    /** Kinds of live-recording degradation, latched independently. See [emitRecordingError]. */
+    private enum class RecordingErrorKind { INPUT_STATE, INPUT_READ, PRIMARY_FLUSH, LOOP_FAILED }
+
     /**
-     * Whether the current recording has already reported a degradation to JS (#447).
+     * Which degradation kinds the current recording has already reported to JS (#447).
      *
      * The read-failure path below does not break the loop — it continues and reads again —
      * so emitting on every iteration would deliver one event per buffer for as long as the
-     * fault lasts. One event per episode is the useful signal; recovery clears the latch so
-     * a later, separate failure is still reported. Written from the recording thread and
-     * cleared from the caller's, hence @Volatile.
+     * fault lasts. One event per kind per episode is the useful signal.
+     *
+     * Latched per kind rather than once for the whole recording: with a single flag, a
+     * persistent read fault would swallow an unrelated WAV flush failure that happened
+     * afterwards, which is the opposite of what a caller subscribes for. Read recovery
+     * clears only the read latch.
+     *
+     * A Set guarded by its own lock rather than a @Volatile field: @Volatile gives
+     * visibility, not atomicity, and cleanup() does not join the recording thread before a
+     * later recording resets this, so the read-modify-write needs to actually be atomic.
      */
-    @Volatile
-    private var hasReportedRecordingError = false
+    private val reportedRecordingErrors = java.util.Collections.synchronizedSet(
+        java.util.EnumSet.noneOf(RecordingErrorKind::class.java)
+    )
 
     /**
      * Report a live recording degradation on the same `error` event iOS uses (#447).
@@ -122,9 +133,10 @@ class AudioRecorderManager(
      * Anything that can still reject one should reject instead: a rejection carries a code,
      * and this event carries only prose.
      */
-    private fun emitRecordingError(message: String) {
-        if (hasReportedRecordingError) return
-        hasReportedRecordingError = true
+    private fun emitRecordingError(kind: RecordingErrorKind, message: String) {
+        // add() returns false when the kind is already latched, making the check and the
+        // set one atomic step.
+        if (!reportedRecordingErrors.add(kind)) return
         try {
             eventSender.sendExpoEvent(
                 Constants.RECORDING_ERROR_EVENT,
@@ -132,6 +144,9 @@ class AudioRecorderManager(
             )
         } catch (e: Exception) {
             // Never let reporting a failure become a second failure inside the audio loop.
+            // Un-latch: delivery failed, so this kind was not actually reported and a later
+            // occurrence should still get the chance to be.
+            reportedRecordingErrors.remove(kind)
             LogUtils.w(CLASS_NAME, "Failed to emit recording error event: ${e.message}")
         }
     }
@@ -1127,6 +1142,16 @@ class AudioRecorderManager(
                 )
 
                 if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
+                    // Constructing an AudioRecord that reports STATE_UNINITIALIZED still
+                    // allocated it. Returning without releasing leaks the native object,
+                    // which is the same defect #446 is about — the pre-attempt
+                    // discardFailedAttempt() above only reclaims an EARLIER attempt's.
+                    try {
+                        audioRecord?.release()
+                    } catch (e: Exception) {
+                        LogUtils.w(CLASS_NAME, "Failed to release uninitialized AudioRecord: ${e.message}")
+                    }
+                    audioRecord = null
                     promise.reject(
                         "INITIALIZATION_FAILED",
                         "Failed to initialize the audio recorder",
@@ -1255,9 +1280,9 @@ class AudioRecorderManager(
             }
 
             _isRecording.set(true)
-            // Fresh recording, fresh latch: otherwise a degradation in the previous
+            // Fresh recording, fresh latches: otherwise a degradation in the previous
             // recording would suppress this one's first error (#447).
-            hasReportedRecordingError = false
+            reportedRecordingErrors.clear()
             recordingThread = Thread { recordingProcess() }.apply { start() }
 
             return true
@@ -1803,6 +1828,7 @@ class AudioRecorderManager(
                             if (it.state != AudioRecord.STATE_INITIALIZED) {
                                 LogUtils.e(CLASS_NAME, "AudioRecord not initialized")
                                 emitRecordingError(
+                                    RecordingErrorKind.INPUT_STATE,
                                     "Audio input stopped: the recorder is no longer initialized. No further audio will be captured."
                                 )
                                 return@let -1
@@ -1811,11 +1837,14 @@ class AudioRecorderManager(
                             it.read(audioData, 0, bufferSizeInBytes, AudioRecord.READ_NON_BLOCKING).also { bytes ->
                                 if (bytes < 0) {
                                     LogUtils.e(CLASS_NAME, "AudioRecord read error: $bytes")
-                                    emitRecordingError("Audio input read failed with error code $bytes.")
+                                    emitRecordingError(
+                                        RecordingErrorKind.INPUT_READ,
+                                        "Audio input read failed with error code $bytes."
+                                    )
                                 } else if (bytes > 0) {
-                                    // Audio is flowing again: re-arm so a later, separate
-                                    // fault is reported rather than swallowed by the latch.
-                                    hasReportedRecordingError = false
+                                    // Audio is flowing again: re-arm this kind only, so a
+                                    // later read fault is reported rather than swallowed.
+                                    reportedRecordingErrors.remove(RecordingErrorKind.INPUT_READ)
                                 }
                             }
                         } ?: -1 // Handle null case
@@ -1915,6 +1944,7 @@ class AudioRecorderManager(
                 } catch (e: Exception) {
                     LogUtils.e(CLASS_NAME, "Error flushing FileOutputStream", e)
                     emitRecordingError(
+                        RecordingErrorKind.PRIMARY_FLUSH,
                         "Primary WAV output could not be flushed: ${e.message}. The file may be truncated."
                     )
                 }
@@ -1927,7 +1957,10 @@ class AudioRecorderManager(
             // Ensure wake lock is released if the thread is interrupted
             if (!isPaused.get()) {
                 releaseWakeLock()
-                emitRecordingError("Recording stopped unexpectedly: ${e.message}")
+                emitRecordingError(
+                    RecordingErrorKind.LOOP_FAILED,
+                    "Recording stopped unexpectedly: ${e.message}"
+                )
             }
             LogUtils.e(CLASS_NAME, "Error in recording process", e)
         }
@@ -2053,8 +2086,15 @@ class AudioRecorderManager(
         cancelMaxDurationTimer()
         synchronized(audioRecordLock) {
             try {
+                // Every stop() is individually guarded. An unguarded one jumps to the
+                // outer catch and skips every release below it, abandoning both recorders
+                // on precisely the hardware failure that makes stop() throw (#446).
                 if (_isRecording.get()) {
-                    audioRecord?.stop()
+                    try {
+                        audioRecord?.stop()
+                    } catch (e: Exception) {
+                        LogUtils.w(CLASS_NAME, "Failed to stop AudioRecord: ${e.message}")
+                    }
                     // stop() only inside the gate: it throws on a recorder that was
                     // prepared but never started. release() is unconditional below.
                     try {
@@ -2173,16 +2213,13 @@ class AudioRecorderManager(
             return true
         } catch (e: Exception) {
             // The recorder is constructed above, so a throw from any setter or from
-            // prepare() strands it. Release here rather than via discardFailedAttempt():
-            // the AudioRecord this attempt already opened belongs to the caller's own
-            // rollback, and releasing it here would reclaim it twice (#446).
-            try {
-                compressedRecorder?.release()
-            } catch (releaseError: Exception) {
-                LogUtils.w(CLASS_NAME, "Failed to release compressed recorder after init failure: ${releaseError.message}")
-            }
-            compressedRecorder = null
-            compressedFile = null
+            // prepare() strands it — and the AudioRecord this attempt already opened is
+            // stranded too. An earlier revision of this comment claimed the caller rolls
+            // that back; it does not. Both call sites just `return` when this returns
+            // false, with no cleanup of their own, so the rollback has to happen here.
+            // discardFailedAttempt() reclaims both and nulls both, so the double-release
+            // this used to worry about cannot happen (#446).
+            discardFailedAttempt()
             LogUtils.e(CLASS_NAME, "Failed to initialize compressed recorder", e)
             promise.reject("COMPRESSED_INIT_FAILED", "Failed to initialize compressed recorder", e)
             return false
