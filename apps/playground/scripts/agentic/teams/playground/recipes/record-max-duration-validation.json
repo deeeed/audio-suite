@@ -42,7 +42,7 @@
           },
           "timeout_ms": 30000,
           "poll_ms": 250,
-          "next": "assert-notify-only-still-recording"
+          "next": "assert-startNotifyOnly-ok"
         },
         "assert-notify-only-still-recording": {
           "action": "eval_ref",
@@ -74,7 +74,7 @@
           },
           "timeout_ms": 10000,
           "poll_ms": 250,
-          "next": "start-auto-stop-recording"
+          "next": "assert-stopNotifyOnly-ok"
         },
         "start-auto-stop-recording": {
           "action": "eval_sync",
@@ -134,11 +134,41 @@
           },
           "timeout_ms": 30000,
           "poll_ms": 250,
-          "next": "done"
+          "next": "assert-startAutoStop-ok"
         },
         "done": {
           "action": "end",
           "status": "pass"
+        },
+        "assert-startNotifyOnly-ok": {
+          "action": "eval_sync",
+          "expression": "(function () { var r = (globalThis.__RECIPE || {})['startNotifyOnly']; return JSON.stringify(r && r.error ? { ok: false, error: String(r.error) } : { ok: r ? true : false }); })()",
+          "assert": {
+            "operator": "eq",
+            "field": "ok",
+            "value": true
+          },
+          "next": "assert-notify-only-still-recording"
+        },
+        "assert-stopNotifyOnly-ok": {
+          "action": "eval_sync",
+          "expression": "(function () { var r = (globalThis.__RECIPE || {})['stopNotifyOnly']; return JSON.stringify(r && r.error ? { ok: false, error: String(r.error) } : { ok: r ? true : false }); })()",
+          "assert": {
+            "operator": "eq",
+            "field": "ok",
+            "value": true
+          },
+          "next": "start-auto-stop-recording"
+        },
+        "assert-startAutoStop-ok": {
+          "action": "eval_sync",
+          "expression": "(function () { var r = (globalThis.__RECIPE || {})['startAutoStop']; return JSON.stringify(r && r.error ? { ok: false, error: String(r.error) } : { ok: r ? true : false }); })()",
+          "assert": {
+            "operator": "eq",
+            "field": "ok",
+            "value": true
+          },
+          "next": "done"
         }
       }
     }

@@ -79,8 +79,9 @@ sleep 3
 scripts/agentic/app-state.sh state
 # → { isRecording: true, durationMs: ~1100, size: >0, ... }
 
-# 4. Wait out the stop, then read the stored result. Never poll __V while recording:
-# the eval is what step 2 exists to avoid.
+# 4. Wait out the stop, then read the stored result. Polling during a recording is
+# safe (see CLAUDE.md for what was measured); the point of waiting is simply that
+# __V is not populated until the callback finishes.
 sleep 7
 scripts/agentic/app-state.sh eval "JSON.stringify(globalThis.__V)"
 # → { uri: "file:///...wav", size: 259348, dur: 2939 }
@@ -140,7 +141,9 @@ scripts/agentic/start-metro.sh
 
 ### Mandatory
 - Validate features via CDP bridge before claiming completion
-- Test on at least one real device/simulator
+- Test on a real device or simulator for **every platform the change affects**. One is
+  enough only when the change touches one; see the hard rule in CLAUDE.md, which this
+  previously contradicted by asking for "at least one".
 - Fix issues immediately when validation fails
 - Include actual command output in responses
 

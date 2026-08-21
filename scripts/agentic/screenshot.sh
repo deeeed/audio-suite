@@ -33,5 +33,4 @@ done
 
 LABEL="${POSITIONAL[0]:-screenshot}"
 
-# shellcheck disable=SC2086
 WATCHER_PORT="$PORT" node "${APP_ROOT}/scripts/agentic/cdp-bridge.mjs" "${DEVICE_ARGS[@]:1}" screenshot "$LABEL"

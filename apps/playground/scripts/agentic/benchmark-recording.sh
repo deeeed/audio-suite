@@ -49,7 +49,12 @@ resolve_serial() {
             echo "$serial"
             return
         fi
-        echo "[BENCH] WARNING: device '$dev_name' not found, falling back to USB device" >&2
+        # No fallback on an explicit request. Falling through here benchmarked a
+        # different phone than the caller named — with a Pixel 7 listed first, asking
+        # for a Pixel 6a silently measured the Pixel 7.
+        echo "[BENCH] FATAL: device '$dev_name' not found among:" >&2
+        adb devices -l >&2
+        exit 1
     fi
     # Prefer USB-connected device over WiFi
     local serial
@@ -63,7 +68,14 @@ resolve_serial() {
 ADB_SERIAL=""
 run_adb() {
     if [[ -z "$ADB_SERIAL" ]]; then
+        # `exit 1` inside resolve_serial only kills the $(...) subshell, so the empty
+        # result has to be checked here or the script carries on with no serial and
+        # every adb call silently targets whatever `adb -s ""` picks.
         ADB_SERIAL=$(resolve_serial)
+        if [[ -z "$ADB_SERIAL" ]]; then
+            echo "[BENCH] FATAL: no usable device serial." >&2
+            exit 1
+        fi
         echo "[BENCH] Using device serial: $ADB_SERIAL" >&2
     fi
     adb -s "$ADB_SERIAL" "$@"
@@ -108,17 +120,19 @@ kb_to_mb() {
 # Poll the stored fire-and-store outcome. Without this the benchmark reports a summary
 # even when startRecording/stopRecording failed outright.
 await_bench() {
-    local what="$1" tries=0 raw
+    local what="$1" phase="$2" tries=0 raw
     while (( tries < 20 )); do
         # Do NOT JSON.stringify here: the bridge already encodes the returned value, so a
         # stringified object arrives as "{\"started\":true}" and no grep for the inner
         # quotes can match. Emit a flat, unambiguous marker string instead.
-        raw=$("$SCRIPT_DIR/app-state.sh" eval "(() => { const b = globalThis.__BENCH; if (!b) return 'BENCH_PENDING'; if (b.err) return 'BENCH_ERR ' + b.err; return 'BENCH_OK ' + (b.uri || '') + ' size=' + (b.size === undefined ? '' : b.size) + ' dur=' + (b.dur === undefined ? '' : b.dur) })()" "${DEVICE_ARGS[@]:1}" 2>/dev/null | tr -d '\n' || true)
+        raw=$("$SCRIPT_DIR/app-state.sh" eval "(() => { const b = globalThis.__BENCH; if (!b) return 'BENCH_PENDING'; if (b.err) return 'BENCH_ERR ' + b.err; return 'BENCH_OK ' + (b.phase || '?') + ' ' + (b.uri || '') + ' size=' + (b.size === undefined ? '' : b.size) + ' dur=' + (b.dur === undefined ? '' : b.dur) })()" "${DEVICE_ARGS[@]:1}" 2>/dev/null | tr -d '\n' || true)
         if echo "$raw" | grep -q 'BENCH_ERR'; then
             echo "[BENCH] FATAL: $what failed: $raw" >&2
             exit 1
         fi
-        if echo "$raw" | grep -q 'BENCH_OK'; then
+        # The phase tag must match: without it a stop whose dispatch silently no-opped
+        # would read the start's marker and be reported as a successful stop.
+        if echo "$raw" | grep -q "BENCH_OK $phase"; then
             echo "[BENCH] $what ok: $raw"
             return 0
         fi
@@ -155,11 +169,11 @@ else
     echo "[BENCH] Starting recording with config: $CONFIG"
     # Fire-and-store: an eval held open while audio starts flowing crashes the app
     # (#436). Schedule the call so the eval returns before the first buffer lands.
-    "$SCRIPT_DIR/app-state.sh" eval "(() => { globalThis.__BENCH = null; setTimeout(async () => { try { const r = await __AGENTIC__.startRecording($CONFIG); globalThis.__BENCH = (r && r.error) ? { err: String(r.error) } : { started: true } } catch (e) { globalThis.__BENCH = { err: String(e) } } }, 500); return 'scheduled' })()" "${DEVICE_ARGS[@]:1}" || {
+    "$SCRIPT_DIR/app-state.sh" eval "(() => { globalThis.__BENCH = null; setTimeout(async () => { try { const r = await __AGENTIC__.startRecording($CONFIG); globalThis.__BENCH = (r && r.error) ? { err: String(r.error), phase: 'start' } : { started: true, phase: 'start' } } catch (e) { globalThis.__BENCH = { err: String(e) } } }, 500); return 'scheduled' })()" "${DEVICE_ARGS[@]:1}" || {
         echo "[BENCH] FATAL: could not dispatch startRecording." >&2
         exit 1
     }
-    await_bench "startRecording"
+    await_bench "startRecording" start
     if [[ -n "$POST_START_EVAL" ]]; then
         echo "[BENCH] Running post-start eval: $POST_START_EVAL"
         "$SCRIPT_DIR/app-state.sh" eval "$POST_START_EVAL" "${DEVICE_ARGS[@]:1}" 2>/dev/null || true
@@ -207,8 +221,11 @@ if [[ "$SKIP_RECORDING" == "true" ]]; then
 else
     echo "[BENCH] Stopping recording..."
     # Fire-and-store, same reason as the start above (#436).
-    "$SCRIPT_DIR/app-state.sh" eval "(() => { globalThis.__BENCH = null; setTimeout(async () => { try { const s = await __AGENTIC__.stopRecording(); globalThis.__BENCH = (s && s.error) ? { err: String(s.error) } : { uri: s.fileUri, size: s.size, dur: s.durationMs } } catch (e) { globalThis.__BENCH = { err: String(e) } } }, 500); return 'scheduled' })()" "${DEVICE_ARGS[@]:1}" 2>/dev/null || true
-    await_bench "stopRecording"
+    "$SCRIPT_DIR/app-state.sh" eval "(() => { globalThis.__BENCH = null; setTimeout(async () => { try { const s = await __AGENTIC__.stopRecording(); globalThis.__BENCH = (s && s.error) ? { err: String(s.error), phase: 'stop' } : { uri: s.fileUri, size: s.size, dur: s.durationMs, phase: 'stop' } } catch (e) { globalThis.__BENCH = { err: String(e) } } }, 500); return 'scheduled' })()" "${DEVICE_ARGS[@]:1}" || {
+        echo "[BENCH] FATAL: could not dispatch stopRecording." >&2
+        exit 1
+    }
+    await_bench "stopRecording" stop
 fi
 
 # ── Final memory ──

@@ -260,22 +260,34 @@ by #436 for an entire session; the workaround took four minutes to find once I t
 
 ### Recording via CDP: fire-and-store only
 
-The Hermes SIGSEGV in #436 is *not* caused by recording. It fires when an evaluation is
-still *held open* as audio data crosses into JS — an unresolved promise the bridge is
-awaiting, which is what `eval-async` and a bare `eval "...startRecording().then(...)"` both
-create.
+The Hermes SIGSEGV in #436 is *not* caused by recording. The precise mechanism is not
+known — see that issue — so what follows is what has been measured, not a theory.
 
-Short evaluations that return before the next buffer arrives are fine, and polling with
-them is fine. Measured on a Pixel 6a: 20 `getState()` evals at roughly 250ms intervals
-during a live 6-second recording, same pid throughout, recording completed at 527476 bytes
-and 5979ms. So `wait_for`-style polling and a mid-recording `state` call are both safe; the
-thing to avoid is one evaluation that stays open across the audio.
+Nothing here is a CDP request staying open: `cdp-bridge.mjs` passes `awaitPromise: false`
+on every `Runtime.evaluate`, and `eval-async` is itself fire-and-store internally (it kicks
+off, returns `'started'`, and polls). Earlier revisions of this section claimed a
+"held-open evaluation" was the trigger. That was wrong, and it caused a reviewer to flag
+safe polling as a bug.
+
+What is measured, on a Pixel 6a:
+
+- **Safe.** 20 `getState()` evals at ~250ms during a live 6-second recording. Same pid
+  throughout; recording completed at 527476 bytes / 5979ms. A single mid-recording `state`
+  call is likewise fine.
+- **Crashes.** An evaluation whose expression leaves a JS promise from
+  `startRecording()` outstanding while audio starts flowing — the app dies in ~90ms,
+  `mqt_v_js`, `libhermesvm.so`, SIGSEGV at null.
+- **Also crashes.** The `validate-recipe.js` path, reproducibly, at the *stop* step, even
+  with every recording call converted to fire-and-store.
+
+So fire-and-store is what to write, and it is not a complete workaround: it avoids the
+crash at start but stop is still reachable. Polling is not the thing to avoid.
 
 So for anything that starts audio flowing:
 
 - ❌ `scripts/agentic/app-state.sh eval "__AGENTIC__.startRecording(...).then(...)"`
-- ❌ `scripts/agentic/app-state.sh eval-async "..."` around recording — it holds the
-  evaluation open across the audio, which is the trigger
+- ❌ `scripts/agentic/app-state.sh eval-async "..."` around recording — the expression it
+  wraps still leaves a recording promise outstanding
 - ✅ fire-and-store: schedule the call so the eval returns first, stash results in a
   global, poll in separate short evals
 

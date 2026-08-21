@@ -47,7 +47,6 @@ fi
 # -- Navigate via unified CDP bridge ----------------------------------------
 echo "Navigating to $ROUTE..."
 
-# shellcheck disable=SC2086
 RESULT=$(WATCHER_PORT="$PORT" node "${APP_ROOT}/scripts/agentic/cdp-bridge.mjs" "${DEVICE_ARGS[@]:1}" navigate "$ROUTE" 2>&1)
 echo "$RESULT"
 

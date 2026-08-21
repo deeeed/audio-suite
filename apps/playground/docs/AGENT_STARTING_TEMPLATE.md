@@ -83,7 +83,8 @@ yarn typecheck && yarn lint:fix      # cross-package (slow)
 
 ## Step 7 — Done criteria
 
-- [ ] Works on ≥1 platform
+- [ ] Validated on **every platform the change affects** — see the hard rule in
+      CLAUDE.md. One platform is enough only for a change that touches one.
 - [ ] No JS errors in CDP output
 - [ ] No native ERRORs in `native-logs` (if native touched)
 - [ ] Screenshot confirms expected UI
