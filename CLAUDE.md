@@ -214,11 +214,52 @@ working|blocked|done|idle
 
 This file is read by the orchestrator to track progress across sessions. Keep it high-level.
 
-IMPORTANT: A fix is NOT done until validated on-device via the feedback loop. Do not mark status as done until:
+## HARD RULE: no library change merges without on-device validation
+
+**Anything touching `packages/**` must be validated on a real device or simulator before
+merging. No exceptions. Not "tests pass", not "the reviewer approved", not "I flagged the
+gap in the PR body".**
+
+This was already written here and I broke it six times in one session — #434, #441, #444,
+#445, #448, #450 all merged with unit tests and an external review but no device proof. I
+noted the gap each time and merged anyway. Noting it is not doing it.
+
+Before merging a `packages/**` change:
+1. Build and install from the branch — check `lastUpdateTime` in
+   `adb shell dumpsys package <pkg>`; a stale install validates nothing
+2. Exercise the actual changed path on device and capture concrete evidence: a file URI,
+   a byte count, a duration, a returned field — not "it did not crash"
+3. Check `native-logs.sh android|ios` for native-side errors
+4. State in the PR exactly what the evidence proves and what it does not
+
+If validation seems impossible, that conclusion is probably wrong. See the CDP crash
+workaround below: I declared device validation blocked by #436 for an entire session, and
+the workaround took four minutes to find once I actually tried.
+
+### CDP evaluations must not be held open while audio flows
+
+The Hermes SIGSEGV in #436 is *not* caused by recording. It needs a CDP evaluation live at
+the moment audio data starts crossing into JS. Fire-and-poll avoids it entirely:
+
+```bash
+# WRONG — the eval is still open when the first buffer arrives; process dies in ~90ms
+app-state.sh eval "__AGENTIC__.startRecording({...}).then(r => globalThis.x = r)"
+
+# RIGHT — schedule it, let the eval return, then poll separately
+app-state.sh eval "(() => { setTimeout(() => { __AGENTIC__.startRecording({...}) }, 1500); return 'scheduled' })()"
+sleep 6
+app-state.sh state                       # isRecording, durationMs
+app-state.sh eval "JSON.stringify(globalThis.__V)"   # results stashed by an earlier scheduled call
+```
+
+Verified: a 39s recording with a 3.48 MB WAV written and zero crashes.
+
+A fix is NOT done until validated on-device. Do not mark status `done` until:
 - Code changes are built and deployed to the device(s)
 - The bug scenario is reproduced and confirmed fixed
 - Regressions are checked
-Use status: `needs-validation` for code-complete but unverified fixes.
+Use status: `needs-validation` for code-complete but unverified fixes — and do not merge
+anything in that state.
 
 **Fast Android builds for native module changes**
 - ❌ `yarn android` for single-module Kotlin/Java changes — full rebuild, 5-10 min
