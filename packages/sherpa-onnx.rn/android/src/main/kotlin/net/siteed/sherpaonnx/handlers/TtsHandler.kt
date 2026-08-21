@@ -22,6 +22,38 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
     // Read on the generation thread, written by stop()/release(). Volatile so the
     // write is visible if either ever runs off the shared single-thread executor.
     @Volatile private var isGenerating = false
+
+    /**
+     * Monotonic id of the newest generation request (#440).
+     *
+     * A boolean alone loses a cancellation that arrives while generation is queued but not
+     * yet running: stop() clears an already-false flag, then the queued task sets it true
+     * and runs to completion, and stop() reports success having interrupted nothing.
+     *
+     * generate() claims an id before queueing. stop()/release() raise [cancelledThrough] to
+     * the newest claimed id, so every request outstanding at that moment is cancelled
+     * whether it had started or not. A request runs only while its own id is above the bar,
+     * so a generation started after the cancel is unaffected.
+     */
+    private val requestCounter = java.util.concurrent.atomic.AtomicLong(0)
+
+    /** Highest request id that has been cancelled. See [requestCounter]. */
+    private val cancelledThrough = java.util.concurrent.atomic.AtomicLong(0)
+
+    /** Whether [requestId] may keep generating, or has been cancelled out from under it. */
+    private fun isActive(requestId: Long): Boolean =
+        requestId > cancelledThrough.get()
+
+    /** Cancel every request claimed so far. Safe to call from any thread. */
+    private fun cancelOutstandingRequests() {
+        val newest = requestCounter.get()
+        // Raise the bar rather than assigning: a concurrent cancel must not lower it.
+        while (true) {
+            val current = cancelledThrough.get()
+            if (current >= newest || cancelledThrough.compareAndSet(current, newest)) break
+        }
+        isGenerating = false
+    }
     private var audioTrack: AudioTrack? = null
     private var ttsModelConfig: OfflineTtsModelConfig? = null
     private var currentSampleRate: Int = 22050 // Default to 22050 Hz (common for speech)
@@ -398,6 +430,10 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
         Log.d(TAG, "Style parameters: lengthScale=$lengthScale, noiseScale=$noiseScale, noiseScaleW=$noiseScaleW")
         Log.d(TAG, "Using sample rate: $currentSampleRate Hz")
         
+        // Claimed here, not inside the executor: a cancel that arrives while this request is
+        // still queued must be able to see it (#440).
+        val requestId = requestCounter.incrementAndGet()
+
         executor.execute {
             try {
                 if (tts == null) {
@@ -406,6 +442,12 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
 
                 if (isGenerating) {
                     throw Exception("TTS is already generating speech")
+                }
+
+                if (!isActive(requestId)) {
+                    // Cancelled while queued. Reject rather than resolve: nothing was
+                    // produced, and reporting success here is the bug this guards.
+                    throw Exception("TTS generation was cancelled before it started")
                 }
 
                 isGenerating = true
@@ -473,7 +515,7 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                     // of invoke([F)Ljava/lang/Integer; in generateWithCallbackImpl.
                     tts?.generateWithCallback(text, speakerId, speakingRate, object : Function1<FloatArray, Int> {
                         override fun invoke(samples: FloatArray): Int {
-                        if (!isGenerating) {
+                        if (!isActive(requestId) || !isGenerating) {
                             Log.i(TAG, "TTS generation interrupted by stop request")
                             return 0  // Stop generating
                         }
@@ -581,14 +623,13 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
 
                     // Short utterances can finish before reaching the prefill threshold.
                     //
-                    // The isGenerating check is defensive. stop() and release() clear the
-                    // flag, but both run on the same single-thread executor as this
-                    // generation, so today they queue behind it and cannot flip it here.
-                    // If any of them ever moves off that executor, an unguarded start
-                    // would play the buffered samples after the caller asked to stop,
-                    // because stop() only pauses a track already in PLAYSTATE_PLAYING and
-                    // a prefilling track is still STOPPED.
-                    if (isGenerating && !playbackStarted && framesInCurrentTrack > 0) {
+                    // The cancellation check is load-bearing, not defensive. stop() and
+                    // release() now cancel on the caller's thread rather than queueing
+                    // behind this generation (#440), so they can and do flip this mid-flight.
+                    // Without the guard, a stop during prefill would still play the buffered
+                    // samples: stop() only pauses a track already in PLAYSTATE_PLAYING, and a
+                    // prefilling track is still STOPPED.
+                    if (isActive(requestId) && isGenerating && !playbackStarted && framesInCurrentTrack > 0) {
                         // The utterance ended below the prefill target, so the start
                         // threshold will never be reached on its own. On API 31+ lower it
                         // to what is actually buffered. Below API 31 the threshold is fixed
@@ -651,6 +692,14 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                     resultMap.putString("filePath", filePath)
                     promise.resolve(resultMap)
                 } else {
+                    // A cancelled generation also lands here — generateWithCallback returns
+                    // 0 and this path sees no audio — and tts.generate() cannot be
+                    // interrupted, so falling through restarted synthesis and resolved it as
+                    // success, undoing the stop entirely (#440).
+                    if (!isActive(requestId)) {
+                        throw Exception("TTS generation was cancelled")
+                    }
+
                     // If no audio was generated, try again without callback
                     Log.w(TAG, "No audio generated with callback method, trying again without callback")
                     
@@ -821,13 +870,13 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
      * Stop TTS generation
      */
     fun stop(promise: Promise) {
-        // Clear the flag on the CALLING thread, not the executor. init/generate/stop/release
-        // share one single-threaded executor, so queueing this behind an in-flight generate()
-        // meant it could not run until that generation had already finished — the
-        // isGenerating checks inside the callback loop could never fire during the generation
-        // they exist to interrupt, making stopTts() a no-op (#440). isGenerating is @Volatile,
-        // so the loop observes this write immediately.
-        isGenerating = false
+        // Cancel on the CALLING thread, not the executor. init/generate/stop/release share
+        // one single-threaded executor, so queueing this behind an in-flight generate() meant
+        // it could not run until that generation had already finished — the checks inside the
+        // callback loop could never fire during the generation they exist to interrupt,
+        // making stopTts() a no-op (#440). The fields are atomic/@Volatile, so the loop is
+        // guaranteed to see this write rather than a cached value.
+        cancelOutstandingRequests()
 
         executor.execute {
             try {
@@ -864,9 +913,9 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
      * Release TTS resources
      */
     fun release(promise: Promise) {
-        // Same reason as stop(): clear the flag before queueing, so an in-flight generation
-        // stops feeding the executor rather than blocking this call behind itself (#440).
-        isGenerating = false
+        // Same reason as stop(): cancel before queueing, so an in-flight generation stops
+        // feeding the executor rather than blocking this call behind itself (#440).
+        cancelOutstandingRequests()
 
         executor.execute {
             try {

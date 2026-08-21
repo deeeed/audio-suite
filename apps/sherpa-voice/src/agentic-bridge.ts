@@ -2298,13 +2298,16 @@ if (__DEV__) {
 
         // Start playback then call stopTts() inside the prefill window.
         //
-        // NOTE: on Android this currently cannot interrupt generation — TtsHandler
-        // runs init/generate/stop/release on one single-thread executor, so stopTts()
-        // queues behind the in-flight generateTts() and only runs after it finishes.
-        // Logcat shows no "Stopping TTS generation" line until generation completes.
-        // Kept as a regression probe: if stop ever moves off that executor, this is
-        // the scenario to re-run. The bug would be a "playback started" line
-        // appearing AFTER "Stopping TTS generation".
+        // Android used to be unable to interrupt generation at all: TtsHandler runs
+        // init/generate/stop/release on one single-thread executor, so stopTts() queued
+        // behind the in-flight generateTts() and ran only after it finished. #440 moved
+        // cancellation onto the caller's thread, so this now does interrupt.
+        //
+        // What to look for: generation should end early and report far fewer samples than
+        // an uninterrupted run. A "playback started" line appearing AFTER "Stopping TTS
+        // generation" is the regression. The "Stopping TTS generation" log line alone
+        // proves nothing — it appears in both the fixed and unfixed builds; only the
+        // duration and sample count distinguish them.
         testTTSStopDuringPrefill: (stopAfterMs = 120, modelDir?: string) => {
             const op = 'ttsStopDuringPrefill'
             const BASE = MODELS_BASE
