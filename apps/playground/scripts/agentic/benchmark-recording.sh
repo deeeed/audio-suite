@@ -40,7 +40,11 @@ resolve_serial() {
     if [[ -n "$DEVICE_NAME" ]]; then
         local dev_name="$DEVICE_NAME"
         local serial
-        serial=$(adb devices -l | grep -i "$dev_name" | awk '{print $1}' | head -1)
+        # adb prints model:Pixel_6a, so "Pixel 6a" needs its spaces treated as underscores
+        # too. Without this the lookup missed and fell through to another USB device,
+        # benchmarking a phone the caller did not name.
+        local dev_pattern="${dev_name// /[ _]}"
+        serial=$(adb devices -l | grep -iE "$dev_pattern" | awk '{print $1}' | head -1)
         if [[ -n "$serial" ]]; then
             echo "$serial"
             return
@@ -106,12 +110,15 @@ kb_to_mb() {
 await_bench() {
     local what="$1" tries=0 raw
     while (( tries < 20 )); do
-        raw=$("$SCRIPT_DIR/app-state.sh" eval "JSON.stringify(globalThis.__BENCH || null)" "${DEVICE_ARGS[@]:1}" 2>/dev/null | tr -d '\n' || true)
-        if echo "$raw" | grep -q '"err"'; then
+        # Do NOT JSON.stringify here: the bridge already encodes the returned value, so a
+        # stringified object arrives as "{\"started\":true}" and no grep for the inner
+        # quotes can match. Emit a flat, unambiguous marker string instead.
+        raw=$("$SCRIPT_DIR/app-state.sh" eval "(() => { const b = globalThis.__BENCH; if (!b) return 'BENCH_PENDING'; if (b.err) return 'BENCH_ERR ' + b.err; return 'BENCH_OK ' + (b.uri || '') + ' size=' + (b.size === undefined ? '' : b.size) + ' dur=' + (b.dur === undefined ? '' : b.dur) })()" "${DEVICE_ARGS[@]:1}" 2>/dev/null | tr -d '\n' || true)
+        if echo "$raw" | grep -q 'BENCH_ERR'; then
             echo "[BENCH] FATAL: $what failed: $raw" >&2
             exit 1
         fi
-        if echo "$raw" | grep -qE '"(started|uri|size)"'; then
+        if echo "$raw" | grep -q 'BENCH_OK'; then
             echo "[BENCH] $what ok: $raw"
             return 0
         fi
@@ -130,7 +137,10 @@ fi
 
 # ── Navigate to record screen ──
 echo "[BENCH] Navigating to record screen..."
-"$SCRIPT_DIR/app-navigate.sh" "/(tabs)/record" "${DEVICE_ARGS[@]:1}" 2>/dev/null || true
+if ! "$SCRIPT_DIR/app-navigate.sh" "/(tabs)/record" "${DEVICE_ARGS[@]:1}"; then
+    echo "[BENCH] FATAL: could not navigate to the record screen." >&2
+    exit 1
+fi
 sleep 2
 
 # ── Baseline memory ──
@@ -145,7 +155,10 @@ else
     echo "[BENCH] Starting recording with config: $CONFIG"
     # Fire-and-store: an eval held open while audio starts flowing crashes the app
     # (#436). Schedule the call so the eval returns before the first buffer lands.
-    "$SCRIPT_DIR/app-state.sh" eval "(() => { globalThis.__BENCH = null; setTimeout(async () => { try { const r = await __AGENTIC__.startRecording($CONFIG); globalThis.__BENCH = (r && r.error) ? { err: String(r.error) } : { started: true } } catch (e) { globalThis.__BENCH = { err: String(e) } } }, 500); return 'scheduled' })()" "${DEVICE_ARGS[@]:1}" 2>/dev/null || true
+    "$SCRIPT_DIR/app-state.sh" eval "(() => { globalThis.__BENCH = null; setTimeout(async () => { try { const r = await __AGENTIC__.startRecording($CONFIG); globalThis.__BENCH = (r && r.error) ? { err: String(r.error) } : { started: true } } catch (e) { globalThis.__BENCH = { err: String(e) } } }, 500); return 'scheduled' })()" "${DEVICE_ARGS[@]:1}" || {
+        echo "[BENCH] FATAL: could not dispatch startRecording." >&2
+        exit 1
+    }
     await_bench "startRecording"
     if [[ -n "$POST_START_EVAL" ]]; then
         echo "[BENCH] Running post-start eval: $POST_START_EVAL"
@@ -214,7 +227,9 @@ done
 cpu_avg=$(( cpu_sum / ${#cpu_samples[@]} ))
 
 pss_start_mb=$(kb_to_mb "${pss_start:-0}")
-pss_end_mb=$(kb_to_mb "${pss_samples[-1]:-0}")
+# ${arr[-1]} is a bash 4 feature; /bin/bash on macOS is 3.2 and errors with "bad array
+# subscript", which produced a false mem_end=0MB in an otherwise successful summary.
+pss_end_mb=$(kb_to_mb "${pss_samples[$(( ${#pss_samples[@]} - 1 ))]:-0}")
 pss_delta=$(( pss_end_mb - pss_start_mb ))
 
 echo ""

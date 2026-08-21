@@ -260,13 +260,22 @@ by #436 for an entire session; the workaround took four minutes to find once I t
 
 ### Recording via CDP: fire-and-store only
 
-The Hermes SIGSEGV in #436 is *not* caused by recording. It fires when any CDP evaluation
-is open — including `eval-async`, which holds the client and polls — at the moment audio
-data crosses into JS. So for anything that starts audio flowing:
+The Hermes SIGSEGV in #436 is *not* caused by recording. It fires when an evaluation is
+still *held open* as audio data crosses into JS — an unresolved promise the bridge is
+awaiting, which is what `eval-async` and a bare `eval "...startRecording().then(...)"` both
+create.
+
+Short evaluations that return before the next buffer arrives are fine, and polling with
+them is fine. Measured on a Pixel 6a: 20 `getState()` evals at roughly 250ms intervals
+during a live 6-second recording, same pid throughout, recording completed at 527476 bytes
+and 5979ms. So `wait_for`-style polling and a mid-recording `state` call are both safe; the
+thing to avoid is one evaluation that stays open across the audio.
+
+So for anything that starts audio flowing:
 
 - ❌ `scripts/agentic/app-state.sh eval "__AGENTIC__.startRecording(...).then(...)"`
-- ❌ `scripts/agentic/app-state.sh eval-async "..."` around recording — it keeps the
-  connection open, which is the trigger
+- ❌ `scripts/agentic/app-state.sh eval-async "..."` around recording — it holds the
+  evaluation open across the audio, which is the trigger
 - ✅ fire-and-store: schedule the call so the eval returns first, stash results in a
   global, poll in separate short evals
 

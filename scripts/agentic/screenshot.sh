@@ -16,12 +16,15 @@ source "$(cd "$APP_ROOT" && git rev-parse --show-toplevel)/scripts/agentic/_lib.
 cd "$APP_ROOT"
 
 # -- Parse --device flag and positional args --------------------------------
-DEVICE_FLAG=""
+# Bash 3.2 errors on "${empty[@]}" under `set -u`, so keep a placeholder
+# element and expand from index 1. A plain string word-splits on a device
+# name containing a space, which silently corrupted the caller's arguments.
+DEVICE_ARGS=("")
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --device)
-      DEVICE_FLAG="--device $2"
+      DEVICE_ARGS=("" --device "$2")
       shift 2
       ;;
     *) POSITIONAL+=("$1"); shift ;;
@@ -31,4 +34,4 @@ done
 LABEL="${POSITIONAL[0]:-screenshot}"
 
 # shellcheck disable=SC2086
-WATCHER_PORT="$PORT" node "${APP_ROOT}/scripts/agentic/cdp-bridge.mjs" $DEVICE_FLAG screenshot "$LABEL"
+WATCHER_PORT="$PORT" node "${APP_ROOT}/scripts/agentic/cdp-bridge.mjs" "${DEVICE_ARGS[@]:1}" screenshot "$LABEL"
