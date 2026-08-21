@@ -40,17 +40,23 @@ if [ ! -d "$UPSTREAM_DIR/.git" ]; then
 fi
 
 cd "$UPSTREAM_DIR"
-# Fetch the pinned commit by SHA. It is not reachable from any branch or tag upstream, so
-# a plain clone/fetch does not have it and `git checkout` fails with "unable to read tree"
-# while leaving HEAD on the default branch — a wrong tree that then fails opaquely at
-# compile time. Verified against the real remote, which permits fetch-by-SHA.
+# Fetch the pinned commit by SHA. No branch or tag upstream contains it, so whether a plain
+# clone happens to have it is not something to rely on — when it does not, `git checkout`
+# fails with "unable to read tree" and leaves HEAD on the default branch, a wrong tree that
+# then fails opaquely at compile time. Verified against the real remote, which permits
+# fetch-by-SHA.
 if ! GIT_LFS_SKIP_SMUDGE=1 git fetch --depth 1 origin "$MOONSHINE_COMMIT"; then
   echo -e "${RED}Error: could not fetch pinned Moonshine commit $MOONSHINE_COMMIT.${NC}" >&2
   echo -e "${YELLOW}The remote may no longer serve it. Update moonshineCommit in package.json.${NC}" >&2
   exit 1
 fi
-git checkout --detach "$MOONSHINE_COMMIT"
-git reset --hard "$MOONSHINE_COMMIT"
+# Smudge stays disabled through checkout and reset. Without it, these two commands
+# materialize every LFS file in the tree — 475 of them, including 135MB per-language TTS
+# models — which defeats the --filter=blob:none above and pulls gigabytes the build never
+# reads. The one file setup needs is fetched explicitly below; the platform build scripts
+# pull their own ORT assets selectively.
+GIT_LFS_SKIP_SMUDGE=1 git checkout --detach "$MOONSHINE_COMMIT"
+GIT_LFS_SKIP_SMUDGE=1 git reset --hard "$MOONSHINE_COMMIT"
 # Prove we landed where the gitlink points rather than trusting the commands above: a
 # checkout that half-succeeds is exactly the failure this block exists to catch.
 ACTUAL_HEAD="$(git rev-parse HEAD)"
@@ -58,11 +64,18 @@ if [ "$ACTUAL_HEAD" != "$MOONSHINE_COMMIT" ]; then
   echo -e "${RED}Error: upstream checkout is at $ACTUAL_HEAD, expected $MOONSHINE_COMMIT.${NC}" >&2
   exit 1
 fi
-# The clone runs with GIT_LFS_SKIP_SMUDGE=1, so LFS-tracked sources are still pointer
-# files at this point. speaker-embedding-model-data.cpp is one of them, and compiling a
-# pointer file is the opaque CMake failure this fix exists to prevent.
+# Everything above ran with smudge disabled, so LFS-tracked sources are still pointer
+# files. core/CMakeLists.txt lists speaker-embedding-model-data.cpp unconditionally, and
+# compiling a pointer file is the opaque CMake failure this whole fix exists to prevent —
+# so that one file, and only that one, is materialized here.
 if command -v git-lfs >/dev/null 2>&1; then
-  git lfs pull
+  git lfs pull --include="core/speaker-embedding-model-data.cpp"
+  if [ ! -s core/speaker-embedding-model-data.cpp ] \
+    || grep -q '^version https://git-lfs.github.com/spec/v1' core/speaker-embedding-model-data.cpp; then
+    echo -e "${RED}Error: core/speaker-embedding-model-data.cpp is still an LFS pointer.${NC}" >&2
+    echo -e "${YELLOW}git lfs pull did not materialize it; the build would fail opaquely.${NC}" >&2
+    exit 1
+  fi
 else
   echo -e "${RED}Error: git-lfs is required to materialize upstream sources.${NC}" >&2
   echo -e "${YELLOW}Install it (brew install git-lfs) and re-run.${NC}" >&2
