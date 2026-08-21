@@ -1357,7 +1357,12 @@ class AudioStudioModule : Module(), EventSender, AudioStreamDecoderDelegate {
         LogUtils.d(CLASS_NAME, "📱 handleDeviceDisconnection completed")
     }
 
-    override fun sendExpoEvent(eventName: String, params: Bundle): Boolean {
+    override fun sendExpoEvent(eventName: String, params: Bundle) {
+        LogUtils.d(CLASS_NAME, "Sending event: $eventName")
+        safeSendEvent(eventName, params)
+    }
+
+    override fun sendExpoEventChecked(eventName: String, params: Bundle): Boolean {
         LogUtils.d(CLASS_NAME, "Sending event: $eventName")
         return safeSendEvent(eventName, params)
     }

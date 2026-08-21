@@ -78,6 +78,9 @@ class AudioRecorderManager(
     
     // Maximum size for analysis buffer to prevent OOM on low-RAM devices with extreme configs
     private val MAX_ANALYSIS_BUFFER_SIZE = 20 * 1024 * 1024 // 20MB
+
+    /** How many times a failed recording-error delivery is retried before giving up. */
+    private val MAX_ERROR_DELIVERY_ATTEMPTS = 3
     
     private var audioRecord: AudioRecord? = null
     /**
@@ -134,6 +137,10 @@ class AudioRecorderManager(
         java.util.EnumSet.noneOf(RecordingErrorKind::class.java)
     )
 
+    /** Failed delivery attempts per kind, bounding the retry in [emitRecordingError]. */
+    private val failedDeliveryAttempts =
+        java.util.concurrent.ConcurrentHashMap<RecordingErrorKind, Int>()
+
     /**
      * Report a live recording degradation on the same `error` event iOS uses (#447).
      *
@@ -148,7 +155,7 @@ class AudioRecorderManager(
         // The sender never throws — it catches internally and reports failure through its
         // return value, which is why an earlier catch-based version here could not work.
         val delivered = try {
-            eventSender.sendExpoEvent(
+            eventSender.sendExpoEventChecked(
                 Constants.RECORDING_ERROR_EVENT,
                 bundleOf("message" to message)
             )
@@ -158,9 +165,18 @@ class AudioRecorderManager(
             false
         }
         if (!delivered) {
-            // Un-latch: nothing was reported, so a later occurrence of this kind should
-            // still get its chance rather than being suppressed forever.
-            reportedRecordingErrors.remove(kind)
+            // A failed send is not a report, so this kind should get another chance — but
+            // not unboundedly. The read-failure path does not sleep on a negative result,
+            // so with an unavailable emitter an unconditional un-latch retries on every
+            // loop iteration: an event and log storm at buffer rate. Retry a few times,
+            // then leave it latched (#447).
+            val attempts = failedDeliveryAttempts.merge(kind, 1, Int::plus) ?: 1
+            if (attempts < MAX_ERROR_DELIVERY_ATTEMPTS) {
+                reportedRecordingErrors.remove(kind)
+            } else {
+                LogUtils.w(CLASS_NAME,
+                    "Giving up on the $kind recording-error event after $attempts failed deliveries")
+            }
         }
     }
     private var recordingStartTime: Long = 0
@@ -1227,20 +1243,39 @@ class AudioRecorderManager(
 
         } catch (e: IOException) {
             releaseWakeLock()
-            // Both callers allocate AudioRecord (and the MediaRecorder, when compressed
-            // output is on) before reaching here, and neither has a catch of its own: each
-            // initializer returns false and the caller returns early. Reclaiming here is
-            // what keeps a failure from leaking both native recorders (#446).
-            discardFailedAttempt()
+            discardFreshAttempt()
             promise.reject("FILE_CREATION_FAILED", "Failed to create the audio file", e)
             return false
         } catch (e: Exception) {
             releaseWakeLock()
-            discardFailedAttempt()
+            discardFreshAttempt()
             LogUtils.e(CLASS_NAME, "Unexpected error in startRecording", e)
             promise.reject("UNEXPECTED_ERROR", "Unexpected error: ${e.message}", e)
             return false
         }
+    }
+
+    /**
+     * Roll back the recorders this attempt allocated, but only if it allocated them.
+     *
+     * Both callers allocate an AudioRecord (and a MediaRecorder, when compressed output is
+     * on) before reaching initializeRecordingResources, and neither has a catch of its
+     * own: each initializer returns false and the caller returns early. So a failure there
+     * leaks both unless something reclaims them (#446).
+     *
+     * The exception is a paused recording. startRecording() is allowed while paused, and
+     * initializeAudioRecord keeps the existing AudioRecord in that state rather than
+     * building a new one — so an unconditional rollback released and nulled a recorder
+     * still belonging to a live recording, with _isRecording left true, and resume/stop
+     * then ran against broken state.
+     */
+    private fun discardFreshAttempt() {
+        if (_isRecording.get()) {
+            LogUtils.w(CLASS_NAME,
+                "Resource init failed during an active recording; leaving its recorders alone")
+            return
+        }
+        discardFailedAttempt()
     }
 
     private fun startRecordingProcess(promise: Promise): Boolean {
@@ -1296,6 +1331,7 @@ class AudioRecorderManager(
             // Fresh recording, fresh latches: otherwise a degradation in the previous
             // recording would suppress this one's first error (#447).
             reportedRecordingErrors.clear()
+            failedDeliveryAttempts.clear()
             recordingThread = Thread { recordingProcess() }.apply { start() }
 
             return true

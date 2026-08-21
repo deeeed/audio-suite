@@ -36,9 +36,8 @@ class M4aFormatTest {
     
     // Test event sender to capture events
     private class TestEventSender : EventSender {
-        override fun sendExpoEvent(eventName: String, params: android.os.Bundle): Boolean {
+        override fun sendExpoEvent(eventName: String, params: android.os.Bundle) {
             // No-op for tests
-            return true
         }
     }
 
