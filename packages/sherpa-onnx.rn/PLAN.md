@@ -11,7 +11,11 @@ Branch: `feat/sherpa-onnx-upgrade`
 - `newArchEnabled` removed from `ios/Podfile.properties.json`
 
 ### Native package (`packages/sherpa-onnx.rn`)
-- Old-arch Android files deleted: `SherpaOnnxModule.kt`, `SherpaOnnxPackage.kt`
+- `SherpaOnnxModule.kt` and `SherpaOnnxPackage.kt` **still exist** under
+  `android/src/main/kotlin/` and are still required — see Verification below. An earlier
+  revision of this line said they were deleted, contradicting that entry and reading as
+  evidence the Kotlin module was dead code (#458). What the old-architecture removal
+  actually did to these two files is not recorded here; only that they remain.
 - TurboModule files moved from `android/src/newarch/` to `android/src/main/kotlin/`
 - `android/build.gradle`: removed `isNewArchitectureEnabled()` and all conditionals; `compileSdk`/`targetSdk` 33 → 34
 - `sherpa-onnx-rn.podspec`: removed `fabric_enabled` conditionals; iOS min `11.0` → `13.4`

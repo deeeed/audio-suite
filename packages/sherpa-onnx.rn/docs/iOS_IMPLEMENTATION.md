@@ -124,10 +124,10 @@ class SystemInfoIntegrationTest: XCTestCase {
 ```bash
 # Run iOS integration tests
 cd apps/sherpa-voice/ios
-./run-integration-tests.sh
+yarn workspace @siteed/sherpa-onnx.rn test:ios:info   # run-integration-tests.sh does not exist
 
 # Or run via Xcode
-open sherpaonnxdemo.xcworkspace
+open apps/sherpa-voice/ios/SherpaVoiceDev.xcworkspace
 # Select test target and run
 ```
 
