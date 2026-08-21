@@ -106,8 +106,12 @@ extract_ort_symbol_version() {
     return
   fi
 
+  # grep -oE + head, not `rg -o -m1`: ripgrep is undeclared and absent from a stock
+  # macOS or CI image, and `|| true` here would turn its absence into an empty version
+  # string rather than a failure (#443).
   llvm-readobj --dyn-symbols "$library_path" 2>/dev/null \
-    | rg -o 'OrtGetApiBase[^ ]*VERS_[0-9.]+' -m1 \
+    | grep -oE 'OrtGetApiBase[^ ]*VERS_[0-9.]+' \
+    | head -1 \
     | sed -E 's/.*VERS_//' \
     || true
 }
