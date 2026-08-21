@@ -1123,6 +1123,21 @@ public class AudioProcessor {
                     // contract and mis-times the output: probed at 44.1kHz source, one second
                     // came back as 2.0000s at 22.05kHz and 0.9187s at 48kHz (#451).
                     let writerFormat = outputFile.processingFormat
+
+                    // The PCM check above proves a conversion exists; it does not prove the
+                    // encoder will use the rate asked for. Probed: the AAC writer silently
+                    // resolves 1Hz and 7999Hz to 8000Hz, and 384000Hz to 192000Hz. Returning
+                    // that as success would hand back audio at a rate the caller never
+                    // requested, so the substitution is refused here rather than reported.
+                    guard writerFormat.sampleRate == targetSampleRate else {
+                        throw NSError(
+                            domain: "AudioProcessor",
+                            code: -1,
+                            userInfo: [NSLocalizedDescriptionKey:
+                                "The AAC encoder cannot use \(Int(targetSampleRate))Hz; "
+                                + "it resolved to \(Int(writerFormat.sampleRate))Hz"]
+                        )
+                    }
                     guard AVAudioConverter(from: inputFormat, to: writerFormat) != nil else {
                         throw NSError(
                             domain: "AudioProcessor",
