@@ -914,6 +914,10 @@ public class AudioProcessor {
                 var cumulativeFrames: Int64 = 0
 
                 if formatStr == "wav" {
+                    // Outside the autoreleasepool: the empty-output guard reads it after
+                    // the closure returns.
+                    var wavWrittenFrames: Int64 = 0
+
                     // Scoped for the same reason as the fast path above.
                     try autoreleasepool {
                     let outputFile = try AVAudioFile(forWriting: workURL, settings: [
@@ -1027,34 +1031,31 @@ public class AudioProcessor {
                                     "Could not allocate a \(outputFrameCapacity)-frame output buffer"]
                             )
                         }
-                        // Supply the input once, then report end of stream. Returning the
-                        // same buffer with .haveData forever made the converter re-consume
-                        // it, so a downsample emitted more audio than it was given.
-                        var suppliedInput = false
-                        var error: NSError?
-                        _ = converter.convert(to: convertedBuffer, error: &error) { _, outStatus in
-                            if suppliedInput {
-                                outStatus.pointee = .endOfStream
-                                return nil
-                            }
-                            suppliedInput = true
-                            outStatus.pointee = .haveData
-                            return buffer
-                        }
-                        if let error = error {
-                            // Skipping produced a successful result missing this range.
-                            throw NSError(
-                                domain: "AudioProcessor",
-                                code: -1,
-                                userInfo: [NSLocalizedDescriptionKey:
-                                    "Format conversion failed: \(error.localizedDescription)"]
-                            )
-                        }
-                        try outputFile.write(from: convertedBuffer)
+                        let produced = try AudioProcessor.convertOneBuffer(
+                            converter, from: buffer, into: convertedBuffer
+                        )
+
                         cumulativeFrames += Int64(frameCount)
                         let progress = Float(cumulativeFrames) / Float(totalFrames) * 100
                         progressCallback?(progress, 0, totalFrames * Int64(inputFormat.streamDescription.pointee.mBytesPerFrame))
+
+                        guard produced > 0 else { continue }
+                        try outputFile.write(from: convertedBuffer)
+                        wavWrittenFrames += Int64(produced)
                     }
+                    }
+
+                    // Same guard as the AAC path: promoting here would hand back a file
+                    // with no audio and a duration derived from the requested ranges.
+                    guard wavWrittenFrames > 0 else {
+                        throw NSError(
+                            domain: "AudioProcessor",
+                            code: -1,
+                            userInfo: [NSLocalizedDescriptionKey:
+                                "Trimming produced no audio: converting "
+                                + "\(Int(inputSampleRate))Hz to \(Int(targetSampleRate))Hz "
+                                + "yielded no output frames for the requested ranges"]
+                        )
                     }
 
                     try promoteWorkFile()
@@ -1078,6 +1079,10 @@ public class AudioProcessor {
 
                     // 5. Update the MIME type logic for AAC only
                     let _ = "audio/mp4" // Changed from mimeType
+
+                    // Outside the autoreleasepool below: the empty-output guard that reads
+                    // this runs after the closure returns.
+                    var writtenFrames: Int64 = 0
 
                     try autoreleasepool {
                     // Ask about the requested rate before deferring to whatever the writer
@@ -1171,7 +1176,6 @@ public class AudioProcessor {
                         totalFrames += Int64(AVAudioFrameCount(endFramePosition - Double(startFrame)))
                     }
                     var processedFrames: Int64 = 0
-                    var writtenFrames: Int64 = 0
 
                     for range in keepRanges {
                         let startTimeInSeconds = range[0] / 1000
@@ -1228,34 +1232,9 @@ public class AudioProcessor {
                             )
                         }
 
-                        var suppliedInput = false
-                        var conversionError: NSError?
-                        let conversionStatus = converter.convert(to: converted, error: &conversionError) { _, outStatus in
-                            if suppliedInput {
-                                outStatus.pointee = .endOfStream
-                                return nil
-                            }
-                            suppliedInput = true
-                            outStatus.pointee = .haveData
-                            return buffer
-                        }
-                        if let conversionError = conversionError {
-                            throw NSError(
-                                domain: "AudioProcessor",
-                                code: -1,
-                                userInfo: [NSLocalizedDescriptionKey:
-                                    "Format conversion failed: \(conversionError.localizedDescription)"]
-                            )
-                        }
-                        if conversionStatus == .error {
-                            // .error with no NSError set. Continuing here would write an
-                            // unpopulated buffer and report success.
-                            throw NSError(
-                                domain: "AudioProcessor",
-                                code: -1,
-                                userInfo: [NSLocalizedDescriptionKey: "Format conversion failed."]
-                            )
-                        }
+                        let produced = try AudioProcessor.convertOneBuffer(
+                            converter, from: buffer, into: converted
+                        )
 
                         // Progress tracks input consumed, so it advances even for a range
                         // that produces no output.
@@ -1265,17 +1244,12 @@ public class AudioProcessor {
                             : 100
                         progressCallback?(progress, 0, totalFrames * Int64(inputFormat.streamDescription.pointee.mBytesPerFrame))
 
-                        // A downsampling converter given very few input frames returns
-                        // .endOfStream with no error and zero output frames — probed at
-                        // 44.1kHz to 8kHz, which produces nothing for inputs of 1 to 4
-                        // frames. Writing that buffer added no audio while its input frames
-                        // were still counted, so the reported duration described audio the
-                        // file does not contain (#451). Skip it, and count what was
-                        // actually written rather than what was read.
-                        guard converted.frameLength > 0 else { continue }
+                        // Skip empty output and count what was written, not what was
+                        // read. See convertOneBuffer for why zero frames happen.
+                        guard produced > 0 else { continue }
 
                         try outputFile.write(from: converted)
-                        writtenFrames += Int64(converted.frameLength)
+                        writtenFrames += Int64(produced)
                     }
                     }
 
@@ -1325,6 +1299,56 @@ public class AudioProcessor {
         let start = min(max(0, range[0]), totalDurationMs)
         let end = min(max(start, range[1]), totalDurationMs)
         return [start, end]
+    }
+
+
+    /// Converts one buffer and reports how many frames came out.
+    ///
+    /// Shared by the WAV and AAC re-encode loops. They previously carried their own copies
+    /// of this and had already drifted: only one checked the converter status, and only one
+    /// refused zero-frame output (#451).
+    ///
+    /// A downsampling converter given very few input frames returns `.endOfStream` with no
+    /// error and zero output frames — 44.1kHz to 8kHz produces nothing for inputs of 1 to 4
+    /// frames. Writing that buffer adds no audio while its input frames still count toward
+    /// the reported duration, so the result describes audio the file does not contain.
+    private static func convertOneBuffer(
+        _ converter: AVAudioConverter,
+        from buffer: AVAudioPCMBuffer,
+        into converted: AVAudioPCMBuffer
+    ) throws -> AVAudioFrameCount {
+        // Supply the input once, then report end of stream. Returning the same buffer with
+        // .haveData forever made the converter re-consume it, so a downsample emitted more
+        // audio than it was given.
+        var suppliedInput = false
+        var conversionError: NSError?
+        let status = converter.convert(to: converted, error: &conversionError) { _, outStatus in
+            if suppliedInput {
+                outStatus.pointee = .endOfStream
+                return nil
+            }
+            suppliedInput = true
+            outStatus.pointee = .haveData
+            return buffer
+        }
+        if let conversionError = conversionError {
+            throw NSError(
+                domain: "AudioProcessor",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Format conversion failed: \(conversionError.localizedDescription)"]
+            )
+        }
+        if status == .error {
+            // .error with no NSError set. Continuing would write an unpopulated buffer and
+            // report success.
+            throw NSError(
+                domain: "AudioProcessor",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Format conversion failed."]
+            )
+        }
+        return converted.frameLength
     }
 
     private func computeKeepRanges(mode: String, startTimeMs: Double?, endTimeMs: Double?, ranges: [[String: Double]]?, totalDurationMs: Double) -> [[Double]] {
