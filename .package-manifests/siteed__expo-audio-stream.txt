@@ -1,0 +1,6 @@
+LICENSE
+README.md
+build/index.d.ts
+build/index.js
+package.json
+src/index.ts

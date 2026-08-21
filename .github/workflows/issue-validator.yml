@@ -4,14 +4,35 @@ on:
   issues:
     types: [opened, edited]
 
+# Without this the default GITHUB_TOKEN is read-only and every write fails with
+# "Resource not accessible by integration" — which is why this workflow has failed on
+# every run. The script calls issues.addLabels, issues.createComment and issues.update,
+# so `issues: write` is the whole requirement; contents stays read-only.
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   validate:
+    # Only validate issues from people without write access. The template this enforces
+    # is a bug-report form, and it fits an external bug report — it does not fit a
+    # maintainer's engineering write-up, which uses "## Summary" and has no
+    # "expo-audio-studio version:" line because it is not a version-specific report.
+    #
+    # This matters because the trigger includes `edited`: with the workflow closing
+    # issues, editing any of the repo's own open issues would close it. That was not
+    # visible before, because the workflow lacked write permission and every run failed
+    # (fixed in #470). #436 was auto-closed the first time it was edited afterwards.
+    if: >-
+      github.event.issue.author_association != 'OWNER' &&
+      github.event.issue.author_association != 'MEMBER' &&
+      github.event.issue.author_association != 'COLLABORATOR'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Validate Issue
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |

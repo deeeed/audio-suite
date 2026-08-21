@@ -108,6 +108,8 @@
   },
   "packageManager": "yarn@4.2.2",
   "moonshineVersion": "v0.0.59",
+  "_moonshineCommit": "The exact upstream commit the submodule gitlink pins. The tag's tree is NOT the same: core/speaker-embedding-model-data.cpp, which core/CMakeLists.txt lists unconditionally, is absent at v0.0.59 (#442). moonshineVersion is for display only.",
+  "moonshineCommit": "520ba083085a14efcb77d701b35544f81d7b1acf",
   "moonshineArtifacts": {
     "ios": {
       "xcframeworkSha256": "3756a7d4aae038ace7d40fbb6ebbb27fa80dfe005394127d61d1b1514c330ab0"
