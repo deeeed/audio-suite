@@ -14,18 +14,18 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MANIFEST_DIR="$ROOT/.package-manifests"
 
-# Packages that publish native trees, where an accidental add or delete matters most.
-# audio-ui is deliberately excluded: it publishes only `dist`, so its manifest would
-# record whatever the build state happens to be rather than anything about the source.
 PACKAGES=(
   "packages/sherpa-onnx.rn"
   "packages/audio-studio"
+  "packages/audio-ui"
 )
 
-# Prefixes dropped before comparing. These are compiler output, present or absent
-# depending on whether anyone has run a build, so including them would make the check
-# report a difference for a reason that has nothing to do with the change under review.
-IGNORE_PREFIXES='^(build|lib|dist)/'
+# Packages whose manifest is only meaningful after a build, because they publish compiled
+# output but have no `prepare` hook for `npm pack` to trigger. audio-ui publishes `dist`
+# and defines only `build`, so packing it without building lists 3 files instead of the
+# ~71 it releases. Built explicitly here rather than excluded: excluding it was how an
+# earlier version of this script ended up unable to see published files at all.
+declare -a NEEDS_BUILD=("packages/audio-ui")
 
 WRITE=false
 [[ "${1:-}" == "--write" ]] && WRITE=true
@@ -35,17 +35,53 @@ status=0
 
 for pkg in "${PACKAGES[@]}"; do
   pkg_dir="$ROOT/$pkg"
-  [[ -f "$pkg_dir/package.json" ]] || { echo "skip $pkg (no package.json)"; continue; }
+  if [[ ! -f "$pkg_dir/package.json" ]]; then
+    # Not a skip: a configured package that has lost its metadata means the manifest
+    # on disk describes something that no longer exists, and passing here would leave
+    # that stale file unchallenged.
+    echo "FATAL: $pkg has no package.json but is configured for manifesting." >&2
+    exit 1
+  fi
+
+  for needs in "${NEEDS_BUILD[@]}"; do
+    if [[ "$pkg" == "$needs" ]]; then
+      echo "building $pkg (no prepare hook; npm pack would not produce its dist)" >&2
+      if ! (cd "$pkg_dir" && yarn build >/dev/null 2>&1); then
+        echo "FATAL: build failed for $pkg." >&2
+        exit 1
+      fi
+    fi
+  done
 
   name="$(node -p "require('$pkg_dir/package.json').name.replace('@','').replace('/','__')")"
   target="$MANIFEST_DIR/$name.txt"
 
-  # --ignore-scripts so prepare/prepublish hooks cannot change what is measured.
-  actual="$(cd "$pkg_dir" && npm pack --dry-run --ignore-scripts --json 2>/dev/null \
-    | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
-        const j=JSON.parse(d);
-        console.log(j[0].files.map(f=>f.path).sort().join('\n'));
-      })" | grep -Ev "$IGNORE_PREFIXES" || true)"
+  # The real publish lifecycle, not --ignore-scripts. Build output IS published — an
+  # earlier version of this script excluded build/, lib/ and dist/ to dodge the fact that
+  # a skip-build CI checkout has none of it, and that exclusion masked exactly what this
+  # check exists to catch: a rogue build/rogue.js appeared in `npm pack` while
+  # verification passed. Running prepare makes the output real and the list complete.
+  if ! pack_json="$(cd "$pkg_dir" && npm pack --dry-run --json 2>/dev/null)"; then
+    echo "FATAL: npm pack failed for $pkg." >&2
+    exit 1
+  fi
+
+  # The prepare scripts print build progress to stdout, so the JSON array is not the
+  # whole stream — parse from the first '[' at column 0 rather than assuming.
+  if ! actual="$(printf '%s' "$pack_json" | node -e "
+      let d='';
+      process.stdin.on('data', c => d += c).on('end', () => {
+        const start = d.indexOf('\n[');
+        const j = JSON.parse(start === -1 ? d : d.slice(start + 1));
+        if (!Array.isArray(j) || !j[0] || !Array.isArray(j[0].files) || !j[0].files.length) {
+          process.exit(1);
+        }
+        console.log(j[0].files.map(f => f.path).sort().join('\n'));
+      });
+    ")"; then
+    echo "FATAL: could not parse npm pack output for $pkg (or it listed no files)." >&2
+    exit 1
+  fi
 
   if $WRITE; then
     printf '%s\n' "$actual" > "$target"
