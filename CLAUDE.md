@@ -240,17 +240,31 @@ What "covered" means, per platform:
 
 Before merging a covered change:
 1. Build and install from the branch, and prove the install is fresh:
-   - Android: `adb shell dumpsys package net.siteed.audioplayground.development | grep lastUpdateTime`
-     (the app id, not an npm name) and compare to your build time
+   - Android: resolve the serial first, then always pass `-s`. Bare `adb shell` errors
+     or silently targets the wrong phone when more than one is attached, which is the
+     same trap the `--device` flag exists for:
+     ```bash
+     SERIAL=$(adb devices -l | grep -iE "Pixel[ _]6a" | awk '{print $1}' | head -1)
+     adb -s "$SERIAL" shell dumpsys package net.siteed.audioplayground.development \
+       | grep lastUpdateTime      # compare to your build time
+     ```
    - iOS simulator: reinstall via `xcrun simctl install <udid> <path-to .app>` and
      relaunch; a rebuilt app that was never reinstalled validates nothing
+   - iOS physical device: `xcrun devicectl device install app --device <UDID> <path-to .app>`,
+     then launch per the `--payload-url` recipe in the connectivity rules below. Confirm
+     with `xcrun devicectl device info apps --device <UDID>` that the bundle version is
+     the one you just built
 2. Exercise the changed path and capture concrete evidence: a file URI, a byte count, a
    duration, a returned field — not "it did not crash"
 3. Capture native logs across the run, not after it:
    - Android: `adb logcat` covers the whole session retroactively
-   - iOS: `xcrun simctl spawn <udid> log show --last <n>m --predicate
+   - iOS simulator: `xcrun simctl spawn <udid> log show --last <n>m --predicate
      'processImagePath CONTAINS "AudioDevPlayground"'` — `native-logs.sh ios` streams
      forward only, so started after the fact it misses everything
+   - iOS physical device: there is no retroactive equivalent. `xcrun devicectl device
+     process view --device <UDID>` and Console.app both stream forward only, so start
+     the capture *before* exercising the path, or collect the sysdiagnose afterwards.
+     If you did not, say so rather than presenting a partial log as full coverage
 4. State in the PR exactly what the evidence proves and what it does not
 5. `.task.md` status stays `needs-validation` until this is done, and nothing merges in
    that state

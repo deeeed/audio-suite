@@ -65,19 +65,19 @@ resolve_serial() {
     echo "$serial"
 }
 
-ADB_SERIAL=""
+# Resolved once, here, at the top level. Lazily resolving inside run_adb did not work:
+# run_adb is itself called from `$(get_memory)`, and bash disables errexit inside command
+# substitution — so both resolve_serial's `exit 1` and run_adb's own guard killed only the
+# subshell, get_memory returned empty, and the benchmark carried on to print a successful
+# summary full of zeroes. Doing it before any substitution is what makes the failure fatal.
+ADB_SERIAL="$(resolve_serial)"
+if [[ -z "$ADB_SERIAL" ]]; then
+    echo "[BENCH] FATAL: no usable device serial." >&2
+    exit 1
+fi
+echo "[BENCH] Using device serial: $ADB_SERIAL" >&2
+
 run_adb() {
-    if [[ -z "$ADB_SERIAL" ]]; then
-        # `exit 1` inside resolve_serial only kills the $(...) subshell, so the empty
-        # result has to be checked here or the script carries on with no serial and
-        # every adb call silently targets whatever `adb -s ""` picks.
-        ADB_SERIAL=$(resolve_serial)
-        if [[ -z "$ADB_SERIAL" ]]; then
-            echo "[BENCH] FATAL: no usable device serial." >&2
-            exit 1
-        fi
-        echo "[BENCH] Using device serial: $ADB_SERIAL" >&2
-    fi
     adb -s "$ADB_SERIAL" "$@"
 }
 
