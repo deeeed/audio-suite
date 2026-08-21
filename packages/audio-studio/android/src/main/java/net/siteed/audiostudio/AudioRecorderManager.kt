@@ -104,7 +104,15 @@ class AudioRecorderManager(
     private val isPaused = AtomicBoolean(false)
     private var streamUuid: String? = null
     private var audioFile: File? = null
-    private var recordingThread: Thread? = null
+    /**
+     * The PCM capture thread, held atomically because two teardowns can run concurrently.
+     *
+     * cleanup() takes it with getAndSet(null): whichever caller wins owns terminating it,
+     * and the loser sees null and does nothing. A plain field let a getStatus() orphan
+     * cleanup clear the reference between another cleanup's `_isRecording` write and its
+     * read, so that cleanup skipped the interrupt and the worker outlived teardown (#446).
+     */
+    private val recordingThreadRef = java.util.concurrent.atomic.AtomicReference<Thread?>(null)
 
     /**
      * Set only by [stopRecording] around its call to [cleanup], because it finalizes the
@@ -1370,7 +1378,7 @@ class AudioRecorderManager(
             // recording would suppress this one's first error (#447).
             reportedRecordingErrors.clear()
             failedDeliveryAttempts.clear()
-            recordingThread = Thread { recordingProcess() }.apply { start() }
+            recordingThreadRef.set(Thread { recordingProcess() }.apply { start() })
 
             return true
 
@@ -1436,8 +1444,9 @@ class AudioRecorderManager(
                 // changes.
                 val timeoutMs = 2000L // 2 seconds should be more than enough
                 val threadJoinStartTime = System.currentTimeMillis()
-                recordingThread?.join(timeoutMs)
-                if (recordingThread?.isAlive == true) {
+                val stopJoinThread = recordingThreadRef.get()
+                stopJoinThread?.join(timeoutMs)
+                if (stopJoinThread?.isAlive == true) {
                     LogUtils.w(CLASS_NAME,
                         "Recording thread still alive ${System.currentTimeMillis() - threadJoinStartTime}ms " +
                         "after stop requested it to exit; audioRecordLock contention is the likely cause")
@@ -1957,10 +1966,19 @@ class AudioRecorderManager(
                             it.read(audioData, 0, bufferSizeInBytes, AudioRecord.READ_NON_BLOCKING).also { bytes ->
                                 if (bytes < 0) {
                                     LogUtils.e(CLASS_NAME, "AudioRecord read error: $bytes")
-                                    emitRecordingError(
-                                        RecordingErrorKind.INPUT_READ,
-                                        "Audio input read failed with error code $bytes."
-                                    )
+                                    // Not reported while the recorder is stopped. pause()
+                                    // stops AudioRecord before setting isPaused, and
+                                    // resume() clears isPaused before restarting it, so a
+                                    // read landing in either window returns a negative
+                                    // stopped-recorder code that is ordinary pause/resume
+                                    // timing, not a degraded recording. The ordering is
+                                    // pre-existing; reporting it to JS would be new (#447).
+                                    if (it.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                                        emitRecordingError(
+                                            RecordingErrorKind.INPUT_READ,
+                                            "Audio input read failed with error code $bytes."
+                                        )
+                                    }
                                 } else if (bytes > 0) {
                                     // Audio is flowing again, so the input is healthy:
                                     // re-arm both input latches. INPUT_STATE also has to
@@ -2247,7 +2265,9 @@ class AudioRecorderManager(
         // getStatus's orphan path — take the reference away from a cleanup that had
         // already cleared _isRecording but not yet read it, so that one skipped the
         // interrupt entirely and the worker survived teardown (#446).
-        val thread = recordingThread
+        // Atomic take: exactly one concurrent cleanup receives the thread and owns
+        // terminating it; any other sees null and leaves it alone.
+        val thread = recordingThreadRef.getAndSet(null)
 
         // The join is skipped when the caller already owns audioRecordLock: it would be
         // nested inside that monitor, where a worker queued for the lock cannot exit, so
@@ -2264,9 +2284,7 @@ class AudioRecorderManager(
             }
         }
 
-        // Only drop the field if it still refers to the thread this call handled; a
-        // concurrent start may already have installed a new one.
-        if (recordingThread === thread) recordingThread = null
+
 
         synchronized(audioRecordLock) {
             try {
