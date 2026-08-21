@@ -2166,12 +2166,42 @@ class AudioRecorderManager(
 
     fun cleanup() {
         cancelMaxDurationTimer()
+
+        // Terminate the recording thread, not just the flag it watches, and do it BEFORE
+        // taking audioRecordLock — the recording loop acquires that same lock on every
+        // read, so joining while holding it would deadlock until the timeout expired.
+        //
+        // Needed because the PCM thread starts before compressedRecorder.start(): a
+        // compressed start failure lands in cleanup() with that thread still running, and
+        // clearing _isRecording alone does not stop it before the next attempt sets the
+        // flag true again — at which point the survivor reads the new AudioRecord and
+        // writes through its own stale stream (#446).
+        //
+        // stopRecording() joins separately, before flushing its final chunk, so by the
+        // time it calls cleanup() this is already finished.
+        val wasRecording = _isRecording.getAndSet(false)
+        recordingThread?.let { thread ->
+            if (thread.isAlive) {
+                thread.interrupt()
+                // Same 2s budget stopRecording uses. The loop reads non-blocking, so it
+                // exits promptly once _isRecording is false.
+                thread.join(2000L)
+                if (thread.isAlive) {
+                    LogUtils.w(CLASS_NAME, "Recording thread did not exit within 2s of cleanup")
+                }
+            }
+        }
+        recordingThread = null
+
         synchronized(audioRecordLock) {
             try {
                 // Every stop() is individually guarded. An unguarded one jumps to the
                 // outer catch and skips every release below it, abandoning both recorders
                 // on precisely the hardware failure that makes stop() throw (#446).
-                if (_isRecording.get()) {
+                // wasRecording, not _isRecording: the flag is cleared above so the
+                // recording thread can exit, and reading it here would always be false —
+                // an active recorder would then be released without ever being stopped.
+                if (wasRecording) {
                     try {
                         audioRecord?.stop()
                     } catch (e: Exception) {
@@ -2203,11 +2233,13 @@ class AudioRecorderManager(
                     compressedRecorder = null
                 }
                 
+                // Already cleared above, before the thread join. Left for clarity.
                 _isRecording.set(false)
                 isPaused.set(false)
                 pausedBySystemInterruption.set(false)
                 isPrepared = false  // Reset prepared state
                 audioSourceLifecycle.onTeardown()  // Next recording resolves fresh
+
 
                 if (::recordingConfig.isInitialized && recordingConfig.showNotification) {
                     notificationManager.stopUpdates()
