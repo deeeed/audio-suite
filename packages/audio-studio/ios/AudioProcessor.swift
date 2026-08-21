@@ -780,7 +780,14 @@ public class AudioProcessor {
             return inputSampleRate
         }()
         let targetChannels = outputFormat.flatMap { bridgedInt($0, "channels", in: 1...2) } ?? inputChannels
-        let targetBitDepth = outputFormat.flatMap { bridgedInt($0, "bitDepth").flatMap { [16, 32].contains($0) ? $0 : nil } } ?? 16
+        // Default to the input's own depth, not 16. The public contract says an omitted
+        // output format preserves the input, so defaulting silently downconverted a 32-bit
+        // source during any rate or channel change (#451).
+        let inputBitDepth: Int = {
+            let bits = Int(audioFile.fileFormat.streamDescription.pointee.mBitsPerChannel)
+            return [16, 32].contains(bits) ? bits : 16
+        }()
+        let targetBitDepth = outputFormat.flatMap { bridgedInt($0, "bitDepth").flatMap { [16, 32].contains($0) ? $0 : nil } } ?? inputBitDepth
         let bitrate = outputFormat.flatMap { bridgedInt($0, "bitrate").flatMap { $0 > 0 ? $0 : nil } } ?? 128000
 
         let fileExtension = formatStr == "wav" ? "wav" : "aac"
@@ -810,6 +817,9 @@ public class AudioProcessor {
         // WAV fast path and was silently ignored (#433).
         let outputDiffersFromInput = targetSampleRate != inputSampleRate
             || targetChannels != inputChannels
+            // The fast path writes with inputFormat.settings, so a depth change must not
+            // take it — a bitDepth-only request was previously ignored outright (#451).
+            || targetBitDepth != inputBitDepth
         let needFormatChange = decodingConfig.targetSampleRate != nil
             || decodingConfig.targetChannels != nil
             || decodingConfig.targetBitDepth != nil
@@ -865,7 +875,7 @@ public class AudioProcessor {
                 }
 
                 try promoteWorkFile()
-                return createTrimResult(from: outputURL, keepRanges: keepRanges, formatStr: formatStr, sampleRate: Int(inputSampleRate), channels: inputChannels, bitDepth: 16, bitrate: bitrate)
+                return createTrimResult(from: outputURL, keepRanges: keepRanges, formatStr: formatStr, sampleRate: Int(inputSampleRate), channels: inputChannels, bitDepth: inputBitDepth, bitrate: bitrate)
             } else {
                 // Non-fast path: Decode and re-encode
                 let targetFormat = AVAudioFormat(
@@ -1052,24 +1062,121 @@ public class AudioProcessor {
                     // 5. Update the MIME type logic for AAC only
                     let _ = "audio/mp4" // Changed from mimeType
                     
-                    let outputFile = try AVAudioFile(forWriting: workURL, settings: outputSettings)
+                    try autoreleasepool {
+                    // The encoder rejects bitrates its profile cannot serve at the target
+                    // rate — measured: 96k+ at 22.05kHz mono fails with error 560226676,
+                    // while omitting the key always succeeds. So honour the request when
+                    // the encoder accepts it, and fall back to its default when it does
+                    // not, rather than guessing the profile's ceiling (#451).
+                    let outputFile: AVAudioFile
+                    do {
+                        outputFile = try AVAudioFile(forWriting: workURL, settings: outputSettings)
+                    } catch {
+                        var withoutBitrate = outputSettings
+                        withoutBitrate.removeValue(forKey: AVEncoderBitRateKey)
+                        Logger.debug(
+                            "AudioProcessor",
+                            "Encoder rejected \(bitrate)bps at \(targetSampleRate)Hz; using its default"
+                        )
+                        outputFile = try AVAudioFile(forWriting: workURL, settings: withoutBitrate)
+                    }
+
+                    // Convert to the writer's own format. Writing an inputFormat buffer to a
+                    // writer configured at another rate violates AVAudioFile's format-match
+                    // contract and mis-times the output: probed at 44.1kHz source, one second
+                    // came back as 2.0000s at 22.05kHz and 0.9187s at 48kHz (#451).
+                    let writerFormat = outputFile.processingFormat
+                    guard AVAudioConverter(from: inputFormat, to: writerFormat) != nil else {
+                        throw NSError(
+                            domain: "AudioProcessor",
+                            code: -1,
+                            userInfo: [NSLocalizedDescriptionKey:
+                                "Cannot convert to \(writerFormat.sampleRate)Hz "
+                                + "from this file's \(inputFormat.sampleRate)Hz"]
+                        )
+                    }
+
                     var totalFrames: Int64 = 0
                     for range in keepRanges {
-                        // Break down complex expressions
                         let startTimeInSeconds = range[0] / 1000
                         let startFrame = AVAudioFramePosition(startTimeInSeconds * inputSampleRate)
-                        
+
                         let endTimeInSeconds = range[1] / 1000
                         let endFramePosition = endTimeInSeconds * inputSampleRate
                         let frameCount = AVAudioFrameCount(endFramePosition - Double(startFrame))
-                        
-                        let buffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: frameCount)!
+
+                        guard let buffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: frameCount) else {
+                            throw NSError(
+                                domain: "AudioProcessor",
+                                code: -1,
+                                userInfo: [NSLocalizedDescriptionKey:
+                                    "Could not allocate a \(frameCount)-frame input buffer"]
+                            )
+                        }
                         audioFile.framePosition = startFrame
                         try audioFile.read(into: buffer, frameCount: frameCount)
-                        try outputFile.write(from: buffer)
+
+                        guard let converter = AVAudioConverter(from: inputFormat, to: writerFormat) else {
+                            throw NSError(
+                                domain: "AudioProcessor",
+                                code: -1,
+                                userInfo: [NSLocalizedDescriptionKey:
+                                    "Cannot convert to \(writerFormat.sampleRate)Hz"]
+                            )
+                        }
+                        if writerFormat.channelCount < inputFormat.channelCount {
+                            converter.downmix = true
+                        }
+
+                        // Size by the rate ratio; a source-sized buffer truncates an upsample
+                        // and gets overfilled on a downsample.
+                        let ratio = writerFormat.sampleRate / inputFormat.sampleRate
+                        let scaled = (Double(frameCount) * ratio).rounded(.up)
+                        guard scaled <= Double(AVAudioFrameCount.max) else {
+                            throw NSError(
+                                domain: "AudioProcessor",
+                                code: -1,
+                                userInfo: [NSLocalizedDescriptionKey:
+                                    "Converting \(frameCount) frames to \(writerFormat.sampleRate)Hz "
+                                    + "needs \(scaled) frames, more than one buffer can hold"]
+                            )
+                        }
+                        guard let converted = AVAudioPCMBuffer(
+                            pcmFormat: writerFormat,
+                            frameCapacity: AVAudioFrameCount(max(scaled, 1))
+                        ) else {
+                            throw NSError(
+                                domain: "AudioProcessor",
+                                code: -1,
+                                userInfo: [NSLocalizedDescriptionKey: "Could not allocate an output buffer"]
+                            )
+                        }
+
+                        var suppliedInput = false
+                        var conversionError: NSError?
+                        _ = converter.convert(to: converted, error: &conversionError) { _, outStatus in
+                            if suppliedInput {
+                                outStatus.pointee = .endOfStream
+                                return nil
+                            }
+                            suppliedInput = true
+                            outStatus.pointee = .haveData
+                            return buffer
+                        }
+                        if let conversionError = conversionError {
+                            throw NSError(
+                                domain: "AudioProcessor",
+                                code: -1,
+                                userInfo: [NSLocalizedDescriptionKey:
+                                    "Format conversion failed: \(conversionError.localizedDescription)"]
+                            )
+                        }
+
+                        try outputFile.write(from: converted)
                         totalFrames += Int64(frameCount)
                         let progress = Float(cumulativeFrames) / Float(totalFrames) * 100
                         progressCallback?(progress, 0, totalFrames * Int64(inputFormat.streamDescription.pointee.mBytesPerFrame))
+                    }
                     }
 
                     try promoteWorkFile()
@@ -1079,7 +1186,7 @@ public class AudioProcessor {
                         formatStr: formatStr, 
                         sampleRate: Int(targetSampleRate), 
                         channels: targetChannels, 
-                        bitDepth: 16, 
+                        bitDepth: targetBitDepth, 
                         bitrate: bitrate, 
                         compression: nil
                     )

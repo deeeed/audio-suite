@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- iOS `trimAudio` AAC output now honours the requested sample rate. Writing source-format buffers to a target-rate writer mis-timed the output — one second at 44.1kHz came back as 2.0s at 22.05kHz and 0.92s at 48kHz. The AAC path now converts against the writer's resolved format, the same treatment the WAV path received. Bitrates the encoder rejects at the target rate fall back to its default instead of failing the trim (#451).
+- iOS `trimAudio` preserves the input's bit depth when none is requested, and honours a bitDepth-only request instead of ignoring it via the fast path. An omitted depth previously forced 16-bit during any rate or channel change, contrary to the documented contract (#451).
+
 ### Added
 
 - `addRecordingErrorListener()` subscribes to errors raised while recording is already running. iOS emitted these all along with no typed way to subscribe, so a failure that does not reject a call — the stalled WAV in #420, for one — was unobservable. iOS only: Android does not declare the event, so the listener never fires there.
