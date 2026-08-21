@@ -103,6 +103,14 @@ class AudioRecorderManager(
     private var audioFile: File? = null
     private var recordingThread: Thread? = null
 
+    /**
+     * Set only by [stopRecording] around its call to [cleanup], because it finalizes the
+     * compressed recorder itself immediately afterwards. Every other path into cleanup()
+     * wants the recorder reclaimed there (#446).
+     */
+    @Volatile
+    private var compressedFinalizationPending = false
+
     /** Kinds of live-recording degradation, latched independently. See [emitRecordingError]. */
     private enum class RecordingErrorKind { INPUT_STATE, INPUT_READ, PRIMARY_FLUSH, LOOP_FAILED }
 
@@ -1388,7 +1396,16 @@ class AudioRecorderManager(
                 }
 
                 val cleanupStartTime = System.currentTimeMillis()
-                cleanup()
+                // This path finalizes the compressed recorder itself a few lines below, so
+                // cleanup() must leave it alone. Cleared in the finally so an exception
+                // here cannot strand the flag and disable reclamation for every later
+                // caller (#446).
+                compressedFinalizationPending = true
+                try {
+                    cleanup()
+                } finally {
+                    compressedFinalizationPending = false
+                }
             } catch (e: IllegalStateException) {
                 LogUtils.e(CLASS_NAME, "Error reading from AudioRecord", e)
             } finally {
@@ -1401,14 +1418,18 @@ class AudioRecorderManager(
                 audioProcessor.resetCumulativeAmplitudeRange()
 
                 if (compressedRecorder != null) {
-                    val compressedStopStartTime = System.currentTimeMillis()
+                    // Separate try blocks. Sharing one meant a throwing stop() skipped
+                    // release(), and the reference was cleared immediately below — leaking
+                    // the recorder on precisely the failure that makes stop() throw (#446).
                     try {
                         compressedRecorder?.stop()
-                        
-                        val compressedReleaseStartTime = System.currentTimeMillis()
-                        compressedRecorder?.release()
                     } catch (e: Exception) {
                         LogUtils.e(CLASS_NAME, "Error stopping MediaRecorder: ${e.message}")
+                    }
+                    try {
+                        compressedRecorder?.release()
+                    } catch (e: Exception) {
+                        LogUtils.e(CLASS_NAME, "Error releasing MediaRecorder: ${e.message}")
                     }
                     compressedRecorder = null
                 }
@@ -2109,14 +2130,15 @@ class AudioRecorderManager(
                     }
                 }
 
-                // Reclaim only what nobody else will. stopRecording() clears _isRecording
-                // and calls cleanup() *before* its own finalization block, which is what
-                // stops and releases an active compressed recorder and writes out the
-                // file — so releasing here unconditionally took the recorder away from it
-                // and truncated normal AAC/M4A/Opus output. `isPrepared` distinguishes the
-                // case #446 is about: a preparation that never started has no finalization
-                // coming, so its recorder is stranded unless cleanup() takes it.
-                if (isPrepared && !_isRecording.get()) {
+                // Reclaim unless the caller is about to finalize it itself. stopRecording()
+                // calls cleanup() *before* its own finalization block, which is what stops
+                // and releases an active compressed recorder and writes out the file, so
+                // releasing here would truncate normal AAC/M4A/Opus output. Every other
+                // caller — destroy() from OnDestroy, a compressed start() failure, a
+                // startRecordingProcess() failure — has no finalization coming, and an
+                // earlier `isPrepared && !_isRecording` gate silently skipped all of them,
+                // stopping the recorder and never releasing it (#446).
+                if (!compressedFinalizationPending) {
                     try {
                         compressedRecorder?.release()
                     } catch (e: Exception) {
