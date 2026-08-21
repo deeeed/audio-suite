@@ -43,8 +43,12 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
+      # --mode=skip-build: this install would otherwise run dependency lifecycle
+      # scripts, which here include unrelated Sherpa and Essentia downloads. Sonar
+      # flags that as a medium-severity issue (githubactions:S6505) and it is right —
+      # the suites need none of it, and both pass without.
       - name: Install
-        run: yarn install --immutable
+        run: yarn install --immutable --mode=skip-build
 
       - name: Typecheck
         run: yarn workspace @siteed/audio-studio typecheck
