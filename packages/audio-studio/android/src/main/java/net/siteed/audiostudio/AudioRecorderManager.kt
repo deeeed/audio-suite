@@ -1444,7 +1444,9 @@ class AudioRecorderManager(
                 // changes.
                 val timeoutMs = 2000L // 2 seconds should be more than enough
                 val threadJoinStartTime = System.currentTimeMillis()
-                val stopJoinThread = recordingThreadRef.get()
+                // Taken, not read: this path terminates the thread itself, and its
+                // cleanup(callerHoldsRecordLock = true) deliberately does not claim it.
+                val stopJoinThread = recordingThreadRef.getAndSet(null)
                 stopJoinThread?.join(timeoutMs)
                 if (stopJoinThread?.isAlive == true) {
                     LogUtils.w(CLASS_NAME,
@@ -2265,22 +2267,26 @@ class AudioRecorderManager(
         // getStatus's orphan path — take the reference away from a cleanup that had
         // already cleared _isRecording but not yet read it, so that one skipped the
         // interrupt entirely and the worker survived teardown (#446).
-        // Atomic take: exactly one concurrent cleanup receives the thread and owns
-        // terminating it; any other sees null and leaves it alone.
-        val thread = recordingThreadRef.getAndSet(null)
-
-        // The join is skipped when the caller already owns audioRecordLock: it would be
-        // nested inside that monitor, where a worker queued for the lock cannot exit, so
-        // it would burn its full 2s — stacking with stopRecording's own join and stalling
-        // getStatus() behind a concurrent teardown. Those callers either terminated the
-        // thread themselves or know it is already gone.
-        if (!callerHoldsRecordLock && thread != null && thread.isAlive) {
-            thread.interrupt()
-            // Same 2s budget stopRecording uses. The loop reads non-blocking, so it exits
-            // promptly once _isRecording is false.
-            thread.join(2000L)
-            if (thread.isAlive) {
-                LogUtils.w(CLASS_NAME, "Recording thread did not exit within 2s of cleanup")
+        // Claim the thread only if this caller will actually terminate it. Taking it and
+        // then declining to join is what orphaned the worker: a lock-holding caller could
+        // win getAndSet(null), skip the join, and leave the cleanup that would have joined
+        // looking at null (#446).
+        //
+        // A caller holding audioRecordLock must not join — the join would be nested inside
+        // that monitor, where a worker queued for the lock cannot exit, so it would burn
+        // its full 2s while stalling stopRecording and getStatus(). Those callers either
+        // terminated the thread themselves (stopRecording) or know it is already gone
+        // (getStatus's orphan path), so they leave the reference for whoever can.
+        if (!callerHoldsRecordLock) {
+            val thread = recordingThreadRef.getAndSet(null)
+            if (thread != null && thread.isAlive) {
+                thread.interrupt()
+                // Same 2s budget stopRecording uses. The loop reads non-blocking, so it
+                // exits promptly once _isRecording is false.
+                thread.join(2000L)
+                if (thread.isAlive) {
+                    LogUtils.w(CLASS_NAME, "Recording thread did not exit within 2s of cleanup")
+                }
             }
         }
 
