@@ -149,7 +149,7 @@ class AudioSourceWiringTest {
         // cleanup(), so it is covered by cleanup()'s own pairing.
         val paired = Regex("isPrepared = false[^\\n]*\\n\\s*audioSourceLifecycle\\.onTeardown\\(\\)")
 
-        for (signature in listOf("fun stopRecording(", "fun cleanup()")) {
+        for (signature in listOf("fun stopRecording(", "fun cleanup(callerHoldsRecordLock")) {
             assertTrue(
                 "$signature must clear the resolved source right where it resets isPrepared. " +
                     "A teardown that leaves the source behind lets it outlive the recorder " +

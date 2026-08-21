@@ -1494,7 +1494,7 @@ class AudioRecorderManager(
                 // caller (#446).
                 compressedFinalizationPending = true
                 try {
-                    cleanup()
+                    cleanup(callerHoldsRecordLock = true)
                 } finally {
                     compressedFinalizationPending = false
                 }
@@ -1743,7 +1743,9 @@ class AudioRecorderManager(
             // If service is running but we think we're not recording, clean up
             if (isServiceRunning && !_isRecording.get()) {
                 LogUtils.d(CLASS_NAME, "Detected orphaned recording service, cleaning up...")
-                cleanup()
+                // The recording is already gone — that is what makes the service orphaned —
+                // so there is no thread to join, and this caller holds audioRecordLock.
+                cleanup(callerHoldsRecordLock = true)
                 AudioRecordingService.stopService(context)
             }
 
@@ -2210,7 +2212,15 @@ class AudioRecorderManager(
         return floatArray
     }
 
-    fun cleanup() {
+    /**
+     * Tear down recorders and the recording thread.
+     *
+     * @param callerHoldsRecordLock true when the caller already owns [audioRecordLock].
+     * Those callers must terminate the recording thread themselves (stopRecording does) or
+     * know it is already gone (getStatus's orphan path): joining it here would be nested
+     * inside the caller's monitor, where the worker cannot reach its exit (#446).
+     */
+    fun cleanup(callerHoldsRecordLock: Boolean = false) {
         cancelMaxDurationTimer()
 
         // Terminate the recording thread, not just the flag it watches, and do it BEFORE
@@ -2226,12 +2236,11 @@ class AudioRecorderManager(
         // stopRecording() joins separately, before flushing its final chunk, so by the
         // time it calls cleanup() this is already finished.
         val wasRecording = _isRecording.getAndSet(false)
-        // Skipped on the stop path: stopRecording() joins the thread itself and calls this
-        // while still holding audioRecordLock, so joining again here is nested inside that
-        // monitor — if the worker is queued for the lock, neither join can succeed and the
-        // two 2s timeouts stack. The flag that marks that path is compressedFinalizationPending.
-        val threadOwnedByCaller = compressedFinalizationPending
-        if (threadOwnedByCaller) recordingThread = null
+        // Skipped whenever the caller already owns audioRecordLock. The join is nested
+        // inside that monitor, so if the worker is queued for the lock it cannot exit and
+        // the join burns its full 2s while the caller holds the lock — stacking with
+        // stopRecording's own join, and stalling getStatus() behind a concurrent teardown.
+        if (callerHoldsRecordLock) recordingThread = null
         recordingThread?.let { thread ->
             if (thread.isAlive) {
                 thread.interrupt()
