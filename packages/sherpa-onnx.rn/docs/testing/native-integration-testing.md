@@ -29,42 +29,19 @@ ios/
 
 ### First iOS Test
 
-The shipped `BasicIntegrationTest.swift` is a placeholder: both of its tests assert
-`true` and keep the real bodies commented out. `SherpaOnnxWrapper` and `TtsModelConfig`
-do not exist, so the sketch below is what such a test would look like once they do, not
-what runs today.
-
-```swift
-// Aspirational. Neither type exists yet.
-import XCTest
-@testable import SherpaOnnx
-
-class BasicIntegrationTest: XCTestCase {
-    
-    func testLibraryLoads() {
-        let loaded = SherpaOnnxWrapper.validateLibraryLoaded()
-        XCTAssertTrue(loaded, "Sherpa-ONNX library should load")
-    }
-    
-    func testTtsInitWithoutModel() {
-        let config = TtsModelConfig(modelPath: "/invalid/path")
-        
-        do {
-            _ = try SherpaOnnxWrapper.initializeTts(config: config)
-            XCTFail("Should throw error for missing model")
-        } catch {
-            print("iOS Error for missing model: \(error)")
-        }
-    }
+The shipped `BasicIntegrationTest.swift` is a placeholder: all three of its tests assert
+`true` with the real bodies commented out. There is no example to copy here yet, because
+the wrapper API those comments call has not been designed.
 }
 ```
 
 ### Running iOS Tests
 
-There is no iOS workspace or `SherpaOnnxTests` scheme in this package. The files under
-`ios/SherpaOnnxTests/` are sources without an Xcode project to run them: they compile
-only when a host app includes them. Running them needs a test target created first, in
-the consuming app's workspace.
+There is no iOS workspace or `SherpaOnnxTests` scheme in this package, and no way to run
+these tests today. The files under `ios/SherpaOnnxTests/` are sources with no Xcode
+project, and they would not build as they stand: `SystemInfoIntegrationTest.swift` uses
+an initializer and method signatures that do not exist. Running them needs both a test
+target in the consuming app's workspace and repairs to the sources themselves.
 
 ## Android Native Testing
 
@@ -88,35 +65,24 @@ android/
 
 ### First Android Test
 
+The checked-in `BasicIntegrationTest.kt` reaches the module by reflection rather than
+calling it directly. `SherpaOnnxModule` is not a static object, `validateLibraryLoaded`
+takes a `Promise`, and there is no `initializeTts`, so a direct call would not compile.
+
 ```kotlin
 // android/src/androidTest/java/net/siteed/sherpaonnx/BasicIntegrationTest.kt
-package net.siteed.sherpaonnx
-
-import androidx.test.ext.junit.runners.AndroidJUnit4
-import org.junit.Test
-import org.junit.runner.RunWith
-import org.junit.Assert.*
-
 @RunWith(AndroidJUnit4::class)
 class BasicIntegrationTest {
-    
+
     @Test
-    fun testLibraryLoads() {
-        // Test 1: Can we load the JNI library?
-        val loaded = SherpaOnnxModule.validateLibraryLoaded()
-        assertTrue("Sherpa-ONNX library should load", loaded)
-    }
-    
-    @Test
-    fun testTtsInitWithoutModel() {
-        // Test 2: Does it fail gracefully without model?
-        try {
-            SherpaOnnxModule.initializeTts("/invalid/path", "model.onnx")
-            fail("Should throw exception for missing model")
-        } catch (e: Exception) {
-            // Expected - document the error
-            println("Android Error for missing model: ${e.message}")
-        }
+    fun testSherpaOnnxModuleReflection() {
+        val moduleClass = Class.forName("net.siteed.sherpaonnx.SherpaOnnxModule")
+        assertNotNull("SherpaOnnxModule class should be available", moduleClass)
+
+        val methodNames = moduleClass.declaredMethods.map { it.name }
+        assertTrue("Should have initTts method", methodNames.contains("initTts"))
+        assertTrue("Should have validateLibraryLoaded method",
+            methodNames.contains("validateLibraryLoaded"))
     }
 }
 ```
@@ -174,9 +140,10 @@ Keep a log of discovered differences:
 # Native Platform Differences
 
 ## iOS
-- Requires .xcframework inclusion
-- Uses CAF audio format
-- NSTemporaryDirectory() for files
+- Links vendored static `.a` libraries via the podspec's `vendored_libraries`, not an
+  xcframework
+- Writes `.wav`
+- TTS writes into `.cachesDirectory`; denoising uses `NSTemporaryDirectory()`
 
 ## Android
 - Requires libc++_shared.so
@@ -189,7 +156,7 @@ Keep a log of discovered differences:
 ```
 1. Write test: "TTS generates audio file"
 2. Run on iOS simulator
-   Result: ✅ Pass - file at /tmp/sherpa_audio.caf
+   Result: ✅ Pass - file at <caches>/sherpa_audio.wav
 3. Run on Android emulator
    Result: ❌ Fail - "Permission denied"
 4. Fix: Add WRITE_EXTERNAL_STORAGE permission
@@ -227,8 +194,8 @@ The native integration testing framework has been implemented with the following
 - iOS: `yarn test:ios:info` - Provides guidance for manual testing due to platform limitations
 
 ### Documentation ✅
-- `PLATFORM_DIFFERENCES.md` - Comprehensive platform comparison
-- Updated `NATIVE_TEST_CHECKLIST.md` with implementation status
+- `platform-differences.md` - platform comparison
+- `test-checklist.md` - implementation status
 - README files in test directories explaining model setup
 
 ## Next Steps

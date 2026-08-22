@@ -189,7 +189,7 @@ After building native libraries + model strategy:
 
 ## Documentation Created
 
-### 📋 **INTEGRATION_TEST_MODEL_STRATEGY.md**
+### 📋 **`model-strategy.md`**
 Complete model management strategy document covering:
 - Lightweight model registry (3 models, ~58MB total)
 - Development model set (8 models, <500MB)

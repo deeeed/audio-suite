@@ -8,9 +8,10 @@ This document provides comprehensive information about the iOS implementation of
 
 - **iOS TurboModule Support**: ✅ Fully implemented and working
 - **Architecture**: new architecture only. The old-architecture `#ifdef
-  RCT_NEW_ARCH_ENABLED` guards were removed from the module in #457, and this document
-  claimed dual support long after that (#458).
-- **Integration Testing**: ✅ Available
+  RCT_NEW_ARCH_ENABLED` guards were removed from the iOS module in #312; #457 changed
+  Android only. This document claimed dual support long after that (#458).
+- **Integration Testing**: ❌ Not runnable. Test sources exist under
+  `ios/SherpaOnnxTests/` but there is no XCTest target and no runner (see below).
 - **System Information API**: ✅ Complete with Metal GPU support
 
 ## Architecture Support
@@ -111,7 +112,9 @@ interface SystemInfo {
 
 ### XCTest Framework
 
-iOS integration tests are implemented using XCTest:
+The iOS test sources are written against XCTest, but nothing runs them: there is no
+XCTest target in the generated project. The sketch below is the shape of those sources,
+not a suite you can execute.
 
 ```swift
 class SystemInfoIntegrationTest: XCTestCase {

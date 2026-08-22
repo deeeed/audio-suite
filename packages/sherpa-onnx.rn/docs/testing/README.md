@@ -8,7 +8,7 @@ The native integration testing framework validates React Native module integrati
 
 ### Key Features
 
-- ✅ **Cross-platform testing** - Android instrumented tests, iOS XCTest integration
+- ✅ **Android instrumented tests** - iOS has XCTest sources but no target to run them
 - ✅ **Lightweight model management** - CI-friendly testing without large model downloads
 - ✅ **Native library validation** - Confirms JNI/Swift bridge functionality
 - ✅ **Tiered testing strategy** - From basic validation to full functionality testing

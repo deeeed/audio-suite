@@ -1,13 +1,16 @@
 # sherpa-onnx.rn — Upgrade Roadmap
 
-## Phase 1: SDK 55 + New-Arch-Only Refactor (current)
+## Phase 1: SDK 55 + New-Arch-Only Refactor (done)
 
-Branch: `feat/sherpa-onnx-upgrade`
+The `feat/sherpa-onnx-upgrade` branch it was written on is merged and gone, and
+`apps/sherpa-voice` has since moved past SDK 55 to Expo 57. Kept as the record of what
+that refactor changed, not as current state.
 
 ### App (`apps/sherpa-voice`)
 - `expo` bumped to `^55.0.0`, all expo-* packages updated via `npx expo install --fix`
 - `newArchEnabled: true` removed from `app.config.ts` (mandatory in SDK 55, no longer a flag)
-- `newArchEnabled=true` removed from `android/gradle.properties`
+- `newArchEnabled=true` removed from `android/gradle.properties` (that file is a
+  gitignored prebuild artifact, and Expo regenerates it with the flag set)
 - `newArchEnabled` removed from `ios/Podfile.properties.json`
 
 ### Native package (`packages/sherpa-onnx.rn`)
@@ -21,7 +24,7 @@ Branch: `feat/sherpa-onnx-upgrade`
 - `sherpa-onnx-rn.podspec`: removed `fabric_enabled` conditionals; iOS min `11.0` → `13.4`
 - `ios/bridge/SherpaOnnxRnModule.h`: removed `#ifdef RCT_NEW_ARCH_ENABLED` guards
 - `ios/bridge/SherpaOnnxRnModule.mm`: removed old-arch `#ifdef` blocks. The
-  `RCT_EXPORT_METHOD` macros stayed: 61 of them still export the module's methods
+  `RCT_EXPORT_METHOD` macros stayed: 60 of them still export the module's methods
 - `react-native.config.js`: **still registers the Android package** — `packageImportPath`
   and `packageInstance` are both present, and required. An earlier revision claimed this
   was removed, which is the same wrong assumption that made the Kotlin module look dead
