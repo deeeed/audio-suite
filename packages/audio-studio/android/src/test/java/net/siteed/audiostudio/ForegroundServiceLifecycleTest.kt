@@ -268,12 +268,22 @@ class ForegroundServiceLifecycleTest {
         assertTrue(
             "In $functionName, $call is not guarded by the shared predicate. Its guards " +
                 "are: $guardsResolved",
-            guardsResolved.any {
-                it.contains("serviceWasStartedFor") ||
-                    it.contains("needsService") ||
-                    // The session-mismatch stop routes through its own rule, which is
-                    // itself covered by a truth table above.
-                    it.contains("shouldStopServiceOnSessionMismatch")
+            guardsResolved.any { guard ->
+                // Reject `!requiresForegroundService(...)` and friends: naming the
+                // predicate is not the same as agreeing with it, and an inverted guard
+                // both leaks and kills live services.
+                val negated = Regex("""![\s]*(serviceWasStartedFor|needsService|requiresForegroundService|shouldStopServiceOnSessionMismatch)""")
+                    .containsMatchIn(guard)
+                !negated && (
+                    guard.contains("serviceWasStartedFor") ||
+                        guard.contains("needsService") ||
+                        // The session-mismatch stop routes through its own rule, which the
+                        // truth table above covers.
+                        guard.contains("shouldStopServiceOnSessionMismatch") ||
+                        // The captured decision. Separate assertions prove it is derived
+                        // from the predicate in phase 0, before the join.
+                        guard.contains("ownedService")
+                    )
             }
         )
 
@@ -326,21 +336,22 @@ class ForegroundServiceLifecycleTest {
         val stop = AudioRecorderManager::shouldStopServiceOnSessionMismatch
 
         assertTrue(
-            "Old session owned a service and the successor is only prepared: the service " +
-                "is nobody's, so it must be stopped. This is the #474 leak.",
+            "Old session owned a service and the successor owns none — prepared, or " +
+                "recording with both flags false. The service is nobody's, so it must be " +
+                "stopped. This is the #474 leak.",
             stop.invoke(true, false)
         )
         assertFalse(
-            "Old session owned a service and the successor is actively recording: the " +
-                "successor owns it now, so stopping would kill a live recording's service.",
+            "Old session owned a service and the successor owns one too: stopping would " +
+                "kill a live recording's service.",
             stop.invoke(true, true)
         )
         assertFalse(
-            "Old session owned no service, successor only prepared: nothing to stop.",
+            "Old session owned no service, successor owns none: nothing to stop.",
             stop.invoke(false, false)
         )
         assertFalse(
-            "Old session owned no service, successor recording: not this teardown's to stop.",
+            "Old session owned no service, successor owns one: not this teardown's to stop.",
             stop.invoke(false, true)
         )
     }
@@ -405,6 +416,55 @@ class ForegroundServiceLifecycleTest {
         assertTrue(
             "It must pass the captured ownedService: ${between.takeLast(300)}",
             Regex("""ownedService\s*=\s*ownedService""").containsMatchIn(between)
+        )
+        assertTrue(
+            "It must also pass the successor's real ownership, not a constant. Passing " +
+                "false there would kill a service a live successor owns: " +
+                between.takeLast(300),
+            Regex("""successorOwnsService\s*=\s*successorOwnsService""").containsMatchIn(between)
+        )
+
+        // And that binding must ask what the successor actually started. Recording is not
+        // owning: a successor with both flags false publishes _isRecording without a
+        // service, and its own teardown will not stop one either, so preserving the old
+        // session's service on its behalf strands it.
+        val successorBinding = body.lines()
+            .dropWhile { !Regex("""val successorOwnsService\s*=""").containsMatchIn(it) }
+            .take(4).joinToString(" ")
+        assertTrue(
+            "successorOwnsService must consult the shared predicate, not just " +
+                "_isRecording: $successorBinding",
+            successorBinding.contains("serviceWasStartedFor")
+        )
+        assertTrue(
+            "successorOwnsService must also require _isRecording. Without it a merely " +
+                "prepared successor reads as an owner while owning nothing, and the old " +
+                "session's service is stranded: $successorBinding",
+            successorBinding.contains("_isRecording")
+        )
+    }
+
+    @Test
+    fun normalTeardownStopUsesTheCapturedDecision() {
+        // The mismatch branch was fixed first and the sibling left recomputing, which is
+        // the path most recordings actually take. Both must use the captured value: after
+        // the join, recordingConfig may belong to an attempt that failed before publishing.
+        val body = bodyOf("cleanup").lines().joinToString("\n") { it.substringBefore("//") }
+        val mismatchIndex = body.indexOf("sessionId != ownedSession")
+        val stops = Regex("""AudioRecordingService\.stopService""").findAll(body).toList()
+        assertEquals("cleanup should still have two stops", 2, stops.size)
+
+        val normalStop = stops.last { it.range.first > mismatchIndex }
+        val guardText = body.substring(maxOf(0, normalStop.range.first - 220), normalStop.range.first)
+        assertFalse(
+            "The normal teardown stop must not recompute ownership from recordingConfig: " +
+                guardText.takeLast(200),
+            guardText.contains("serviceWasStartedFor(recordingConfig)")
+        )
+        assertTrue(
+            "The normal teardown stop must use the captured ownedService: " +
+                guardText.takeLast(200),
+            Regex("""\bownedService\b""").containsMatchIn(guardText)
         )
     }
 

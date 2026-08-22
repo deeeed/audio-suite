@@ -63,18 +63,19 @@ class AudioRecorderManager(
          * Two facts decide it. `ownedService` is whether the session being torn down had
          * started one, captured when the teardown claimed that session — reading it later
          * from the mutable config can see a successor's, or a failed attempt's. And
-         * `successorIsRecording` is whether the session that replaced it is actually
-         * recording: startRecordingProcess starts the service before publishing its
-         * session under the same lock, so only an active successor owns one, while
-         * prepareRecording publishes a session having started nothing.
+         * `successorOwnsService` is whether the session that replaced it actually started
+         * one. Being recording is not enough: a successor with both flags false publishes
+         * `_isRecording` without starting a service, and its own teardown will not stop
+         * one either, so preserving the service on its behalf strands it. prepareRecording
+         * likewise publishes a session having started nothing.
          *
          * So the service survives only when a live successor owns it. Anything else
          * strands it foreground with nothing left to stop it (#474).
          */
         internal fun shouldStopServiceOnSessionMismatch(
             ownedService: Boolean,
-            successorIsRecording: Boolean
-        ): Boolean = ownedService && !successorIsRecording
+            successorOwnsService: Boolean
+        ): Boolean = ownedService && !successorOwnsService
 
         internal fun requiresForegroundService(
             config: RecordingConfig,
@@ -2472,9 +2473,12 @@ class AudioRecorderManager(
                 // Whether the service should survive is a separate question, answered by a
                 // pure function of two facts so a unit test can cover the relationship
                 // rather than its spelling.
+                val successorOwnsService = _isRecording.get() &&
+                    ::recordingConfig.isInitialized &&
+                    serviceWasStartedFor(recordingConfig)
                 if (shouldStopServiceOnSessionMismatch(
                         ownedService = ownedService,
-                        successorIsRecording = _isRecording.get()
+                        successorOwnsService = successorOwnsService
                     )
                 ) {
                     AudioRecordingService.stopService(context)
@@ -2547,7 +2551,10 @@ class AudioRecorderManager(
                 if (::recordingConfig.isInitialized && recordingConfig.showNotification) {
                     notificationManager.stopUpdates()
                 }
-                if (::recordingConfig.isInitialized && serviceWasStartedFor(recordingConfig)) {
+                // The captured decision, not a fresh read. Recomputing here reads whatever
+                // config the join left behind, including one installed by an attempt that
+                // failed before publishing its session, and then skips the stop (#474).
+                if (ownedService) {
                     AudioRecordingService.stopService(context)
                 }
 
