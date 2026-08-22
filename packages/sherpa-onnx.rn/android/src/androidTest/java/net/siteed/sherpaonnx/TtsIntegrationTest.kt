@@ -128,21 +128,22 @@ class TtsIntegrationTest {
         )
         
         // Validate configuration completeness
+        // `provider` is deliberately absent: TtsHandler hardcodes provider = "cpu" and
+        // never reads the key, so requiring it here would assert a contract that does
+        // not exist.
         val requiredKeys = listOf("modelDir", "modelFile", "tokensFile", "lexiconFile",
-            "dataDir", "provider", "ttsModelType")
+            "dataDir", "ttsModelType")
         requiredKeys.forEach { key ->
             assertTrue("Config should have $key", ttsConfig.containsKey(key))
             assertNotNull("Config $key should not be null", ttsConfig[key])
         }
         
         // Validate specific values
-        assertEquals("Provider should be CPU", "cpu", ttsConfig["provider"])
         assertEquals("Model type should be VITS", "vits", ttsConfig["ttsModelType"])
         assertTrue("Model file should end with .onnx", (ttsConfig["modelFile"] as String).endsWith(".onnx"))
         
         Log.i(TAG, "✅ TTS configuration generation successful")
         Log.i(TAG, "📋 Model: ${ttsConfig["modelDir"]}/${ttsConfig["modelFile"]}")
-        Log.i(TAG, "⚙️ Provider: ${ttsConfig["provider"]}")
         Log.i(TAG, "🎭 Model Type: ${ttsConfig["ttsModelType"]}")
     }
 
