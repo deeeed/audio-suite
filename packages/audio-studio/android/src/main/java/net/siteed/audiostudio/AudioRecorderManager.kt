@@ -46,6 +46,55 @@ class AudioRecorderManager(
 ) {
     companion object {
         private const val CLASS_NAME = "AudioRecorderManager"
+
+        /**
+         * The single rule deciding whether a recording runs the foreground service.
+         *
+         * Start and stop must ask the same question. They were once written separately and
+         * drifted: start required (showNotification || keepAwake), the stops required
+         * showNotification alone, so the default config — keepAwake true, showNotification
+         * false — started a service nothing stopped (#474).
+         *
+         * Kept pure and internal so a unit test can exercise it directly.
+         */
+        /**
+         * Whether a teardown that lost its session must still stop the foreground service.
+         *
+         * Two facts decide it. `ownedService` is whether the session being torn down had
+         * started one, captured when the teardown claimed that session — reading it later
+         * from the mutable config can see a successor's, or a failed attempt's. And
+         * `successorOwnsService` is whether the session that replaced it actually started
+         * one. Being recording is not enough: a successor with both flags false publishes
+         * `_isRecording` without starting a service, and its own teardown will not stop
+         * one either, so preserving the service on its behalf strands it. prepareRecording
+         * likewise publishes a session having started nothing.
+         *
+         * So the service survives only when a live successor owns it. Anything else
+         * strands it foreground with nothing left to stop it (#474).
+         */
+        /**
+         * Whether the session that replaced this teardown's owns the foreground service.
+         *
+         * Both halves are required and an OR would be wrong in both directions. Recording
+         * alone is not owning: a successor with showNotification and keepAwake both false
+         * publishes `_isRecording` having started nothing, and its own teardown stops
+         * nothing either. A config that would need a service is not owning either: a
+         * prepared successor publishes a session without starting one (#474).
+         */
+        internal fun successorOwnsService(
+            successorIsRecording: Boolean,
+            successorConfigNeedsService: Boolean
+        ): Boolean = successorIsRecording && successorConfigNeedsService
+
+        internal fun shouldStopServiceOnSessionMismatch(
+            ownedService: Boolean,
+            successorOwnsService: Boolean
+        ): Boolean = ownedService && !successorOwnsService
+
+        internal fun requiresForegroundService(
+            config: RecordingConfig,
+            enableBackgroundAudio: Boolean
+        ): Boolean = (config.showNotification || config.keepAwake) && enableBackgroundAudio
         
         @SuppressLint("StaticFieldLeak")
         @Volatile
@@ -159,6 +208,9 @@ class AudioRecorderManager(
     /** Failed delivery attempts per kind, bounding the retry in [emitRecordingError]. */
     private val failedDeliveryAttempts =
         java.util.concurrent.ConcurrentHashMap<RecordingErrorKind, Int>()
+
+    private fun serviceWasStartedFor(config: RecordingConfig): Boolean =
+        requiresForegroundService(config, enableBackgroundAudio)
 
     /**
      * Report a live recording degradation on the same `error` event iOS uses (#447).
@@ -1383,14 +1435,17 @@ class AudioRecorderManager(
             isFirstChunk = true
             recordingStartTime = System.currentTimeMillis()
 
+            // One predicate for start and both stop paths. They were written separately
+            // and drifted: start required (showNotification || keepAwake), the stops
+            // required showNotification alone, so the default config started a service
+            // nothing ever stopped (#474).
             // Start notification + foreground service before flipping isRecording (#298, #288).
             // Previously the notification block fired in initializeRecordingResources, which is
             // also reached from prepareRecording, so the notification timer started on prepare.
             // Mirrors iOS fix in AudioStreamManager.swift. Service start is shared by both
             // showNotification and keepAwake gates and must precede _isRecording=true so
             // getStatus() can't observe (isRecording=true && !isServiceRunning).
-            val needsService = (recordingConfig.showNotification || recordingConfig.keepAwake) &&
-                enableBackgroundAudio
+            val needsService = serviceWasStartedFor(recordingConfig)
             if (recordingConfig.showNotification && enableBackgroundAudio) {
                 notificationManager.initialize(recordingConfig)
                 notificationManager.startUpdates(recordingStartTime)
@@ -1453,9 +1508,14 @@ class AudioRecorderManager(
                     }
                 }
 
+                // Must mirror the start gate. Guarding on showNotification alone left the
+                // service running for the default config, where keepAwake is true and
+                // showNotification is false (#474).
                 if (recordingConfig.showNotification) {
                     val notificationStartTime = System.currentTimeMillis()
                     notificationManager.stopUpdates()
+                }
+                if (serviceWasStartedFor(recordingConfig)) {
                     AudioRecordingService.stopService(context)
                 }
 
@@ -2356,16 +2416,24 @@ class AudioRecorderManager(
         val ownedSession: Long
         val wasRecording: Boolean
         val ownedWorker: Thread?
+        // Claimed with the session, for the same reason: recordingConfig is mutable, and a
+        // start or prepare that runs during the unlocked join replaces it. Reconstructing
+        // this decision in phase 2 read the wrong config — including from an attempt that
+        // failed before publishing its session — and skipped the stop (#474).
+        val ownedService: Boolean
         if (callerHoldsRecordLock) {
             // Already inside the caller's monitor; taking it again is free (reentrant).
             wasRecording = _isRecording.getAndSet(false)
             ownedSession = sessionId
+            ownedService = ::recordingConfig.isInitialized && serviceWasStartedFor(recordingConfig)
             // This caller terminates the worker itself, or knows there is none.
             ownedWorker = null
         } else {
             synchronized(audioRecordLock) {
                 wasRecording = _isRecording.getAndSet(false)
                 ownedSession = sessionId
+                ownedService = ::recordingConfig.isInitialized &&
+                    serviceWasStartedFor(recordingConfig)
                 // Claimed here, with the session. Taking it later, outside the lock, let a
                 // start that published its thread during the gap have that thread stolen
                 // and interrupted by this teardown — the new recording lost its PCM worker
@@ -2415,6 +2483,22 @@ class AudioRecorderManager(
             if (sessionId != ownedSession) {
                 LogUtils.d(CLASS_NAME,
                     "Cleanup for session $ownedSession skipped: session $sessionId started during teardown")
+                // The successor owns the recorders, so this teardown must not touch them.
+                // Whether the service should survive is a separate question, answered by a
+                // pure function of two facts so a unit test can cover the relationship
+                // rather than its spelling.
+                val successorOwnsService = successorOwnsService(
+                    successorIsRecording = _isRecording.get(),
+                    successorConfigNeedsService = ::recordingConfig.isInitialized &&
+                        serviceWasStartedFor(recordingConfig)
+                )
+                if (shouldStopServiceOnSessionMismatch(
+                        ownedService = ownedService,
+                        successorOwnsService = successorOwnsService
+                    )
+                ) {
+                    AudioRecordingService.stopService(context)
+                }
                 return
             }
             // Read inside the lock: with the mutators serialized, this is the live value,
@@ -2479,8 +2563,14 @@ class AudioRecorderManager(
                 audioSourceLifecycle.onTeardown()  // Next recording resolves fresh
 
 
+                // Same mirror as the stop path above (#474).
                 if (::recordingConfig.isInitialized && recordingConfig.showNotification) {
                     notificationManager.stopUpdates()
+                }
+                // The captured decision, not a fresh read. Recomputing here reads whatever
+                // config the join left behind, including one installed by an attempt that
+                // failed before publishing its session, and then skips the stop (#474).
+                if (ownedService) {
                     AudioRecordingService.stopService(context)
                 }
 
