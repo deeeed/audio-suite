@@ -134,11 +134,9 @@ const config = {
 # command measures.
 #
 # Callback frequency is not measurable from an eval: the bridge exposes no listener API
-# and an eval cannot `require` the package. No current harness measures it either. The
-# detox suites that once did (high-frequency, stop-recording-performance,
-# file-size-collection, agent-audio-focus) open an `agent-validation` route whose screen
-# no longer exists, so they fail at the first waitFor and never reach a timing assertion.
-# Measuring callback frequency needs that screen restored, or a listener hook on the bridge.
+# and an eval cannot `require` the package. Nothing measures it today. The detox suites
+# that once did were removed with the agent-validation screen they drove, so it would
+# need a listener hook on the bridge.
 scripts/agentic/app-state.sh --device "<name>" eval "(() => { globalThis.__HF = {}; setTimeout(async () => { try { const r = await __AGENTIC__.startRecording({ sampleRate: 48000, intervalAnalysis: 25, interval: 10, enableProcessing: true }); if (r && r.error) { globalThis.__HF = { err: r.error }; return } await new Promise(x => setTimeout(x, 5000)); const s = await __AGENTIC__.stopRecording(); if (s && s.error) { globalThis.__HF = { err: s.error }; return } const st = __AGENTIC__.getState(); globalThis.__HF = { durMs: s.durationMs, points: st.lastRecordingAnalysisPointCount, effectiveMs: st.lastRecordingAnalysisPointCount ? Math.round(s.durationMs / st.lastRecordingAnalysisPointCount) : null } } catch (e) { globalThis.__HF = { ex: String(e) } } }, 1200); return 'scheduled' })()"
 sleep 14
 scripts/agentic/app-state.sh --device "<name>" eval "JSON.stringify(globalThis.__HF)"
@@ -154,16 +152,10 @@ scripts/agentic/app-state.sh --device "<name>" eval "JSON.stringify(globalThis._
 
 ### E2E Testing
 
-These suites do not currently run. They open an `agent-validation` route whose screen no
-longer exists, so they fail at the first `waitFor` and never reach a timing assertion.
-Restoring that screen, or adding a listener hook to the CDP bridge, is what it would take
-to measure callback timing again.
-
-```bash
-# Broken: fails before any timing assertion (see above)
-yarn e2e:android:high-frequency
-yarn e2e:ios:high-frequency
-```
+There is no detox suite for this any more. The high-frequency and performance suites were
+removed once validation moved to the CDP recipes: they drove an `agent-validation` screen
+that no longer exists, so they had stopped running long before they were deleted. Use the
+CDP command above for the point rate, and a recipe for anything broader.
 
 ## Conclusion
 

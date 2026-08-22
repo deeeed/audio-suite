@@ -126,4 +126,4 @@ These measurements were collected using:
    - Primary output must be disabled for compressed-only recording
    - Fixed iOS issue where compression info wasn't returned when primary disabled
 
-The complete test suite is available in the [audiolab repository](https://github.com/deeeed/audiolab/blob/main/apps/playground/e2e/file-size-collection.test.ts).
+These figures were collected with a detox suite that has since been removed; file-size validation now runs through the playground's CDP recipes.
