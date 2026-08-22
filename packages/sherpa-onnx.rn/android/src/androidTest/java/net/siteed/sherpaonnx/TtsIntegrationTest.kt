@@ -123,16 +123,15 @@ class TtsIntegrationTest {
             // espeak-ng-data lives inside the extracted model directory, and TtsHandler
             // passes dataDir through unchanged, so the parent alone is not usable.
             "dataDir" to "$modelPath/espeak-ng-data",
-            "provider" to vitsConfig["provider"] as String,
             "numThreads" to 1,
             "ttsModelType" to vitsConfig["ttsModelType"] as String
         )
         
         // Validate configuration completeness
-        // Two keys are deliberately absent. TtsHandler hardcodes provider = "cpu" and
-        // never reads `provider`. It reads `lexiconFile` as an optional nullable, and
-        // this archive ships no lexicon at all. Requiring either would assert a
-        // contract the handler does not have.
+        // This config carries only keys TtsHandler reads. `provider` is not one of them
+        // (the handler hardcodes provider = "cpu"), and `lexiconFile` is an optional
+        // nullable for which this archive ships no file, so neither is generated or
+        // required here. `numThreads` is kept: the handler does read it.
         val requiredKeys = listOf("modelDir", "modelFile", "tokensFile",
             "dataDir", "ttsModelType")
         requiredKeys.forEach { key ->
