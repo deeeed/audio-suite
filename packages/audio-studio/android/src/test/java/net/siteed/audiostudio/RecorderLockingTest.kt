@@ -148,9 +148,29 @@ class RecorderLockingTest {
         // thread themselves or know there is none.
         val body = bodyOf("internal fun cleanup(callerHoldsRecordLock: Boolean)")
         assertTrue(
-            body.contains("if (!callerHoldsRecordLock)"),
-            "cleanup must skip the thread join when the caller already holds " +
-                "audioRecordLock, or the join deadlocks against the recording loop."
+            body.contains("ownedWorker = null"),
+            "a caller already holding audioRecordLock must claim no worker, so the join " +
+                "below is skipped. Joining under that lock deadlocks against the " +
+                "recording loop, which needs it to reach its exit."
+        )
+        assertTrue(
+            body.contains("if (ownedWorker != null && ownedWorker.isAlive)"),
+            "the join must act only on the worker claimed in phase 0, never on whatever " +
+                "recordingThreadRef holds by then — that may belong to a newer session."
+        )
+    }
+
+    @Test
+    fun `cleanup claims the worker with the session`() {
+        // Claiming the session but taking the worker later, outside the lock, let a start
+        // that published its thread in the gap have it stolen and interrupted.
+        val body = bodyOf("internal fun cleanup(callerHoldsRecordLock: Boolean)")
+        val claimAt = body.indexOf("ownedWorker = recordingThreadRef.getAndSet(null)")
+        val joinAt = body.indexOf(".join(")
+        assertTrue(claimAt >= 0, "cleanup must claim the worker under audioRecordLock")
+        assertTrue(
+            claimAt < joinAt,
+            "the worker must be claimed in the locked phase 0, before the join."
         )
     }
 

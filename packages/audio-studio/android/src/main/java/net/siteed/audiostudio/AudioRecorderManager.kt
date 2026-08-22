@@ -2326,14 +2326,22 @@ class AudioRecorderManager(
         // the state read, and phase 2 refuses to touch anything it does not own (#446).
         val ownedSession: Long
         val wasRecording: Boolean
+        val ownedWorker: Thread?
         if (callerHoldsRecordLock) {
             // Already inside the caller's monitor; taking it again is free (reentrant).
             wasRecording = _isRecording.getAndSet(false)
             ownedSession = sessionId
+            // This caller terminates the worker itself, or knows there is none.
+            ownedWorker = null
         } else {
             synchronized(audioRecordLock) {
                 wasRecording = _isRecording.getAndSet(false)
                 ownedSession = sessionId
+                // Claimed here, with the session. Taking it later, outside the lock, let a
+                // start that published its thread during the gap have that thread stolen
+                // and interrupted by this teardown — the new recording lost its PCM worker
+                // and still reported success (#446).
+                ownedWorker = recordingThreadRef.getAndSet(null)
             }
         }
 
@@ -2345,16 +2353,13 @@ class AudioRecorderManager(
         //
         // A caller that already owns the lock has, by construction, terminated the thread
         // itself (stopRecording) or knows there is none (getStatus's orphan path).
-        if (!callerHoldsRecordLock) {
-            val thread = recordingThreadRef.getAndSet(null)
-            if (thread != null && thread.isAlive) {
-                thread.interrupt()
-                // Same 2s budget stopRecording uses. The loop reads non-blocking, so it
-                // exits promptly once _isRecording is false.
-                thread.join(2000L)
-                if (thread.isAlive) {
-                    LogUtils.w(CLASS_NAME, "Recording thread did not exit within 2s of cleanup")
-                }
+        if (ownedWorker != null && ownedWorker.isAlive) {
+            ownedWorker.interrupt()
+            // Same 2s budget stopRecording uses. The loop reads non-blocking, so it exits
+            // promptly once _isRecording is false.
+            ownedWorker.join(2000L)
+            if (ownedWorker.isAlive) {
+                LogUtils.w(CLASS_NAME, "Recording thread did not exit within 2s of cleanup")
             }
         }
 
