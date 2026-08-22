@@ -783,7 +783,7 @@ class AudioRecorderManager(
                         val (tempRecordingConfig, _) = configResult.getOrNull()!!
                         // Update device-related settings
                         selectedDeviceId = tempRecordingConfig.deviceId ?: selectedDeviceId
-                        deviceDisconnectionBehavior = tempRecordingConfig.deviceDisconnectionBehavior 
+                        deviceDisconnectionBehavior = tempRecordingConfig.deviceDisconnectionBehavior
                             ?: deviceDisconnectionBehavior
                             ?: "pause"
                     }
@@ -2861,7 +2861,7 @@ class AudioRecorderManager(
                 LogUtils.d(CLASS_NAME, "Already prepared")
                 return true
             }
-        
+
             try {
                 // Initialize phone state listener only if enabled
                 if (enablePhoneStateHandling) {
