@@ -243,6 +243,29 @@ class RecorderLockingTest {
             "resumeRecording must reject when _isRecording is false. That flag is the " +
                 "ownership claim cleanup makes before it releases the lock to join."
         )
+
+        // Presence alone is not enough. A guard outside the lock is a TOCTOU check:
+        // cleanup can claim the session between it and the restart. The check that counts
+        // is the one inside the lock that does the restarting, before any mutation.
+        val lockAt = body.lastIndexOf("synchronized(audioRecordLock)")
+        val restartAt = body.indexOf("audioRecord?.startRecording()", lockAt)
+        val guardInLock = body.indexOf("if (!_isRecording.get())", lockAt)
+        assertTrue(restartAt > lockAt, "resume must restart AudioRecord under the lock")
+        assertTrue(
+            guardInLock in (lockAt + 1) until restartAt,
+            "resumeRecording must revalidate _isRecording INSIDE the lock that restarts " +
+                "the recorders, before doing so. A guard only at entry lets a teardown " +
+                "claim the session in the window between them."
+        )
+
+        // isPaused must not clear before that recheck, or a resume that loses the race
+        // leaves the recording neither paused nor running.
+        val clearAt = body.indexOf("isPaused.set(false)")
+        assertTrue(
+            clearAt > guardInLock,
+            "isPaused must be cleared after the in-lock ownership recheck, so a rejected " +
+                "resume leaves the recording paused rather than half-resumed."
+        )
     }
 
     @Test

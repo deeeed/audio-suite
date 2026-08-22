@@ -1722,10 +1722,21 @@ class AudioRecorderManager(
 
             acquireWakeLock()
             pausedDuration += System.currentTimeMillis() - lastPauseTime
-            isPaused.set(false)
+            // Cleared only after the ownership recheck below succeeds, so a resume that
+            // loses the race leaves the recording paused rather than half-resumed.
             resumeMaxDurationTimer()
             
             synchronized(audioRecordLock) {
+                // Revalidate ownership here, not just at entry. The guard at the top runs
+                // outside this lock, so a teardown can claim the session in between: the
+                // resume would then restart both recorders and resolve success on a
+                // session cleanup already owns, with no PCM worker (#446). Inside the lock
+                // the claim cannot land between this check and the restart below.
+                if (!_isRecording.get()) {
+                    LogUtils.e(CLASS_NAME, "⏺️ Teardown claimed this session while resuming")
+                    throw IllegalStateException("Recording was stopped while resuming")
+                }
+
                 // Double-check audioRecord is valid after potential reinitialization
                 LogUtils.d(CLASS_NAME, "⏺️ Final check of audioRecord state: ${audioRecord?.state ?: "null"}")
                 if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
@@ -1739,6 +1750,7 @@ class AudioRecorderManager(
                 // the resume saw an unchanged sessionId in phase 2 and released the
                 // recorders this call had just restarted (#446).
                 sessionId++
+                isPaused.set(false)
                 audioRecord?.startRecording()
                 LogUtils.d(CLASS_NAME, "⏺️ AudioRecord.startRecording called")
                 
