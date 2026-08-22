@@ -1725,6 +1725,11 @@ class AudioRecorderManager(
                 }
                 
                 LogUtils.d(CLASS_NAME, "⏺️ Starting AudioRecord recording")
+                // A resume republishes the recorders, so it is a new session for cleanup's
+                // ownership check. Without this, a teardown that claimed the session before
+                // the resume saw an unchanged sessionId in phase 2 and released the
+                // recorders this call had just restarted (#446).
+                sessionId++
                 audioRecord?.startRecording()
                 LogUtils.d(CLASS_NAME, "⏺️ AudioRecord.startRecording called")
                 

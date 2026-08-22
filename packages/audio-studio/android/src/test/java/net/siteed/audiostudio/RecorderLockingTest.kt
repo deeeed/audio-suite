@@ -131,7 +131,9 @@ class RecorderLockingTest {
         // appeared and will release its recorders.
         for (signature in listOf(
             "private fun startRecordingProcess(promise: Promise): Boolean",
-            "fun prepareRecording(options: Map<String, Any?>): Boolean"
+            "fun prepareRecording(options: Map<String, Any?>): Boolean",
+            // Resume restarts both recorders, so it republishes the session too.
+            "fun resumeRecording(promise: Promise)"
         )) {
             assertTrue(
                 bodyOf(signature).contains("sessionId++"),
