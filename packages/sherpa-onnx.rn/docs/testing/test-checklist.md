@@ -16,8 +16,8 @@
 - [x] Release TTS resources - Test placeholders created
 
 ### 3. Platform-Specific Behavior
-- [ ] iOS: Audio saved as .caf format
-- [ ] iOS: Files in NSTemporaryDirectory()
+- [ ] iOS: Audio saved as `.wav`
+- [ ] iOS: TTS files in `.cachesDirectory` (denoising uses `NSTemporaryDirectory()`)
 - [ ] Android: Audio saved as .wav format
 - [ ] Android: Files in getCacheDir()
 
@@ -46,7 +46,7 @@ Day 5: Memory and threading tests
 ## Platform Setup Required
 
 ### iOS
-- [x] Add test target to Xcode project - Test structure created
+- [ ] Add test target to Xcode project - source files exist under `ios/SherpaOnnxTests/`, but there is no target and nothing runs them
 - [x] Include test models in bundle - Directory structure and docs created
 - [ ] Link Sherpa-ONNX framework to test target - Requires actual framework
 

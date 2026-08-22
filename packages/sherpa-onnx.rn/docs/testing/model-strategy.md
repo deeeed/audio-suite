@@ -17,7 +17,9 @@ These models are suitable for continuous integration testing where download time
 | `ced-tiny` | CED Tiny Audio Tagging | Audio Tagging | ~27MB | Basic audio classification |
 | `kws-zipformer` | KWS Zipformer | Keyword Spotting | 14.9MB | Keyword detection |
 
-**Total Size: ~72MB**
+**Total: 58.1 MiB for the three with downloader entries** (measured from content-length:
+31722013 + 643854 + 28531989 bytes). Adding `kws-zipformer`'s listed 14.9MB gives the
+~73 MiB this table used to round to 72MB.
 
 The Model ID column is a local identifier only. It is neither the upstream archive name
 nor the directory the archive extracts into, and all three differ for several of these:

@@ -5,10 +5,10 @@ This document tracks discovered differences between iOS and Android implementati
 ## File System & Paths
 
 ### iOS
-- Uses NSTemporaryDirectory() for temporary files
-- Audio files typically saved as .caf format (Core Audio Format)
+- TTS writes into `.cachesDirectory`; denoising uses `NSTemporaryDirectory()`
+- Audio files saved as `.wav`, not CAF
 - Model files can be bundled in app bundle
-- Path example: `/var/folders/.../TemporaryItems/sherpa_audio.caf`
+- Path example: `/var/mobile/.../Library/Caches/sherpa_audio.wav`
 
 ### Android
 - Uses Context.getCacheDir() for temporary files  
@@ -19,7 +19,7 @@ This document tracks discovered differences between iOS and Android implementati
 ## Library Loading
 
 ### iOS
-- Requires .xcframework inclusion in Xcode project
+- Links vendored static `.a` libraries via the podspec's `vendored_libraries`
 - Static libraries linked at build time
 - Framework must be added to test targets separately
 
@@ -31,9 +31,9 @@ This document tracks discovered differences between iOS and Android implementati
 ## Audio Formats
 
 ### iOS
-- Prefers Core Audio Format (.caf) for optimal integration
-- Supports WAV but CAF is recommended
-- Uses AudioToolbox framework for audio processing
+- Writes WAV. `SherpaOnnxTtsHandler.swift` saves `<name>.wav` into `.cachesDirectory`,
+  and the denoising handler writes `.wav` under `NSTemporaryDirectory()`
+- No CAF anywhere in the implementation, despite what this document used to claim
 
 ### Android
 - Primarily uses WAV format
@@ -126,10 +126,9 @@ This document tracks discovered differences between iOS and Android implementati
 
 ## Discovered Issues
 
-### Issue: Audio Format Compatibility
-- **iOS**: Generated .caf files may not be playable on Android
-- **Android**: Generated .wav files work on both platforms
-- **Solution**: Use WAV format for cross-platform compatibility
+### Non-issue: Audio Format Compatibility
+Both platforms write WAV, so there is no format mismatch. This section previously
+described a CAF-versus-WAV problem that the implementation never had.
 
 ### Issue: File Path Separators
 - **iOS**: Uses forward slashes (Unix-style)

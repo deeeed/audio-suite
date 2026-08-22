@@ -32,8 +32,6 @@ ios/
 The shipped `BasicIntegrationTest.swift` is a placeholder: all three of its tests assert
 `true` with the real bodies commented out. There is no example to copy here yet, because
 the wrapper API those comments call has not been designed.
-}
-```
 
 ### Running iOS Tests
 
@@ -90,8 +88,7 @@ class BasicIntegrationTest {
 ### Running Android Tests
 
 ```bash
-# From android directory
-cd android
+# Run from packages/sherpa-onnx.rn. Each command cds to the host app itself.
 
 # Run instrumented tests on connected device
 (cd ../../apps/sherpa-voice/android && APP_VARIANT=development \
@@ -162,7 +159,7 @@ Keep a log of discovered differences:
 4. Fix: Add WRITE_EXTERNAL_STORAGE permission
 5. Run again on Android
    Result: ✅ Pass - file at /data/cache/sherpa_audio.wav
-6. Document: Different audio formats and paths per platform
+6. Document: both platforms write WAV; only the output directory differs
 ```
 
 ## Tips for Native Testing

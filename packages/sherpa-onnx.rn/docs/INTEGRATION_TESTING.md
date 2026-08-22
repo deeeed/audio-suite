@@ -6,11 +6,15 @@ This guide covers integration testing for sherpa-onnx.rn across all platforms, w
 
 ## Test Categories
 
-### 1. Module registration and system info
+### 1. System info
 
 **Android**: `android/src/androidTest/java/net/siteed/sherpaonnx/SystemInfoTest.kt`
 
 **iOS**: `ios/SherpaOnnxTests/SystemInfoIntegrationTest.swift`
+
+Neither covers module registration. Both construct the implementation directly
+(`SherpaOnnxImpl(reactContext)` on Android), bypassing the module and the package, so
+nothing here proves the TurboModule is registered or reachable from JS.
 
 There is no old-vs-new architecture comparison. `ArchitectureCompatibilityTest.kt` and
 `ArchitectureSpecificTest.kt` were deleted in #434 when the repo went new-architecture
@@ -62,8 +66,9 @@ java.lang.NoClassDefFoundError: com.facebook.react.bridge.WritableNativeMap
 ```
 
 The downloader-backed tests additionally lack the `INTERNET` permission in the test
-manifest. Both are harness gaps tracked in #449, not something a different command works
-around. The commands below are the right ones for when the harness can run them.
+manifest. Both are harness gaps tracked in #475, not something a different command works
+around. (They were attributed to #449, which is about no CI running the audio-studio
+suites and mentions neither.) The commands below are the right ones for when the harness can run them.
 
 Then the package ships a script that already has the right app directory and module name:
 
