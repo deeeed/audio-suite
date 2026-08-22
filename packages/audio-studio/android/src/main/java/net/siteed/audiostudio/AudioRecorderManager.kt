@@ -57,6 +57,25 @@ class AudioRecorderManager(
          *
          * Kept pure and internal so a unit test can exercise it directly.
          */
+        /**
+         * Whether a teardown that lost its session must still stop the foreground service.
+         *
+         * Two facts decide it. `ownedService` is whether the session being torn down had
+         * started one, captured when the teardown claimed that session — reading it later
+         * from the mutable config can see a successor's, or a failed attempt's. And
+         * `successorIsRecording` is whether the session that replaced it is actually
+         * recording: startRecordingProcess starts the service before publishing its
+         * session under the same lock, so only an active successor owns one, while
+         * prepareRecording publishes a session having started nothing.
+         *
+         * So the service survives only when a live successor owns it. Anything else
+         * strands it foreground with nothing left to stop it (#474).
+         */
+        internal fun shouldStopServiceOnSessionMismatch(
+            ownedService: Boolean,
+            successorIsRecording: Boolean
+        ): Boolean = ownedService && !successorIsRecording
+
         internal fun requiresForegroundService(
             config: RecordingConfig,
             enableBackgroundAudio: Boolean
@@ -2382,16 +2401,24 @@ class AudioRecorderManager(
         val ownedSession: Long
         val wasRecording: Boolean
         val ownedWorker: Thread?
+        // Claimed with the session, for the same reason: recordingConfig is mutable, and a
+        // start or prepare that runs during the unlocked join replaces it. Reconstructing
+        // this decision in phase 2 read the wrong config — including from an attempt that
+        // failed before publishing its session — and skipped the stop (#474).
+        val ownedService: Boolean
         if (callerHoldsRecordLock) {
             // Already inside the caller's monitor; taking it again is free (reentrant).
             wasRecording = _isRecording.getAndSet(false)
             ownedSession = sessionId
+            ownedService = ::recordingConfig.isInitialized && serviceWasStartedFor(recordingConfig)
             // This caller terminates the worker itself, or knows there is none.
             ownedWorker = null
         } else {
             synchronized(audioRecordLock) {
                 wasRecording = _isRecording.getAndSet(false)
                 ownedSession = sessionId
+                ownedService = ::recordingConfig.isInitialized &&
+                    serviceWasStartedFor(recordingConfig)
                 // Claimed here, with the session. Taking it later, outside the lock, let a
                 // start that published its thread during the gap have that thread stolen
                 // and interrupted by this teardown — the new recording lost its PCM worker
@@ -2442,20 +2469,14 @@ class AudioRecorderManager(
                 LogUtils.d(CLASS_NAME,
                     "Cleanup for session $ownedSession skipped: session $sessionId started during teardown")
                 // The successor owns the recorders, so this teardown must not touch them.
-                // Whether it owns the *service* is a separate question, and asking only
-                // what its config would need gets it wrong: prepareRecording publishes a
-                // session without starting a service, so a prepared successor with the
-                // default config looks like an owner while owning nothing.
-                //
-                // Only an actively recording successor owns one. startRecordingProcess
-                // starts the service before publishing its session, under this same lock,
-                // so _isRecording is true here for exactly those successors and false for a
-                // merely prepared one. Getting this wrong strands the old session's service
-                // foreground with nothing left to stop it (#474).
-                val successorOwnsService = _isRecording.get() &&
-                    ::recordingConfig.isInitialized &&
-                    serviceWasStartedFor(recordingConfig)
-                if (!successorOwnsService) {
+                // Whether the service should survive is a separate question, answered by a
+                // pure function of two facts so a unit test can cover the relationship
+                // rather than its spelling.
+                if (shouldStopServiceOnSessionMismatch(
+                        ownedService = ownedService,
+                        successorIsRecording = _isRecording.get()
+                    )
+                ) {
                     AudioRecordingService.stopService(context)
                 }
                 return

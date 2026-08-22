@@ -269,7 +269,11 @@ class ForegroundServiceLifecycleTest {
             "In $functionName, $call is not guarded by the shared predicate. Its guards " +
                 "are: $guardsResolved",
             guardsResolved.any {
-                it.contains("serviceWasStartedFor") || it.contains("needsService")
+                it.contains("serviceWasStartedFor") ||
+                    it.contains("needsService") ||
+                    // The session-mismatch stop routes through its own rule, which is
+                    // itself covered by a truth table above.
+                    it.contains("shouldStopServiceOnSessionMismatch")
             }
         )
 
@@ -315,36 +319,92 @@ class ForegroundServiceLifecycleTest {
     }
 
     @Test
-    fun sessionMismatchStopRequiresAnActivelyRecordingSuccessor() {
-        // The prepared-successor case. prepareRecording publishes a session without
-        // starting a service, so asking only whether the successor's CONFIG would need one
-        // answers true for a default-config prepare that owns nothing, and the old
-        // session's service is stranded. Only _isRecording separates the two, because
-        // startRecordingProcess starts the service before publishing its session under the
-        // same lock.
-        val body = bodyOf("cleanup")
+    fun sessionMismatchRuleTruthTable() {
+        // The relationship, not its spelling. A one-token inversion of the production
+        // condition kept every token an earlier source-matching assertion looked for and
+        // still passed, while leaking for a prepared successor and killing an active one.
+        val stop = AudioRecorderManager::shouldStopServiceOnSessionMismatch
+
+        assertTrue(
+            "Old session owned a service and the successor is only prepared: the service " +
+                "is nobody's, so it must be stopped. This is the #474 leak.",
+            stop.invoke(true, false)
+        )
+        assertFalse(
+            "Old session owned a service and the successor is actively recording: the " +
+                "successor owns it now, so stopping would kill a live recording's service.",
+            stop.invoke(true, true)
+        )
+        assertFalse(
+            "Old session owned no service, successor only prepared: nothing to stop.",
+            stop.invoke(false, false)
+        )
+        assertFalse(
+            "Old session owned no service, successor recording: not this teardown's to stop.",
+            stop.invoke(false, true)
+        )
+    }
+
+    @Test
+    fun sessionMismatchStopUsesTheCapturedDecisionAndTheRule() {
+        // Two things the truth table cannot see: that the decision is captured when the
+        // session is claimed rather than reconstructed later from mutable state, and that
+        // the call site actually consults the rule.
+        val body = bodyOf("cleanup").lines().joinToString("\n") { it.substringBefore("//") }
+
+        // Position is the point: the capture has to happen where the session is claimed,
+        // before the unlocked join. Asserting only that an assignment exists somewhere
+        // passed when it was moved into phase 2, which is the bug being guarded against.
+        val captureIndex = Regex("""ownedService\s*=\s*[^\n]*serviceWasStartedFor""")
+            .find(body)?.range?.first ?: -1
+        val joinIndex = body.indexOf(".join(")
+        val mismatchIndex = body.indexOf("sessionId != ownedSession")
+
+        assertTrue(
+            "cleanup must derive ownedService from serviceWasStartedFor when it claims " +
+                "the session. Reading recordingConfig later can see a successor's config, " +
+                "or a failed attempt's, and skip the stop (#474).",
+            captureIndex >= 0
+        )
+        assertTrue(
+            "The ownedService capture must precede the worker join. After it, a concurrent " +
+                "start or prepare has already replaced recordingConfig.",
+            joinIndex < 0 || captureIndex < joinIndex
+        )
+        assertTrue(
+            "The ownedService capture must precede the session-mismatch check it feeds.",
+            mismatchIndex < 0 || captureIndex < mismatchIndex
+        )
+        assertFalse(
+            "The capture must read the config, not assign a constant. `ownedService = true` " +
+                "would stop services this teardown never started.",
+            Regex("""ownedService\s*=\s*(true|false)\b""").containsMatchIn(body)
+        )
+
         val mismatchReturn = body.indexOf("sessionId != ownedSession")
         assertTrue("cleanup should still guard on the session mismatch", mismatchReturn >= 0)
-
         val stopIndex = body.indexOf("AudioRecordingService.stopService", mismatchReturn)
         assertTrue("The session-mismatch path must still release an unowned service", stopIndex >= 0)
 
-        // Strip comments first. The explanation above this code names _isRecording, so
-        // asserting against raw text passed even with the check deleted — the assertion
-        // was matching prose instead of logic.
         val between = body.substring(mismatchReturn, stopIndex)
-            .lines().joinToString("\n") { it.substringBefore("//") }
         assertTrue(
-            "The session-mismatch stop must check _isRecording, or a prepared successor " +
-                "with the default config reads as a service owner while owning nothing, " +
-                "stranding the old session's service (#474). Text was: " +
-                between.takeLast(400),
-            between.contains("_isRecording")
+            "The session-mismatch stop must go through shouldStopServiceOnSessionMismatch, " +
+                "so the truth table above describes what actually runs: ${between.takeLast(300)}",
+            between.contains("shouldStopServiceOnSessionMismatch")
+        )
+        // Passing a fresh serviceWasStartedFor(recordingConfig) here defeats the whole
+        // capture: phase 2 runs after the join, where the config may already belong to a
+        // successor or to an attempt that failed before publishing its session.
+        val callSite = body.substring(stopIndex - 400, stopIndex)
+        assertFalse(
+            "The session-mismatch stop must not recompute ownership from recordingConfig. " +
+                "It has to use the value captured when the session was claimed: " +
+                callSite.takeLast(300),
+            Regex("""ownedService\s*=\s*[^\n]*serviceWasStartedFor""").containsMatchIn(callSite)
         )
         assertTrue(
-            "It must also consult the shared predicate, so an active successor that does " +
-                "own a service keeps it: ${between.takeLast(400)}",
-            between.contains("serviceWasStartedFor")
+            "It must pass the captured ownedService: ${between.takeLast(300)}",
+            Regex("""ownedService\s*=\s*ownedService""").containsMatchIn(between)
         )
     }
 
