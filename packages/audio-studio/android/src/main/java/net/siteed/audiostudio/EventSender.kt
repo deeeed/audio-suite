@@ -7,7 +7,7 @@ interface EventSender {
      * Best-effort event delivery to JavaScript.
      *
      * Native recording/device callbacks must not crash if Expo rejects an event
-     * while the module is not ready to emit.
+     * while the module is not ready to emit, so this never throws.
      */
     fun sendExpoEvent(eventName: String, params: Bundle)
 }
