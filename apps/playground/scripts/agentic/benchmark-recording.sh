@@ -16,8 +16,10 @@ RECORDING_STARTED=false
 # start left the device recording indefinitely, since the default config has no
 # maxDurationMs — a failed benchmark that keeps the microphone open.
 # Identifies this run inside the app, so a later run cannot clear an earlier run's
-# abandon marker or claim its result. Digits only: it is interpolated into a JS string.
-RUN_TOKEN="$$-$(date +%s)"
+# abandon marker or claim its result. pid plus seconds alone can repeat after PID reuse
+# within the same second or a clock rollback, so a random field is mixed in. Hex and
+# hyphens only: it is interpolated into a single-quoted JS string.
+RUN_TOKEN="$$-$(date +%s)-$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 
 stop_recording_if_running() {
     # One atomic step on the JS side: mark the run abandoned, and stop the recording only
@@ -27,12 +29,11 @@ stop_recording_if_running() {
     "$SCRIPT_DIR/app-state.sh" eval "(() => { const t = '$RUN_TOKEN'; if (globalThis.__BENCH_RUN !== t) { return 'not-ours' } globalThis.__BENCH_ABANDONED = true; if (!globalThis.__BENCH_OWNED) { return 'nothing-owned' } globalThis.__BENCH_OWNED = false; __AGENTIC__.stopRecording(); return 'stopping' })()" \
         "${DEVICE_ARGS[@]:1}" >/dev/null 2>&1 || true
 
-    [[ "$RECORDING_STARTED" == "true" ]] || return 0
+    # The eval above already stopped an owned recording. The shell flag alone must never
+    # trigger a second, unscoped stop: after 'not-ours' it would stop a recording this run
+    # does not own, and on the normal path it would stop whatever started next.
     RECORDING_STARTED=false
-    echo "[BENCH] Stopping the recording this run started..." >&2
-    "$SCRIPT_DIR/app-state.sh" eval "(() => { setTimeout(() => { __AGENTIC__.stopRecording() }, 100); return 'stopping' })()" \
-        "${DEVICE_ARGS[@]:1}" >/dev/null 2>&1 || true
-    sleep 2
+    sleep 1
 }
 
 # The sampling helpers run inside $(...), where `exit` would only end the subshell. They
@@ -116,6 +117,26 @@ resolve_serial() {
 # substitution — so both resolve_serial's `exit 1` and run_adb's own guard killed only the
 # subshell, get_memory returned empty, and the benchmark carried on to print a successful
 # summary full of zeroes. Doing it before any substitution is what makes the failure fatal.
+# Rejecting the ambiguous case is not enough: leaving the filter empty means a target
+# that connects mid-run silently restores broadcasting, and the EXIT trap broadcasts too.
+# So the sole target is discovered once and pinned into DEVICE_ARGS for every command.
+if [[ ${#DEVICE_ARGS[@]} -le 1 ]]; then
+    CDP_NAMES=$(node "$SCRIPT_DIR/cdp-bridge.mjs" list-devices 2>/dev/null \
+        | sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+    CDP_COUNT=$(printf '%s' "$CDP_NAMES" | grep -c . || true)
+    if [[ "${CDP_COUNT:-0}" -ne 1 ]]; then
+        echo "[BENCH] FATAL: ${CDP_COUNT:-0} CDP targets are connected; pass --device <name>." >&2
+        echo "[BENCH] Commands would otherwise broadcast to all of them." >&2
+        exit 1
+    fi
+    DEVICE_ARGS=("" --device "$CDP_NAMES")
+    echo "[BENCH] Pinned sole CDP target: $CDP_NAMES" >&2
+    # Metrics must come from the phone the recording runs on. Without this the serial was
+    # resolved independently, so with several phones attached and one CDP target the
+    # summary could describe a different device than the one being recorded.
+    DEVICE_NAME="$CDP_NAMES"
+fi
+
 ADB_SERIAL="$(resolve_serial)"
 if [[ -z "$ADB_SERIAL" ]]; then
     echo "[BENCH] FATAL: no usable device serial." >&2
@@ -193,7 +214,16 @@ await_bench() {
         # Do NOT JSON.stringify here: the bridge already encodes the returned value, so a
         # stringified object arrives as "{\"started\":true}" and no grep for the inner
         # quotes can match. Emit a flat, unambiguous marker string instead.
-        raw=$("$SCRIPT_DIR/app-state.sh" eval "(() => { const b = globalThis.__BENCH; if (!b) return 'BENCH_PENDING'; if (b.err) return 'BENCH_ERR ' + b.err; return 'BENCH_OK ' + (b.phase || '?') + ' ' + (b.uri || '') + ' size=' + (b.size === undefined ? '' : b.size) + ' dur=' + (b.dur === undefined ? '' : b.dur) })()" "${DEVICE_ARGS[@]:1}" 2>/dev/null | tr -d '\n' || true)
+        # The token check is what stops a concurrent run's result from being accepted as ours.
+        raw=$("$SCRIPT_DIR/app-state.sh" eval "(() => { if (globalThis.__BENCH_RUN !== '$RUN_TOKEN') return 'BENCH_STOLEN'; const b = globalThis.__BENCH; if (!b) return 'BENCH_PENDING'; if (b.err) return 'BENCH_ERR ' + b.err; return 'BENCH_OK ' + (b.phase || '?') + ' ' + (b.uri || '') + ' size=' + (b.size === undefined ? '' : b.size) + ' dur=' + (b.dur === undefined ? '' : b.dur) })()" "${DEVICE_ARGS[@]:1}" 2>/dev/null | tr -d '\n' || true)
+        # Another run took the globals, or the app reloaded and cleared them. Either way
+        # this run can no longer tell what happened to its recording, so it must not
+        # report success and must not stop whatever is running now.
+        if echo "$raw" | grep -q 'BENCH_STOLEN'; then
+            echo "[BENCH] FATAL: this run no longer owns the app globals (concurrent run or app reload)." >&2
+            RECORDING_STARTED=false
+            exit 1
+        fi
         if echo "$raw" | grep -q 'BENCH_ERR'; then
             echo "[BENCH] FATAL: $what failed: $raw" >&2
             exit 1
@@ -220,22 +250,6 @@ fi
 # Without --device the bridge broadcasts to every connected target, while metrics come
 # from a single adb device — a recording could start on a phone this run never measures
 # and never stops.
-# Rejecting the ambiguous case is not enough: leaving the filter empty means a target
-# that connects mid-run silently restores broadcasting, and the EXIT trap broadcasts too.
-# So the sole target is discovered once and pinned into DEVICE_ARGS for every command.
-if [[ ${#DEVICE_ARGS[@]} -le 1 ]]; then
-    CDP_NAMES=$(node "$SCRIPT_DIR/cdp-bridge.mjs" list-devices 2>/dev/null \
-        | sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-    CDP_COUNT=$(printf '%s' "$CDP_NAMES" | grep -c . || true)
-    if [[ "${CDP_COUNT:-0}" -ne 1 ]]; then
-        echo "[BENCH] FATAL: ${CDP_COUNT:-0} CDP targets are connected; pass --device <name>." >&2
-        echo "[BENCH] Commands would otherwise broadcast to all of them." >&2
-        exit 1
-    fi
-    DEVICE_ARGS=(--device "$CDP_NAMES")
-    echo "[BENCH] Pinned sole CDP target: $CDP_NAMES"
-fi
-
 # ── Navigate to record screen ──
 echo "[BENCH] Navigating to record screen..."
 if ! "$SCRIPT_DIR/app-navigate.sh" "/(tabs)/record" "${DEVICE_ARGS[@]:1}"; then
@@ -312,10 +326,17 @@ if [[ "$SKIP_RECORDING" == "true" ]]; then
 else
     echo "[BENCH] Stopping recording..."
     # Fire-and-store, same reason as the start above (#436).
-    "$SCRIPT_DIR/app-state.sh" eval "(() => { globalThis.__BENCH = null; setTimeout(async () => { try { const s = await __AGENTIC__.stopRecording(); globalThis.__BENCH = (s && s.error) ? { err: String(s.error), phase: 'stop' } : { uri: s.fileUri, size: s.size, dur: s.durationMs, phase: 'stop' } } catch (e) { globalThis.__BENCH = { err: String(e) } } }, 500); return 'scheduled' })()" "${DEVICE_ARGS[@]:1}" || {
+    STOP_DISPATCH=$("$SCRIPT_DIR/app-state.sh" eval "(() => { const t = '$RUN_TOKEN'; if (globalThis.__BENCH_RUN !== t) { return 'not-ours' } globalThis.__BENCH = null; setTimeout(async () => { if (globalThis.__BENCH_RUN !== t) { return } globalThis.__BENCH_OWNED = false; try { const s = await __AGENTIC__.stopRecording(); if (globalThis.__BENCH_RUN !== t) { return } globalThis.__BENCH = (s && s.error) ? { err: String(s.error), phase: 'stop' } : { uri: s.fileUri, size: s.size, dur: s.durationMs, phase: 'stop' } } catch (e) { if (globalThis.__BENCH_RUN === t) { globalThis.__BENCH = { err: String(e) } } } }, 500); return 'scheduled' })()" "${DEVICE_ARGS[@]:1}") || {
         echo "[BENCH] FATAL: could not dispatch stopRecording." >&2
         exit 1
     }
+    # 'not-ours' means a concurrent run or an app reload replaced this run's globals. The
+    # recording is no longer ours to stop, and reporting a summary for it would be a lie.
+    if [[ "$STOP_DISPATCH" == *not-ours* ]]; then
+        echo "[BENCH] FATAL: this run no longer owns the app globals (concurrent run or app reload)." >&2
+        echo "[BENCH] Not stopping the recording: it belongs to whatever replaced this run." >&2
+        exit 1
+    fi
     await_bench "stopRecording" stop
     RECORDING_STARTED=false
 fi
