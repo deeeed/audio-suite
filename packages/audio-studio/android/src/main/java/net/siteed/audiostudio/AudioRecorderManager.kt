@@ -1374,6 +1374,10 @@ class AudioRecorderManager(
             }
 
             _isRecording.set(true)
+            // The preparation has been consumed. Leaving isPrepared set through an active
+            // recording let a losing cleanup treat that recording as a never-started
+            // preparation and release its recorders (#446).
+            isPrepared = false
             // Fresh recording, fresh latches: otherwise a degradation in the previous
             // recording would suppress this one's first error (#447).
             reportedRecordingErrors.clear()
@@ -2351,11 +2355,12 @@ class AudioRecorderManager(
                 // startRecordingProcess() failure — has no finalization coming, and an
                 // earlier `isPrepared && !_isRecording` gate silently skipped all of them,
                 // stopping the recorder and never releasing it (#446).
-                // wasRecording OR isPrepared: the first is the teardown that won the
+                // wasRecording OR wasPrepared: the first is the teardown that won the
                 // getAndSet and owns an active recording's recorders; the second is a
                 // preparation that never started, which is the original #446 leak and has
-                // no finalization coming. A concurrent cleanup that observed neither has
-                // nothing of its own to release, so it leaves the recorders alone.
+                // no finalization coming. Those are disjoint — starting a prepared
+                // recording clears isPrepared — so a losing cleanup observes neither and
+                // leaves the recorders alone.
                 if (!compressedFinalizationPending && (wasRecording || wasPrepared)) {
                     try {
                         compressedRecorder?.release()
