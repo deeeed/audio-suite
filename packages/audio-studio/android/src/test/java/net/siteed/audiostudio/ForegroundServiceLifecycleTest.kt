@@ -248,10 +248,29 @@ class ForegroundServiceLifecycleTest {
             notificationGuard
         )
 
+        // A guard may name a local computed from the predicate rather than calling it
+        // inline. Follow one level of `val <name> = ...` so that stays honest without
+        // accepting a guard that never consults the predicate at all.
+        val guardsResolved = guards.map { guard ->
+            val name = Regex("""[!\s]*([A-Za-z_][A-Za-z0-9_]*)$""")
+                .find(guard.trim())?.groupValues?.get(1)
+            val binding = name?.let { n ->
+                // Line-based: a regex spanning the continuation lines backtracked into a
+                // StackOverflowError on this body.
+                val lines = body.lines()
+                val start = lines.indexOfFirst { Regex("""\bval $n\s*=""").containsMatchIn(it) }
+                if (start < 0) null
+                else lines.drop(start).take(4).joinToString(" ")
+            }
+            if (binding != null) "$guard => $binding" else guard
+        }
+
         assertTrue(
             "In $functionName, $call is not guarded by the shared predicate. Its guards " +
-                "are: $guards",
-            guards.any { it.contains("serviceWasStartedFor") || it.contains("needsService") }
+                "are: $guardsResolved",
+            guardsResolved.any {
+                it.contains("serviceWasStartedFor") || it.contains("needsService")
+            }
         )
 
         val gatedReturns = notificationGatedReturnsBefore(body, callIndex)
@@ -292,6 +311,40 @@ class ForegroundServiceLifecycleTest {
             "cleanup must stop the service on both paths: the session-mismatch return " +
                 "and the main teardown. Dropping either strands a service (#474).",
             2, occurrences
+        )
+    }
+
+    @Test
+    fun sessionMismatchStopRequiresAnActivelyRecordingSuccessor() {
+        // The prepared-successor case. prepareRecording publishes a session without
+        // starting a service, so asking only whether the successor's CONFIG would need one
+        // answers true for a default-config prepare that owns nothing, and the old
+        // session's service is stranded. Only _isRecording separates the two, because
+        // startRecordingProcess starts the service before publishing its session under the
+        // same lock.
+        val body = bodyOf("cleanup")
+        val mismatchReturn = body.indexOf("sessionId != ownedSession")
+        assertTrue("cleanup should still guard on the session mismatch", mismatchReturn >= 0)
+
+        val stopIndex = body.indexOf("AudioRecordingService.stopService", mismatchReturn)
+        assertTrue("The session-mismatch path must still release an unowned service", stopIndex >= 0)
+
+        // Strip comments first. The explanation above this code names _isRecording, so
+        // asserting against raw text passed even with the check deleted — the assertion
+        // was matching prose instead of logic.
+        val between = body.substring(mismatchReturn, stopIndex)
+            .lines().joinToString("\n") { it.substringBefore("//") }
+        assertTrue(
+            "The session-mismatch stop must check _isRecording, or a prepared successor " +
+                "with the default config reads as a service owner while owning nothing, " +
+                "stranding the old session's service (#474). Text was: " +
+                between.takeLast(400),
+            between.contains("_isRecording")
+        )
+        assertTrue(
+            "It must also consult the shared predicate, so an active successor that does " +
+                "own a service keeps it: ${between.takeLast(400)}",
+            between.contains("serviceWasStartedFor")
         )
     }
 

@@ -2442,11 +2442,20 @@ class AudioRecorderManager(
                 LogUtils.d(CLASS_NAME,
                     "Cleanup for session $ownedSession skipped: session $sessionId started during teardown")
                 // The successor owns the recorders, so this teardown must not touch them.
-                // It does not necessarily own the service: prepareRecording bumps sessionId
-                // without starting one, and a successor with both flags false needs none.
-                // Returning without this check left the old session's service foreground
-                // with nothing left to stop it (#474).
-                if (!::recordingConfig.isInitialized || !serviceWasStartedFor(recordingConfig)) {
+                // Whether it owns the *service* is a separate question, and asking only
+                // what its config would need gets it wrong: prepareRecording publishes a
+                // session without starting a service, so a prepared successor with the
+                // default config looks like an owner while owning nothing.
+                //
+                // Only an actively recording successor owns one. startRecordingProcess
+                // starts the service before publishing its session, under this same lock,
+                // so _isRecording is true here for exactly those successors and false for a
+                // merely prepared one. Getting this wrong strands the old session's service
+                // foreground with nothing left to stop it (#474).
+                val successorOwnsService = _isRecording.get() &&
+                    ::recordingConfig.isInitialized &&
+                    serviceWasStartedFor(recordingConfig)
+                if (!successorOwnsService) {
                     AudioRecordingService.stopService(context)
                 }
                 return
