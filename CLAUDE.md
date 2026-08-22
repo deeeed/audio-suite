@@ -244,7 +244,11 @@ Before merging a covered change:
      or silently targets the wrong phone when more than one is attached, which is the
      same trap the `--device` flag exists for:
      ```bash
-     SERIAL=$(adb devices -l | grep -iE "Pixel[ _]6a" | awk '{print $1}' | head -1)
+     MATCHES=$(adb devices -l | grep -iE "Pixel[ _]6a" | awk '{print $1}')
+     # No head -1: with two matching phones that silently proves the install on
+     # whichever adb happened to list first, which is the trap this rule is about.
+     [ "$(printf '%s\n' "$MATCHES" | grep -c .)" -eq 1 ] || { echo "ambiguous: $MATCHES"; exit 1; }
+     SERIAL="$MATCHES"
      adb -s "$SERIAL" shell dumpsys package net.siteed.audioplayground.development \
        | grep lastUpdateTime      # compare to your build time
      ```
@@ -257,9 +261,12 @@ Before merging a covered change:
 2. Exercise the changed path and capture concrete evidence: a file URI, a byte count, a
    duration, a returned field — not "it did not crash"
 3. Capture native logs across the run, not after it:
-   - Android: `adb -s "$SERIAL" logcat` covers the whole session retroactively. The
-     `-s` is not optional here either: bare `adb logcat` errors or captures the wrong
-     device when several are attached
+   - Android: `adb -s "$SERIAL" logcat` reads back what the ring buffer still holds,
+     which is usually the whole run but is not guaranteed — the buffers are finite and a
+     long or noisy session can overwrite the earliest evidence. Raise it with
+     `adb -s "$SERIAL" logcat -G 16M` before a long run, or capture forward with
+     `adb -s "$SERIAL" logcat > run.log &`. The `-s` is not optional either: bare
+     `adb logcat` errors or captures the wrong device when several are attached
    - iOS simulator: `xcrun simctl spawn <udid> log show --last <n>m --predicate
      'processImagePath CONTAINS "AudioDevPlayground"'` — `native-logs.sh ios` streams
      forward only, so started after the fact it misses everything

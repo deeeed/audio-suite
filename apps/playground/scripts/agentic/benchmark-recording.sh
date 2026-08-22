@@ -59,7 +59,8 @@ resolve_serial() {
             # first, while CDP drove the one the caller actually named.
             echo "[BENCH] FATAL: '$dev_name' matches $match_count devices:" >&2
             adb devices -l | grep -iE "$dev_pattern" >&2
-            echo "[BENCH] Pass a serial, or disconnect the others." >&2
+            echo "[BENCH] Use a name that matches exactly one, or disconnect the others." >&2
+            echo "[BENCH] An adb serial does not work here: CDP filters on device labels." >&2
             exit 1
         fi
         serial=$(printf '%s\n' "$matches" | head -1)
@@ -151,8 +152,11 @@ kb_to_mb() {
 # Poll the stored fire-and-store outcome. Without this the benchmark reports a summary
 # even when startRecording/stopRecording failed outright.
 await_bench() {
-    local what="$1" phase="$2" tries=0 raw
-    while (( tries < 20 )); do
+    local what="$1" phase="$2" raw
+    # Wall clock, not a poll count. Each CDP call can take ten seconds or more, so
+    # counting iterations meant the "20 second" budget could run for minutes.
+    local deadline=$(( $(date +%s) + 20 ))
+    while (( $(date +%s) < deadline )); do
         # Do NOT JSON.stringify here: the bridge already encodes the returned value, so a
         # stringified object arrives as "{\"started\":true}" and no grep for the inner
         # quotes can match. Emit a flat, unambiguous marker string instead.
@@ -168,7 +172,6 @@ await_bench() {
             return 0
         fi
         sleep 1
-        tries=$(( tries + 1 ))
     done
     echo "[BENCH] FATAL: $what produced no result within 20s (last: ${raw:-<none>})" >&2
     exit 1
