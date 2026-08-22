@@ -96,7 +96,8 @@ class AudioStudioModule : Module(), EventSender, AudioStreamDecoderDelegate {
             Constants.AUDIO_STREAM_CHUNK_EVENT,
             Constants.AUDIO_STREAM_PROGRESS_EVENT,
             Constants.AUDIO_STREAM_COMPLETE_EVENT,
-            Constants.AUDIO_STREAM_ERROR_EVENT
+            Constants.AUDIO_STREAM_ERROR_EVENT,
+            Constants.RECORDING_ERROR_EVENT
         )
 
         // Initialize Managers
@@ -1241,8 +1242,8 @@ class AudioStudioModule : Module(), EventSender, AudioStreamDecoderDelegate {
         audioProcessor = AudioProcessor(filesDir)
     }
     
-    private fun safeSendEvent(eventName: String, params: Bundle) {
-        AndroidEventEmitter.safeSend(CLASS_NAME, eventName) {
+    private fun safeSendEvent(eventName: String, params: Bundle): Boolean {
+        return AndroidEventEmitter.safeSend(CLASS_NAME, eventName) {
             sendEvent(eventName, params)
         }
     }
@@ -1359,6 +1360,20 @@ class AudioStudioModule : Module(), EventSender, AudioStreamDecoderDelegate {
     override fun sendExpoEvent(eventName: String, params: Bundle) {
         LogUtils.d(CLASS_NAME, "Sending event: $eventName")
         safeSendEvent(eventName, params)
+    }
+
+    /**
+     * Deliver an event and report whether it reached the emitter.
+     *
+     * Deliberately NOT on the [EventSender] interface. Kotlin compiles an interface method
+     * with a body as ACC_ABSTRACT plus a DefaultImpls class, so adding one — even with a
+     * default — makes a precompiled implementor throw AbstractMethodError, which
+     * `catch (Exception)` does not catch. Callers that need the result check for this
+     * type instead (#447).
+     */
+    fun sendExpoEventReportingDelivery(eventName: String, params: Bundle): Boolean {
+        LogUtils.d(CLASS_NAME, "Sending event: $eventName")
+        return safeSendEvent(eventName, params)
     }
 }
 

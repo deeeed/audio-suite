@@ -16,6 +16,12 @@ object Constants {
     const val AUDIO_STREAM_PROGRESS_EVENT = "AudioDataStreamProgress"
     const val AUDIO_STREAM_COMPLETE_EVENT = "AudioDataStreamComplete"
     const val AUDIO_STREAM_ERROR_EVENT = "AudioDataStreamError"
+    /**
+     * A live recording degraded without failing a call. Matches iOS's `errorEvent`, whose
+     * wire name is the bare string "error" — the two must stay identical or
+     * addRecordingErrorListener() only fires on one platform (#447).
+     */
+    const val RECORDING_ERROR_EVENT = "error"
     
     // Audio constants
     const val DEFAULT_SAMPLE_RATE = 16000 // Default sample rate for audio recording

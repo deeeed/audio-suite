@@ -114,9 +114,9 @@ class AudioSourceWiringTest {
 
     @Test
     fun `discarding a failed attempt releases the recorders it left behind`() {
-        // cleanup() releases the compressed recorder only while _isRecording is true, which
-        // a failed attempt never sets, and startRecording() calls compressedRecorder?.start()
-        // unconditionally — so a survivor gets started by a later, unrelated attempt.
+        // cleanup() reclaims the compressed recorder for every caller except the stop path,
+        // which finalizes its own (#446). startRecording() calls compressedRecorder?.start()
+        // unconditionally, so a survivor gets started by a later, unrelated attempt.
         val body = bodyOf("private fun discardFailedAttempt()")
 
         assertTrue(
@@ -149,7 +149,7 @@ class AudioSourceWiringTest {
         // cleanup(), so it is covered by cleanup()'s own pairing.
         val paired = Regex("isPrepared = false[^\\n]*\\n\\s*audioSourceLifecycle\\.onTeardown\\(\\)")
 
-        for (signature in listOf("fun stopRecording(", "fun cleanup()")) {
+        for (signature in listOf("fun stopRecording(", "internal fun cleanup(callerHoldsRecordLock")) {
             assertTrue(
                 "$signature must clear the resolved source right where it resets isPrepared. " +
                     "A teardown that leaves the source behind lets it outlive the recorder " +
