@@ -115,12 +115,11 @@ class TtsIntegrationTest {
         
         // Generate TTS configuration
         // Keys must match what TtsHandler reads. It takes a directory plus filenames,
-        // not full paths: modelDir/modelFile/tokensFile/lexiconFile.
+        // not full paths: modelDir/modelFile/tokensFile.
         val ttsConfig = mapOf(
             "modelDir" to modelPath,
             "modelFile" to "model.onnx",
             "tokensFile" to "tokens.txt",
-            "lexiconFile" to "lexicon.txt",
             // espeak-ng-data lives inside the extracted model directory, and TtsHandler
             // passes dataDir through unchanged, so the parent alone is not usable.
             "dataDir" to "$modelPath/espeak-ng-data",
@@ -130,10 +129,11 @@ class TtsIntegrationTest {
         )
         
         // Validate configuration completeness
-        // `provider` is deliberately absent: TtsHandler hardcodes provider = "cpu" and
-        // never reads the key, so requiring it here would assert a contract that does
-        // not exist.
-        val requiredKeys = listOf("modelDir", "modelFile", "tokensFile", "lexiconFile",
+        // Two keys are deliberately absent. TtsHandler hardcodes provider = "cpu" and
+        // never reads `provider`. It reads `lexiconFile` as an optional nullable, and
+        // this archive ships no lexicon at all. Requiring either would assert a
+        // contract the handler does not have.
+        val requiredKeys = listOf("modelDir", "modelFile", "tokensFile",
             "dataDir", "ttsModelType")
         requiredKeys.forEach { key ->
             assertTrue("Config should have $key", ttsConfig.containsKey(key))
