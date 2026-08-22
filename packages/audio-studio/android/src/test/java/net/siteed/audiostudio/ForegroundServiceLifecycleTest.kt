@@ -13,11 +13,25 @@ import java.io.File
  * and `showNotification` false — every recording started a service nothing ever stopped,
  * leaving an ongoing recording notification after the recording had finished.
  *
- * These are source assertions rather than behavioural tests. Driving the real lifecycle
- * needs an instrumented run with a live AudioRecord and a bound service; what can be
- * checked cheaply, and what actually broke, is that the three call sites still agree.
+ * The rule now lives in one pure function, so most of this file exercises it as Kotlin
+ * with a truth table. Only the wiring check has to read source text, because whether the
+ * three call sites route through that function is not observable from a JVM test.
  */
 class ForegroundServiceLifecycleTest {
+
+    private fun configOf(showNotification: Boolean, keepAwake: Boolean): RecordingConfig {
+        val result = RecordingConfig.fromMap(
+            mapOf(
+                "sampleRate" to 44100,
+                "channels" to 1,
+                "encoding" to "pcm_16bit",
+                "showNotification" to showNotification,
+                "keepAwake" to keepAwake
+            )
+        )
+        assertTrue("Config creation should succeed", result.isSuccess)
+        return result.getOrThrow().first
+    }
 
     private val managerSource: String by lazy {
         val f = File("src/main/java/net/siteed/audiostudio/AudioRecorderManager.kt")
@@ -39,67 +53,124 @@ class ForegroundServiceLifecycleTest {
     }
 
     @Test
-    fun serviceStartConditionCoversKeepAwake() {
-        val predicate = Regex(
-            """private fun serviceWasStartedFor\([^)]*\)\s*:\s*Boolean\s*=\s*([^\n]+)"""
-        ).find(managerSource)
-        assertNotNull("serviceWasStartedFor should exist as a single shared predicate", predicate)
+    fun requiresForegroundServiceTruthTable() {
+        // background enabled: either flag is enough to need the service.
+        assertTrue(
+            "showNotification alone needs the service",
+            AudioRecorderManager.requiresForegroundService(configOf(true, false), true)
+        )
+        assertTrue(
+            "keepAwake alone needs the service — this is the #474 case",
+            AudioRecorderManager.requiresForegroundService(configOf(false, true), true)
+        )
+        assertTrue(
+            "both flags need the service",
+            AudioRecorderManager.requiresForegroundService(configOf(true, true), true)
+        )
+        assertFalse(
+            "neither flag needs no service",
+            AudioRecorderManager.requiresForegroundService(configOf(false, false), true)
+        )
 
-        val body = predicate!!.groupValues[1]
-        assertTrue(
-            "The predicate must consider keepAwake, or default recordings start an unstoppable service: $body",
-            body.contains("keepAwake")
+        // background disabled: nothing starts the service, so nothing must stop one.
+        assertFalse(
+            "background audio off means no service, even with showNotification",
+            AudioRecorderManager.requiresForegroundService(configOf(true, false), false)
         )
-        assertTrue(
-            "The predicate must consider showNotification: $body",
-            body.contains("showNotification")
+        assertFalse(
+            "background audio off means no service, even with keepAwake",
+            AudioRecorderManager.requiresForegroundService(configOf(false, true), false)
         )
-        assertTrue(
-            "The predicate must respect enableBackgroundAudio: $body",
-            body.contains("enableBackgroundAudio")
+        assertFalse(
+            "background audio off means no service, even with both",
+            AudioRecorderManager.requiresForegroundService(configOf(true, true), false)
         )
     }
 
     @Test
-    fun everyServiceStopIsGuardedByTheSharedPredicate() {
-        val stopSites = Regex("""AudioRecordingService\.stopService""").findAll(managerSource).count()
-        assertTrue("Expected at least two stopService call sites, found $stopSites", stopSites >= 2)
+    fun defaultConfigRequiresTheService() {
+        // The whole bug in one assertion: the default config starts a service, so the
+        // stop paths have to agree that it did.
+        val result = RecordingConfig.fromMap(
+            mapOf("sampleRate" to 44100, "channels" to 1, "encoding" to "pcm_16bit")
+        )
+        val (config, _) = result.getOrThrow()
 
-        // Each stopService must be reached through serviceWasStartedFor, or be the
-        // orphan-cleanup path which stops the service precisely because it is orphaned.
-        managerSource.lines().forEachIndexed { index, line ->
-            if (!line.contains("AudioRecordingService.stopService")) return@forEachIndexed
+        assertTrue(
+            "The default config starts the foreground service. Any stop path that does " +
+                "not reach the same conclusion leaks it, which is #474.",
+            AudioRecorderManager.requiresForegroundService(config, true)
+        )
+    }
 
-            val preceding = managerSource.lines()
-                .subList(maxOf(0, index - 6), index)
-                .joinToString("\n")
+    /**
+     * Is a `showNotification` block still open where this line sits?
+     *
+     * Presence of the word is not the test: a closed `if (showNotification) { ... }` next to
+     * a correctly guarded call is fine. What breaks is the call being *inside* that block,
+     * which is how the defect can come back even while the shared predicate is called —
+     * nesting the predicate under a showNotification guard restores the leak.
+     */
+    private fun insideOpenNotificationGuard(enclosing: String): Boolean {
+        var depth: Int? = null
+        enclosing.lines().forEach { raw ->
+            val line = raw.substringBefore("//")
+            if (depth == null) {
+                if (Regex("""if \([^)]*showNotification[^)]*\)\s*\{""").containsMatchIn(line)) {
+                    depth = 1
+                    return@forEach
+                }
+            } else {
+                depth = depth!! + line.count { it == '{' } - line.count { it == '}' }
+                if (depth!! <= 0) depth = null
+            }
+        }
+        return (depth ?: 0) > 0
+    }
 
-            val guarded = preceding.contains("serviceWasStartedFor")
-            val orphanCleanup = preceding.contains("orphaned") || preceding.contains("isServiceRunning")
+    @Test
+    fun everyServiceCallSiteRoutesThroughTheSharedPredicate() {
+        val lines = managerSource.lines()
+        val sites = lines.withIndex().filter { (_, line) ->
+            line.contains("AudioRecordingService.startService") ||
+                line.contains("AudioRecordingService.stopService")
+        }
+        assertTrue("Expected at least three service call sites, found ${sites.size}", sites.size >= 3)
 
+        sites.forEach { (index, line) ->
+            val enclosing = lines.subList(maxOf(0, index - 8), index).joinToString("\n")
+
+            val orphanCleanup = enclosing.contains("orphaned") || enclosing.contains("isServiceRunning")
+            val routed = enclosing.contains("serviceWasStartedFor") ||
+                enclosing.contains("needsService")
+
+            assertFalse(
+                "Service call at line ${index + 1} sits inside an open showNotification " +
+                    "block. With the default config (keepAwake=true, showNotification=false) " +
+                    "that skips it, which is #474 — and it stays broken even if the shared " +
+                    "predicate is called inside: ${line.trim()}",
+                insideOpenNotificationGuard(enclosing) && !orphanCleanup
+            )
             assertTrue(
-                "stopService at line ${index + 1} is guarded by neither serviceWasStartedFor " +
-                    "nor the orphan check. A stop condition that does not mirror the start " +
-                    "condition is exactly the #474 defect.",
-                guarded || orphanCleanup
+                "Service call at line ${index + 1} does not route through the shared " +
+                    "predicate or the orphan check: ${line.trim()}",
+                routed || orphanCleanup
             )
         }
     }
 
     @Test
-    fun noStopSiteGuardsOnShowNotificationAlone() {
-        // The original defect, spelled out: `if (recordingConfig.showNotification)` wrapping
-        // a stopService call. Notification teardown may still be guarded that way; the
-        // service teardown may not.
-        val offending = Regex(
-            """if \([^)]*showNotification\)\s*\{(?:(?!\}|serviceWasStartedFor)[\s\S]){0,240}?AudioRecordingService\.stopService"""
+    fun theSharedPredicateDelegatesToTheTestedRule() {
+        // If serviceWasStartedFor grew its own copy of the condition, the truth table above
+        // would stop describing what the call sites actually do.
+        val delegation = Regex(
+            """private fun serviceWasStartedFor\([^)]*\)\s*:\s*Boolean\s*=\s*([^\n]+)"""
         ).find(managerSource)
-
-        assertNull(
-            "A stopService call is guarded by showNotification alone. With the default " +
-                "config (keepAwake=true, showNotification=false) the service starts and is " +
-                "never stopped, which is #474.",
-            offending
+        assertNotNull("serviceWasStartedFor should still exist", delegation)
+        assertTrue(
+            "serviceWasStartedFor must delegate to requiresForegroundService, not restate " +
+                "the condition: ${delegation!!.groupValues[1]}",
+            delegation.groupValues[1].contains("requiresForegroundService")
         )
     }
 }

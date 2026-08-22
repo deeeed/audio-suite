@@ -46,6 +46,22 @@ class AudioRecorderManager(
 ) {
     companion object {
         private const val CLASS_NAME = "AudioRecorderManager"
+
+        /**
+         * The single rule deciding whether a recording runs the foreground service.
+         *
+         * Start and stop must ask the same question. They were once written separately and
+         * drifted: start required (showNotification || keepAwake), the stops required
+         * showNotification alone, so the default config — keepAwake true, showNotification
+         * false — started a service nothing stopped (#474).
+         *
+         * Kept pure and internal so a unit test can exercise it directly.
+         */
+        @JvmStatic
+        internal fun requiresForegroundService(
+            config: RecordingConfig,
+            enableBackgroundAudio: Boolean
+        ): Boolean = (config.showNotification || config.keepAwake) && enableBackgroundAudio
         
         @SuppressLint("StaticFieldLeak")
         @Volatile
@@ -160,6 +176,9 @@ class AudioRecorderManager(
     private val failedDeliveryAttempts =
         java.util.concurrent.ConcurrentHashMap<RecordingErrorKind, Int>()
 
+    private fun serviceWasStartedFor(config: RecordingConfig): Boolean =
+        requiresForegroundService(config, enableBackgroundAudio)
+
     /**
      * Report a live recording degradation on the same `error` event iOS uses (#447).
      *
@@ -167,14 +186,6 @@ class AudioRecorderManager(
      * Anything that can still reject one should reject instead: a rejection carries a code,
      * and this event carries only prose.
      */
-    /**
-     * Whether a recording with this config starts the foreground service. Start and stop
-     * must agree: guarding the stops on showNotification alone left the service running
-     * for the default config, where keepAwake is true and showNotification is false (#474).
-     */
-    private fun serviceWasStartedFor(config: RecordingConfig): Boolean =
-        (config.showNotification || config.keepAwake) && enableBackgroundAudio
-
     private fun emitRecordingError(kind: RecordingErrorKind, message: String) {
         // add() returns false when the kind is already latched, making the check and the
         // set one atomic step.
