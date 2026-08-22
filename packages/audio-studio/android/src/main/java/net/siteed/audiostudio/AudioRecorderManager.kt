@@ -145,6 +145,17 @@ class AudioRecorderManager(
         java.util.EnumSet.noneOf(RecordingErrorKind::class.java)
     )
 
+    /**
+     * Incremented whenever a new recording session is published (start or prepare).
+     *
+     * [cleanup] claims the current value under [audioRecordLock] before releasing it to
+     * join the worker, then refuses to tear anything down if the value moved while it was
+     * joining. Without it, a start that completed during the join had its recorders
+     * released by the previous session's teardown (#446).
+     */
+    @Volatile
+    private var sessionId: Long = 0
+
     /** Failed delivery attempts per kind, bounding the retry in [emitRecordingError]. */
     private val failedDeliveryAttempts =
         java.util.concurrent.ConcurrentHashMap<RecordingErrorKind, Int>()
@@ -1384,6 +1395,9 @@ class AudioRecorderManager(
                 AudioRecordingService.startService(context)
             }
 
+            // New session. cleanup() claims this value before its unlocked join and
+            // refuses to tear down if it has moved by phase 2 (#446).
+            sessionId++
             _isRecording.set(true)
             // The preparation has been consumed. Leaving isPrepared set through an active
             // recording let a losing cleanup treat that recording as a never-started
@@ -2303,16 +2317,34 @@ class AudioRecorderManager(
         //
         // stopRecording() joins separately, before flushing its final chunk, so by the
         // time it calls cleanup() this is already finished.
+        // Phase 0, under the lock: claim the session this teardown owns.
+        //
+        // The join below has to happen with the lock released, and that gap is long enough
+        // for a start or prepare to acquire the lock and publish a whole new session. If
+        // teardown then carried on with a stale `wasRecording`, it would stop and release
+        // the *new* session's recorders. So ownership is reserved here, atomically with
+        // the state read, and phase 2 refuses to touch anything it does not own (#446).
+        val ownedSession: Long
+        val wasRecording: Boolean
+        if (callerHoldsRecordLock) {
+            // Already inside the caller's monitor; taking it again is free (reentrant).
+            wasRecording = _isRecording.getAndSet(false)
+            ownedSession = sessionId
+        } else {
+            synchronized(audioRecordLock) {
+                wasRecording = _isRecording.getAndSet(false)
+                ownedSession = sessionId
+            }
+        }
+
         // Phase 1, outside audioRecordLock: signal the worker and wait for it.
         //
-        // This is the one thing that cannot happen under the lock. The recording loop
-        // acquires audioRecordLock on every read, so a thread waiting on that monitor
-        // cannot reach its exit check while we hold it — the join would burn its whole
-        // timeout every time. Clearing _isRecording first is what lets the loop finish.
+        // This cannot happen under the lock. The recording loop acquires audioRecordLock
+        // on every read, so a thread waiting on that monitor cannot reach its exit check
+        // while we hold it, and the join would burn its whole timeout every time.
         //
         // A caller that already owns the lock has, by construction, terminated the thread
         // itself (stopRecording) or knows there is none (getStatus's orphan path).
-        val wasRecording = _isRecording.getAndSet(false)
         if (!callerHoldsRecordLock) {
             val thread = recordingThreadRef.getAndSet(null)
             if (thread != null && thread.isAlive) {
@@ -2335,6 +2367,14 @@ class AudioRecorderManager(
         // guarding each interleaving as it is found (#446). The monitor is reentrant, so
         // callers that already hold it nest here harmlessly.
         synchronized(audioRecordLock) {
+            // A start or prepare that ran during the join bumped sessionId, so the
+            // recorders here belong to it, not to the session this teardown claimed.
+            // Releasing them would kill a live recording that just reported success.
+            if (sessionId != ownedSession) {
+                LogUtils.d(CLASS_NAME,
+                    "Cleanup for session $ownedSession skipped: session $sessionId started during teardown")
+                return
+            }
             // Read inside the lock: with the mutators serialized, this is the live value,
             // not a snapshot that a concurrent start could have invalidated.
             val stillPrepared = isPrepared
@@ -2826,7 +2866,10 @@ class AudioRecorderManager(
                 if (!initializeRecordingResources(audioFormatInfo.fileExtension, dummyPromise)) return false
             
                 // Everything is ready, mark as prepared
-                isPrepared = true
+                // Preparation publishes recorders too, so it is a new session for the
+            // ownership check in cleanup().
+            sessionId++
+            isPrepared = true
                 LogUtils.d(CLASS_NAME, "Recording prepared successfully")
                 return true
             } catch (e: Exception) {

@@ -86,19 +86,59 @@ class RecorderLockingTest {
     }
 
     @Test
-    fun `cleanup joins the recording thread before taking the lock`() {
+    fun `cleanup joins the worker with the lock released`() {
+        // Three phases, in order: claim the session under the lock, join with it released,
+        // then tear down under it again. The join must sit between the two locked blocks —
+        // the recording loop takes the same lock on every read, so a join while holding it
+        // cannot finish until the timeout expires.
         val body = bodyOf("internal fun cleanup(callerHoldsRecordLock: Boolean)")
+        val claimAt = body.indexOf("synchronized(audioRecordLock)")
         val joinAt = body.indexOf(".join(")
-        val lockAt = body.indexOf("synchronized(audioRecordLock)")
+        val teardownAt = body.lastIndexOf("synchronized(audioRecordLock)")
 
         assertTrue(joinAt >= 0, "cleanup must join the recording thread")
-        assertTrue(lockAt >= 0, "cleanup must take audioRecordLock for recorder teardown")
+        assertTrue(claimAt >= 0, "cleanup must claim its session under audioRecordLock")
         assertTrue(
-            joinAt < lockAt,
-            "cleanup must join the recording thread BEFORE taking audioRecordLock. The " +
-                "recording loop acquires that same lock on every read, so a join while " +
-                "holding it cannot succeed until the timeout expires."
+            teardownAt > joinAt,
+            "recorder teardown must happen under audioRecordLock, after the join."
         )
+        assertTrue(
+            claimAt < joinAt,
+            "cleanup must claim the session it owns under audioRecordLock BEFORE the " +
+                "join. Reading state outside the lock lets a start publish a new session " +
+                "during the join, which teardown would then destroy."
+        )
+        assertTrue(
+            claimAt != teardownAt,
+            "the session claim and the recorder teardown must be separate locked blocks, " +
+                "with the join between them."
+        )
+    }
+
+    @Test
+    fun `cleanup refuses to tear down a session it does not own`() {
+        val body = bodyOf("internal fun cleanup(callerHoldsRecordLock: Boolean)")
+        assertTrue(
+            body.contains("sessionId != ownedSession"),
+            "cleanup must compare sessionId against the value it claimed and bail out if " +
+                "a start or prepare published a new session during the unlocked join."
+        )
+    }
+
+    @Test
+    fun `every session publication bumps sessionId`() {
+        // If a publication point forgets this, cleanup cannot tell that a new session
+        // appeared and will release its recorders.
+        for (signature in listOf(
+            "private fun startRecordingProcess(promise: Promise): Boolean",
+            "fun prepareRecording(options: Map<String, Any?>): Boolean"
+        )) {
+            assertTrue(
+                bodyOf(signature).contains("sessionId++"),
+                "$signature publishes recorders, so it must bump sessionId. Without it a " +
+                    "concurrent teardown cannot tell this session from the one it claimed."
+            )
+        }
     }
 
     @Test
