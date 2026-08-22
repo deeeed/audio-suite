@@ -16,7 +16,9 @@ The native integration testing framework validates React Native module integrati
 
 ## Test Results
 
-**Latest Android Test Results**: 100% success rate (12/12 tests pass)
+**Historical Android result**: 12/12 passed when these were last runnable. They do not
+run today: the instrumentation APK is missing the React Native libraries and the test
+manifest lacks `INTERNET` (#475). Treat the numbers below as a record, not current state.
 - **BasicIntegrationTest**: 7 tests validating module structure and native integration
 - **TtsIntegrationTest**: 5 tests validating model management and TTS functionality
 - **Execution time**: ~0.05 seconds for complete test suite

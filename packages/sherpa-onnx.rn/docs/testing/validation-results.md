@@ -1,8 +1,13 @@
 # Native Integration Testing Validation Results
 
+> **Historical.** This is the record of a run from when the Android suites were
+> runnable. They do not run today: the instrumentation APK is missing the React Native
+> libraries and the test manifest lacks `INTERNET` (#475). Every result below describes
+> that past run, not current state.
+
 ## Final Test Results Summary
 
-✅ **100% Success Rate** - All Android integration tests pass  
+✅ **100% Success Rate** - All Android integration tests passed in that run  
 🏗️ **Native Libraries Built** - Successfully compiled sherpa-onnx for all Android architectures  
 🔄 **Complete Feedback Loop** - Demonstrated full development cycle from failing tests to working implementation  
 📋 **Model Strategy Implemented** - Lightweight model management strategy for integration testing
@@ -88,10 +93,11 @@ TTS handler validation successful
 
 ## iOS Testing Status
 
-⚠️ **iOS Testing Limitations**: Command-line tools cannot execute iOS simulator or device tests
-- iOS integration scripts simulate behavior rather than testing actual implementation
-- Real iOS testing requires opening Xcode and running on actual simulator/device
-- Unit tests in `ExpoAudioStudioTests/` test actual implementation
+⚠️ **iOS tests cannot run**: there is no XCTest target for this package.
+- `yarn test:ios:info` only prints guidance; it does not simulate or run anything
+- The sources under `ios/SherpaOnnxTests/` need a target in the consuming app's
+  workspace, and repairs, before they can execute
+- There is no `ExpoAudioStudioTests/` directory in this repo
 
 ## Development Feedback Loop Validation
 

@@ -102,9 +102,11 @@ The fork builds a single combined WASM file (`sherpa-onnx-wasm-combined.wasm`) f
 
 **Key files in fork**:
 - `packages/sherpa-onnx.rn/src/WebSherpaOnnxImpl.ts`
-- `packages/sherpa-onnx.rn/src/WebUtils.ts`
 - `packages/sherpa-onnx.rn/build-sherpa-wasm.sh`
-- Built assets: `apps/sherpa-voice/public/wasm/` (19.5 MB WASM + 92 KB JS)
+
+`src/WebUtils.ts` was in this list and has since been deleted. The built assets it
+mentions, `apps/sherpa-voice/public/wasm/`, are not committed either: that directory is
+produced by the build script.
 
 **Known issue**: Shared memory/context between combined modules (documented in fork's ISSUE.md).
 

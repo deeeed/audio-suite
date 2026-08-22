@@ -17,9 +17,10 @@ These models are suitable for continuous integration testing where download time
 | `ced-tiny` | CED Tiny Audio Tagging | Audio Tagging | ~27MB | Basic audio classification |
 | `kws-zipformer` | KWS Zipformer | Keyword Spotting | 14.9MB | Keyword detection |
 
-**Total: 58.1 MiB for the three with downloader entries** (measured from content-length:
-31722013 + 643854 + 28531989 bytes). Adding `kws-zipformer`'s listed 14.9MB gives the
-~73 MiB this table used to round to 72MB.
+**Total: 58.1 MiB for the first three rows** (measured from content-length:
+31722013 + 643854 + 28531989 bytes). `kws-zipformer` has no downloader entry; including
+its listed 14.9MB is how this table used to reach ~72MB. The downloader enum itself has
+four entries, the fourth being `WHISPER_TINY`, which this table does not list.
 
 The Model ID column is a local identifier only. It is neither the upstream archive name
 nor the directory the archive extracts into, and all three differ for several of these:

@@ -47,11 +47,11 @@ Day 5: Memory and threading tests
 
 ### iOS
 - [ ] Add test target to Xcode project - source files exist under `ios/SherpaOnnxTests/`, but there is no target and nothing runs them
-- [x] Include test models in bundle - Directory structure and docs created
+- [ ] Include test models in bundle - only a README placeholder exists; no models are bundled
 - [ ] Link Sherpa-ONNX framework to test target - Requires actual framework
 
 ### Android
-- [x] Add androidTest source set - Created with test files
+- [x] Add androidTest source set - source files exist, but `androidTest/assets` does not and the suites cannot run (#475)
 - [x] Include test models in assets - Resource directory and docs created  
 - [x] Add test dependencies in build.gradle - Added JUnit and AndroidX test deps
 

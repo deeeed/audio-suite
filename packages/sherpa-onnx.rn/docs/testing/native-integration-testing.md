@@ -186,9 +186,9 @@ The native integration testing framework has been implemented with the following
 - `android/src/test/resources/` - Directory for test models with setup docs
 - Updated `android/build.gradle` with test dependencies and instrumentation runner
 
-### Test Execution ✅
-- Android: `yarn test:android` - Runs comprehensive integration tests via gradle
-- iOS: `yarn test:ios:info` - Provides guidance for manual testing due to platform limitations
+### Test Execution
+- Android: `yarn test:android` - wired to gradle, but the suites currently fail to run (#475)
+- iOS: `yarn test:ios:info` - prints guidance only; there is no XCTest target to run
 
 ### Documentation ✅
 - `platform-differences.md` - platform comparison

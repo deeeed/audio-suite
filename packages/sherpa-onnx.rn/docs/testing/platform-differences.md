@@ -37,7 +37,7 @@ This document tracks discovered differences between iOS and Android implementati
 
 ### Android
 - Primarily uses WAV format
-- Uses MediaRecorder/AudioTrack for audio processing
+- Uses `AudioTrack` for playback; no `MediaRecorder` in the implementation
 - Limited native audio format support
 
 ## Memory Management
@@ -62,7 +62,7 @@ This document tracks discovered differences between iOS and Android implementati
 ### Android
 - Main/UI thread restrictions
 - Background threads for heavy processing
-- AsyncTask/Executor for concurrency
+- `Executors` for concurrency; `AsyncTask` is not used
 
 ## Error Handling
 
