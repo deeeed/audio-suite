@@ -1289,17 +1289,30 @@ public class AudioProcessor {
                     // 44099 and 44101 to 44100, 48001 to 48000. Reopen and check before
                     // promoting, or the result reports a rate the file does not have
                     // (#451).
-                    if let finalized = try? AVAudioFile(forReading: workURL) {
-                        let actualRate = finalized.fileFormat.sampleRate
-                        guard actualRate == targetSampleRate else {
-                            throw NSError(
-                                domain: "AudioProcessor",
-                                code: -1,
-                                userInfo: [NSLocalizedDescriptionKey:
-                                    "The AAC encoder wrote \(Int(actualRate))Hz for a "
-                                    + "requested \(Int(targetSampleRate))Hz"]
-                            )
-                        }
+                    let finalized: AVAudioFile
+                    do {
+                        finalized = try AVAudioFile(forReading: workURL)
+                    } catch {
+                        // try? here skipped validation entirely when the file could not be
+                        // reopened, and promoted it anyway — an unreadable output reported
+                        // as success (#451).
+                        throw NSError(
+                            domain: "AudioProcessor",
+                            code: -1,
+                            userInfo: [NSLocalizedDescriptionKey:
+                                "The trimmed file could not be reopened for validation: "
+                                + error.localizedDescription]
+                        )
+                    }
+                    let actualRate = finalized.fileFormat.sampleRate
+                    guard actualRate == targetSampleRate else {
+                        throw NSError(
+                            domain: "AudioProcessor",
+                            code: -1,
+                            userInfo: [NSLocalizedDescriptionKey:
+                                "The AAC encoder wrote \(Int(actualRate))Hz for a "
+                                + "requested \(Int(targetSampleRate))Hz"]
+                        )
                     }
 
                     try promoteWorkFile()
