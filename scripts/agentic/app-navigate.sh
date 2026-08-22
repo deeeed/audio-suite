@@ -15,13 +15,16 @@ cd "$APP_ROOT"
 
 # -- Parse flags -----------------------------------------------------------
 TAKE_SCREENSHOT=false
-DEVICE_FLAG=""
+# Bash 3.2 errors on "${empty[@]}" under `set -u`, so keep a placeholder
+# element and expand from index 1. A plain string word-splits on a device
+# name containing a space, which silently corrupted the caller's arguments.
+DEVICE_ARGS=("")
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --screenshot) TAKE_SCREENSHOT=true; shift ;;
     --device)
-      DEVICE_FLAG="--device $2"
+      DEVICE_ARGS=("" --device "$2")
       shift 2
       ;;
     *) POSITIONAL+=("$1"); shift ;;
@@ -44,16 +47,14 @@ fi
 # -- Navigate via unified CDP bridge ----------------------------------------
 echo "Navigating to $ROUTE..."
 
-# shellcheck disable=SC2086
-RESULT=$(WATCHER_PORT="$PORT" node "${APP_ROOT}/scripts/agentic/cdp-bridge.mjs" $DEVICE_FLAG navigate "$ROUTE" 2>&1)
+RESULT=$(WATCHER_PORT="$PORT" node "${APP_ROOT}/scripts/agentic/cdp-bridge.mjs" "${DEVICE_ARGS[@]:1}" navigate "$ROUTE" 2>&1)
 echo "$RESULT"
 
 # -- Optional screenshot (opt-in with --screenshot) ------------------------
 if [ "$TAKE_SCREENSHOT" = true ]; then
   sleep 1
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  # shellcheck disable=SC2086
-  SCREENSHOT=$(APP_ROOT="$APP_ROOT" bash "${SCRIPT_DIR}/screenshot.sh" $DEVICE_FLAG "nav-${ROUTE//\//_}" 2>&1) || true
+  SCREENSHOT=$(APP_ROOT="$APP_ROOT" bash "${SCRIPT_DIR}/screenshot.sh" "${DEVICE_ARGS[@]:1}" "nav-${ROUTE//\//_}" 2>&1) || true
   if [ -n "$SCREENSHOT" ]; then
     echo "Screenshot: $SCREENSHOT"
   fi

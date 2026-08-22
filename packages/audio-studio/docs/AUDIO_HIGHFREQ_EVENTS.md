@@ -123,19 +123,39 @@ const config = {
 ### CDP Bridge Validation
 ```bash
 # Test high-frequency capabilities via CDP bridge
-scripts/agentic/app-state.sh eval "__AGENTIC__.startRecording({ sampleRate: 48000, intervalAnalysis: 25, interval: 10 })"
-scripts/agentic/app-state.sh state
-# Android results: Analysis ~41ms actual, Stream ~21ms actual
-# iOS results: Both Analysis and Stream ~100ms actual (expected)
-scripts/agentic/app-state.sh eval "__AGENTIC__.stopRecording()"
+# Recording via CDP must be fire-and-store: an eval that leaves a recording promise outstanding as audio starts
+# flowing crashes the app (#436). See CLAUDE.md "Recording via CDP".
+# Measure the analysis-point RATE: points produced over the recording's own duration.
+#
+# This is not the callback frequency. One callback can carry several data points, so a
+# slow callback delivering a batch looks the same here as a fast one delivering singles.
+# Use it to check that analysis ran at roughly the requested density, not to time the
+# event loop. The Android/iOS figures below are callback timings and are NOT what this
+# command measures.
+#
+# Callback frequency is not measurable from an eval: the bridge exposes no listener API
+# and an eval cannot `require` the package. Nothing measures it today. The detox suites
+# that once did were removed with the agent-validation screen they drove, so it would
+# need a listener hook on the bridge.
+scripts/agentic/app-state.sh --device "<name>" eval "(() => { globalThis.__HF = {}; setTimeout(async () => { try { const r = await __AGENTIC__.startRecording({ sampleRate: 48000, intervalAnalysis: 25, interval: 10, enableProcessing: true }); if (r && r.error) { globalThis.__HF = { err: r.error }; return } await new Promise(x => setTimeout(x, 5000)); const s = await __AGENTIC__.stopRecording(); if (s && s.error) { globalThis.__HF = { err: s.error }; return } const st = __AGENTIC__.getState(); globalThis.__HF = { durMs: s.durationMs, points: st.lastRecordingAnalysisPointCount, effectiveMs: st.lastRecordingAnalysisPointCount ? Math.round(s.durationMs / st.lastRecordingAnalysisPointCount) : null } } catch (e) { globalThis.__HF = { ex: String(e) } } }, 1200); return 'scheduled' })()"
+sleep 14
+scripts/agentic/app-state.sh --device "<name>" eval "JSON.stringify(globalThis.__HF)"
+
+# Measured on a Pixel 6a with the command above, requesting intervalAnalysis 25ms:
+#   { "durMs": 5060, "points": 131, "effectiveMs": 39 }
+# i.e. one analysis point per ~39ms of audio. Again: a point rate, not a callback rate.
+#
+# The Android/iOS figures above are from earlier runs and are not reproduced by CI.
+# Re-measure before relying on them. A points count of 0 means analysis never ran, which
+# is a different problem from a slow interval.
 ```
 
 ### E2E Testing
-```bash
-# Comprehensive timing validation
-yarn e2e:android:high-frequency  # Sub-50ms validation
-yarn e2e:ios:high-frequency       # 100ms limitation validation
-```
+
+There is no detox suite for this any more. The high-frequency and performance suites were
+removed once validation moved to the CDP recipes: they drove an `agent-validation` screen
+that no longer exists, so they had stopped running long before they were deleted. Use the
+CDP command above for the point rate, and a recipe for anything broader.
 
 ## Conclusion
 

@@ -14,11 +14,12 @@
           "next": "start-notify-only-recording"
         },
         "start-notify-only-recording": {
-          "action": "eval_async",
-          "expression": "globalThis.__AGENTIC__?.startRecording?.({ interval: 1000, intervalAnalysis: 1000, sampleRate: 16000, encoding: 'pcm_16bit', enableProcessing: false, maxDurationMs: 1500, output: { primary: { enabled: false }, compressed: { enabled: false } } }).then(function(result) { return JSON.stringify(result); })",
+          "action": "eval_sync",
+          "expression": "(function () { globalThis.__RECIPE = globalThis.__RECIPE || {}; globalThis.__RECIPE['startNotifyOnly'] = null; setTimeout(function () { Promise.resolve(globalThis.__AGENTIC__?.startRecording?.({ interval: 1000, intervalAnalysis: 1000, sampleRate: 16000, encoding: 'pcm_16bit', enableProcessing: false, maxDurationMs: 1500, output: { primary: { enabled: false }, compressed: { enabled: false } } })).then(function (r) { globalThis.__RECIPE['startNotifyOnly'] = (r && r.error) ? { error: String(r.error) } : { ok: true }; }, function (e) { globalThis.__RECIPE['startNotifyOnly'] = { error: String(e) }; }); }, 800); return JSON.stringify({ scheduled: true }); })()",
           "assert": {
-            "operator": "falsy",
-            "field": "error"
+            "operator": "eq",
+            "field": "scheduled",
+            "value": true
           },
           "next": "wait-notify-only-event"
         },
@@ -27,6 +28,11 @@
           "expression": "JSON.stringify(globalThis.__AGENTIC__?.getState?.() || null)",
           "assert": {
             "all": [
+              {
+                "operator": "eq",
+                "field": "isRecording",
+                "value": true
+              },
               {
                 "operator": "eq",
                 "field": "maxDurationReached",
@@ -41,7 +47,8 @@
           },
           "timeout_ms": 30000,
           "poll_ms": 250,
-          "next": "assert-notify-only-still-recording"
+          "next": "wait-startNotifyOnly-recorded",
+          "_comment": "isRecording first: maxDurationReached and maxDurationMs survive a previous run, so without it a rerun can match stale values before this run's recording has started."
         },
         "assert-notify-only-still-recording": {
           "action": "eval_ref",
@@ -54,11 +61,12 @@
           "next": "stop-notify-only-recording"
         },
         "stop-notify-only-recording": {
-          "action": "eval_async",
-          "expression": "globalThis.__AGENTIC__?.stopRecording?.().then(function(result) { return JSON.stringify(result); })",
+          "action": "eval_sync",
+          "expression": "(function () { globalThis.__RECIPE = globalThis.__RECIPE || {}; globalThis.__RECIPE['stopNotifyOnly'] = null; setTimeout(function () { Promise.resolve(globalThis.__AGENTIC__?.stopRecording?.()).then(function (r) { globalThis.__RECIPE['stopNotifyOnly'] = (r && r.error) ? { error: String(r.error) } : { ok: true }; }, function (e) { globalThis.__RECIPE['stopNotifyOnly'] = { error: String(e) }; }); }, 800); return JSON.stringify({ scheduled: true }); })()",
           "assert": {
-            "operator": "falsy",
-            "field": "error"
+            "operator": "eq",
+            "field": "scheduled",
+            "value": true
           },
           "next": "wait-notify-only-stopped"
         },
@@ -72,16 +80,17 @@
           },
           "timeout_ms": 10000,
           "poll_ms": 250,
-          "next": "start-auto-stop-recording"
+          "next": "wait-stopNotifyOnly-recorded"
         },
         "start-auto-stop-recording": {
-          "action": "eval_async",
-          "expression": "globalThis.__AGENTIC__?.startRecording?.({ interval: 1000, intervalAnalysis: 500, sampleRate: 16000, encoding: 'pcm_16bit', enableProcessing: true, maxDurationMs: 2200, autoStopOnMaxDuration: true, output: { primary: { enabled: false }, compressed: { enabled: false } } }).then(function(result) { return JSON.stringify(result); })",
+          "action": "eval_sync",
+          "expression": "(function () { globalThis.__RECIPE = globalThis.__RECIPE || {}; globalThis.__RECIPE['startAutoStop'] = null; setTimeout(function () { Promise.resolve(globalThis.__AGENTIC__?.startRecording?.({ interval: 1000, intervalAnalysis: 500, sampleRate: 16000, encoding: 'pcm_16bit', enableProcessing: true, maxDurationMs: 2200, autoStopOnMaxDuration: true, output: { primary: { enabled: false }, compressed: { enabled: false } } })).then(function (r) { globalThis.__RECIPE['startAutoStop'] = (r && r.error) ? { error: String(r.error) } : { ok: true }; }, function (e) { globalThis.__RECIPE['startAutoStop'] = { error: String(e) }; }); }, 800); return JSON.stringify({ scheduled: true }); })()",
           "assert": {
-            "operator": "falsy",
-            "field": "error"
+            "operator": "eq",
+            "field": "scheduled",
+            "value": true
           },
-          "next": "wait-auto-stop-stopped"
+          "next": "wait-auto-stop-started"
         },
         "wait-auto-stop-stopped": {
           "action": "wait_for",
@@ -131,11 +140,93 @@
           },
           "timeout_ms": 30000,
           "poll_ms": 250,
-          "next": "done"
+          "next": "wait-startAutoStop-recorded"
         },
         "done": {
           "action": "end",
           "status": "pass"
+        },
+        "assert-startNotifyOnly-ok": {
+          "action": "eval_sync",
+          "expression": "(function () { var r = (globalThis.__RECIPE || {})['startNotifyOnly']; return JSON.stringify(r && r.error ? { ok: false, error: String(r.error) } : { ok: r ? true : false }); })()",
+          "assert": {
+            "operator": "eq",
+            "field": "ok",
+            "value": true
+          },
+          "next": "assert-notify-only-still-recording"
+        },
+        "assert-stopNotifyOnly-ok": {
+          "action": "eval_sync",
+          "expression": "(function () { var r = (globalThis.__RECIPE || {})['stopNotifyOnly']; return JSON.stringify(r && r.error ? { ok: false, error: String(r.error) } : { ok: r ? true : false }); })()",
+          "assert": {
+            "operator": "eq",
+            "field": "ok",
+            "value": true
+          },
+          "next": "start-auto-stop-recording"
+        },
+        "assert-startAutoStop-ok": {
+          "action": "eval_sync",
+          "expression": "(function () { var r = (globalThis.__RECIPE || {})['startAutoStop']; return JSON.stringify(r && r.error ? { ok: false, error: String(r.error) } : { ok: r ? true : false }); })()",
+          "assert": {
+            "operator": "eq",
+            "field": "ok",
+            "value": true
+          },
+          "next": "done"
+        },
+        "wait-auto-stop-started": {
+          "action": "wait_for",
+          "expression": "(function () { var r = (globalThis.__RECIPE || {})['startAutoStop']; var st = globalThis.__AGENTIC__ && globalThis.__AGENTIC__.getState ? globalThis.__AGENTIC__.getState() : null; return JSON.stringify({ started: (r !== null && r !== undefined) || (st ? st.isRecording === true : false) }); })()",
+          "assert": {
+            "operator": "eq",
+            "field": "started",
+            "value": true
+          },
+          "timeout_ms": 15000,
+          "poll_ms": 250,
+          "next": "wait-auto-stop-stopped",
+          "_comment": "Persistent evidence, not a transient flag. isRecording is true only while the 2.2s recording runs, so a slow first poll missed it and the step timed out after a successful auto-stop. __RECIPE.startAutoStop is set when the call resolves and outlives the recording; isRecording still counts when the poll does land inside the window."
+        },
+        "wait-stopNotifyOnly-recorded": {
+          "action": "wait_for",
+          "expression": "(function () { var r = (globalThis.__RECIPE || {})['stopNotifyOnly']; return JSON.stringify({ recorded: r !== null && r !== undefined }); })()",
+          "assert": {
+            "operator": "eq",
+            "field": "recorded",
+            "value": true
+          },
+          "timeout_ms": 10000,
+          "poll_ms": 200,
+          "next": "assert-stopNotifyOnly-ok",
+          "_comment": "The state flag flips before the promise result lands, so asserting the stored outcome straight after observing it reproduced a false failure. Wait for the outcome to exist, then assert what it says."
+        },
+        "wait-startNotifyOnly-recorded": {
+          "action": "wait_for",
+          "expression": "(function () { var r = (globalThis.__RECIPE || {})['startNotifyOnly']; return JSON.stringify({ recorded: r !== null && r !== undefined }); })()",
+          "assert": {
+            "operator": "eq",
+            "field": "recorded",
+            "value": true
+          },
+          "timeout_ms": 10000,
+          "poll_ms": 200,
+          "next": "assert-startNotifyOnly-ok",
+          "_comment": "The state flag flips before the promise result lands, so asserting the stored outcome straight after observing it reproduced a false failure. Wait for the outcome to exist, then assert what it says."
+        },
+        "wait-startAutoStop-recorded": {
+          "action": "wait_for",
+          "expression": "(function () { var r = (globalThis.__RECIPE || {})['startAutoStop']; return JSON.stringify({ recorded: r !== null && r !== undefined }); })()",
+          "assert": {
+            "operator": "eq",
+            "field": "recorded",
+            "value": true
+          },
+          "timeout_ms": 10000,
+          "poll_ms": 200,
+          "next": "assert-startAutoStop-ok",
+          "_comment": "The state flag flips before the promise result lands, so asserting the stored outcome straight after observing it reproduced a false failure. Wait for the outcome to exist, then assert what it says."
         }
       }
     }

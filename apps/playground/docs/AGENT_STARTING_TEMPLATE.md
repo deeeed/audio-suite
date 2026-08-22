@@ -52,10 +52,18 @@ Read file before editing. Minimal diff. After each edit: `scripts/agentic/reload
 ## Step 5 — Validate
 
 ```bash
-# Recording
-scripts/agentic/app-state.sh eval "__AGENTIC__.startRecording({ sampleRate: 44100, channels: 1 })"
-scripts/agentic/app-state.sh state
-scripts/agentic/app-state.sh eval "__AGENTIC__.stopRecording()"
+# Recording — fire-and-store ONLY. An eval that leaves a recording promise outstanding as audio starts
+# flowing crashes the app (#436, Hermes SIGSEGV). Schedule the work so the eval
+# returns first, stash results in a global, poll separately:
+# The bridge RETURNS { error } rather than rejecting, so catch alone never fires —
+# both return values have to be checked or a failure lands as { uri: undefined }
+# and reads as success.
+scripts/agentic/app-state.sh eval "(() => { globalThis.__V = {}; setTimeout(async () => { try { const r = await __AGENTIC__.startRecording({ sampleRate: 44100, channels: 1 }); if (r && r.error) { globalThis.__V = { err: r.error }; return } await new Promise(x => setTimeout(x, 3000)); const s = await __AGENTIC__.stopRecording(); globalThis.__V = (s && s.error) ? { err: s.error } : { uri: s.fileUri, size: s.size, dur: s.durationMs } } catch (e) { globalThis.__V = { err: String(e) } } }, 1500); return 'scheduled' })()"
+sleep 3
+scripts/agentic/app-state.sh state    # → isRecording: true, while it is still running
+sleep 7
+scripts/agentic/app-state.sh eval "JSON.stringify(globalThis.__V)"
+# → { uri, size, dur }. An { err } is a failure; {} means the callback never finished.
 
 # UI interaction
 scripts/agentic/app-state.sh press start-recording-button   # → { ok: true }
@@ -75,7 +83,8 @@ yarn typecheck && yarn lint:fix      # cross-package (slow)
 
 ## Step 7 — Done criteria
 
-- [ ] Works on ≥1 platform
+- [ ] Validated on **every platform the change affects** — see the hard rule in
+      CLAUDE.md. One platform is enough only for a change that touches one.
 - [ ] No JS errors in CDP output
 - [ ] No native ERRORs in `native-logs` (if native touched)
 - [ ] Screenshot confirms expected UI

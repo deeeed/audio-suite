@@ -44,7 +44,9 @@ All agent commands run from `apps/playground/`. See `apps/playground/docs/AGENT_
 node scripts/agentic/cdp-bridge.mjs list-devices     # List connected devices
 scripts/agentic/app-navigate.sh "/(tabs)/record"      # Navigate
 scripts/agentic/app-state.sh state                    # Query state
-scripts/agentic/app-state.sh eval "__AGENTIC__.startRecording({ sampleRate: 44100, channels: 1 })"
+# Recording: NEVER call startRecording in a bare eval — see the fire-and-store
+# recipe under "Recording via CDP" below (#436). Non-audio evals are fine:
+scripts/agentic/app-state.sh eval "__AGENTIC__.getState()"
 scripts/agentic/screenshot.sh my-label                # Screenshot
 scripts/agentic/reload-metro.sh                       # Hot reload after edits
 scripts/agentic/native-logs.sh android|ios            # Kotlin/Swift logs
@@ -198,7 +200,7 @@ Format:
 <one-liner describing the goal>
 
 ## Status
-working|blocked|done|idle
+working|blocked|needs-validation|done|idle
 
 ## Approach
 <1-2 sentences on HOW you're solving it — enough to judge direction>
@@ -214,11 +216,144 @@ working|blocked|done|idle
 
 This file is read by the orchestrator to track progress across sessions. Keep it high-level.
 
-IMPORTANT: A fix is NOT done until validated on-device via the feedback loop. Do not mark status as done until:
-- Code changes are built and deployed to the device(s)
-- The bug scenario is reproduced and confirmed fixed
-- Regressions are checked
-Use status: `needs-validation` for code-complete but unverified fixes.
+## HARD RULE: no library change merges without on-device validation
+
+**A change to library runtime code must be validated on every platform it affects before
+merging. No exceptions. Not "tests pass", not "the reviewer approved", not "I flagged the
+gap in the PR body".**
+
+This was already written here and I broke it six times in one session — #434, #441, #444,
+#445, #448, #450 all merged with unit tests and an external review but no device proof. I
+noted the gap each time and merged anyway. Noting it is not doing it.
+
+What "covered" means, per platform:
+- Android/iOS runtime code (`packages/*/android/`, `packages/*/ios/`, `packages/*/cpp/`,
+  `packages/*/src/**` that ships in the app bundle): validate on that platform's device
+  or simulator.
+- Web-only runtime (`*.web.ts`, `*.web.tsx`, any `*.web.*`): validate in the web
+  playground; a mobile run proves nothing about it.
+- Docs, tests, and CI config inside `packages/**`: no device run required — but nothing
+  else rides along in the same PR.
+- Anything that changes what gets built into the app — config plugins, metro config,
+  podspecs, `build.gradle`, `package.json` `files`/deps — wherever it lives, inside
+  `packages/**` or not: covered, on the affected platform.
+
+Before merging a covered change:
+1. Build and install from the branch, and prove the install is fresh:
+   - Android: resolve the serial first, then always pass `-s`. Bare `adb shell` errors
+     or silently targets the wrong phone when more than one is attached, which is the
+     same trap the `--device` flag exists for:
+     ```bash
+     MATCHES=$(adb devices -l | grep -iE "Pixel[ _]6a" | awk '{print $1}')
+     # No head -1: with two matching phones that silently proves the install on
+     # whichever adb happened to list first, which is the trap this rule is about.
+     [ "$(printf '%s\n' "$MATCHES" | grep -c .)" -eq 1 ] || { echo "ambiguous: $MATCHES"; exit 1; }
+     SERIAL="$MATCHES"
+     adb -s "$SERIAL" shell dumpsys package net.siteed.audioplayground.development \
+       | grep lastUpdateTime      # compare to your build time
+     ```
+   - iOS simulator: reinstall via `xcrun simctl install <udid> <path-to .app>` and
+     relaunch; a rebuilt app that was never reinstalled validates nothing
+   - iOS physical device: `xcrun devicectl device install app --device <UDID> <path-to .app>`,
+     then launch per the `--payload-url` recipe in the iOS connectivity rules above. Confirm
+     with `xcrun devicectl device info apps --device <UDID>` that the bundle version is
+     the one you just built
+2. Exercise the changed path and capture concrete evidence: a file URI, a byte count, a
+   duration, a returned field — not "it did not crash"
+3. Capture native logs across the run, not after it:
+   - Android: `adb -s "$SERIAL" logcat` reads back what the ring buffer still holds,
+     which is usually the whole run but is not guaranteed — the buffers are finite and a
+     long or noisy session can overwrite the earliest evidence. Raise it with
+     `adb -s "$SERIAL" logcat -G 16M` before a long run, or capture forward with
+     `adb -s "$SERIAL" logcat > run.log &`. The `-s` is not optional either: bare
+     `adb logcat` errors or captures the wrong device when several are attached
+   - iOS simulator: `xcrun simctl spawn <udid> log show --last <n>m --predicate
+     'processImagePath CONTAINS "AudioDevPlayground"'` — `native-logs.sh ios` streams
+     forward only, so started after the fact it misses everything
+   - iOS physical device: launch with `--console`, which attaches to the app and streams
+     its stdout and stderr. `Logger.swift` uses `print`, so the library's own logs come
+     through it:
+     ```bash
+     xcrun devicectl device process launch --device <UDID> --console \
+       --payload-url "exp+audioplayground-development://expo-development-client/?url=http%3A%2F%2F<LAN_IP>%3A7365" \
+       <bundle-id> | tee run.log
+     ```
+     It is forward-only, so launch this *before* exercising the path. Console.app is the
+     alternative, and `xcrun devicectl device sysdiagnose --device <UDID>` collects after
+     the fact. If you captured none of them, say so rather than presenting a partial log
+     as full coverage
+4. State in the PR exactly what the evidence proves and what it does not
+5. `.task.md` status stays `needs-validation` until this is done, and nothing merges in
+   that state
+
+If validation seems impossible, that conclusion is probably wrong. I declared it blocked
+by #436 for an entire session; the workaround took four minutes to find once I tried.
+
+### Recording via CDP: fire-and-store only
+
+The Hermes SIGSEGV in #436 is *not* caused by recording. The precise mechanism is not
+known — see that issue — so what follows is what has been measured, not a theory.
+
+Nothing here is a CDP request staying open: `cdp-bridge.mjs` passes `awaitPromise: false`
+on every `Runtime.evaluate`, and `eval-async` is itself fire-and-store internally (it kicks
+off, returns `'started'`, and polls). Earlier revisions of this section claimed a
+"held-open evaluation" was the trigger. That was wrong, and it caused a reviewer to flag
+safe polling as a bug.
+
+What is measured, on a Pixel 6a:
+
+- **Safe.** 20 `getState()` evals at ~250ms during a live 6-second recording. Same pid
+  throughout; recording completed at 527476 bytes / 5979ms. A single mid-recording `state`
+  call is likewise fine.
+- **Crashes.** An evaluation whose expression leaves a JS promise from
+  `startRecording()` outstanding while audio starts flowing — the app dies in ~90ms,
+  `mqt_v_js`, `libhermesvm.so`, SIGSEGV at null.
+- **Still crashes, intermittently.** The `validate-recipe.js` path passed 12/12 with one
+  pid at `5962eda1`, so it is not reproducible any more. It is not fixed either: on
+  2026-08-22 the max-duration recipe died three runs in a row at the same node
+  (`wait-notify-only-event`, the first step that starts audio), signal 11 in
+  `libhermesvm.so`, with `AudioRecordingService` restarted by ActivityManager afterwards.
+  Treat a recipe run that dies at a recording step as #436 until proven otherwise, and
+  check `adb logcat` for `libhermesvm.so` before blaming the recipe.
+
+So fire-and-store is what to write. Polling is not the thing to avoid.
+
+So for anything that starts audio flowing:
+
+- ❌ `scripts/agentic/app-state.sh eval "__AGENTIC__.startRecording(...).then(...)"`
+- ❌ `scripts/agentic/app-state.sh eval-async "..."` around recording — the expression it
+  wraps still leaves a recording promise outstanding
+- ✅ fire-and-store: schedule the call so the eval returns first, stash results in a
+  global, poll in separate short evals
+
+Working recipe, exactly as run (from `apps/playground/`). Substitute a real device
+name — `--device <name>` unquoted is shell redirection, not a placeholder:
+
+```bash
+# 1. Fire. The eval returns "scheduled" immediately; recording starts 1.5s later
+#    with no CDP evaluation in flight.
+scripts/agentic/app-state.sh --device "Pixel 6a" eval "(() => { globalThis.__V = {}; setTimeout(async () => { try { const r = await __AGENTIC__.startRecording({ sampleRate: 44100, channels: 1 }); if (r && r.error) { globalThis.__V = { err: r.error }; return } await new Promise(r2 => setTimeout(r2, 3000)); const s = await __AGENTIC__.stopRecording(); globalThis.__V = (s && s.error) ? { err: s.error } : { uri: s.fileUri, size: s.size, dur: s.durationMs } } catch (e) { globalThis.__V = { err: String(e) } } }, 1500); return 'scheduled' })()"
+
+# 2. Wait past the scheduled work, then poll with fresh, short evals.
+sleep 10
+scripts/agentic/app-state.sh --device "Pixel 6a" state                      # isRecording, durationMs
+scripts/agentic/app-state.sh --device "Pixel 6a" eval "JSON.stringify(globalThis.__V)"
+```
+
+The bridge catches internally and **returns** `{ error }` rather than rejecting, so a
+bare `catch` never fires — check the returned value explicitly, as above, or a failed
+recording reads as an empty `{}`.
+
+The stashing callback writes `__V` on both success and error, so the poll always has a
+terminal value; repeat the poll if it still reads `{}`. For the built-in extract/trim
+helpers use their fire-and-store form: `__AGENTIC__.test*()` then poll
+`__AGENTIC__.getLastResult()` until `status` is not `pending`.
+
+Verified with this pattern on Pixel 6a: 39s recording, 3.48 MB WAV, zero crashes — where
+the held-open form dies in ~90ms.
+
+Canonical agentic-loop documentation lives in `apps/playground/docs/AGENTIC_FEEDBACK_LOOPS.md`;
+if that file and this section disagree, fix the disagreement rather than picking one.
 
 **Fast Android builds for native module changes**
 - ❌ `yarn android` for single-module Kotlin/Java changes — full rebuild, 5-10 min

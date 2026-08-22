@@ -67,18 +67,27 @@ The most common validation pattern — prove recording works via CDP:
 # 1. Navigate to record screen
 scripts/agentic/app-navigate.sh "/(tabs)/record"
 
-# 2. Start recording
-scripts/agentic/app-state.sh eval "__AGENTIC__.startRecording({ sampleRate: 44100, channels: 1 })"
+# 2. Start recording, hold ~3s, stop — all inside the scheduled callback.
+# Recording via CDP must be fire-and-store: an eval that leaves a recording promise outstanding as audio starts
+# flowing crashes the app (#436). See CLAUDE.md "Recording via CDP".
+scripts/agentic/app-state.sh eval "(() => { globalThis.__V = {}; setTimeout(async () => { try { const r = await __AGENTIC__.startRecording({ sampleRate: 44100, channels: 1 }); if (r && r.error) { globalThis.__V = { err: r.error }; return } await new Promise(r2 => setTimeout(r2, 3000)); const s = await __AGENTIC__.stopRecording(); globalThis.__V = (s && s.error) ? { err: s.error } : { uri: s.fileUri, size: s.size, dur: s.durationMs } } catch (e) { globalThis.__V = { err: String(e) } } }, 1500); return 'scheduled' })()"
 
-# 3. Poll state during recording
+# 3. Poll state while it is still recording. The callback fires at 1.5s and stops at
+# ~4.5s, so this must land inside that window — sleeping past it reports isRecording:
+# false and proves nothing about the recording phase.
+sleep 3
 scripts/agentic/app-state.sh state
-# → { isRecording: true, durationMs: 1234, size: 56789, ... }
+# → { isRecording: true, durationMs: ~1100, size: >0, ... }
 
-# 4. Stop and get result
-scripts/agentic/app-state.sh eval "__AGENTIC__.stopRecording()"
-# → { fileUri: "...", durationMs: 5000, size: 220500, mimeType: "audio/wav", ... }
+# 4. Wait out the stop, then read the stored result. Polling during a recording is
+# safe (see CLAUDE.md for what was measured); the point of waiting is simply that
+# __V is not populated until the callback finishes.
+sleep 7
+scripts/agentic/app-state.sh eval "JSON.stringify(globalThis.__V)"
+# → { uri: "file:///...wav", size: 259348, dur: 2939 }
+# An { err: ... } here is a failure; an empty {} means the callback never completed.
 
-# 5. Verify final state
+# 5. Verify the recorder released
 scripts/agentic/app-state.sh state
 # → { isRecording: false, ... }
 ```
@@ -132,7 +141,9 @@ scripts/agentic/start-metro.sh
 
 ### Mandatory
 - Validate features via CDP bridge before claiming completion
-- Test on at least one real device/simulator
+- Test on a real device or simulator for **every platform the change affects**. One is
+  enough only when the change touches one; see the hard rule in CLAUDE.md, which this
+  previously contradicted by asking for "at least one".
 - Fix issues immediately when validation fails
 - Include actual command output in responses
 

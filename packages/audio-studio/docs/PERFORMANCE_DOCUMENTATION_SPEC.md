@@ -32,7 +32,7 @@ Simple matrix focusing on file size impact:
 
 ### 3. E2E Test Extension
 
-Extend existing `stop-recording-performance.test.ts` to collect file sizes:
+Collect file sizes via a CDP recipe (the `stop-recording-performance.test.ts` suite this once extended has been removed):
 
 ```typescript
 // Add to existing test
