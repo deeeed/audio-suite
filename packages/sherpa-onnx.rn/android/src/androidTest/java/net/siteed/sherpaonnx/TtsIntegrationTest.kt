@@ -121,7 +121,9 @@ class TtsIntegrationTest {
             "modelFile" to "model.onnx",
             "tokensFile" to "tokens.txt",
             "lexiconFile" to "lexicon.txt",
-            "dataDir" to modelPath,
+            // espeak-ng-data lives inside the extracted model directory, and TtsHandler
+            // passes dataDir through unchanged, so the parent alone is not usable.
+            "dataDir" to "$modelPath/espeak-ng-data",
             "provider" to vitsConfig["provider"] as String,
             "numThreads" to 1,
             "ttsModelType" to vitsConfig["ttsModelType"] as String

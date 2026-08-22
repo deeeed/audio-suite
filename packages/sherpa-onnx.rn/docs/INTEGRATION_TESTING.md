@@ -12,9 +12,10 @@ This guide covers integration testing for sherpa-onnx.rn across all platforms, w
 
 **iOS**: `ios/SherpaOnnxTests/SystemInfoIntegrationTest.swift`
 
-Neither covers module registration. Both construct the implementation directly
-(`SherpaOnnxImpl(reactContext)` on Android), bypassing the module and the package, so
-nothing here proves the TurboModule is registered or reachable from JS.
+The Android test does not cover module registration: it constructs
+`SherpaOnnxImpl(reactContext)` directly, bypassing the module and the package, so nothing
+there proves the TurboModule is registered or reachable from JS. The iOS source does
+construct `SherpaOnnxRnModule`, but it cannot run at all (no XCTest target).
 
 There is no old-vs-new architecture comparison. `ArchitectureCompatibilityTest.kt` and
 `ArchitectureSpecificTest.kt` were deleted in #434 when the repo went new-architecture
@@ -292,7 +293,7 @@ If models are not already on the device, use the download-and-test recipes under
 ## Future Enhancements
 
 1. **iOS Model Integration**: Port Android model testing to iOS
-2. **Web WASM Support**: Complete web platform implementation  
+2. **Web WASM Support**: the implementation ships (`src/WebSherpaOnnxImpl.ts`); what is missing is browser smoke coverage per release, as noted above
 3. **Enhanced CI/CD**: Automated device testing with model caching
 4. **Performance Regression Detection**: Automated performance monitoring
 5. **Extended Model Testing**: Support for larger model suites

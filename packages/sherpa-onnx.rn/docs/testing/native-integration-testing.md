@@ -155,8 +155,10 @@ Keep a log of discovered differences:
 2. Run on iOS simulator
    Result: ✅ Pass - file at <caches>/sherpa_audio.wav
 3. Run on Android emulator
-   Result: ❌ Fail - "Permission denied"
-4. Fix: Add WRITE_EXTERNAL_STORAGE permission
+   Result: ✅ Pass - file in the app-private cache dir
+4. (No storage permission is involved: TtsHandler writes to context.cacheDir,
+   which needs none. An earlier version of this example invented a
+   WRITE_EXTERNAL_STORAGE fix for a failure that does not happen.)
 5. Run again on Android
    Result: ✅ Pass - file at /data/cache/sherpa_audio.wav
 6. Document: both platforms write WAV; only the output directory differs
