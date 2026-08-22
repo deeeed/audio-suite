@@ -52,7 +52,7 @@ Day 5: Memory and threading tests
 
 ### Android
 - [x] Add androidTest source set - source files exist, but `androidTest/assets` does not and the suites cannot run (#475)
-- [x] Include test models in assets - Resource directory and docs created  
+- [ ] Include test models in assets - `androidTest/assets` does not exist; models are downloaded at runtime
 - [x] Add test dependencies in build.gradle - Added JUnit and AndroidX test deps
 
 ## Success Criteria

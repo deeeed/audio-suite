@@ -114,10 +114,13 @@ class TtsIntegrationTest {
         val modelPath = "${appContext.filesDir}/models/tts/vits-icefall-en-low"
         
         // Generate TTS configuration
+        // Keys must match what TtsHandler reads. It takes a directory plus filenames,
+        // not full paths: modelDir/modelFile/tokensFile/lexiconFile.
         val ttsConfig = mapOf(
-            "model" to "$modelPath/model.onnx",
-            "tokens" to "$modelPath/tokens.txt", 
-            "lexicon" to "$modelPath/lexicon.txt",
+            "modelDir" to modelPath,
+            "modelFile" to "model.onnx",
+            "tokensFile" to "tokens.txt",
+            "lexiconFile" to "lexicon.txt",
             "dataDir" to modelPath,
             "provider" to vitsConfig["provider"] as String,
             "numThreads" to 1,
@@ -125,7 +128,8 @@ class TtsIntegrationTest {
         )
         
         // Validate configuration completeness
-        val requiredKeys = listOf("model", "tokens", "lexicon", "dataDir", "provider", "ttsModelType")
+        val requiredKeys = listOf("modelDir", "modelFile", "tokensFile", "lexiconFile",
+            "dataDir", "provider", "ttsModelType")
         requiredKeys.forEach { key ->
             assertTrue("Config should have $key", ttsConfig.containsKey(key))
             assertNotNull("Config $key should not be null", ttsConfig[key])

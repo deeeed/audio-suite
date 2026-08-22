@@ -156,9 +156,11 @@ Models Directory Structure:
 2. **Integration Tests**: Native library and functionality testing
 3. **E2E Tests**: Complete workflow testing with real models
 
-### Model Configuration Format
+### Model Registry Format
 
-Based on sherpa-voice model registry:
+This is the test registry entry, not the config `TtsHandler` consumes. The handler takes
+`modelDir` plus `modelFile`, `tokensFile` and `lexiconFile` — a directory and filenames,
+not full paths.
 
 ```kotlin
 val modelConfig = mapOf(

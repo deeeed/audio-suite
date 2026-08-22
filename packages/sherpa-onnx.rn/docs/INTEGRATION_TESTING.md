@@ -25,7 +25,7 @@ Note that `SherpaOnnxModule` still extends `ReactContextBaseJavaModule` and
 code: under RN 0.86's interop layer it is how the module registers, and removing it breaks
 registration.
 
-### 2. System Information Validation ✅
+### 2. System Information Validation
 
 Tests the comprehensive system info API:
 - Device capabilities (CPU, memory, GPU)
@@ -33,7 +33,10 @@ Tests the comprehensive system info API:
 - Performance metrics
 - Platform-specific features (Metal on iOS, Vulkan on Android)
 
-### 3. Real Model Integration Tests ✅
+No suite exercises VAD inference. `SILERO_VAD` appears only as a downloader entry in
+`ComprehensiveIntegrationTestSuite`, which fetches the model without running it.
+
+### 3. Real Model Integration Tests
 
 **Android Only**: Tests with lightweight ONNX models
 - TTS with vits-icefall-en_US-ljspeech-low (~30MB)
@@ -147,7 +150,11 @@ release:
 
 Use an `en_US` name. If a download 404s, that is the likely reason.
 
-### Android (Real Device - Pixel 6a) ✅
+### Android (Real Device - Pixel 6a)
+
+Recorded when these suites still ran. They do not run today (#475), so this is a record,
+not current state.
+
 ```
 System Information: ✅ PASS
 - Device info: Complete
@@ -161,7 +168,10 @@ Real Model Integration: ✅ PASS (26/26 tests)
 - Performance: Within acceptable bounds
 ```
 
-### iOS (Simulator - iPhone 16 Pro) ✅
+### iOS (Simulator - iPhone 16 Pro)
+
+Also historical: there is no XCTest target for this package, so nothing reproduces this.
+
 ```
 System Information: ✅ PASS
 - Device info: Complete iOS system info

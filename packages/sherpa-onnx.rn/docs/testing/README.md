@@ -32,6 +32,9 @@ manifest lacks `INTERNET` (#475). Treat the numbers below as a record, not curre
 
 ## Quick Start
 
+The commands below are wired up but do not currently pass: the instrumentation APK is
+missing the React Native libraries and the test manifest lacks `INTERNET` (#475).
+
 ### Run Android Tests
 ```bash
 cd packages/sherpa-onnx.rn

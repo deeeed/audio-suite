@@ -142,6 +142,9 @@ described a CAF-versus-WAV problem that the implementation never had.
 
 ## Test Execution Notes
 
+Neither platform's suite runs today: Android is blocked by #475, and iOS has no XCTest
+target. The notes below describe what each platform needs, not what works now.
+
 ### iOS Testing
 - Requires macOS with Xcode installed
 - Simulator tests may behave differently than device tests

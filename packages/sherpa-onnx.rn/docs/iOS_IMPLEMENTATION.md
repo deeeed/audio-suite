@@ -183,24 +183,23 @@ There is no iOS validation script. `validate_ios_build.sh` and
 
 ```ruby
 # sherpa-onnx-rn.podspec
-install_modules_dependencies(spec)
+install_modules_dependencies(s)
 
-# Static libraries
-spec.vendored_libraries = [
-  "libs/ios/libsherpa-onnx-c-api.a",
-  "libs/ios/libsherpa-onnx-core.a"
-  # ... other libraries
-]
+# Static libraries, resolved under prebuilt/ios/current/ and symlinked at install time
+s.vendored_libraries = sherpa_libraries.map { |lib| "prebuilt/ios/current/#{lib}" }
+
+s.frameworks = "Foundation", "CoreML", "Accelerate", "CoreVideo"
+s.libraries = "c++", "bz2"
 ```
 
 ## Performance Characteristics
 
 ### Benchmarks
 
-- **Module Initialization**: <50ms
-- **System Info Call**: <10ms  
-- **Memory Usage**: ~5MB baseline
-- **Architecture Detection**: <1ms
+None have been measured for this package, and there is no iOS test target to measure
+them with. Earlier revisions listed initialization, system-info, memory and
+architecture-detection figures with no run behind them; they are removed rather than
+restated.
 
 ### Optimization
 

@@ -7,7 +7,7 @@
 
 ## Final Test Results Summary
 
-✅ **100% Success Rate** - All Android integration tests passed in that run  
+✅ **100% Success Rate** - All Android integration tests passed in that run
 🏗️ **Native Libraries Built** - Successfully compiled sherpa-onnx for all Android architectures  
 🔄 **Complete Feedback Loop** - Demonstrated full development cycle from failing tests to working implementation  
 📋 **Model Strategy Implemented** - Lightweight model management strategy for integration testing
@@ -162,7 +162,7 @@ After building native libraries + model strategy:
 - Safe for CI environments where actual model files aren't available
 
 ### 5. **Cross-Platform Considerations**
-- Android: Full command-line testing capability with instrumented tests
+- Android: instrumented tests are wired to gradle, but do not run today (#475)
 - iOS: Requires Xcode for actual device/simulator testing
 - Different testing strategies needed per platform
 
