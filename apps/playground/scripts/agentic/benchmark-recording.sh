@@ -15,11 +15,16 @@ RECORDING_STARTED=false
 # Stop a recording this script started before leaving. Without it any abort after the
 # start left the device recording indefinitely, since the default config has no
 # maxDurationMs — a failed benchmark that keeps the microphone open.
+# Identifies this run inside the app, so a later run cannot clear an earlier run's
+# abandon marker or claim its result. Digits only: it is interpolated into a JS string.
+RUN_TOKEN="$$-$(date +%s)"
+
 stop_recording_if_running() {
-    # Tell a still-pending start to stop itself. Between dispatch and confirmation this
-    # script owns nothing to stop, but the scheduled callback can still succeed after we
-    # have given up and would leave an unlimited recording running.
-    "$SCRIPT_DIR/app-state.sh" eval "(() => { globalThis.__BENCH_ABANDONED = true; return 'marked' })()" \
+    # One atomic step on the JS side: mark the run abandoned, and stop the recording only
+    # if this run's callback actually started it. Doing it in the app avoids the window
+    # between the callback succeeding and the shell learning about it, and means a start
+    # that failed with ALREADY_RECORDING never causes us to stop someone else's recording.
+    "$SCRIPT_DIR/app-state.sh" eval "(() => { const t = '$RUN_TOKEN'; if (globalThis.__BENCH_RUN !== t) { return 'not-ours' } globalThis.__BENCH_ABANDONED = true; if (!globalThis.__BENCH_OWNED) { return 'nothing-owned' } globalThis.__BENCH_OWNED = false; __AGENTIC__.stopRecording(); return 'stopping' })()" \
         "${DEVICE_ARGS[@]:1}" >/dev/null 2>&1 || true
 
     [[ "$RECORDING_STARTED" == "true" ]] || return 0
@@ -215,13 +220,20 @@ fi
 # Without --device the bridge broadcasts to every connected target, while metrics come
 # from a single adb device — a recording could start on a phone this run never measures
 # and never stops.
+# Rejecting the ambiguous case is not enough: leaving the filter empty means a target
+# that connects mid-run silently restores broadcasting, and the EXIT trap broadcasts too.
+# So the sole target is discovered once and pinned into DEVICE_ARGS for every command.
 if [[ ${#DEVICE_ARGS[@]} -le 1 ]]; then
-    CDP_COUNT=$(node "$SCRIPT_DIR/cdp-bridge.mjs" list-devices 2>/dev/null | grep -c '"name"' || true)
+    CDP_NAMES=$(node "$SCRIPT_DIR/cdp-bridge.mjs" list-devices 2>/dev/null \
+        | sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+    CDP_COUNT=$(printf '%s' "$CDP_NAMES" | grep -c . || true)
     if [[ "${CDP_COUNT:-0}" -ne 1 ]]; then
         echo "[BENCH] FATAL: ${CDP_COUNT:-0} CDP targets are connected; pass --device <name>." >&2
         echo "[BENCH] Commands would otherwise broadcast to all of them." >&2
         exit 1
     fi
+    DEVICE_ARGS=(--device "$CDP_NAMES")
+    echo "[BENCH] Pinned sole CDP target: $CDP_NAMES"
 fi
 
 # ── Navigate to record screen ──
@@ -244,13 +256,13 @@ else
     echo "[BENCH] Starting recording with config: $CONFIG"
     # Fire-and-store: an eval that leaves a recording promise outstanding as audio starts flowing crashes the app
     # (#436). Schedule the call so the eval returns before the first buffer lands.
-    "$SCRIPT_DIR/app-state.sh" eval "(() => { globalThis.__BENCH = null; globalThis.__BENCH_ABANDONED = false; setTimeout(async () => { try { const r = await __AGENTIC__.startRecording($CONFIG); if (globalThis.__BENCH_ABANDONED) { try { await __AGENTIC__.stopRecording() } catch (e2) {} globalThis.__BENCH = { err: 'abandoned before confirmation', phase: 'start' }; return } globalThis.__BENCH = (r && r.error) ? { err: String(r.error), phase: 'start' } : { started: true, phase: 'start' } } catch (e) { globalThis.__BENCH = { err: String(e) } } }, 500); return 'scheduled' })()" "${DEVICE_ARGS[@]:1}" || {
+    "$SCRIPT_DIR/app-state.sh" eval "(() => { const t = '$RUN_TOKEN'; globalThis.__BENCH = null; globalThis.__BENCH_RUN = t; globalThis.__BENCH_OWNED = false; globalThis.__BENCH_ABANDONED = false; setTimeout(async () => { if (globalThis.__BENCH_RUN !== t) { return } let r; try { r = await __AGENTIC__.startRecording($CONFIG) } catch (e) { if (globalThis.__BENCH_RUN === t) { globalThis.__BENCH = { err: String(e), phase: 'start' } } return } if (globalThis.__BENCH_RUN !== t) { return } if (r && r.error) { globalThis.__BENCH = { err: String(r.error), phase: 'start' }; return } globalThis.__BENCH_OWNED = true; if (globalThis.__BENCH_ABANDONED) { try { await __AGENTIC__.stopRecording() } catch (e2) {} globalThis.__BENCH_OWNED = false; globalThis.__BENCH = { err: 'abandoned before confirmation', phase: 'start' }; return } globalThis.__BENCH = { started: true, phase: 'start' } }, 500); return 'scheduled' })()" "${DEVICE_ARGS[@]:1}" || {
         echo "[BENCH] FATAL: could not dispatch startRecording." >&2
         exit 1
     }
-    # Claimed only after start is confirmed. Setting it first meant an ALREADY_RECORDING
-    # failure — another recording was live — let the EXIT trap stop that recording, which
-    # this script never owned.
+    # __BENCH_OWNED, set by the callback itself, is the real record of ownership. The
+    # shell flag cannot be: it is only assigned once await_bench returns, leaving a window
+    # where the recording is live but no shell variable says so.
     await_bench "startRecording" start
     RECORDING_STARTED=true
     if [[ -n "$POST_START_EVAL" ]]; then
