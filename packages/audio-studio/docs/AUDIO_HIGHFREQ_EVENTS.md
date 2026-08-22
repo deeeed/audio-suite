@@ -125,18 +125,23 @@ const config = {
 # Test high-frequency capabilities via CDP bridge
 # Recording via CDP must be fire-and-store: an eval that leaves a recording promise outstanding as audio starts
 # flowing crashes the app (#436). See CLAUDE.md "Recording via CDP".
-# Measure the effective analysis interval: analysis points over the recording's own
-# duration. The previous snippet here recorded a file and then read state after
-# stopping, so it could not have produced the figures below.
+# Measure the analysis-point RATE: points produced over the recording's own duration.
 #
-# There is no listener API on the bridge — an eval cannot `require` the package — so
-# lastRecordingAnalysisPointCount is what is actually measurable from here.
+# This is not the callback frequency. One callback can carry several data points, so a
+# slow callback delivering a batch looks the same here as a fast one delivering singles.
+# Use it to check that analysis ran at roughly the requested density, not to time the
+# event loop. The Android/iOS figures below are callback timings and are NOT what this
+# command measures.
+#
+# Callback frequency is not measurable from an eval: the bridge exposes no listener API
+# and an eval cannot `require` the package. Use the e2e suites below for that.
 scripts/agentic/app-state.sh --device "<name>" eval "(() => { globalThis.__HF = {}; setTimeout(async () => { try { const r = await __AGENTIC__.startRecording({ sampleRate: 48000, intervalAnalysis: 25, interval: 10, enableProcessing: true }); if (r && r.error) { globalThis.__HF = { err: r.error }; return } await new Promise(x => setTimeout(x, 5000)); const s = await __AGENTIC__.stopRecording(); if (s && s.error) { globalThis.__HF = { err: s.error }; return } const st = __AGENTIC__.getState(); globalThis.__HF = { durMs: s.durationMs, points: st.lastRecordingAnalysisPointCount, effectiveMs: st.lastRecordingAnalysisPointCount ? Math.round(s.durationMs / st.lastRecordingAnalysisPointCount) : null } } catch (e) { globalThis.__HF = { ex: String(e) } } }, 1200); return 'scheduled' })()"
 sleep 14
 scripts/agentic/app-state.sh --device "<name>" eval "JSON.stringify(globalThis.__HF)"
 
 # Measured on a Pixel 6a with the command above, requesting intervalAnalysis 25ms:
-#   { "durMs": 4980, "points": 144, "effectiveMs": 35 }
+#   { "durMs": 5060, "points": 131, "effectiveMs": 39 }
+# i.e. one analysis point per ~39ms of audio. Again: a point rate, not a callback rate.
 #
 # The Android/iOS figures above are from earlier runs and are not reproduced by CI.
 # Re-measure before relying on them. A points count of 0 means analysis never ran, which

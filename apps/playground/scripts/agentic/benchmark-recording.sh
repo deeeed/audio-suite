@@ -229,8 +229,11 @@ else
         echo "[BENCH] FATAL: could not dispatch startRecording." >&2
         exit 1
     }
-    RECORDING_STARTED=true
+    # Claimed only after start is confirmed. Setting it first meant an ALREADY_RECORDING
+    # failure — another recording was live — let the EXIT trap stop that recording, which
+    # this script never owned.
     await_bench "startRecording" start
+    RECORDING_STARTED=true
     if [[ -n "$POST_START_EVAL" ]]; then
         echo "[BENCH] Running post-start eval: $POST_START_EVAL"
         "$SCRIPT_DIR/app-state.sh" eval "$POST_START_EVAL" "${DEVICE_ARGS[@]:1}" 2>/dev/null || true
