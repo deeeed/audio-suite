@@ -29,28 +29,30 @@ ios/
 
 ### First iOS Test
 
+The shipped `BasicIntegrationTest.swift` is a placeholder: both of its tests assert
+`true` and keep the real bodies commented out. `SherpaOnnxWrapper` and `TtsModelConfig`
+do not exist, so the sketch below is what such a test would look like once they do, not
+what runs today.
+
 ```swift
-// ios/SherpaOnnxTests/BasicIntegrationTest.swift
+// Aspirational. Neither type exists yet.
 import XCTest
 @testable import SherpaOnnx
 
 class BasicIntegrationTest: XCTestCase {
     
     func testLibraryLoads() {
-        // Test 1: Can we load the C++ library?
         let loaded = SherpaOnnxWrapper.validateLibraryLoaded()
         XCTAssertTrue(loaded, "Sherpa-ONNX library should load")
     }
     
     func testTtsInitWithoutModel() {
-        // Test 2: Does it fail gracefully without model?
         let config = TtsModelConfig(modelPath: "/invalid/path")
         
         do {
             _ = try SherpaOnnxWrapper.initializeTts(config: config)
             XCTFail("Should throw error for missing model")
         } catch {
-            // Expected - document the error
             print("iOS Error for missing model: \(error)")
         }
     }
@@ -59,15 +61,10 @@ class BasicIntegrationTest: XCTestCase {
 
 ### Running iOS Tests
 
-```bash
-# Run from Xcode
-# 1. Open ios/SherpaOnnx.xcworkspace
-# 2. Select test target
-# 3. Cmd+U to run tests
-
-# Or from command line
-xcodebuild test -workspace SherpaOnnx.xcworkspace -scheme SherpaOnnxTests -destination 'platform=iOS Simulator,name=iPhone 14'
-```
+There is no iOS workspace or `SherpaOnnxTests` scheme in this package. The files under
+`ios/SherpaOnnxTests/` are sources without an Xcode project to run them: they compile
+only when a host app includes them. Running them needs a test target created first, in
+the consuming app's workspace.
 
 ## Android Native Testing
 
@@ -75,13 +72,18 @@ xcodebuild test -workspace SherpaOnnx.xcworkspace -scheme SherpaOnnxTests -desti
 ```
 android/
 ├── src/
-│   ├── androidTest/
+│   ├── androidTest/                      # instrumented, needs a device
 │   │   └── java/net/siteed/sherpaonnx/
 │   │       ├── BasicIntegrationTest.kt
-│   │       └── TtsIntegrationTest.kt
-│   └── test/
-│       └── resources/
-│           └── tiny-kokoro/
+│   │       ├── TtsIntegrationTest.kt
+│   │       ├── RealAsrFunctionalityTest.kt
+│   │       ├── RealTtsFunctionalityTest.kt
+│   │       └── ...                        # see the directory for the full set
+│   └── test/                              # JVM unit tests
+│       ├── java/net/siteed/sherpaonnx/handlers/
+│       │   ├── PrefillPolicyTest.kt
+│       │   └── TtsHandlerWiringTest.kt
+│       └── resources/README.md            # fixtures are downloaded, not committed
 ```
 
 ### First Android Test

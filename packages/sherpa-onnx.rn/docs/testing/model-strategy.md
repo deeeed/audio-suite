@@ -19,9 +19,11 @@ These models are suitable for continuous integration testing where download time
 
 **Total Size: ~72MB**
 
-The Model ID column is a local identifier and the directory the archive extracts into. It
-is deliberately not the upstream archive name, which differs for several of these —
-conflating the two is what broke the instrumented tests in #458. Download URLs for the
+The Model ID column is a local identifier only. It is neither the upstream archive name
+nor the directory the archive extracts into, and all three differ for several of these:
+`vits-icefall-en-low` downloads `vits-icefall-en_US-ljspeech-low.tar.bz2` and extracts
+`vits-icefall-en_US-ljspeech-low/`. Assuming they matched is what broke the instrumented
+tests in #458. Download URLs for the
 first three live in `LightweightModelDownloader.kt`; `kws-zipformer` has no entry there
 and is not downloaded by that path.
 
@@ -164,7 +166,7 @@ val modelConfig = mapOf(
     "files" to listOf("model.onnx", "tokens.txt", "lexicon.txt"),
     "ttsModelType" to "vits",
     "provider" to "cpu",
-    "url" to "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-icefall-en-ljspeech-low.tar.bz2"
+    "url" to "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-icefall-en_US-ljspeech-low.tar.bz2"
 )
 ```
 

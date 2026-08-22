@@ -50,10 +50,10 @@ open android/build/reports/androidTests/connected/debug/index.html
 
 ## Architecture
 
-The framework supports testing across React Native architectures:
-- **Old Architecture** (Bridge-based) - Traditional Promise-based communication
+The repo is new-architecture only (#457), so there is one architecture to test:
 - **New Architecture** (Fabric + TurboModules) - JSI direct calls
-- **Bridgeless Mode** - Experimental direct JSI without bridge
+
+Old-architecture and bridgeless testing were removed with the comparison tests in #434.
 
 ## Model Management
 

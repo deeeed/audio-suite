@@ -20,7 +20,8 @@ Branch: `feat/sherpa-onnx-upgrade`
 - `android/build.gradle`: removed `isNewArchitectureEnabled()` and all conditionals; `compileSdk`/`targetSdk` 33 → 34
 - `sherpa-onnx-rn.podspec`: removed `fabric_enabled` conditionals; iOS min `11.0` → `13.4`
 - `ios/bridge/SherpaOnnxRnModule.h`: removed `#ifdef RCT_NEW_ARCH_ENABLED` guards
-- `ios/bridge/SherpaOnnxRnModule.mm`: removed old-arch `#ifdef` blocks and `RCT_EXPORT_METHOD` macros
+- `ios/bridge/SherpaOnnxRnModule.mm`: removed old-arch `#ifdef` blocks. The
+  `RCT_EXPORT_METHOD` macros stayed: 61 of them still export the module's methods
 - `react-native.config.js`: **still registers the Android package** — `packageImportPath`
   and `packageInstance` are both present, and required. An earlier revision claimed this
   was removed, which is the same wrong assumption that made the Kotlin module look dead
