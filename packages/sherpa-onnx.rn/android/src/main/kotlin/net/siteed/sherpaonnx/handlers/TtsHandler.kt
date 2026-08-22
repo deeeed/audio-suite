@@ -41,15 +41,21 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
     private val cancelledThrough = java.util.concurrent.atomic.AtomicLong(0)
 
     /**
-     * Request ids that have committed to resolving successfully.
+     * Guards the cancel-versus-complete transition.
      *
-     * A recheck before writing the file narrows the cancel-versus-complete race but cannot
-     * close it: the WAV write is synchronous and a stop can land partway through, leaving
-     * the request cancelled and resolved at once. Claiming completion here is a single
-     * atomic step, so exactly one of the two wins (#440).
+     * A recheck before writing the file narrows that race but cannot close it: the WAV
+     * write is synchronous and a stop can land partway through, leaving the request
+     * cancelled and resolved at once. Holding this across both decisions makes exactly one
+     * of them win (#440).
+     *
+     * A plain lock rather than a set of completed ids: nothing ever read those entries, so
+     * the set only grew, one boxed Long per successful synthesis.
      */
-    private val completedRequests =
-        java.util.Collections.synchronizedSet(java.util.HashSet<Long>())
+    private val completionLock = Any()
+
+    /** The request that owns [audioTrack], or 0 when nothing does. */
+    @Volatile
+    private var audioTrackOwner: Long = 0
 
     /**
      * Claim completion for [requestId], or report that a cancel got there first.
@@ -57,13 +63,8 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
      * Returns false if the request was already cancelled, in which case the caller must
      * not resolve.
      */
-    private fun tryCompleteRequest(requestId: Long): Boolean {
-        synchronized(completedRequests) {
-            if (!isActive(requestId)) return false
-            completedRequests.add(requestId)
-            return true
-        }
-    }
+    private fun tryCompleteRequest(requestId: Long): Boolean =
+        synchronized(completionLock) { isActive(requestId) }
 
     /** Whether [requestId] may keep generating, or has been cancelled out from under it. */
     private fun isActive(requestId: Long): Boolean =
@@ -72,9 +73,9 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
     /** Cancel every request claimed so far. Safe to call from any thread. */
     private fun cancelOutstandingRequests() {
         val newest = requestCounter.get()
-        // Under the same monitor as tryCompleteRequest, so cancel and complete cannot
+        // Under the same lock as tryCompleteRequest, so cancel and complete cannot
         // interleave: whichever takes it first decides that request's fate.
-        synchronized(completedRequests) {
+        synchronized(completionLock) {
             // Raise the bar rather than assigning: a concurrent cancel must not lower it.
             while (true) {
                 val current = cancelledThrough.get()
@@ -516,7 +517,7 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                     
                     // Prefill the track before starting playback. Starting an empty stream
                     // makes the first callback prone to an audible underrun.
-                    initAudioTrack(currentSampleRate, startPlayback = false)
+                    initAudioTrack(currentSampleRate, startPlayback = false, ownerRequestId = requestId)
                     
                     if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
                         Log.e(TAG, "Failed to initialize AudioTrack for playback!")
@@ -564,7 +565,7 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                                 // prefill before starting. Carrying playbackStarted over
                                 // would start it immediately and let a remainder below the
                                 // threshold play as silence — or not at all.
-                                initAudioTrack(currentSampleRate, startPlayback = false)
+                                initAudioTrack(currentSampleRate, startPlayback = false, ownerRequestId = requestId)
                                 PrefillPolicy.onTrackReplaced().let {
                                     framesInCurrentTrack = it.framesInCurrentTrack
                                     playbackStarted = it.playbackStarted
@@ -610,7 +611,7 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                                 if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
                                     Log.w(TAG, "AudioTrack disabled during chunk write, reinitializing...")
                                     releaseAudioTrack()
-                                    initAudioTrack(currentSampleRate, startPlayback = false)
+                                    initAudioTrack(currentSampleRate, startPlayback = false, ownerRequestId = requestId)
                                     PrefillPolicy.onTrackReplaced().let {
                                         framesInCurrentTrack = it.framesInCurrentTrack
                                         playbackStarted = it.playbackStarted
@@ -854,6 +855,9 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
      * Release AudioTrack resources
      */
     private fun releaseAudioTrack() {
+        // No owner once the track is gone; a stale id here would make stop() skip cleanup
+        // for a track that no longer exists.
+        audioTrackOwner = 0
         try {
             // Release whenever the track is non-null, not only when it reached
             // STATE_INITIALIZED. A track whose build() succeeded but whose init
@@ -876,7 +880,7 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
     /**
      * Initialize audio track for playback
      */
-    private fun initAudioTrack(sampleRate: Int, startPlayback: Boolean = true) {
+    private fun initAudioTrack(sampleRate: Int, startPlayback: Boolean = true, ownerRequestId: Long = 0) {
         try {
             // Release any existing AudioTrack first to prevent resource conflicts.
             // Same unconditional release as releaseAudioTrack(): an uninitialized
@@ -907,6 +911,9 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
             Log.d(TAG, "Creating AudioTrack with buffer size: $minBufferSize bytes, sample rate: $sherpaModelSampleRate Hz")
 
             // Create with explicit stream type for maximum compatibility
+            // Claim ownership before building: stop() uses this to tell a track that
+            // belongs to a newer generation from one left behind by a cancelled request.
+            audioTrackOwner = ownerRequestId
             audioTrack = AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()
@@ -1007,8 +1014,13 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                 // stay on this thread because the generation loop writes to it from here.
 
                 // Stop audio playback, unless a newer generation now owns the track.
-                if (requestCounter.get() > cutoff) {
-                    Log.d(TAG, "Skipping AudioTrack cleanup: request ${requestCounter.get()} started after this stop")
+                // The owner, not the counter. A newer request existing does not mean it
+                // owns the track: stopTts() followed immediately by a playAudio=false
+                // generate bumps the counter while the cancelled request's track is still
+                // playing, and nothing else would ever release it (#440).
+                val owner = audioTrackOwner
+                if (owner > cutoff) {
+                    Log.d(TAG, "Skipping AudioTrack cleanup: request $owner owns the track and started after this stop")
                 } else if (audioTrack?.playState == AudioTrack.PLAYSTATE_PLAYING) {
                     audioTrack?.pause()
                     audioTrack?.flush()
