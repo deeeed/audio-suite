@@ -10,7 +10,6 @@
 set -euo pipefail
 
 # Set once startRecording is confirmed, so the traps below know to stop it.
-RECORDING_STARTED=false
 
 # Stop a recording this script started before leaving. Without it any abort after the
 # start left the device recording indefinitely, since the default config has no
@@ -26,14 +25,24 @@ stop_recording_if_running() {
     # if this run's callback actually started it. Doing it in the app avoids the window
     # between the callback succeeding and the shell learning about it, and means a start
     # that failed with ALREADY_RECORDING never causes us to stop someone else's recording.
-    "$SCRIPT_DIR/app-state.sh" eval "(() => { const t = '$RUN_TOKEN'; if (globalThis.__BENCH_RUN !== t) { return 'not-ours' } globalThis.__BENCH_ABANDONED = true; if (!globalThis.__BENCH_OWNED) { return 'nothing-owned' } globalThis.__BENCH_OWNED = false; __AGENTIC__.stopRecording(); return 'stopping' })()" \
-        "${DEVICE_ARGS[@]:1}" >/dev/null 2>&1 || true
-
-    # The eval above already stopped an owned recording. The shell flag alone must never
-    # trigger a second, unscoped stop: after 'not-ours' it would stop a recording this run
-    # does not own, and on the normal path it would stop whatever started next.
-    RECORDING_STARTED=false
-    sleep 1
+    #
+    # Ownership moves to a stopping state rather than being cleared outright: if the eval
+    # never reaches the device, a retry must still know there is a recording to stop.
+    # Clearing first meant one transient CDP failure stranded a live recording.
+    local attempt result
+    for attempt in 1 2 3; do
+        result=$("$SCRIPT_DIR/app-state.sh" eval "(() => { const t = '$RUN_TOKEN'; if (globalThis.__BENCH_RUN !== t) { return 'not-ours' } globalThis.__BENCH_ABANDONED = true; if (!globalThis.__BENCH_OWNED && !globalThis.__BENCH_STOPPING) { return 'nothing-owned' } globalThis.__BENCH_OWNED = false; globalThis.__BENCH_STOPPING = true; try { __AGENTIC__.stopRecording() } catch (e) { return 'stop-threw' } globalThis.__BENCH_STOPPING = false; return 'stopped' })()" \
+            "${DEVICE_ARGS[@]:1}" 2>/dev/null) || result=""
+        case "$result" in
+            *not-ours*|*nothing-owned*|*stopped*) return 0 ;;
+        esac
+        # Either the eval never landed or stopRecording threw. Both are retryable, and the
+        # stopping state above means the next attempt still sees something to stop.
+        echo "[BENCH] stop attempt $attempt did not confirm; retrying" >&2
+        sleep 1
+    done
+    echo "[BENCH] WARNING: could not confirm the recording stopped after 3 attempts." >&2
+    echo "[BENCH] A recording may still be running on the device." >&2
 }
 
 # The sampling helpers run inside $(...), where `exit` would only end the subshell. They
@@ -221,7 +230,6 @@ await_bench() {
         # report success and must not stop whatever is running now.
         if echo "$raw" | grep -q 'BENCH_STOLEN'; then
             echo "[BENCH] FATAL: this run no longer owns the app globals (concurrent run or app reload)." >&2
-            RECORDING_STARTED=false
             exit 1
         fi
         if echo "$raw" | grep -q 'BENCH_ERR'; then
@@ -270,15 +278,22 @@ else
     echo "[BENCH] Starting recording with config: $CONFIG"
     # Fire-and-store: an eval that leaves a recording promise outstanding as audio starts flowing crashes the app
     # (#436). Schedule the call so the eval returns before the first buffer lands.
-    "$SCRIPT_DIR/app-state.sh" eval "(() => { const t = '$RUN_TOKEN'; globalThis.__BENCH = null; globalThis.__BENCH_RUN = t; globalThis.__BENCH_OWNED = false; globalThis.__BENCH_ABANDONED = false; setTimeout(async () => { if (globalThis.__BENCH_RUN !== t) { return } let r; try { r = await __AGENTIC__.startRecording($CONFIG) } catch (e) { if (globalThis.__BENCH_RUN === t) { globalThis.__BENCH = { err: String(e), phase: 'start' } } return } if (globalThis.__BENCH_RUN !== t) { return } if (r && r.error) { globalThis.__BENCH = { err: String(r.error), phase: 'start' }; return } globalThis.__BENCH_OWNED = true; if (globalThis.__BENCH_ABANDONED) { try { await __AGENTIC__.stopRecording() } catch (e2) {} globalThis.__BENCH_OWNED = false; globalThis.__BENCH = { err: 'abandoned before confirmation', phase: 'start' }; return } globalThis.__BENCH = { started: true, phase: 'start' } }, 500); return 'scheduled' })()" "${DEVICE_ARGS[@]:1}" || {
+    START_DISPATCH=$("$SCRIPT_DIR/app-state.sh" eval "(() => { const t = '$RUN_TOKEN'; const prev = globalThis.__BENCH_RUN; if (prev && prev !== t && (globalThis.__BENCH_PENDING || globalThis.__BENCH_OWNED || globalThis.__BENCH_STOPPING)) { return 'busy' } globalThis.__BENCH = null; globalThis.__BENCH_RUN = t; globalThis.__BENCH_PENDING = true; globalThis.__BENCH_OWNED = false; globalThis.__BENCH_STOPPING = false; globalThis.__BENCH_ABANDONED = false; setTimeout(async () => { if (globalThis.__BENCH_RUN !== t) { return } let r; try { r = await __AGENTIC__.startRecording($CONFIG) } catch (e) { if (globalThis.__BENCH_RUN === t) { globalThis.__BENCH_PENDING = false; globalThis.__BENCH = { err: String(e), phase: 'start' } } return } if (globalThis.__BENCH_RUN !== t) { return } if (r && r.error) { globalThis.__BENCH_PENDING = false; globalThis.__BENCH = { err: String(r.error), phase: 'start' }; return } globalThis.__BENCH_OWNED = true; if (globalThis.__BENCH_ABANDONED) { try { await __AGENTIC__.stopRecording() } catch (e2) {} globalThis.__BENCH_OWNED = false; globalThis.__BENCH_PENDING = false; globalThis.__BENCH = { err: 'abandoned before confirmation', phase: 'start' }; return } globalThis.__BENCH_PENDING = false; globalThis.__BENCH = { started: true, phase: 'start' } }, 500); return 'scheduled' })()" "${DEVICE_ARGS[@]:1}") || {
         echo "[BENCH] FATAL: could not dispatch startRecording." >&2
         exit 1
     }
+    # Another run is starting, owns a recording, or is still stopping one. Seizing the
+    # globals here would strand its recording: it would see BENCH_STOLEN and refuse to
+    # tear down, while this run would only get ALREADY_RECORDING.
+    if [[ "$START_DISPATCH" == *busy* ]]; then
+        echo "[BENCH] FATAL: another benchmark run owns the app right now." >&2
+        echo "[BENCH] Wait for it to finish, or stop it, before starting another." >&2
+        exit 1
+    fi
     # __BENCH_OWNED, set by the callback itself, is the real record of ownership. The
     # shell flag cannot be: it is only assigned once await_bench returns, leaving a window
     # where the recording is live but no shell variable says so.
     await_bench "startRecording" start
-    RECORDING_STARTED=true
     if [[ -n "$POST_START_EVAL" ]]; then
         echo "[BENCH] Running post-start eval: $POST_START_EVAL"
         "$SCRIPT_DIR/app-state.sh" eval "$POST_START_EVAL" "${DEVICE_ARGS[@]:1}" 2>/dev/null || true
@@ -338,7 +353,6 @@ else
         exit 1
     fi
     await_bench "stopRecording" stop
-    RECORDING_STARTED=false
 fi
 
 # ── Final memory ──

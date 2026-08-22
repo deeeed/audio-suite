@@ -153,10 +153,16 @@ scripts/agentic/app-state.sh --device "<name>" eval "JSON.stringify(globalThis._
 ```
 
 ### E2E Testing
+
+These suites do not currently run. They open an `agent-validation` route whose screen no
+longer exists, so they fail at the first `waitFor` and never reach a timing assertion.
+Restoring that screen, or adding a listener hook to the CDP bridge, is what it would take
+to measure callback timing again.
+
 ```bash
-# Comprehensive timing validation
-yarn e2e:android:high-frequency  # Sub-50ms validation
-yarn e2e:ios:high-frequency       # 100ms limitation validation
+# Broken: fails before any timing assertion (see above)
+yarn e2e:android:high-frequency
+yarn e2e:ios:high-frequency
 ```
 
 ## Conclusion

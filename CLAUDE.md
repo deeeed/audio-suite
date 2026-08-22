@@ -308,11 +308,12 @@ What is measured, on a Pixel 6a:
 - **Crashes.** An evaluation whose expression leaves a JS promise from
   `startRecording()` outstanding while audio starts flowing — the app dies in ~90ms,
   `mqt_v_js`, `libhermesvm.so`, SIGSEGV at null.
-- **Also crashes.** The `validate-recipe.js` path, reproducibly, at the *stop* step, even
-  with every recording call converted to fire-and-store.
+- **Was crashing, now passes.** The `validate-recipe.js` path used to die reproducibly at
+  the *stop* step even with fire-and-store throughout. After the rewrite in `5962eda1` it
+  runs 12/12 with the same pid start to finish. #436 still fires intermittently elsewhere,
+  so this is one path known good, not the crash being fixed.
 
-So fire-and-store is what to write, and it is not a complete workaround: it avoids the
-crash at start but stop is still reachable. Polling is not the thing to avoid.
+So fire-and-store is what to write. Polling is not the thing to avoid.
 
 So for anything that starts audio flowing:
 
