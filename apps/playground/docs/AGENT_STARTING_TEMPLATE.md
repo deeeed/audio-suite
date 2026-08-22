@@ -52,7 +52,7 @@ Read file before editing. Minimal diff. After each edit: `scripts/agentic/reload
 ## Step 5 — Validate
 
 ```bash
-# Recording — fire-and-store ONLY. A bare eval held open while audio starts
+# Recording — fire-and-store ONLY. An eval that leaves a recording promise outstanding as audio starts
 # flowing crashes the app (#436, Hermes SIGSEGV). Schedule the work so the eval
 # returns first, stash results in a global, poll separately:
 # The bridge RETURNS { error } rather than rejecting, so catch alone never fires —

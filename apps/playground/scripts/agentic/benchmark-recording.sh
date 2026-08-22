@@ -9,6 +9,10 @@
 
 set -euo pipefail
 
+# The sampling helpers run inside $(...), where `exit` would only end the subshell. They
+# signal the top-level shell instead, and this trap turns that into a real failure.
+trap 'echo "[BENCH] aborted" >&2; exit 1' TERM
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_PKG="net.siteed.audioplayground.development"
 
@@ -46,7 +50,19 @@ resolve_serial() {
         # own device name — the one every other script here takes — was rejected outright.
         local dev_short="${dev_name%% - *}"
         local dev_pattern="${dev_short// /[ _]}"
-        serial=$(adb devices -l | grep -iE "$dev_pattern" | awk '{print $1}' | head -1)
+        local matches
+        matches=$(adb devices -l | grep -iE "$dev_pattern" | awk '{print $1}')
+        local match_count
+        match_count=$(printf '%s\n' "$matches" | grep -c . || true)
+        if [[ "$match_count" -gt 1 ]]; then
+            # Taking the first match silently benchmarked whichever phone adb listed
+            # first, while CDP drove the one the caller actually named.
+            echo "[BENCH] FATAL: '$dev_name' matches $match_count devices:" >&2
+            adb devices -l | grep -iE "$dev_pattern" >&2
+            echo "[BENCH] Pass a serial, or disconnect the others." >&2
+            exit 1
+        fi
+        serial=$(printf '%s\n' "$matches" | head -1)
         if [[ -n "$serial" ]]; then
             echo "$serial"
             return
@@ -86,7 +102,13 @@ run_adb() {
 # Helper: get memory stats — returns "java_heap native_heap total_pss" in KB
 get_memory() {
     local meminfo
-    meminfo=$(run_adb shell dumpsys meminfo "$APP_PKG" 2>/dev/null)
+    # Checked explicitly: this runs inside $(...), where bash disables errexit, so a
+    # failing adb would otherwise fall through to the zero defaults below and be reported
+    # as a successful benchmark.
+    if ! meminfo=$(run_adb shell dumpsys meminfo "$APP_PKG" 2>/dev/null) || [[ -z "$meminfo" ]]; then
+        echo "[BENCH] FATAL: could not read meminfo from $ADB_SERIAL" >&2
+        kill -TERM $$
+    fi
     local java_heap native_heap total_pss
 
     java_heap=$(echo "$meminfo" | grep -E "Java Heap:" | awk '{print $3}' | head -1)
@@ -109,8 +131,15 @@ get_memory() {
 
 # Helper: get CPU % for the app
 get_cpu() {
+    local top_out
+    # Same reason as get_memory: an adb failure here must not become a 0% sample.
+    if ! top_out=$(run_adb shell top -b -n 1 -q 2>/dev/null); then
+        echo "[BENCH] FATAL: could not read top from $ADB_SERIAL" >&2
+        kill -TERM $$
+    fi
     local cpu
-    cpu=$(run_adb shell top -b -n 1 -q 2>/dev/null | grep "$APP_PKG" | head -1 | awk '{print $9}')
+    cpu=$(printf '%s\n' "$top_out" | grep "$APP_PKG" | head -1 | awk '{print $9}')
+    # An absent process line is a real 0 for a backgrounded app, not a failure.
     echo "${cpu:-0}"
 }
 
@@ -169,7 +198,7 @@ if [[ "$SKIP_RECORDING" == "true" ]]; then
     echo "[BENCH] Skipping recording (idle baseline mode)"
 else
     echo "[BENCH] Starting recording with config: $CONFIG"
-    # Fire-and-store: an eval held open while audio starts flowing crashes the app
+    # Fire-and-store: an eval that leaves a recording promise outstanding as audio starts flowing crashes the app
     # (#436). Schedule the call so the eval returns before the first buffer lands.
     "$SCRIPT_DIR/app-state.sh" eval "(() => { globalThis.__BENCH = null; setTimeout(async () => { try { const r = await __AGENTIC__.startRecording($CONFIG); globalThis.__BENCH = (r && r.error) ? { err: String(r.error), phase: 'start' } : { started: true, phase: 'start' } } catch (e) { globalThis.__BENCH = { err: String(e) } } }, 500); return 'scheduled' })()" "${DEVICE_ARGS[@]:1}" || {
         echo "[BENCH] FATAL: could not dispatch startRecording." >&2

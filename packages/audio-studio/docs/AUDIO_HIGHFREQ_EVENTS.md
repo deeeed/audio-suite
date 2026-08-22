@@ -123,14 +123,24 @@ const config = {
 ### CDP Bridge Validation
 ```bash
 # Test high-frequency capabilities via CDP bridge
-# Recording via CDP must be fire-and-store: an eval held open while audio starts
+# Recording via CDP must be fire-and-store: an eval that leaves a recording promise outstanding as audio starts
 # flowing crashes the app (#436). See CLAUDE.md "Recording via CDP".
-scripts/agentic/app-state.sh eval "(() => { globalThis.__V = {}; setTimeout(async () => { try { const r = await __AGENTIC__.startRecording({ sampleRate: 48000, intervalAnalysis: 25, interval: 10 }); if (r && r.error) { globalThis.__V = { err: r.error }; return } await new Promise(r2 => setTimeout(r2, 3000)); const s = await __AGENTIC__.stopRecording(); globalThis.__V = (s && s.error) ? { err: s.error } : { uri: s.fileUri, size: s.size, dur: s.durationMs } } catch (e) { globalThis.__V = { err: String(e) } } }, 1500); return 'scheduled' })()"
-sleep 10
-scripts/agentic/app-state.sh eval "JSON.stringify(globalThis.__V)"
-scripts/agentic/app-state.sh state
-# Android results: Analysis ~41ms actual, Stream ~21ms actual
-# iOS results: Both Analysis and Stream ~100ms actual (expected)
+# Measure the effective analysis interval: analysis points over the recording's own
+# duration. The previous snippet here recorded a file and then read state after
+# stopping, so it could not have produced the figures below.
+#
+# There is no listener API on the bridge — an eval cannot `require` the package — so
+# lastRecordingAnalysisPointCount is what is actually measurable from here.
+scripts/agentic/app-state.sh --device "<name>" eval "(() => { globalThis.__HF = {}; setTimeout(async () => { try { const r = await __AGENTIC__.startRecording({ sampleRate: 48000, intervalAnalysis: 25, interval: 10, enableProcessing: true }); if (r && r.error) { globalThis.__HF = { err: r.error }; return } await new Promise(x => setTimeout(x, 5000)); const s = await __AGENTIC__.stopRecording(); const st = __AGENTIC__.getState(); globalThis.__HF = { durMs: s.durationMs, points: st.lastRecordingAnalysisPointCount, effectiveMs: st.lastRecordingAnalysisPointCount ? Math.round(s.durationMs / st.lastRecordingAnalysisPointCount) : null } } catch (e) { globalThis.__HF = { ex: String(e) } } }, 1200); return 'scheduled' })()"
+sleep 14
+scripts/agentic/app-state.sh --device "<name>" eval "JSON.stringify(globalThis.__HF)"
+
+# Measured on a Pixel 6a with the command above, requesting intervalAnalysis 25ms:
+#   { "durMs": 4980, "points": 144, "effectiveMs": 35 }
+#
+# The Android/iOS figures above are from earlier runs and are not reproduced by CI.
+# Re-measure before relying on them. A points count of 0 means analysis never ran, which
+# is a different problem from a slow interval.
 ```
 
 ### E2E Testing

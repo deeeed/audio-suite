@@ -68,7 +68,7 @@ The most common validation pattern — prove recording works via CDP:
 scripts/agentic/app-navigate.sh "/(tabs)/record"
 
 # 2. Start recording, hold ~3s, stop — all inside the scheduled callback.
-# Recording via CDP must be fire-and-store: an eval held open while audio starts
+# Recording via CDP must be fire-and-store: an eval that leaves a recording promise outstanding as audio starts
 # flowing crashes the app (#436). See CLAUDE.md "Recording via CDP".
 scripts/agentic/app-state.sh eval "(() => { globalThis.__V = {}; setTimeout(async () => { try { const r = await __AGENTIC__.startRecording({ sampleRate: 44100, channels: 1 }); if (r && r.error) { globalThis.__V = { err: r.error }; return } await new Promise(r2 => setTimeout(r2, 3000)); const s = await __AGENTIC__.stopRecording(); globalThis.__V = (s && s.error) ? { err: s.error } : { uri: s.fileUri, size: s.size, dur: s.durationMs } } catch (e) { globalThis.__V = { err: String(e) } } }, 1500); return 'scheduled' })()"
 
