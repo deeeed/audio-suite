@@ -233,6 +233,35 @@ class RecorderLockingTest {
     }
 
     @Test
+    fun `resume refuses a session teardown already claimed`() {
+        // isPaused alone is not enough. cleanup's phase 0 clears _isRecording and takes
+        // the worker, so a resume checking only isPaused would restart both recorders and
+        // resolve success on a recording nothing is reading from.
+        val body = bodyOf("fun resumeRecording(promise: Promise)")
+        assertTrue(
+            body.contains("if (!_isRecording.get())"),
+            "resumeRecording must reject when _isRecording is false. That flag is the " +
+                "ownership claim cleanup makes before it releases the lock to join."
+        )
+    }
+
+    @Test
+    fun `an interrupted join still finishes teardown`() {
+        // join throws InterruptedException. Letting it propagate skipped all of phase 2:
+        // recorders, the foreground service, the wake lock, audio focus, listeners, and
+        // destroy()'s singleton clear.
+        val body = bodyOf("internal fun cleanup(callerHoldsRecordLock: Boolean)")
+        val joinAt = body.indexOf(".join(")
+        val guarded = body.lastIndexOf("try {", joinAt)
+        assertTrue(
+            guarded in 0 until joinAt && body.contains("catch (e: InterruptedException)"),
+            "cleanup must catch InterruptedException around the join and carry on. " +
+                "Teardown has to release the recorders even when the joining thread is " +
+                "itself interrupted."
+        )
+    }
+
+    @Test
     fun `starting a recording consumes the preparation`() {
         // isPrepared outliving the start let a losing teardown treat an active recording
         // as a never-started preparation and release its recorders. The two states have to

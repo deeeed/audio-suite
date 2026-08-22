@@ -1669,6 +1669,15 @@ class AudioRecorderManager(
             promise.reject("NOT_PAUSED", "Recording is not paused", null)
             return
         }
+        // _isRecording is the ownership flag cleanup claims in its phase 0. Checking only
+        // isPaused let a resume proceed after a teardown had already taken the session and
+        // the PCM worker: it restarted both recorders and resolved success on a recording
+        // with nothing reading from them (#446).
+        if (!_isRecording.get()) {
+            LogUtils.e(CLASS_NAME, "⏺️ Cannot resume recording: teardown already claimed this session")
+            promise.reject("NOT_RECORDING", "Recording was stopped and cannot be resumed", null)
+            return
+        }
 
         if (isOngoingCall()) {
             LogUtils.e(CLASS_NAME, "⏺️ Cannot resume recording: ongoing call detected")
@@ -2363,9 +2372,17 @@ class AudioRecorderManager(
         // itself (stopRecording) or knows there is none (getStatus's orphan path).
         if (ownedWorker != null && ownedWorker.isAlive) {
             ownedWorker.interrupt()
-            // Same 2s budget stopRecording uses. The loop reads non-blocking, so it exits
-            // promptly once _isRecording is false.
-            ownedWorker.join(2000L)
+            try {
+                // Same 2s budget stopRecording uses. The loop reads non-blocking, so it
+                // exits promptly once _isRecording is false.
+                ownedWorker.join(2000L)
+            } catch (e: InterruptedException) {
+                // Letting this propagate skipped the whole of phase 2 — recorders, the
+                // foreground service, the wake lock, audio focus, listeners — and left
+                // destroy() without clearing the singleton. Teardown has to finish.
+                Thread.currentThread().interrupt()
+                LogUtils.w(CLASS_NAME, "Interrupted while joining the recording thread; continuing teardown")
+            }
             if (ownedWorker.isAlive) {
                 LogUtils.w(CLASS_NAME, "Recording thread did not exit within 2s of cleanup")
             }
