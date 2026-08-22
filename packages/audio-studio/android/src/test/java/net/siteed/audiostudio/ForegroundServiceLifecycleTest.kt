@@ -210,6 +210,26 @@ class ForegroundServiceLifecycleTest {
             .toList()
     }
 
+    /**
+     * Assert an expression is passed with positive polarity.
+     *
+     * The truth tables cover the rules; they cannot see the arguments fed into them. A
+     * single `!` at a wiring site inverts the meaning while leaving every required token
+     * in place and every truth table green.
+     */
+    private fun assertPositivePolarity(text: String, expression: String, why: String) {
+        val escaped = Regex.escape(expression)
+        assertFalse(
+            "$why Found a negated `$expression` in: ${text.trim().takeLast(240)}",
+            Regex("""!\s*\(?\s*$escaped""").containsMatchIn(text) ||
+                Regex("""$escaped[^\n]{0,40}==\s*false""").containsMatchIn(text)
+        )
+        assertTrue(
+            "$why Expected `$expression` in: ${text.trim().takeLast(240)}",
+            text.contains(expression)
+        )
+    }
+
     private fun assertServiceCallIsCorrectlyGuarded(functionName: String, call: String) {
         val body = bodyOf(functionName)
 
@@ -421,6 +441,29 @@ class ForegroundServiceLifecycleTest {
             Regex("""ownedService\s*=\s*(true|false)\b""").containsMatchIn(body)
         )
 
+        // Both capture sites: cleanup claims the session on the callerHoldsRecordLock
+        // branch and on the locked one. Checking only the first left the other free to be
+        // inverted, which is the whole defect on that path.
+        val lines = body.lines()
+        val captureSites = lines.indices.filter {
+            Regex("""ownedService\s*=""").containsMatchIn(lines[it]) &&
+                !Regex("""ownedService\s*=\s*ownedService""").containsMatchIn(lines[it])
+        }
+        assertEquals(
+            "cleanup should capture ownedService on both claim branches. Sites found: " +
+                captureSites.map { lines[it].trim() },
+            2, captureSites.size
+        )
+        captureSites.forEach { i ->
+            assertPositivePolarity(
+                lines.subList(i, minOf(lines.size, i + 3)).joinToString(" "),
+                "serviceWasStartedFor(recordingConfig)",
+                "The phase-0 capture at line ${i + 1} of cleanup must record what this " +
+                    "session actually started. Negating it makes a service-owning session " +
+                    "look like it owns none, and the stop is skipped on both branches (#474)."
+            )
+        }
+
         val mismatchReturn = body.indexOf("sessionId != ownedSession")
         assertTrue("cleanup should still guard on the session mismatch", mismatchReturn >= 0)
         val stopIndex = body.indexOf("AudioRecordingService.stopService", mismatchReturn)
@@ -464,13 +507,15 @@ class ForegroundServiceLifecycleTest {
                 "rule rather than inlining the condition: $successorBinding",
             successorBinding.contains("successorOwnsService(")
         )
-        assertTrue(
-            "It must pass the live recording state: $successorBinding",
-            successorBinding.contains("_isRecording")
+        assertPositivePolarity(
+            successorBinding, "_isRecording.get()",
+            "successorIsRecording must be passed as-is. Negating it makes a prepared " +
+                "successor report ownership and strands the old service (#474)."
         )
-        assertTrue(
-            "It must pass what the successor's config would need: $successorBinding",
-            successorBinding.contains("serviceWasStartedFor")
+        assertPositivePolarity(
+            successorBinding, "serviceWasStartedFor(recordingConfig)",
+            "successorConfigNeedsService must be passed as-is. Negating it inverts which " +
+                "successors are treated as owners (#474)."
         )
     }
 
