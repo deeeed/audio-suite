@@ -27,10 +27,14 @@ The iOS implementation fully supports React Native's new architecture with Turbo
 
 ### Bridge types under the interop layer
 
-The module still extends `RCTEventEmitter` and adopts `RCTBridgeModule`, and that is not
-leftover old-architecture support — under RN's interop layer it is how the module
-registers and how it emits events. Removing them breaks registration, which is the same
-mistake the Android side nearly made with `ReactContextBaseJavaModule` (#458).
+The module extends `RCTEventEmitter` and adopts `RCTBridgeModule`. Neither is what
+registers it: `RCT_EXPORT_MODULE(SherpaOnnx)` does that. `RCTEventEmitter` is the base it
+needs to emit events to JS, and the `<RCTBridgeModule>` adoption is redundant, since
+`NativeSherpaOnnxSpecSpec` already inherits that protocol.
+
+An earlier revision of this document claimed removing them would break registration. That
+was wrong, and it is a different situation from the Android side, where
+`SherpaOnnxPackage` really does perform registration under the interop layer (#458).
 
 - **Bridge Module**: Extends `RCTEventEmitter` with `RCTBridgeModule`
 - **Promise-based APIs**: All methods use Promise-based async calls

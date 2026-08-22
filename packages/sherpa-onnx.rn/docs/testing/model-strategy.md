@@ -159,9 +159,11 @@ Models Directory Structure:
 
 ### Model Registry Format
 
-This is the test registry entry, not the config `TtsHandler` consumes. The handler takes
-`modelDir` plus `modelFile`, `tokensFile` and `lexiconFile` — a directory and filenames,
-not full paths.
+Illustrative metadata, not a literal copy of either structure it sits between. The real
+`LIGHTWEIGHT_MODELS` registry in `TtsIntegrationTest.kt` keys each entry by model ID and
+carries no inner `id` or `url`. And it is not the config `TtsHandler` consumes either:
+that takes `modelDir` plus `modelFile` and `tokensFile`, a directory and filenames rather
+than full paths.
 
 ```kotlin
 val modelConfig = mapOf(
