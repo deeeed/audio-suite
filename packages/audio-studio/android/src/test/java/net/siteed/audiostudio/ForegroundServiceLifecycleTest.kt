@@ -272,8 +272,14 @@ class ForegroundServiceLifecycleTest {
                 // Reject `!requiresForegroundService(...)` and friends: naming the
                 // predicate is not the same as agreeing with it, and an inverted guard
                 // both leaks and kills live services.
-                val negated = Regex("""![\s]*(serviceWasStartedFor|needsService|requiresForegroundService|shouldStopServiceOnSessionMismatch)""")
-                    .containsMatchIn(guard)
+                val names =
+                    "serviceWasStartedFor|needsService|requiresForegroundService|" +
+                        "shouldStopServiceOnSessionMismatch|successorOwnsService|ownedService"
+                // Every inversion spelling, not just a bare leading bang: `!(pred(...))`
+                // and `pred(...) == false` invert the meaning while keeping the name.
+                val negated = Regex("""!\s*\(?\s*($names)""").containsMatchIn(guard) ||
+                    Regex("""($names)[^\n]*\)?\s*==\s*false""").containsMatchIn(guard) ||
+                    Regex("""($names)[^\n]*\)?\s*!=\s*true""").containsMatchIn(guard)
                 !negated && (
                     guard.contains("serviceWasStartedFor") ||
                         guard.contains("needsService") ||
@@ -357,6 +363,29 @@ class ForegroundServiceLifecycleTest {
     }
 
     @Test
+    fun successorOwnershipTruthTable() {
+        // Both halves required. An OR here is wrong in both directions, and every
+        // token-matching assertion accepts it.
+        val owns = AudioRecorderManager::successorOwnsService
+
+        assertTrue(
+            "Recording and its config needs a service: it owns one.",
+            owns.invoke(true, true)
+        )
+        assertFalse(
+            "Recording with a config that needs no service: it started none, and its own " +
+                "teardown stops none, so the old service is nobody's.",
+            owns.invoke(true, false)
+        )
+        assertFalse(
+            "Not recording, config would need one: a prepared session publishes without " +
+                "starting a service.",
+            owns.invoke(false, true)
+        )
+        assertFalse("Neither: owns nothing.", owns.invoke(false, false))
+    }
+
+    @Test
     fun sessionMismatchStopUsesTheCapturedDecisionAndTheRule() {
         // Two things the truth table cannot see: that the decision is captured when the
         // session is claimed rather than reconstructed later from mutable state, and that
@@ -424,23 +453,24 @@ class ForegroundServiceLifecycleTest {
             Regex("""successorOwnsService\s*=\s*successorOwnsService""").containsMatchIn(between)
         )
 
-        // And that binding must ask what the successor actually started. Recording is not
-        // owning: a successor with both flags false publishes _isRecording without a
-        // service, and its own teardown will not stop one either, so preserving the old
-        // session's service on its behalf strands it.
+        // The binding must delegate to the extracted rule, whose truth table covers the
+        // relationship. Checking that both token names appear cannot: swapping the && for
+        // an || keeps both and inverts the meaning.
         val successorBinding = body.lines()
             .dropWhile { !Regex("""val successorOwnsService\s*=""").containsMatchIn(it) }
-            .take(4).joinToString(" ")
+            .take(5).joinToString(" ")
         assertTrue(
-            "successorOwnsService must consult the shared predicate, not just " +
-                "_isRecording: $successorBinding",
-            successorBinding.contains("serviceWasStartedFor")
+            "successorOwnsService must delegate to the extracted successorOwnsService " +
+                "rule rather than inlining the condition: $successorBinding",
+            successorBinding.contains("successorOwnsService(")
         )
         assertTrue(
-            "successorOwnsService must also require _isRecording. Without it a merely " +
-                "prepared successor reads as an owner while owning nothing, and the old " +
-                "session's service is stranded: $successorBinding",
+            "It must pass the live recording state: $successorBinding",
             successorBinding.contains("_isRecording")
+        )
+        assertTrue(
+            "It must pass what the successor's config would need: $successorBinding",
+            successorBinding.contains("serviceWasStartedFor")
         )
     }
 

@@ -72,6 +72,20 @@ class AudioRecorderManager(
          * So the service survives only when a live successor owns it. Anything else
          * strands it foreground with nothing left to stop it (#474).
          */
+        /**
+         * Whether the session that replaced this teardown's owns the foreground service.
+         *
+         * Both halves are required and an OR would be wrong in both directions. Recording
+         * alone is not owning: a successor with showNotification and keepAwake both false
+         * publishes `_isRecording` having started nothing, and its own teardown stops
+         * nothing either. A config that would need a service is not owning either: a
+         * prepared successor publishes a session without starting one (#474).
+         */
+        internal fun successorOwnsService(
+            successorIsRecording: Boolean,
+            successorConfigNeedsService: Boolean
+        ): Boolean = successorIsRecording && successorConfigNeedsService
+
         internal fun shouldStopServiceOnSessionMismatch(
             ownedService: Boolean,
             successorOwnsService: Boolean
@@ -2473,9 +2487,11 @@ class AudioRecorderManager(
                 // Whether the service should survive is a separate question, answered by a
                 // pure function of two facts so a unit test can cover the relationship
                 // rather than its spelling.
-                val successorOwnsService = _isRecording.get() &&
-                    ::recordingConfig.isInitialized &&
-                    serviceWasStartedFor(recordingConfig)
+                val successorOwnsService = successorOwnsService(
+                    successorIsRecording = _isRecording.get(),
+                    successorConfigNeedsService = ::recordingConfig.isInitialized &&
+                        serviceWasStartedFor(recordingConfig)
+                )
                 if (shouldStopServiceOnSessionMismatch(
                         ownedService = ownedService,
                         successorOwnsService = successorOwnsService
