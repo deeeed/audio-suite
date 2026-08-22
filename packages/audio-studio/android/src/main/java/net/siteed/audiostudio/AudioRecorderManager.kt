@@ -2441,6 +2441,14 @@ class AudioRecorderManager(
             if (sessionId != ownedSession) {
                 LogUtils.d(CLASS_NAME,
                     "Cleanup for session $ownedSession skipped: session $sessionId started during teardown")
+                // The successor owns the recorders, so this teardown must not touch them.
+                // It does not necessarily own the service: prepareRecording bumps sessionId
+                // without starting one, and a successor with both flags false needs none.
+                // Returning without this check left the old session's service foreground
+                // with nothing left to stop it (#474).
+                if (!::recordingConfig.isInitialized || !serviceWasStartedFor(recordingConfig)) {
+                    AudioRecordingService.stopService(context)
+                }
                 return
             }
             // Read inside the lock: with the mutators serialized, this is the live value,

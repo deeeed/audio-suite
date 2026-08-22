@@ -111,8 +111,17 @@ class ForegroundServiceLifecycleTest {
      * a required stop still leaves three and any "at least three" assertion passes.
      */
     private fun bodyOf(functionName: String): String {
-        val decl = Regex("""fun $functionName\s*\(""").find(managerSource)
-        assertNotNull("$functionName should exist in AudioRecorderManager", decl)
+        // Skip expression-bodied declarations: `fun cleanup() = cleanup(...)` has no block,
+        // so brace-matching from it runs into the NEXT function and inspects the wrong
+        // region entirely. Take the first declaration whose signature is followed by `{`.
+        val decl = Regex("""fun $functionName\s*\(""").findAll(managerSource).firstOrNull { m ->
+            val after = managerSource.substring(m.range.last + 1)
+            val closeParen = after.indexOf(')')
+            closeParen >= 0 && Regex("""^[^\n=]*\{""").containsMatchIn(after.substring(closeParen + 1))
+        }
+        assertNotNull(
+            "$functionName should exist in AudioRecorderManager with a block body", decl
+        )
 
         var depth = 0
         var started = false
@@ -186,15 +195,46 @@ class ForegroundServiceLifecycleTest {
         return open.filter { it.isNotEmpty() }
     }
 
+    /**
+     * Every `return` in this text that is reached under a showNotification condition.
+     *
+     * Guards still open at the call are only half the story: an earlier terminating
+     * branch skips it with nothing enclosing it. `if (!showNotification) return` before a
+     * correctly guarded stop passes every open-guard check while restoring the leak.
+     */
+    private fun notificationGatedReturnsBefore(body: String, callIndex: Int): List<String> {
+        val prefix = body.substring(0, callIndex)
+        return Regex("""if\s*\(([^)]*showNotification[^)]*)\)\s*\{?[^{}]*?\breturn\b""")
+            .findAll(prefix)
+            .map { it.groupValues[1].replace(Regex("""\s+"""), " ").trim() }
+            .toList()
+    }
+
     private fun assertServiceCallIsCorrectlyGuarded(functionName: String, call: String) {
         val body = bodyOf(functionName)
-        val callIndex = body.indexOf(call)
+
+        // Every occurrence, not just the first. cleanup has two stops — one on the
+        // session-mismatch return, one in the main teardown — and checking only the first
+        // left the second unexamined, which is where a bypass would go.
+        val indices = generateSequence(body.indexOf(call)) { prev ->
+            body.indexOf(call, prev + 1).takeIf { it >= 0 }
+        }.takeWhile { it >= 0 }.toList()
+
         assertTrue(
             "$functionName must contain $call. Removing it drops teardown for that " +
                 "lifecycle path, and counting calls file-wide would not notice (#474).",
-            callIndex >= 0
+            indices.isNotEmpty()
         )
 
+        indices.forEach { callIndex -> assertOneCallGuarded(functionName, call, body, callIndex) }
+    }
+
+    private fun assertOneCallGuarded(
+        functionName: String,
+        call: String,
+        body: String,
+        callIndex: Int
+    ) {
         val guards = openGuardsAt(body, callIndex)
 
         // The whole defect in one assertion, in whatever shape it returns: single-line,
@@ -212,6 +252,14 @@ class ForegroundServiceLifecycleTest {
             "In $functionName, $call is not guarded by the shared predicate. Its guards " +
                 "are: $guards",
             guards.any { it.contains("serviceWasStartedFor") || it.contains("needsService") }
+        )
+
+        val gatedReturns = notificationGatedReturnsBefore(body, callIndex)
+        assertTrue(
+            "In $functionName, a showNotification-conditioned return precedes $call " +
+                "($gatedReturns). That skips it for the default config just as surely as " +
+                "wrapping it would, which is #474.",
+            gatedReturns.isEmpty()
         )
     }
 
@@ -233,6 +281,17 @@ class ForegroundServiceLifecycleTest {
     fun cleanupStopsTheServiceThroughThePredicate() {
         assertServiceCallIsCorrectlyGuarded(
             "cleanup", "AudioRecordingService.stopService(context)"
+        )
+
+        // cleanup owns two stops and needs both. The session-mismatch return releases a
+        // service the successor does not own; the main teardown releases this session's.
+        // Requiring only one lets either be deleted while the other keeps the test green.
+        val occurrences = Regex("""AudioRecordingService\.stopService""")
+            .findAll(bodyOf("cleanup")).count()
+        assertEquals(
+            "cleanup must stop the service on both paths: the session-mismatch return " +
+                "and the main teardown. Dropping either strands a service (#474).",
+            2, occurrences
         )
     }
 
