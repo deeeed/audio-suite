@@ -2115,14 +2115,18 @@ class AudioRecorderManager(
             }
             LogUtils.d(CLASS_NAME, "Recording thread interrupted for teardown")
         } catch (e: Exception) {
-            // Ensure wake lock is released if the thread is interrupted
+            // Wake lock release stays conditional — a paused recording still holds it.
             if (!isPaused.get()) {
                 releaseWakeLock()
-                emitRecordingError(
-                    RecordingErrorKind.LOOP_FAILED,
-                    "Recording stopped unexpectedly: ${e.message}"
-                )
             }
+            // The failure itself is reported either way. Gating this on !isPaused swallowed
+            // a genuine loop exception that raced pauseRecording(): the worker exits
+            // regardless, so resume would then report success with no PCM thread behind
+            // it (#447).
+            emitRecordingError(
+                RecordingErrorKind.LOOP_FAILED,
+                "Recording stopped unexpectedly: ${e.message}"
+            )
             LogUtils.e(CLASS_NAME, "Error in recording process", e)
         }
     }
@@ -2246,12 +2250,21 @@ class AudioRecorderManager(
     /**
      * Tear down recorders and the recording thread.
      *
-     * @param callerHoldsRecordLock true when the caller already owns [audioRecordLock].
-     * Those callers must terminate the recording thread themselves (stopRecording does) or
-     * know it is already gone (getStatus's orphan path): joining it here would be nested
-     * inside the caller's monitor, where the worker cannot reach its exit (#446).
+     * Kept as a no-argument method: a Kotlin default parameter compiles to
+     * `cleanup(boolean)` plus a synthetic `cleanup$default`, with no no-arg entry point at
+     * all, so adding one would break every precompiled caller with NoSuchMethodError.
      */
-    fun cleanup(callerHoldsRecordLock: Boolean = false) {
+    fun cleanup() = cleanup(callerHoldsRecordLock = false)
+
+    /**
+     * Tear down recorders and the recording thread.
+     *
+     * @param callerHoldsRecordLock true when the caller already owns [audioRecordLock].
+     * Those callers must not join the recording thread — the join would be nested inside
+     * their monitor, where a worker queued for the lock cannot exit — so they leave the
+     * thread reference for a caller that can act on it (#446).
+     */
+    internal fun cleanup(callerHoldsRecordLock: Boolean) {
         cancelMaxDurationTimer()
 
         // Terminate the recording thread, not just the flag it watches, and do it BEFORE
