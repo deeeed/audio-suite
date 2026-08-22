@@ -9,9 +9,25 @@
 
 set -euo pipefail
 
+# Set once startRecording is dispatched, so the traps below know to stop it.
+RECORDING_STARTED=false
+
+# Stop a recording this script started before leaving. Without it any abort after the
+# start left the device recording indefinitely, since the default config has no
+# maxDurationMs — a failed benchmark that keeps the microphone open.
+stop_recording_if_running() {
+    [[ "$RECORDING_STARTED" == "true" ]] || return 0
+    RECORDING_STARTED=false
+    echo "[BENCH] Stopping the recording this run started..." >&2
+    "$SCRIPT_DIR/app-state.sh" eval "(() => { setTimeout(() => { __AGENTIC__.stopRecording() }, 100); return 'stopping' })()" \
+        "${DEVICE_ARGS[@]:1}" >/dev/null 2>&1 || true
+    sleep 2
+}
+
 # The sampling helpers run inside $(...), where `exit` would only end the subshell. They
 # signal the top-level shell instead, and this trap turns that into a real failure.
-trap 'echo "[BENCH] aborted" >&2; exit 1' TERM
+trap 'echo "[BENCH] aborted" >&2; stop_recording_if_running; exit 1' TERM
+trap 'stop_recording_if_running' EXIT
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_PKG="net.siteed.audioplayground.development"
@@ -108,6 +124,12 @@ get_memory() {
     # as a successful benchmark.
     if ! meminfo=$(run_adb shell dumpsys meminfo "$APP_PKG" 2>/dev/null) || [[ -z "$meminfo" ]]; then
         echo "[BENCH] FATAL: could not read meminfo from $ADB_SERIAL" >&2
+        kill -TERM $$
+    fi
+    # dumpsys exits 0 and prints "No process found" when the app has died, which otherwise
+    # became zero samples and a clean summary over a process that was not running.
+    if printf '%s' "$meminfo" | grep -qi "No process found"; then
+        echo "[BENCH] FATAL: $APP_PKG is not running on $ADB_SERIAL" >&2
         kill -TERM $$
     fi
     local java_heap native_heap total_pss
@@ -207,6 +229,7 @@ else
         echo "[BENCH] FATAL: could not dispatch startRecording." >&2
         exit 1
     }
+    RECORDING_STARTED=true
     await_bench "startRecording" start
     if [[ -n "$POST_START_EVAL" ]]; then
         echo "[BENCH] Running post-start eval: $POST_START_EVAL"
@@ -260,6 +283,7 @@ else
         exit 1
     }
     await_bench "stopRecording" stop
+    RECORDING_STARTED=false
 fi
 
 # ── Final memory ──
