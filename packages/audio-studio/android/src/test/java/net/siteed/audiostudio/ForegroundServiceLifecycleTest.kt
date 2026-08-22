@@ -455,12 +455,27 @@ class ForegroundServiceLifecycleTest {
             2, captureSites.size
         )
         captureSites.forEach { i ->
-            assertPositivePolarity(
-                lines.subList(i, minOf(lines.size, i + 3)).joinToString(" "),
-                "serviceWasStartedFor(recordingConfig)",
-                "The phase-0 capture at line ${i + 1} of cleanup must record what this " +
-                    "session actually started. Negating it makes a service-owning session " +
-                    "look like it owns none, and the stop is skipped on both branches (#474)."
+            // The complete right-hand side, normalized, not a containment check. Appending
+            // `&& recordingConfig.showNotification` here passed every fragment assertion
+            // while reinstating the exact restriction behind #474: the default config
+            // would capture false despite owning a live service, and both stops would be
+            // skipped.
+            val rhs = lines.subList(i, minOf(lines.size, i + 4))
+                .joinToString(" ")
+                .substringAfter("ownedService =")
+                .substringBefore("ownedWorker")
+                .substringBefore("// ")
+                .replace(Regex("""\s+"""), " ")
+                .trim()
+                .trimEnd(',')
+
+            assertEquals(
+                "The capture in cleanup at line ${i + 1} must be exactly the service " +
+                    "question and nothing else. Extra conjuncts narrow what counts as " +
+                    "owned and strand services (#474); a missing one widens it and stops " +
+                    "services this teardown never started.",
+                "::recordingConfig.isInitialized && serviceWasStartedFor(recordingConfig)",
+                rhs
             )
         }
 
