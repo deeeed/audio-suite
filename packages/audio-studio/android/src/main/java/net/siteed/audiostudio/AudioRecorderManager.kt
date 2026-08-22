@@ -802,11 +802,15 @@ class AudioRecorderManager(
                     compressedRecorder?.start()
                 } catch (e: Exception) {
                     LogUtils.e(CLASS_NAME, "Failed to start compressed recording", e)
-                    // Signal the worker instead of joining it: we hold audioRecordLock,
-                    // which the recording loop needs to reach its exit, so a join here
-                    // would deadlock. It stops on the cleared flag, and it cannot touch
-                    // the recorders released below without taking the lock we hold (#446).
-                    _isRecording.set(false)
+                    // Interrupt the worker rather than joining it: we hold
+                    // audioRecordLock, which the recording loop needs to reach its exit,
+                    // so a join here would deadlock. It cannot touch the recorders
+                    // released below without taking the lock we hold.
+                    //
+                    // _isRecording is deliberately left alone. cleanup() reads it to decide
+                    // whether it owns these recorders, so clearing it first made cleanup
+                    // skip the release and leak the failed MediaRecorder — the #446 bug
+                    // this branch exists to fix. cleanup clears it in its own phase 0.
                     recordingThreadRef.getAndSet(null)?.interrupt()
                     cleanup(callerHoldsRecordLock = true)
                     promise.reject("COMPRESSED_START_FAILED", "Failed to start compressed recording", e)
@@ -1413,9 +1417,8 @@ class AudioRecorderManager(
 
         } catch (e: Exception) {
             LogUtils.e(CLASS_NAME, "Failed to start recording", e)
-            // Same reason as the compressed-start failure above: this runs inside
-            // startRecording's audioRecordLock, so signal rather than join.
-            _isRecording.set(false)
+            // Same reasoning as the compressed-start failure above: interrupt rather than
+            // join, and leave _isRecording for cleanup's ownership read.
             recordingThreadRef.getAndSet(null)?.interrupt()
             cleanup(callerHoldsRecordLock = true)
             promise.reject("START_FAILED", "Failed to start recording: ${e.message}", e)

@@ -200,6 +200,37 @@ class RecorderLockingTest {
     }
 
     @Test
+    fun `failure paths leave the ownership flag for cleanup to read`() {
+        // cleanup reads _isRecording to decide whether it owns the recorders. A failure
+        // path that clears the flag first makes cleanup skip the release and leak the
+        // recorder it was called to reclaim — the #446 bug, which came back twice this
+        // way. Interrupting the worker is enough; cleanup clears the flag in phase 0.
+        for (signature in listOf(
+            "fun startRecording(options: Map<String, Any?>, promise: Promise)",
+            "private fun startRecordingProcess(promise: Promise): Boolean"
+        )) {
+            val body = bodyOf(signature)
+                .lineSequence()
+                .filterNot { it.trimStart().startsWith("//") || it.trimStart().startsWith("*") }
+                .joinToString("\n")
+            // Walk lines in order rather than searching the whole body: the same text can
+            // appear more than once, and substring searching matched the wrong occurrence.
+            var clearedSinceStart = false
+            for (line in body.lineSequence()) {
+                if (line.contains("_isRecording.set(true)")) clearedSinceStart = false
+                if (line.contains("_isRecording.set(false)")) clearedSinceStart = true
+                if (!line.contains("cleanup(callerHoldsRecordLock = true)")) continue
+                assertFalse(
+                    clearedSinceStart,
+                    "$signature clears _isRecording before calling cleanup. cleanup reads " +
+                        "that flag to decide whether it owns the recorders, so clearing " +
+                        "it first makes the release a no-op and leaks them."
+                )
+            }
+        }
+    }
+
+    @Test
     fun `starting a recording consumes the preparation`() {
         // isPrepared outliving the start let a losing teardown treat an active recording
         // as a never-started preparation and release its recorders. The two states have to
