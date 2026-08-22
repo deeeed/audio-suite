@@ -2113,6 +2113,28 @@ if (__DEV__) {
             return { op, status: 'pending' }
         },
 
+        // Parameterized trim, for validating trim changes on device with arbitrary
+        // options (#451). Fire-and-store like the other test methods: CDP uses
+        // awaitPromise: false, so poll getLastResult().
+        testTrimAudioWith: (options: Record<string, unknown>) => {
+            const op = 'trimAudioWith'
+            _lastAsyncResult = { op, status: 'pending' }
+            void (async () => {
+                try {
+                    const fileUri =
+                        (options.fileUri as string) ?? (await loadSampleFileUri())
+                    const result = await trimAudio({
+                        ...(stripFunctions(options) as object),
+                        fileUri,
+                    } as never)
+                    _lastAsyncResult = { op, status: 'success', result }
+                } catch (e) {
+                    _lastAsyncResult = { op, status: 'error', error: String(e) }
+                }
+            })()
+            return _lastAsyncResult
+        },
+
         testTrimAudio: () => {
             const op = 'trimAudio'
             _lastAsyncResult = { op, status: 'pending' }
