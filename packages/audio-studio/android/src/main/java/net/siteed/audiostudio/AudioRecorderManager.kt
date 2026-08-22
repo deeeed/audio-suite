@@ -167,6 +167,14 @@ class AudioRecorderManager(
      * Anything that can still reject one should reject instead: a rejection carries a code,
      * and this event carries only prose.
      */
+    /**
+     * Whether a recording with this config starts the foreground service. Start and stop
+     * must agree: guarding the stops on showNotification alone left the service running
+     * for the default config, where keepAwake is true and showNotification is false (#474).
+     */
+    private fun serviceWasStartedFor(config: RecordingConfig): Boolean =
+        (config.showNotification || config.keepAwake) && enableBackgroundAudio
+
     private fun emitRecordingError(kind: RecordingErrorKind, message: String) {
         // add() returns false when the kind is already latched, making the check and the
         // set one atomic step.
@@ -1383,14 +1391,17 @@ class AudioRecorderManager(
             isFirstChunk = true
             recordingStartTime = System.currentTimeMillis()
 
+            // One predicate for start and both stop paths. They were written separately
+            // and drifted: start required (showNotification || keepAwake), the stops
+            // required showNotification alone, so the default config started a service
+            // nothing ever stopped (#474).
             // Start notification + foreground service before flipping isRecording (#298, #288).
             // Previously the notification block fired in initializeRecordingResources, which is
             // also reached from prepareRecording, so the notification timer started on prepare.
             // Mirrors iOS fix in AudioStreamManager.swift. Service start is shared by both
             // showNotification and keepAwake gates and must precede _isRecording=true so
             // getStatus() can't observe (isRecording=true && !isServiceRunning).
-            val needsService = (recordingConfig.showNotification || recordingConfig.keepAwake) &&
-                enableBackgroundAudio
+            val needsService = serviceWasStartedFor(recordingConfig)
             if (recordingConfig.showNotification && enableBackgroundAudio) {
                 notificationManager.initialize(recordingConfig)
                 notificationManager.startUpdates(recordingStartTime)
@@ -1453,9 +1464,14 @@ class AudioRecorderManager(
                     }
                 }
 
+                // Must mirror the start gate. Guarding on showNotification alone left the
+                // service running for the default config, where keepAwake is true and
+                // showNotification is false (#474).
                 if (recordingConfig.showNotification) {
                     val notificationStartTime = System.currentTimeMillis()
                     notificationManager.stopUpdates()
+                }
+                if (serviceWasStartedFor(recordingConfig)) {
                     AudioRecordingService.stopService(context)
                 }
 
@@ -2479,8 +2495,11 @@ class AudioRecorderManager(
                 audioSourceLifecycle.onTeardown()  // Next recording resolves fresh
 
 
+                // Same mirror as the stop path above (#474).
                 if (::recordingConfig.isInitialized && recordingConfig.showNotification) {
                     notificationManager.stopUpdates()
+                }
+                if (::recordingConfig.isInitialized && serviceWasStartedFor(recordingConfig)) {
                     AudioRecordingService.stopService(context)
                 }
 
