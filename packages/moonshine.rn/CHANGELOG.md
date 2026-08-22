@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Android Maven consumers now resolve `ai.moonshine:moonshine-voice:0.1.5` (minSdk 26). Intent matching uses the public `EmbeddingModel` API; per-line `speakerId` is derived from `speakerSpans`. iOS remains on the pinned v0.0.59 xcframework.
+
 ## [0.4.1-beta.1] - 2026-08-24
 
 ### Fixed

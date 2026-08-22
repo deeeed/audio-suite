@@ -92,17 +92,18 @@ libsherpa-onnx-jni.so: UND OrtGetApiBase@VERS_1.24.3
 libonnxruntime.so:    OrtGetApiBase@@VERS_1.24.3
 ```
 
-For `@siteed/moonshine.rn@0.3.3`, published Android consumers resolve
-`ai.moonshine:moonshine-voice:0.0.59` from Maven by default. That Maven AAR has
-been observed with:
+For `@siteed/moonshine.rn` Android Maven consumers, the default coordinate is
+`ai.moonshine:moonshine-voice:0.1.5`. Verify the packaged `OrtGetApiBase`
+import before combining it with Sherpa's ONNX Runtime `VERS_1.24.3`. The
+previous default (`0.0.59`) was observed with:
 
 ```text
 libmoonshine.so: UND OrtGetApiBase@VERS_1.23.0
 ```
 
-That default Maven artifact is therefore risky in an app that also packages
-Sherpa's ONNX Runtime `VERS_1.24.3`. Use one of the mitigation paths below when
-shipping both packages together.
+That versioned import is risky in an app that also packages Sherpa's ONNX
+Runtime `VERS_1.24.3`. Use one of the mitigation paths below when shipping both
+packages together.
 
 The audiolab playground monorepo release intermediates were also checked with a
 repo-local source Moonshine AAR whose `libmoonshine.so` imports unversioned

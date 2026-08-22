@@ -36,7 +36,7 @@ nodeLinker: node-modules
 
 ## Platform requirements
 
-- **Android:** `minSdkVersion 35`
+- **Android:** `minSdkVersion 26`
 - **iOS:** native rebuild required after installing or upgrading the package
 - **Web:** `window.ort` must be available before creating a transcriber
 
@@ -256,9 +256,9 @@ on file presence or `pickFirst` alone. Moonshine is safest when
 `libmoonshine.so` imports unversioned `UND OrtGetApiBase`; a versioned import
 such as `OrtGetApiBase@VERS_...` must match the selected `libonnxruntime.so`.
 
-The current default Maven artifact (`ai.moonshine:moonshine-voice:0.0.59`) has
-been observed with `OrtGetApiBase@VERS_1.23.0`, which is risky beside
-`@siteed/sherpa-onnx.rn@1.3.0`'s `VERS_1.24.3` runtime. Use a compatible custom
+The current default Maven artifact (`ai.moonshine:moonshine-voice:0.1.5`)
+should be checked for a versioned `OrtGetApiBase` import before combining it
+with `@siteed/sherpa-onnx.rn@1.3.0`'s `VERS_1.24.3` runtime. Use a compatible custom
 or source Moonshine AAR, align the other runtime provider, or patch after
 Android native libraries are merged and stripped. See
 [Android ONNX Runtime coexistence](../../docs/ANDROID_ORT_ALIGNMENT.md).
@@ -411,5 +411,3 @@ SHA-256 before npm publish.
 - Android apps that combine Moonshine with Sherpa or another ONNX Runtime
   provider must verify ONNX Runtime symbol compatibility; see
   [Android ONNX Runtime coexistence](../../docs/ANDROID_ORT_ALIGNMENT.md).
-- External Android consumers still need an app configuration compatible with
-  `minSdkVersion 35`.

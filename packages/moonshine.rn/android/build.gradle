@@ -65,7 +65,7 @@ if (moonshineAndroidUseMaven && moonshineAndroidUseSource) {
 def moonshineAndroidMavenCoord = getEnvOrProp(
   'SITEED_MOONSHINE_ANDROID_MAVEN_COORD',
   'siteedMoonshineAndroidMavenCoord',
-  'ai.moonshine:moonshine-voice:0.0.59'
+  'ai.moonshine:moonshine-voice:0.1.5'
 )
 def moonshineAndroidMavenRepo = getEnvOrProp(
   'SITEED_MOONSHINE_ANDROID_MAVEN_REPO',
@@ -78,7 +78,7 @@ android {
   compileSdkVersion getExtOrDefault('compileSdkVersion', 36)
 
   defaultConfig {
-    minSdkVersion Math.max((getExtOrDefault('minSdkVersion', 35) as Integer), 35)
+    minSdkVersion Math.max((getExtOrDefault('minSdkVersion', 26) as Integer), 26)
     targetSdkVersion getExtOrDefault('targetSdkVersion', 36)
     versionCode 1
     versionName "0.1.0"

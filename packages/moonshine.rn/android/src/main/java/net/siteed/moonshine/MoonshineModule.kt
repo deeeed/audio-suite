@@ -1,6 +1,7 @@
 package net.siteed.moonshine
 
 import ai.moonshine.voice.JNI
+import ai.moonshine.voice.SpeakerSpan
 import ai.moonshine.voice.Transcript
 import ai.moonshine.voice.TranscriberOption
 import ai.moonshine.voice.TranscriptLine
@@ -668,10 +669,11 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
       )
     }
     result.putBoolean("hasTextChanged", line.hasTextChanged)
-    result.putBoolean("hasSpeakerId", line.hasSpeakerId)
-    if (line.hasSpeakerId) {
-      result.putString("speakerId", line.speakerId.toString())
-      result.putInt("speakerIndex", line.speakerIndex)
+    val speaker = dominantSpeakerSpan(line)
+    result.putBoolean("hasSpeakerId", speaker != null)
+    if (speaker != null) {
+      result.putString("speakerId", speaker.speakerId.toString())
+      result.putInt("speakerIndex", speaker.speakerIndex)
     }
     result.putInt("lastTranscriptionLatencyMs", line.lastTranscriptionLatencyMs)
     if (includeAudioDataInLines && line.audioData != null) {
@@ -1243,6 +1245,16 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
   private fun requireNestedArray(data: ReadableArray, index: Int): ReadableArray {
     return data.getArray(index)
       ?: throw IllegalArgumentException("Moonshine modelData[$index] is required")
+  }
+
+  private fun dominantSpeakerSpan(line: TranscriptLine): SpeakerSpan? {
+    val spans = line.speakerSpans ?: return null
+    if (spans.isEmpty()) {
+      return null
+    }
+    return spans.reduce { best, span ->
+      if (span.duration > best.duration) span else best
+    }
   }
 
   private fun requireNoError(code: Int, operation: String) {
