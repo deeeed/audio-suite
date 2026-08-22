@@ -19,11 +19,12 @@ This document guides agents in creating native integration tests for the sherpa-
 ```
 ios/
 ├── SherpaOnnxTests/
-│   ├── SherpaOnnxTests.swift
+│   ├── BasicIntegrationTest.swift
+│   ├── SystemInfoIntegrationTest.swift
 │   ├── TtsIntegrationTests.swift
 │   └── Info.plist
 └── test_models/
-    └── tiny-kokoro/
+    └── README.md          # models are downloaded, not committed
 ```
 
 ### First iOS Test
