@@ -9,13 +9,19 @@
 
 set -euo pipefail
 
-# Set once startRecording is dispatched, so the traps below know to stop it.
+# Set once startRecording is confirmed, so the traps below know to stop it.
 RECORDING_STARTED=false
 
 # Stop a recording this script started before leaving. Without it any abort after the
 # start left the device recording indefinitely, since the default config has no
 # maxDurationMs — a failed benchmark that keeps the microphone open.
 stop_recording_if_running() {
+    # Tell a still-pending start to stop itself. Between dispatch and confirmation this
+    # script owns nothing to stop, but the scheduled callback can still succeed after we
+    # have given up and would leave an unlimited recording running.
+    "$SCRIPT_DIR/app-state.sh" eval "(() => { globalThis.__BENCH_ABANDONED = true; return 'marked' })()" \
+        "${DEVICE_ARGS[@]:1}" >/dev/null 2>&1 || true
+
     [[ "$RECORDING_STARTED" == "true" ]] || return 0
     RECORDING_STARTED=false
     echo "[BENCH] Stopping the recording this run started..." >&2
@@ -205,6 +211,19 @@ if echo "$CONFIG" | grep -qE '"skipRecording"\s*:\s*true'; then
     SKIP_RECORDING=true
 fi
 
+# ── Require exactly one CDP target ──
+# Without --device the bridge broadcasts to every connected target, while metrics come
+# from a single adb device — a recording could start on a phone this run never measures
+# and never stops.
+if [[ ${#DEVICE_ARGS[@]} -le 1 ]]; then
+    CDP_COUNT=$(node "$SCRIPT_DIR/cdp-bridge.mjs" list-devices 2>/dev/null | grep -c '"name"' || true)
+    if [[ "${CDP_COUNT:-0}" -ne 1 ]]; then
+        echo "[BENCH] FATAL: ${CDP_COUNT:-0} CDP targets are connected; pass --device <name>." >&2
+        echo "[BENCH] Commands would otherwise broadcast to all of them." >&2
+        exit 1
+    fi
+fi
+
 # ── Navigate to record screen ──
 echo "[BENCH] Navigating to record screen..."
 if ! "$SCRIPT_DIR/app-navigate.sh" "/(tabs)/record" "${DEVICE_ARGS[@]:1}"; then
@@ -225,7 +244,7 @@ else
     echo "[BENCH] Starting recording with config: $CONFIG"
     # Fire-and-store: an eval that leaves a recording promise outstanding as audio starts flowing crashes the app
     # (#436). Schedule the call so the eval returns before the first buffer lands.
-    "$SCRIPT_DIR/app-state.sh" eval "(() => { globalThis.__BENCH = null; setTimeout(async () => { try { const r = await __AGENTIC__.startRecording($CONFIG); globalThis.__BENCH = (r && r.error) ? { err: String(r.error), phase: 'start' } : { started: true, phase: 'start' } } catch (e) { globalThis.__BENCH = { err: String(e) } } }, 500); return 'scheduled' })()" "${DEVICE_ARGS[@]:1}" || {
+    "$SCRIPT_DIR/app-state.sh" eval "(() => { globalThis.__BENCH = null; globalThis.__BENCH_ABANDONED = false; setTimeout(async () => { try { const r = await __AGENTIC__.startRecording($CONFIG); if (globalThis.__BENCH_ABANDONED) { try { await __AGENTIC__.stopRecording() } catch (e2) {} globalThis.__BENCH = { err: 'abandoned before confirmation', phase: 'start' }; return } globalThis.__BENCH = (r && r.error) ? { err: String(r.error), phase: 'start' } : { started: true, phase: 'start' } } catch (e) { globalThis.__BENCH = { err: String(e) } } }, 500); return 'scheduled' })()" "${DEVICE_ARGS[@]:1}" || {
         echo "[BENCH] FATAL: could not dispatch startRecording." >&2
         exit 1
     }

@@ -134,7 +134,11 @@ const config = {
 # command measures.
 #
 # Callback frequency is not measurable from an eval: the bridge exposes no listener API
-# and an eval cannot `require` the package. Use the e2e suites below for that.
+# and an eval cannot `require` the package. No current harness measures it either. The
+# detox suites that once did (high-frequency, stop-recording-performance,
+# file-size-collection, agent-audio-focus) open an `agent-validation` route whose screen
+# no longer exists, so they fail at the first waitFor and never reach a timing assertion.
+# Measuring callback frequency needs that screen restored, or a listener hook on the bridge.
 scripts/agentic/app-state.sh --device "<name>" eval "(() => { globalThis.__HF = {}; setTimeout(async () => { try { const r = await __AGENTIC__.startRecording({ sampleRate: 48000, intervalAnalysis: 25, interval: 10, enableProcessing: true }); if (r && r.error) { globalThis.__HF = { err: r.error }; return } await new Promise(x => setTimeout(x, 5000)); const s = await __AGENTIC__.stopRecording(); if (s && s.error) { globalThis.__HF = { err: s.error }; return } const st = __AGENTIC__.getState(); globalThis.__HF = { durMs: s.durationMs, points: st.lastRecordingAnalysisPointCount, effectiveMs: st.lastRecordingAnalysisPointCount ? Math.round(s.durationMs / st.lastRecordingAnalysisPointCount) : null } } catch (e) { globalThis.__HF = { ex: String(e) } } }, 1200); return 'scheduled' })()"
 sleep 14
 scripts/agentic/app-state.sh --device "<name>" eval "JSON.stringify(globalThis.__HF)"
