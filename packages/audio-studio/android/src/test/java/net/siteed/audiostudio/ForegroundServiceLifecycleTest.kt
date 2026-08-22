@@ -104,59 +104,152 @@ class ForegroundServiceLifecycleTest {
     }
 
     /**
-     * Is a `showNotification` block still open where this line sits?
+     * The body of a named function in the manager, by brace matching from its declaration.
      *
-     * Presence of the word is not the test: a closed `if (showNotification) { ... }` next to
-     * a correctly guarded call is fine. What breaks is the call being *inside* that block,
-     * which is how the defect can come back even while the shared predicate is called —
-     * nesting the predicate under a showNotification guard restores the leak.
+     * Checking each required function individually is what makes a deleted call site
+     * detectable. Counting calls across the file cannot: the manager has four, so removing
+     * a required stop still leaves three and any "at least three" assertion passes.
      */
-    private fun insideOpenNotificationGuard(enclosing: String): Boolean {
-        var depth: Int? = null
-        enclosing.lines().forEach { raw ->
-            val line = raw.substringBefore("//")
-            if (depth == null) {
-                if (Regex("""if \([^)]*showNotification[^)]*\)\s*\{""").containsMatchIn(line)) {
-                    depth = 1
-                    return@forEach
-                }
-            } else {
-                depth = depth!! + line.count { it == '{' } - line.count { it == '}' }
-                if (depth!! <= 0) depth = null
+    private fun bodyOf(functionName: String): String {
+        val decl = Regex("""fun $functionName\s*\(""").find(managerSource)
+        assertNotNull("$functionName should exist in AudioRecorderManager", decl)
+
+        var depth = 0
+        var started = false
+        val body = StringBuilder()
+        for (i in decl!!.range.first until managerSource.length) {
+            val c = managerSource[i]
+            if (c == '{') { depth++; started = true }
+            if (started) body.append(c)
+            if (c == '}') {
+                depth--
+                if (depth == 0 && started) break
             }
         }
-        return (depth ?: 0) > 0
+        return body.toString()
+    }
+
+    /**
+     * The condition of the `if (...)` that this text ends with, or "" when it ends with
+     * anything else (a function signature, `else`, a lambda). Matches parentheses from the
+     * closing one backwards so a multiline condition is captured whole and an earlier,
+     * already-closed block is not swallowed with it.
+     */
+    private fun conditionOfIfEndingAt(text: String): String {
+        if (!text.endsWith(")")) return ""
+        var depth = 0
+        var i = text.length - 1
+        while (i >= 0) {
+            when (text[i]) {
+                ')' -> depth++
+                '(' -> {
+                    depth--
+                    if (depth == 0) {
+                        val head = text.substring(0, i).trimEnd()
+                        if (!head.endsWith("if")) return ""
+                        return text.substring(i + 1, text.length - 1)
+                            .replace(Regex("""\s+"""), " ")
+                            .trim()
+                    }
+                }
+            }
+            i--
+        }
+        return ""
+    }
+
+    /**
+     * The guard immediately controlling a service call, i.e. the innermost `if (...)` whose
+     * block is still open at that call.
+     *
+     * A call can be reached through several nested guards. What matters is that no
+     * showNotification guard is open anywhere on that path: nesting the shared predicate
+     * inside one still skips the stop for the default config.
+     */
+    private fun openGuardsAt(body: String, callIndex: Int): List<String> {
+        val open = ArrayDeque<String>()
+        var i = 0
+        while (i < callIndex) {
+            val c = body[i]
+            if (c == '{') {
+                // Attribute this block to the nearest `if (...)` that precedes it, if any.
+                // Only the condition of the `if` that opens THIS block. Scanning back
+                // greedily swallowed an already-closed notification block plus the next
+                // `if`, and reported the two as one guard.
+                val preceding = body.substring(maxOf(0, i - 400), i).trimEnd()
+                open.addLast(conditionOfIfEndingAt(preceding))
+            } else if (c == '}') {
+                if (open.isNotEmpty()) open.removeLast()
+            }
+            i++
+        }
+        return open.filter { it.isNotEmpty() }
+    }
+
+    private fun assertServiceCallIsCorrectlyGuarded(functionName: String, call: String) {
+        val body = bodyOf(functionName)
+        val callIndex = body.indexOf(call)
+        assertTrue(
+            "$functionName must contain $call. Removing it drops teardown for that " +
+                "lifecycle path, and counting calls file-wide would not notice (#474).",
+            callIndex >= 0
+        )
+
+        val guards = openGuardsAt(body, callIndex)
+
+        // The whole defect in one assertion, in whatever shape it returns: single-line,
+        // multiline, or the predicate nested inside a notification guard.
+        val notificationGuard = guards.firstOrNull { it.contains("showNotification") }
+        assertNull(
+            "In $functionName, $call is reached through a showNotification guard " +
+                "(`$notificationGuard`). The default config is keepAwake=true with " +
+                "showNotification=false, so that path skips it, which is #474 — and it " +
+                "stays broken even when the shared predicate is nested inside.",
+            notificationGuard
+        )
+
+        assertTrue(
+            "In $functionName, $call is not guarded by the shared predicate. Its guards " +
+                "are: $guards",
+            guards.any { it.contains("serviceWasStartedFor") || it.contains("needsService") }
+        )
     }
 
     @Test
-    fun everyServiceCallSiteRoutesThroughTheSharedPredicate() {
-        val lines = managerSource.lines()
-        val sites = lines.withIndex().filter { (_, line) ->
-            line.contains("AudioRecordingService.startService") ||
-                line.contains("AudioRecordingService.stopService")
-        }
-        assertTrue("Expected at least three service call sites, found ${sites.size}", sites.size >= 3)
+    fun startRecordingProcessStartsTheServiceThroughThePredicate() {
+        assertServiceCallIsCorrectlyGuarded(
+            "startRecordingProcess", "AudioRecordingService.startService(context)"
+        )
+    }
 
-        sites.forEach { (index, line) ->
-            val enclosing = lines.subList(maxOf(0, index - 8), index).joinToString("\n")
+    @Test
+    fun stopRecordingStopsTheServiceThroughThePredicate() {
+        assertServiceCallIsCorrectlyGuarded(
+            "stopRecording", "AudioRecordingService.stopService(context)"
+        )
+    }
 
-            val orphanCleanup = enclosing.contains("orphaned") || enclosing.contains("isServiceRunning")
-            val routed = enclosing.contains("serviceWasStartedFor") ||
-                enclosing.contains("needsService")
+    @Test
+    fun cleanupStopsTheServiceThroughThePredicate() {
+        assertServiceCallIsCorrectlyGuarded(
+            "cleanup", "AudioRecordingService.stopService(context)"
+        )
+    }
 
-            assertFalse(
-                "Service call at line ${index + 1} sits inside an open showNotification " +
-                    "block. With the default config (keepAwake=true, showNotification=false) " +
-                    "that skips it, which is #474 — and it stays broken even if the shared " +
-                    "predicate is called inside: ${line.trim()}",
-                insideOpenNotificationGuard(enclosing) && !orphanCleanup
-            )
-            assertTrue(
-                "Service call at line ${index + 1} does not route through the shared " +
-                    "predicate or the orphan check: ${line.trim()}",
-                routed || orphanCleanup
-            )
-        }
+    @Test
+    fun orphanRecoveryStopsTheServiceOnObservedState() {
+        // getStatus is the deliberate exception: it stops a service it observes running
+        // while nothing is recording. Its config can be stale or absent, so the predicate
+        // is the wrong question there — the observed state is the right one.
+        val body = bodyOf("getStatus")
+        val callIndex = body.indexOf("AudioRecordingService.stopService(context)")
+        assertTrue("getStatus should still recover an orphaned service", callIndex >= 0)
+
+        val guards = openGuardsAt(body, callIndex)
+        assertTrue(
+            "The orphan stop must be guarded by observed service state, not by config: $guards",
+            guards.any { it.contains("isServiceRunning") }
+        )
     }
 
     @Test

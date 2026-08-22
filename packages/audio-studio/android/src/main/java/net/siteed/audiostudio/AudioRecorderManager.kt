@@ -57,7 +57,6 @@ class AudioRecorderManager(
          *
          * Kept pure and internal so a unit test can exercise it directly.
          */
-        @JvmStatic
         internal fun requiresForegroundService(
             config: RecordingConfig,
             enableBackgroundAudio: Boolean
