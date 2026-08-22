@@ -270,12 +270,18 @@ Before merging a covered change:
    - iOS simulator: `xcrun simctl spawn <udid> log show --last <n>m --predicate
      'processImagePath CONTAINS "AudioDevPlayground"'` — `native-logs.sh ios` streams
      forward only, so started after the fact it misses everything
-   - iOS physical device: there is no retroactive equivalent, and no devicectl
-     subcommand streams logs — `devicectl device process` offers only launch, resume,
-     signal, suspend, terminate and sendMemoryWarning. Use Console.app (streams forward
-     only, so start it *before* exercising the path) or collect
-     `xcrun devicectl device sysdiagnose --device <UDID>` afterwards. If you captured
-     neither, say so rather than presenting a partial log as full coverage
+   - iOS physical device: launch with `--console`, which attaches to the app and streams
+     its stdout and stderr. `Logger.swift` uses `print`, so the library's own logs come
+     through it:
+     ```bash
+     xcrun devicectl device process launch --device <UDID> --console \
+       --payload-url "exp+audioplayground-development://expo-development-client/?url=http%3A%2F%2F<LAN_IP>%3A7365" \
+       <bundle-id> | tee run.log
+     ```
+     It is forward-only, so launch this *before* exercising the path. Console.app is the
+     alternative, and `xcrun devicectl device sysdiagnose --device <UDID>` collects after
+     the fact. If you captured none of them, say so rather than presenting a partial log
+     as full coverage
 4. State in the PR exactly what the evidence proves and what it does not
 5. `.task.md` status stays `needs-validation` until this is done, and nothing merges in
    that state

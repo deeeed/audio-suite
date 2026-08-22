@@ -178,16 +178,16 @@
         },
         "wait-auto-stop-started": {
           "action": "wait_for",
-          "expression": "JSON.stringify(globalThis.__AGENTIC__?.getState?.() || null)",
+          "expression": "(function () { var r = (globalThis.__RECIPE || {})['startAutoStop']; var st = globalThis.__AGENTIC__ && globalThis.__AGENTIC__.getState ? globalThis.__AGENTIC__.getState() : null; return JSON.stringify({ started: (r !== null && r !== undefined) || (st ? st.isRecording === true : false) }); })()",
           "assert": {
             "operator": "eq",
-            "field": "isRecording",
+            "field": "started",
             "value": true
           },
           "timeout_ms": 15000,
           "poll_ms": 250,
           "next": "wait-auto-stop-stopped",
-          "_comment": "Wait for THIS run to start before waiting for it to stop. Without it a rerun satisfies the stopped/max-duration assertions from the previous run's leftover state at t=0, before startAutoStop has even resolved."
+          "_comment": "Persistent evidence, not a transient flag. isRecording is true only while the 2.2s recording runs, so a slow first poll missed it and the step timed out after a successful auto-stop. __RECIPE.startAutoStop is set when the call resolves and outlives the recording; isRecording still counts when the poll does land inside the window."
         },
         "wait-stopNotifyOnly-recorded": {
           "action": "wait_for",
