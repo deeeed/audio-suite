@@ -1036,17 +1036,16 @@ public class AudioProcessor {
                                     "Could not allocate a \(outputFrameCapacity)-frame output buffer"]
                             )
                         }
-                        let produced = try AudioProcessor.convertOneBuffer(
+                        // The helper writes each output buffer as it is produced: one
+                        // input can yield several, and the caller must not assume the
+                        // destination holds all of it.
+                        wavWrittenFrames += try AudioProcessor.convertOneBuffer(
                             converter, from: buffer, into: convertedBuffer
-                        )
+                        ) { try outputFile.write(from: $0) }
 
                         cumulativeFrames += Int64(frameCount)
                         let progress = Float(cumulativeFrames) / Float(totalFrames) * 100
                         progressCallback?(progress, 0, totalFrames * Int64(inputFormat.streamDescription.pointee.mBytesPerFrame))
-
-                        guard produced > 0 else { continue }
-                        try outputFile.write(from: convertedBuffer)
-                        wavWrittenFrames += Int64(produced)
                     }
 
                     // Same as the AAC path: flush what the converter still holds once the
@@ -1250,9 +1249,10 @@ public class AudioProcessor {
                             )
                         }
 
-                        let produced = try AudioProcessor.convertOneBuffer(
+                        // The helper writes each output buffer as it is produced.
+                        writtenFrames += try AudioProcessor.convertOneBuffer(
                             converter, from: buffer, into: converted
-                        )
+                        ) { try outputFile.write(from: $0) }
 
                         // Progress tracks input consumed, so it advances even for a range
                         // that produces no output.
@@ -1261,13 +1261,6 @@ public class AudioProcessor {
                             ? Float(processedFrames) / Float(totalFrames) * 100
                             : 100
                         progressCallback?(progress, 0, totalFrames * Int64(inputFormat.streamDescription.pointee.mBytesPerFrame))
-
-                        // Skip empty output and count what was written, not what was
-                        // read. See convertOneBuffer for why zero frames happen.
-                        guard produced > 0 else { continue }
-
-                        try outputFile.write(from: converted)
-                        writtenFrames += Int64(produced)
                     }
 
                     // The converter still holds buffered samples once the ranges run out.
@@ -1289,6 +1282,24 @@ public class AudioProcessor {
                                 + "\(Int(inputSampleRate))Hz to \(Int(targetSampleRate))Hz "
                                 + "yielded no output frames for the requested ranges"]
                         )
+                    }
+
+                    // The live writer echoes the requested rate, but finalization can
+                    // substitute a different one — probed 8001 to 8000, 22051 to 22050,
+                    // 44099 and 44101 to 44100, 48001 to 48000. Reopen and check before
+                    // promoting, or the result reports a rate the file does not have
+                    // (#451).
+                    if let finalized = try? AVAudioFile(forReading: workURL) {
+                        let actualRate = finalized.fileFormat.sampleRate
+                        guard actualRate == targetSampleRate else {
+                            throw NSError(
+                                domain: "AudioProcessor",
+                                code: -1,
+                                userInfo: [NSLocalizedDescriptionKey:
+                                    "The AAC encoder wrote \(Int(actualRate))Hz for a "
+                                    + "requested \(Int(targetSampleRate))Hz"]
+                            )
+                        }
                     }
 
                     try promoteWorkFile()
@@ -1340,7 +1351,16 @@ public class AudioProcessor {
     ) throws -> Int64 {
         var drained: Int64 = 0
         while true {
-            guard let tail = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4096) else { break }
+            guard let tail = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4096) else {
+                // Ending the flush silently here would truncate the output and report
+                // success, so this is an error rather than a break.
+                throw NSError(
+                    domain: "AudioProcessor",
+                    code: -1,
+                    userInfo: [NSLocalizedDescriptionKey:
+                        "Could not allocate a buffer to flush the converter"]
+                )
+            }
             var error: NSError?
             let status = converter.convert(to: tail, error: &error) { _, outStatus in
                 outStatus.pointee = .endOfStream
@@ -1354,10 +1374,20 @@ public class AudioProcessor {
                         "Failed to flush the converter: \(error.localizedDescription)"]
                 )
             }
+            // Status before frame count. Breaking on zero frames first meant a .error with
+            // no NSError set looked like a clean end of stream, and truncated output was
+            // promoted as success (#451).
+            if status == .error {
+                throw NSError(
+                    domain: "AudioProcessor",
+                    code: -1,
+                    userInfo: [NSLocalizedDescriptionKey: "Failed to flush the converter."]
+                )
+            }
             if tail.frameLength == 0 { break }
             try write(tail)
             drained += Int64(tail.frameLength)
-            if status == .endOfStream || status == .error { break }
+            if status == .endOfStream { break }
         }
         return drained
     }
@@ -1375,8 +1405,9 @@ public class AudioProcessor {
     private static func convertOneBuffer(
         _ converter: AVAudioConverter,
         from buffer: AVAudioPCMBuffer,
-        into converted: AVAudioPCMBuffer
-    ) throws -> AVAudioFrameCount {
+        into converted: AVAudioPCMBuffer,
+        write: (AVAudioPCMBuffer) throws -> Void
+    ) throws -> Int64 {
         // Supply the input once, then report that no more is available *right now*.
         //
         // Returning the same buffer with .haveData forever made the converter re-consume
@@ -1387,37 +1418,57 @@ public class AudioProcessor {
         // 100 buffers yields 47 with .endOfStream and 4771 with .noDataNow (#451).
         //
         // .noDataNow leaves the stream open, so one converter can span every kept range.
+        // One convert call is not enough. AVAudioConverter can fill the destination
+        // entirely from output it already has queued, returning without ever invoking the
+        // callback — so this buffer would go unconsumed while the caller moved on to the
+        // next range and dropped it. Probed on the simulator: ranges [4410, 44] produced
+        // 4800 frames where 4848 were expected, and [4410, 44 x 10] produced 4943 against
+        // 5279 (#451). Keep converting until the callback has actually taken the input.
         var suppliedInput = false
-        var conversionError: NSError?
-        let status = converter.convert(to: converted, error: &conversionError) { _, outStatus in
-            if suppliedInput {
-                outStatus.pointee = .noDataNow
-                return nil
+        var totalProduced: Int64 = 0
+        repeat {
+            var conversionError: NSError?
+            let status = converter.convert(to: converted, error: &conversionError) { _, outStatus in
+                if suppliedInput {
+                    outStatus.pointee = .noDataNow
+                    return nil
+                }
+                suppliedInput = true
+                outStatus.pointee = .haveData
+                return buffer
             }
-            suppliedInput = true
-            outStatus.pointee = .haveData
-            return buffer
-        }
-        if let conversionError = conversionError {
-            throw NSError(
-                domain: "AudioProcessor",
-                code: -1,
-                userInfo: [NSLocalizedDescriptionKey:
-                    "Format conversion failed: \(conversionError.localizedDescription)"]
-            )
-        }
-        // .inputRanDry is the expected result now: the converter consumed what it was
-        // given and is waiting for more, which is exactly what we want between ranges.
-        if status == .error {
-            // .error with no NSError set. Continuing would write an unpopulated buffer and
-            // report success.
-            throw NSError(
-                domain: "AudioProcessor",
-                code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "Format conversion failed."]
-            )
-        }
-        return converted.frameLength
+            if let conversionError = conversionError {
+                throw NSError(
+                    domain: "AudioProcessor",
+                    code: -1,
+                    userInfo: [NSLocalizedDescriptionKey:
+                        "Format conversion failed: \(conversionError.localizedDescription)"]
+                )
+            }
+            if status == .error {
+                // .error with no NSError set. Continuing would write an unpopulated buffer
+                // and report success.
+                throw NSError(
+                    domain: "AudioProcessor",
+                    code: -1,
+                    userInfo: [NSLocalizedDescriptionKey: "Format conversion failed."]
+                )
+            }
+            if converted.frameLength > 0 {
+                try write(converted)
+                totalProduced += Int64(converted.frameLength)
+            } else if suppliedInput {
+                // Input taken and nothing came out: the resampler is buffering it, which
+                // is normal for a short range. Nothing more to do for this buffer.
+                break
+            } else {
+                // No output and the input was not taken either: the converter cannot make
+                // progress, so looping again would spin.
+                break
+            }
+        } while !suppliedInput
+
+        return totalProduced
     }
 
     private func computeKeepRanges(mode: String, startTimeMs: Double?, endTimeMs: Double?, ranges: [[String: Double]]?, totalDurationMs: Double) -> [[Double]] {

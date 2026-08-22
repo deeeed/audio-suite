@@ -1,12 +1,40 @@
+import AVFoundation
 import XCTest
 @testable import AudioStudio
 
 final class TrimFormatResolutionTests: XCTestCase {
 
-    func testEveryProbedDepthIsWritable() {
-        // Verified against AVAudioFile: each of these round-trips at the requested depth.
-        // 24 is the one the [16, 32] allowlist wrongly excluded.
-        XCTAssertEqual(TrimFormatResolution.writableBitDepths, [8, 16, 24, 32])
+    func testEveryProbedDepthIsWritable() throws {
+        // Actually round-trip each depth through AVAudioFile rather than comparing the
+        // constant to itself, which is what this did before and proved nothing. 24 is the
+        // depth the old [16, 32] allowlist wrongly excluded.
+        let fm = FileManager.default
+        for depth in TrimFormatResolution.writableBitDepths {
+            let url = fm.temporaryDirectory
+                .appendingPathComponent("depth-\(depth)-\(UUID().uuidString)")
+                .appendingPathExtension("wav")
+            defer { try? fm.removeItem(at: url) }
+
+            let writer = try AVAudioFile(forWriting: url, settings: [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVSampleRateKey: 44100.0,
+                AVNumberOfChannelsKey: 1,
+                AVLinearPCMBitDepthKey: depth,
+                AVLinearPCMIsFloatKey: false,
+                AVLinearPCMIsBigEndianKey: false
+            ])
+            let buffer = try XCTUnwrap(
+                AVAudioPCMBuffer(pcmFormat: writer.processingFormat, frameCapacity: 4410)
+            )
+            buffer.frameLength = 4410
+            try writer.write(from: buffer)
+
+            let reopened = try AVAudioFile(forReading: url)
+            XCTAssertEqual(
+                Int(reopened.fileFormat.streamDescription.pointee.mBitsPerChannel), depth,
+                "a \(depth)-bit WAV must reopen as \(depth)-bit, or it is not writable"
+            )
+        }
     }
 
     func testOmittedRequestPreservesTheInputDepth() {
