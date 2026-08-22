@@ -73,7 +73,7 @@ Use pre-built binaries from GitHub releases (v1.12.28) rather than building from
 
 ## Phase 3: Agentic Validation Loop for sherpa-voice
 
-**Status**: Done (implemented in this branch)
+**Status**: Done (merged; the files below are on `main`, not added by this branch)
 
 ### What was added
 - `apps/sherpa-voice/src/agentic-bridge.ts` — installs `globalThis.__AGENTIC__` with navigation, state, and fire-and-store test methods

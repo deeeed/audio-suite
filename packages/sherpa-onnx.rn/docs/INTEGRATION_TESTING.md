@@ -41,7 +41,7 @@ No suite exercises VAD inference. `SILERO_VAD` appears only as a downloader entr
 **Android Only**: Tests with lightweight ONNX models
 - TTS with vits-icefall-en_US-ljspeech-low (~30MB)
 - ASR with sherpa-onnx-whisper-tiny.en (~112MB — the archive carries fp32 and int8)
-- VAD with silero-vad (~0.6MB)
+- VAD with silero-vad (~0.6MB) — downloaded only; no suite runs VAD inference
 - Model lifecycle management
 - Memory leak detection
 

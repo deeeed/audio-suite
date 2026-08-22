@@ -76,10 +76,11 @@ Tests model download simulation, extraction validation, and file system operatio
 
 ```kotlin
 // Test model management workflows
-fun testTtsModelDirectoryStructure()
-fun testArchiveExtractionSimulation() 
-fun testModelValidation()
+fun testTtsModelDirectoryStructure()   // the only one of these that exists
 ```
+
+`testArchiveExtractionSimulation` and `testModelValidation` were planned and never
+written.
 
 **Benefits:**
 - Validates file operations
@@ -93,8 +94,8 @@ Tests native library integration and actual model functionality (when models are
 
 ```kotlin
 // Test native functionality
-fun testNativeLibraryIntegration()
-fun testModelInitializationFlow()
+fun testNativeLibraryIntegration()   // exists, in TtsIntegrationTest.kt
+fun testModelInitializationFlow()    // planned, never written
 ```
 
 **Benefits:**
@@ -111,7 +112,7 @@ For local development and testing:
 
 1. **Manual Model Download**: Developers can manually download lightweight models
 2. **Shared Cache**: Use common cache directory for models across projects
-3. **Environment Variable**: `SHERPA_ONNX_MODELS_DIR` to specify model location
+3. **Environment Variable**: `SHERPA_ONNX_MODELS_DIR` was proposed for this but nothing reads it; models go to the app's files directory
 
 ### CI/CD Integration
 

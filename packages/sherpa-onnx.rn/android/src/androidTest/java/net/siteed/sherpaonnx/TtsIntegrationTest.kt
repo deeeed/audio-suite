@@ -138,10 +138,10 @@ class TtsIntegrationTest {
         // Validate specific values
         assertEquals("Provider should be CPU", "cpu", ttsConfig["provider"])
         assertEquals("Model type should be VITS", "vits", ttsConfig["ttsModelType"])
-        assertTrue("Model path should end with .onnx", (ttsConfig["model"] as String).endsWith(".onnx"))
+        assertTrue("Model file should end with .onnx", (ttsConfig["modelFile"] as String).endsWith(".onnx"))
         
         Log.i(TAG, "✅ TTS configuration generation successful")
-        Log.i(TAG, "📋 Model: ${ttsConfig["model"]}")
+        Log.i(TAG, "📋 Model: ${ttsConfig["modelDir"]}/${ttsConfig["modelFile"]}")
         Log.i(TAG, "⚙️ Provider: ${ttsConfig["provider"]}")
         Log.i(TAG, "🎭 Model Type: ${ttsConfig["ttsModelType"]}")
     }

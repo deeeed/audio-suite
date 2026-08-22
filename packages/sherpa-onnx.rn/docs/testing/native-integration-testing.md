@@ -176,11 +176,11 @@ The native integration testing framework has been implemented with the following
 
 ### iOS Test Structure ✅
 - `ios/SherpaOnnxTests/BasicIntegrationTest.swift` - Basic library loading tests
-- `ios/SherpaOnnxTests/TtsIntegrationTests.swift` - TTS-specific tests  
+- `ios/SherpaOnnxTests/TtsIntegrationTests.swift` - TTS-specific tests
 - `ios/SherpaOnnxTests/Info.plist` - Test bundle configuration
 - `ios/test_models/` - Directory for test models with setup docs
 
-### Android Test Structure ✅  
+### Android Test Structure ✅
 - `android/src/androidTest/java/net/siteed/sherpaonnx/BasicIntegrationTest.kt` - Basic library tests
 - `android/src/androidTest/java/net/siteed/sherpaonnx/TtsIntegrationTest.kt` - TTS-specific tests
 - `android/src/test/resources/` - Directory for test models with setup docs
@@ -198,9 +198,10 @@ The native integration testing framework has been implemented with the following
 ## Next Steps
 
 1. **Add Actual sherpa-onnx Integration**: Replace test placeholders with real library calls
-2. **Set up Test Models**: Download/generate small test models for validation  
+2. **Set up Test Models**: Download/generate small test models for validation
 3. **Create Xcode Test Target**: Add proper test target to iOS project for automated testing
 4. **Run Initial Tests**: Execute `yarn test:android` to validate framework on Android
 5. **Implement Real Validation**: Replace placeholder assertions with actual library validation
 
-The testing framework is ready - now integrate with actual sherpa-onnx implementation! 
+The framework is not ready to run: Android is blocked by #475 and iOS has no XCTest
+target. Clearing those is the prerequisite for the steps above.

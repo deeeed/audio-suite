@@ -4,7 +4,10 @@ This directory contains documentation for the native integration testing framewo
 
 ## Framework Overview
 
-The native integration testing framework validates React Native module integration with the sherpa-onnx C++ library across Android and iOS platforms.
+The native integration testing framework is meant to validate React Native module
+integration with the sherpa-onnx C++ library on Android and iOS. Neither half runs today:
+Android is blocked by #475 and iOS has no XCTest target, so what follows describes the
+intent and the sources, not working validation.
 
 ### Key Features
 
