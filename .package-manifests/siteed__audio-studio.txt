@@ -375,6 +375,7 @@ ios/PrimaryWriteFailurePolicy.swift
 ios/RecordingResult.swift
 ios/RecordingSettings.swift
 ios/SafeFilename.swift
+ios/TrimFormatResolution.swift
 ios/WaveformExtractor.swift
 package.json
 plugin/build/index.cjs

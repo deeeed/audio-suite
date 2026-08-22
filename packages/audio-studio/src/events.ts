@@ -106,8 +106,17 @@ export interface RecordingErrorEvent {
  * Until the event carries a code, the practical use is logging and telemetry: surfacing
  * that something degraded, not deciding what.
  *
- * **iOS only.** Android does not declare this event, so the listener never fires there —
- * silence is not evidence that recording is healthy. Parity is tracked in #447.
+ * Both platforms emit it, but not for the same failures — the underlying APIs fail in
+ * different places (#447). Android reports: the AudioRecord leaving its initialized state
+ * mid-recording, a read returning an error code, the primary WAV failing to flush, and the
+ * recording loop dying. It reports at most one event per uninterrupted failure episode
+ * per kind, so a persistent read fault cannot swallow an unrelated flush failure that
+ * follows it. The read-failure latch re-arms once audio flows again, so a fault that
+ * recurs after recovery is reported again. Either way the count of events is not a count
+ * of failed buffers.
+ *
+ * Treat silence on either platform as "nothing was reported", not as "recording is
+ * healthy": neither platform emits for every way a recording can go wrong.
  */
 export function addRecordingErrorListener(
     listener: (event: RecordingErrorEvent) => void
