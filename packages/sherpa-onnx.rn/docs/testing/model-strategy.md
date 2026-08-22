@@ -12,12 +12,23 @@ These models are suitable for continuous integration testing where download time
 
 | Model ID | Name | Type | Size | Purpose |
 |----------|------|------|------|---------|
-| `vits-icefall-en-low` | VITS Icefall English (Low Quality) | TTS | 30.3MB | Basic text-to-speech functionality |
-| `silero-vad` | Silero VAD | VAD | 2.2MB | Voice activity detection |
-| `ced-tiny` | CED Tiny Audio Tagging | Audio Tagging | 27.2MB | Basic audio classification |
+| `vits-icefall-en-low` | VITS Icefall English (Low Quality) | TTS | ~30MB | Basic text-to-speech functionality |
+| `silero-vad` | Silero VAD | VAD | ~0.6MB | Voice activity detection |
+| `ced-tiny` | CED Tiny Audio Tagging | Audio Tagging | ~27MB | Basic audio classification |
 | `kws-zipformer` | KWS Zipformer | Keyword Spotting | 14.9MB | Keyword detection |
 
-**Total Size: ~74MB**
+**Total: 58.1 MiB for the first three rows** (measured from content-length:
+31722013 + 643854 + 28531989 bytes). `kws-zipformer` has no downloader entry; including
+its listed 14.9MB is how this table used to reach ~72MB. The downloader enum itself has
+four entries, the fourth being `WHISPER_TINY`, which this table does not list.
+
+The Model ID column is a local identifier only. It is neither the upstream archive name
+nor the directory the archive extracts into, and all three differ for several of these:
+`vits-icefall-en-low` downloads `vits-icefall-en_US-ljspeech-low.tar.bz2` and extracts
+`vits-icefall-en_US-ljspeech-low/`. Assuming they matched is what broke the instrumented
+tests in #458. Download URLs for the
+first three live in `LightweightModelDownloader.kt`; `kws-zipformer` has no entry there
+and is not downloaded by that path.
 
 ### 2. Development Models (< 500MB Total)
 
@@ -65,10 +76,11 @@ Tests model download simulation, extraction validation, and file system operatio
 
 ```kotlin
 // Test model management workflows
-fun testTtsModelDirectoryStructure()
-fun testArchiveExtractionSimulation() 
-fun testModelValidation()
+fun testTtsModelDirectoryStructure()   // the only one of these that exists
 ```
+
+`testArchiveExtractionSimulation` and `testModelValidation` were planned and never
+written.
 
 **Benefits:**
 - Validates file operations
@@ -82,8 +94,8 @@ Tests native library integration and actual model functionality (when models are
 
 ```kotlin
 // Test native functionality
-fun testNativeLibraryIntegration()
-fun testModelInitializationFlow()
+fun testNativeLibraryIntegration()   // exists, in TtsIntegrationTest.kt
+fun testModelInitializationFlow()    // planned, never written
 ```
 
 **Benefits:**
@@ -100,7 +112,7 @@ For local development and testing:
 
 1. **Manual Model Download**: Developers can manually download lightweight models
 2. **Shared Cache**: Use common cache directory for models across projects
-3. **Environment Variable**: `SHERPA_ONNX_MODELS_DIR` to specify model location
+3. **Environment Variable**: `SHERPA_ONNX_MODELS_DIR` was proposed for this but nothing reads it; models go to the app's files directory
 
 ### CI/CD Integration
 
@@ -145,9 +157,13 @@ Models Directory Structure:
 2. **Integration Tests**: Native library and functionality testing
 3. **E2E Tests**: Complete workflow testing with real models
 
-### Model Configuration Format
+### Model Registry Format
 
-Based on sherpa-voice model registry:
+Illustrative metadata, not a literal copy of either structure it sits between. The real
+`LIGHTWEIGHT_MODELS` registry in `TtsIntegrationTest.kt` keys each entry by model ID and
+carries no inner `id` or `url`. And it is not the config `TtsHandler` consumes either:
+that takes `modelDir` plus `modelFile` and `tokensFile`, a directory and filenames rather
+than full paths.
 
 ```kotlin
 val modelConfig = mapOf(
@@ -158,7 +174,7 @@ val modelConfig = mapOf(
     "files" to listOf("model.onnx", "tokens.txt", "lexicon.txt"),
     "ttsModelType" to "vits",
     "provider" to "cpu",
-    "url" to "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-icefall-en-ljspeech-low.tar.bz2"
+    "url" to "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-icefall-en_US-ljspeech-low.tar.bz2"
 )
 ```
 

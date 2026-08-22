@@ -19,7 +19,7 @@ class TtsIntegrationTest {
             "vits-icefall-en-low" to mapOf(
                 "name" to "VITS Icefall English (Low Quality)",
                 "type" to "tts",
-                "size" to 30 * 1024 * 1024, // 30.3MB
+                "size" to 30 * 1024 * 1024, // CI budget, not a measured archive size
                 "files" to listOf("model.onnx", "tokens.txt", "lexicon.txt"),
                 "ttsModelType" to "vits",
                 "provider" to "cpu"
@@ -27,14 +27,14 @@ class TtsIntegrationTest {
             "silero-vad" to mapOf(
                 "name" to "Silero VAD",
                 "type" to "vad", 
-                "size" to 2 * 1024 * 1024, // 2.2MB
+                "size" to 2 * 1024 * 1024, // CI budget; silero-vad is actually ~0.6MB
                 "files" to listOf("silero_vad.onnx"),
                 "provider" to "cpu"
             ),
             "ced-tiny" to mapOf(
                 "name" to "CED Tiny Audio Tagging",
                 "type" to "audio-tagging",
-                "size" to 27 * 1024 * 1024, // 27.2MB
+                "size" to 27 * 1024 * 1024, // CI budget, not a measured archive size
                 "files" to listOf("model.onnx", "labels.txt"),
                 "provider" to "cpu"
             )
@@ -114,31 +114,37 @@ class TtsIntegrationTest {
         val modelPath = "${appContext.filesDir}/models/tts/vits-icefall-en-low"
         
         // Generate TTS configuration
+        // Keys must match what TtsHandler reads. It takes a directory plus filenames,
+        // not full paths: modelDir/modelFile/tokensFile.
         val ttsConfig = mapOf(
-            "model" to "$modelPath/model.onnx",
-            "tokens" to "$modelPath/tokens.txt", 
-            "lexicon" to "$modelPath/lexicon.txt",
-            "dataDir" to modelPath,
-            "provider" to vitsConfig["provider"] as String,
+            "modelDir" to modelPath,
+            "modelFile" to "model.onnx",
+            "tokensFile" to "tokens.txt",
+            // espeak-ng-data lives inside the extracted model directory, and TtsHandler
+            // passes dataDir through unchanged, so the parent alone is not usable.
+            "dataDir" to "$modelPath/espeak-ng-data",
             "numThreads" to 1,
             "ttsModelType" to vitsConfig["ttsModelType"] as String
         )
         
         // Validate configuration completeness
-        val requiredKeys = listOf("model", "tokens", "lexicon", "dataDir", "provider", "ttsModelType")
+        // This config carries only keys TtsHandler reads. `provider` is not one of them
+        // (the handler hardcodes provider = "cpu"), and `lexiconFile` is an optional
+        // nullable for which this archive ships no file, so neither is generated or
+        // required here. `numThreads` is kept: the handler does read it.
+        val requiredKeys = listOf("modelDir", "modelFile", "tokensFile",
+            "dataDir", "ttsModelType")
         requiredKeys.forEach { key ->
             assertTrue("Config should have $key", ttsConfig.containsKey(key))
             assertNotNull("Config $key should not be null", ttsConfig[key])
         }
         
         // Validate specific values
-        assertEquals("Provider should be CPU", "cpu", ttsConfig["provider"])
         assertEquals("Model type should be VITS", "vits", ttsConfig["ttsModelType"])
-        assertTrue("Model path should end with .onnx", (ttsConfig["model"] as String).endsWith(".onnx"))
+        assertTrue("Model file should end with .onnx", (ttsConfig["modelFile"] as String).endsWith(".onnx"))
         
         Log.i(TAG, "✅ TTS configuration generation successful")
-        Log.i(TAG, "📋 Model: ${ttsConfig["model"]}")
-        Log.i(TAG, "⚙️ Provider: ${ttsConfig["provider"]}")
+        Log.i(TAG, "📋 Model: ${ttsConfig["modelDir"]}/${ttsConfig["modelFile"]}")
         Log.i(TAG, "🎭 Model Type: ${ttsConfig["ttsModelType"]}")
     }
 

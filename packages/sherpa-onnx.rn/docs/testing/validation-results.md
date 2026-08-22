@@ -1,8 +1,13 @@
 # Native Integration Testing Validation Results
 
+> **Historical.** This is the record of a run from when the Android suites were
+> runnable. They do not run today: the instrumentation APK is missing the React Native
+> libraries and the test manifest lacks `INTERNET` (#475). Every result below describes
+> that past run, not current state.
+
 ## Final Test Results Summary
 
-✅ **100% Success Rate** - All Android integration tests pass  
+✅ **100% Success Rate** - All Android integration tests passed in that run
 🏗️ **Native Libraries Built** - Successfully compiled sherpa-onnx for all Android architectures  
 🔄 **Complete Feedback Loop** - Demonstrated full development cycle from failing tests to working implementation  
 📋 **Model Strategy Implemented** - Lightweight model management strategy for integration testing
@@ -45,11 +50,11 @@ Successfully implemented and tested model configurations for CI-friendly testing
 
 | Model ID | Type | Size | Purpose | Test Status |
 |----------|------|------|---------|-------------|
-| `vits-icefall-en-low` | TTS | 30.3MB | Basic text-to-speech | ✅ Validated |
-| `silero-vad` | VAD | 2.2MB | Voice activity detection | ✅ Validated |
+| `vits-icefall-en-low` | TTS | ~30MB | Basic text-to-speech | ✅ Validated |
+| `silero-vad` | VAD | ~0.6MB | Voice activity detection | ✅ Validated |
 | `ced-tiny` | Audio Tagging | 27.2MB | Basic audio classification | ✅ Validated |
 
-**Total Size**: 59.5MB (well under 100MB CI limit)
+**Total Size**: ~58MB of real assets, against a declared 59MB CI budget (the registry in TtsIntegrationTest declares budgets, not measurements)
 
 ### Model Configuration Testing
 ✅ **Configuration Generation**: Successfully validates VITS TTS configuration  
@@ -88,10 +93,11 @@ TTS handler validation successful
 
 ## iOS Testing Status
 
-⚠️ **iOS Testing Limitations**: Command-line tools cannot execute iOS simulator or device tests
-- iOS integration scripts simulate behavior rather than testing actual implementation
-- Real iOS testing requires opening Xcode and running on actual simulator/device
-- Unit tests in `ExpoAudioStudioTests/` test actual implementation
+⚠️ **iOS tests cannot run**: there is no XCTest target for this package.
+- `yarn test:ios:info` only prints guidance; it does not simulate or run anything
+- The sources under `ios/SherpaOnnxTests/` need a target in the consuming app's
+  workspace, and repairs, before they can execute
+- There is no `ExpoAudioStudioTests/` directory in this repo
 
 ## Development Feedback Loop Validation
 
@@ -115,7 +121,7 @@ Before building native libraries:
 ### Phase 3: Model Strategy Implementation
 ```bash
 # Added model management strategy
-- Created lightweight model registry (59.5MB total)
+- Created lightweight model registry (~58MB total)
 - Added TTS configuration generation tests
 - Implemented multi-model type support
 - Added native library integration validation
@@ -156,7 +162,7 @@ After building native libraries + model strategy:
 - Safe for CI environments where actual model files aren't available
 
 ### 5. **Cross-Platform Considerations**
-- Android: Full command-line testing capability with instrumented tests
+- Android: instrumented tests are wired to gradle, but do not run today (#475)
 - iOS: Requires Xcode for actual device/simulator testing
 - Different testing strategies needed per platform
 
@@ -189,9 +195,9 @@ After building native libraries + model strategy:
 
 ## Documentation Created
 
-### 📋 **INTEGRATION_TEST_MODEL_STRATEGY.md**
+### 📋 **`model-strategy.md`**
 Complete model management strategy document covering:
-- Lightweight model registry (3 models, 59.5MB total)
+- Lightweight model registry (3 models, ~58MB total)
 - Development model set (8 models, <500MB)
 - Full test suite (12+ models, <1.5GB)
 - Testing phases and CI/CD integration
@@ -230,7 +236,7 @@ The native integration testing framework is **successfully implemented and fully
 
 - ✅ **100% test success rate** with proper native library setup
 - ✅ **Complete feedback loop** from failing tests → build → model strategy → passing tests  
-- ✅ **Scalable model management** from CI (59.5MB) to production (1.5GB+)
+- ✅ **Scalable model management** from CI (~58MB) to production (1.5GB+)
 - ✅ **CI-friendly approach** with fast, reliable validation in 0.049s
 - ✅ **Comprehensive documentation** with clear implementation guidelines
 - ✅ **Production-ready architecture** based on proven sherpa-voice patterns

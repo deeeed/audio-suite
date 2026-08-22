@@ -6,19 +6,27 @@ This guide covers integration testing for sherpa-onnx.rn across all platforms, w
 
 ## Test Categories
 
-### 1. Architecture Compatibility Tests ✅
+### 1. System info
 
-**Android**: `packages/sherpa-onnx.rn/android/src/androidTest/java/net/siteed/sherpaonnx/ArchitectureCompatibilityTest.kt`
+**Android**: `android/src/androidTest/java/net/siteed/sherpaonnx/SystemInfoTest.kt`
 
-**iOS**: `packages/sherpa-onnx.rn/ios/SherpaOnnxTests/SystemInfoIntegrationTest.swift`
+**iOS**: `ios/SherpaOnnxTests/SystemInfoIntegrationTest.swift`
 
-These tests validate:
-- Old Architecture (Bridge) vs New Architecture (TurboModules)
-- JSI availability and functionality  
-- Module registration differences
-- Performance characteristics across architectures
+The Android test does not cover module registration: it constructs
+`SherpaOnnxImpl(reactContext)` directly, bypassing the module and the package, so nothing
+there proves the TurboModule is registered or reachable from JS. The iOS source does
+construct `SherpaOnnxRnModule`, but it cannot run at all (no XCTest target).
 
-### 2. System Information Validation ✅
+There is no old-vs-new architecture comparison. `ArchitectureCompatibilityTest.kt` and
+`ArchitectureSpecificTest.kt` were deleted in #434 when the repo went new-architecture
+only (#457), and nothing replaced them — the comparison had nothing left to compare.
+
+Note that `SherpaOnnxModule` still extends `ReactContextBaseJavaModule` and
+`SherpaOnnxPackage` still implements `ReactPackage`. That is not leftover old-architecture
+code: under RN 0.86's interop layer it is how the module registers, and removing it breaks
+registration.
+
+### 2. System Information Validation
 
 Tests the comprehensive system info API:
 - Device capabilities (CPU, memory, GPU)
@@ -26,12 +34,15 @@ Tests the comprehensive system info API:
 - Performance metrics
 - Platform-specific features (Metal on iOS, Vulkan on Android)
 
-### 3. Real Model Integration Tests ✅
+No suite exercises VAD inference. `SILERO_VAD` appears only as a downloader entry in
+`ComprehensiveIntegrationTestSuite`, which fetches the model without running it.
+
+### 3. Real Model Integration Tests
 
 **Android Only**: Tests with lightweight ONNX models
-- TTS functionality with vits-icefall-en-low (30.3MB)
-- ASR functionality with whisper-tiny (37.3MB)  
-- VAD with silero-vad (2.2MB)
+- TTS with vits-icefall-en_US-ljspeech-low (~30MB)
+- ASR with sherpa-onnx-whisper-tiny.en (~112MB — the archive carries fp32 and int8)
+- VAD with silero-vad (~0.6MB) — downloaded only; no suite runs VAD inference
 - Model lifecycle management
 - Memory leak detection
 
@@ -39,28 +50,74 @@ Tests the comprehensive system info API:
 
 ### Android Integration Tests
 
+**Prerequisite.** `apps/sherpa-voice/android` and `apps/sherpa-voice/ios` are generated and
+gitignored, so a clean checkout has neither. Run a prebuild first:
+
 ```bash
-# Full test suite
-cd apps/playground/android  
-./gradlew :siteed-expo-audio-studio:connectedAndroidTest
-
-# Architecture tests only
-./gradlew :siteed-expo-audio-studio:connectedAndroidTest --tests "*ArchitectureCompatibilityTest"
-
-# Real model tests (requires device)
-./gradlew :siteed-expo-audio-studio:connectedAndroidTest --tests "*RealModelIntegrationTest*"
+cd apps/sherpa-voice && yarn expo prebuild        # both platforms
 ```
+
+`--platform android` is enough for the Gradle commands below, but the iOS section further
+down needs the iOS half.
+
+**These tests do not currently run.** Verified on a Pixel 6a: the library module's test
+APK does not bundle React Native's native libraries, so anything touching the bridge dies
+before reaching its assertions:
+
+```
+java.lang.UnsatisfiedLinkError: dlopen failed: library "libreactnativejni_common.so" not found
+java.lang.NoClassDefFoundError: com.facebook.react.bridge.WritableNativeMap
+```
+
+The downloader-backed tests additionally lack the `INTERNET` permission in the test
+manifest. Both are harness gaps tracked in #475, not something a different command works
+around. (They were attributed to #449, which is about no CI running the audio-studio
+suites and mentions neither.) The commands below are the right ones for when the harness can run them.
+
+Then the package ships a script that already has the right app directory and module name:
+
+```bash
+yarn workspace @siteed/sherpa-onnx.rn test:android
+```
+
+which runs:
+
+```bash
+cd apps/sherpa-voice/android && ./gradlew :siteed_sherpa-onnx.rn:connectedAndroidTest
+```
+
+Sherpa's Android module lives under `apps/sherpa-voice`, not `apps/playground`, and the
+gradle project is `:siteed_sherpa-onnx.rn`. The previously documented
+`:siteed-expo-audio-studio` does not resolve from either app.
+
+To run one class. `connectedAndroidTest` rejects `--tests` with `Unknown command-line
+option '--tests'`, so the class goes through the instrumentation runner argument:
+
+```bash
+cd apps/sherpa-voice/android
+APP_VARIANT=development ./gradlew :siteed_sherpa-onnx.rn:connectedAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=net.siteed.sherpaonnx.RealTtsFunctionalityTest
+```
+
+The classes that exist: `AudioTrackPrefillTest`, `BasicIntegrationTest`,
+`ComprehensiveIntegrationTestSuite`, `MemoryAndPerformanceProfilerTest`,
+`RealAsrFunctionalityTest`, `RealTtsFunctionalityTest`, `SystemInfoTest`,
+`TestModelManagementTest`, `TestReactContextDispatchTest`, `TtsIntegrationTest`,
+`WaveReaderJniTest`. There is no `RealModelIntegrationTest`.
 
 ### iOS Integration Tests
 
 ```bash
-# XCTest via CLI
-cd apps/sherpa-voice/ios
-./run-integration-tests.sh
+# There is no iOS integration-test runner. This prints guidance and exits; it runs
+# nothing, and the generated project has no SherpaOnnx XCTest target to select.
+yarn workspace @siteed/sherpa-onnx.rn test:ios:info
 
-# Via Xcode
-open sherpaonnxdemo.xcworkspace
-# Select test target and run
+# Exercise the module by running the app instead. Each line runs from the repo root:
+# the cd is scoped to its own subshell so the next command is not left in it.
+(cd apps/sherpa-voice && yarn ios)
+
+# The workspace, generated by the prebuild above.
+open apps/sherpa-voice/ios/SherpaVoiceDev.xcworkspace
 ```
 
 ### Web Testing
@@ -79,13 +136,27 @@ Useful browser-side checks:
 
 ## Test Results Summary
 
-### Android (Real Device - Pixel 6a) ✅
-```
-Architecture Compatibility: ✅ PASS
-- Old Architecture: Bridge module working
-- New Architecture: TurboModule working  
-- Performance: <100ms average response time
+These are historical results from when the suite last ran in full. Re-run before trusting
+them; the architecture-comparison lines are from before #434 removed those tests.
 
+Model names in this repo are inconsistent and some 404. Checked against the upstream
+release:
+
+| name | status |
+|---|---|
+| `vits-icefall-en_US-ljspeech-low.tar.bz2` | HTTP 200 |
+| `matcha-icefall-en_US-ljspeech.tar.bz2` | HTTP 200 |
+| `vits-icefall-en-low.tar.bz2` | HTTP 404 |
+| `vits-icefall-en-ljspeech-low.tar.bz2` | HTTP 404 |
+
+Use an `en_US` name. If a download 404s, that is the likely reason.
+
+### Android (Real Device - Pixel 6a)
+
+Recorded when these suites still ran. They do not run today (#475), so this is a record,
+not current state.
+
+```
 System Information: ✅ PASS
 - Device info: Complete
 - GPU: Vulkan support detected
@@ -98,13 +169,11 @@ Real Model Integration: ✅ PASS (26/26 tests)
 - Performance: Within acceptable bounds
 ```
 
-### iOS (Simulator - iPhone 16 Pro) ✅
-```
-Architecture Compatibility: ✅ PASS
-- Old Architecture: Bridge module working
-- New Architecture: TurboModule working
-- Methods: getSystemInfo, getArchitectureInfo functional
+### iOS (Simulator - iPhone 16 Pro)
 
+Also historical: there is no XCTest target for this package, so nothing reproduces this.
+
+```
 System Information: ✅ PASS
 - Device info: Complete iOS system info
 - GPU: Metal support detected  
@@ -224,7 +293,7 @@ If models are not already on the device, use the download-and-test recipes under
 ## Future Enhancements
 
 1. **iOS Model Integration**: Port Android model testing to iOS
-2. **Web WASM Support**: Complete web platform implementation  
+2. **Web WASM Support**: the implementation ships (`src/WebSherpaOnnxImpl.ts`); what is missing is browser smoke coverage per release, as noted above
 3. **Enhanced CI/CD**: Automated device testing with model caching
 4. **Performance Regression Detection**: Automated performance monitoring
 5. **Extended Model Testing**: Support for larger model suites

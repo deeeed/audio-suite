@@ -133,7 +133,7 @@ class RealAsrFunctionalityTest {
         var error: String? = null
         
         val config = Arguments.createMap().apply {
-            putString("modelDir", "$extractedModelPath/whisper-tiny")
+            putString("modelDir", "$extractedModelPath/sherpa-onnx-whisper-tiny.en")
             putString("modelType", "whisper")
             putInt("numThreads", 2)
             putString("decodingMethod", "greedy_search")
@@ -142,9 +142,10 @@ class RealAsrFunctionalityTest {
             
             // Model files for Whisper
             val modelFiles = Arguments.createMap().apply {
-                putString("encoder", "encoder.onnx")
-                putString("decoder", "decoder.onnx")
-                putString("tokens", "tokens.txt")
+                // The archive prefixes every file with the model name.
+                putString("encoder", "tiny.en-encoder.onnx")
+                putString("decoder", "tiny.en-decoder.onnx")
+                putString("tokens", "tiny.en-tokens.txt")
             }
             putMap("modelFiles", modelFiles)
         }
@@ -380,7 +381,7 @@ class RealAsrFunctionalityTest {
         var success = false
         
         val config = Arguments.createMap().apply {
-            putString("modelDir", "$extractedModelPath/whisper-tiny")
+            putString("modelDir", "$extractedModelPath/sherpa-onnx-whisper-tiny.en")
             putString("modelType", "whisper")
             putInt("numThreads", 2)
             putString("decodingMethod", "greedy_search")
@@ -388,9 +389,10 @@ class RealAsrFunctionalityTest {
             putString("provider", "cpu")
             
             val modelFiles = Arguments.createMap().apply {
-                putString("encoder", "encoder.onnx")
-                putString("decoder", "decoder.onnx")
-                putString("tokens", "tokens.txt")
+                // The archive prefixes every file with the model name.
+                putString("encoder", "tiny.en-encoder.onnx")
+                putString("decoder", "tiny.en-decoder.onnx")
+                putString("tokens", "tiny.en-tokens.txt")
             }
             putMap("modelFiles", modelFiles)
         }

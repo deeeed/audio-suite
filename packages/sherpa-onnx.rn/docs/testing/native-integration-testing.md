@@ -19,54 +19,27 @@ This document guides agents in creating native integration tests for the sherpa-
 ```
 ios/
 ├── SherpaOnnxTests/
-│   ├── SherpaOnnxTests.swift
+│   ├── BasicIntegrationTest.swift
+│   ├── SystemInfoIntegrationTest.swift
 │   ├── TtsIntegrationTests.swift
 │   └── Info.plist
 └── test_models/
-    └── tiny-kokoro/
+    └── README.md          # models are downloaded, not committed
 ```
 
 ### First iOS Test
 
-```swift
-// ios/SherpaOnnxTests/BasicIntegrationTest.swift
-import XCTest
-@testable import SherpaOnnx
-
-class BasicIntegrationTest: XCTestCase {
-    
-    func testLibraryLoads() {
-        // Test 1: Can we load the C++ library?
-        let loaded = SherpaOnnxWrapper.validateLibraryLoaded()
-        XCTAssertTrue(loaded, "Sherpa-ONNX library should load")
-    }
-    
-    func testTtsInitWithoutModel() {
-        // Test 2: Does it fail gracefully without model?
-        let config = TtsModelConfig(modelPath: "/invalid/path")
-        
-        do {
-            _ = try SherpaOnnxWrapper.initializeTts(config: config)
-            XCTFail("Should throw error for missing model")
-        } catch {
-            // Expected - document the error
-            print("iOS Error for missing model: \(error)")
-        }
-    }
-}
-```
+The shipped `BasicIntegrationTest.swift` is a placeholder: all three of its tests assert
+`true` with the real bodies commented out. There is no example to copy here yet, because
+the wrapper API those comments call has not been designed.
 
 ### Running iOS Tests
 
-```bash
-# Run from Xcode
-# 1. Open ios/SherpaOnnx.xcworkspace
-# 2. Select test target
-# 3. Cmd+U to run tests
-
-# Or from command line
-xcodebuild test -workspace SherpaOnnx.xcworkspace -scheme SherpaOnnxTests -destination 'platform=iOS Simulator,name=iPhone 14'
-```
+There is no iOS workspace or `SherpaOnnxTests` scheme in this package, and no way to run
+these tests today. The files under `ios/SherpaOnnxTests/` are sources with no Xcode
+project, and they would not build as they stand: `SystemInfoIntegrationTest.swift` uses
+an initializer and method signatures that do not exist. Running them needs both a test
+target in the consuming app's workspace and repairs to the sources themselves.
 
 ## Android Native Testing
 
@@ -74,46 +47,40 @@ xcodebuild test -workspace SherpaOnnx.xcworkspace -scheme SherpaOnnxTests -desti
 ```
 android/
 ├── src/
-│   ├── androidTest/
-│   │   └── java/com/siteed/sherpaonnx/
+│   ├── androidTest/                      # instrumented, needs a device
+│   │   └── java/net/siteed/sherpaonnx/
 │   │       ├── BasicIntegrationTest.kt
-│   │       └── TtsIntegrationTest.kt
-│   └── test/
-│       └── resources/
-│           └── tiny-kokoro/
+│   │       ├── TtsIntegrationTest.kt
+│   │       ├── RealAsrFunctionalityTest.kt
+│   │       ├── RealTtsFunctionalityTest.kt
+│   │       └── ...                        # see the directory for the full set
+│   └── test/                              # JVM unit tests
+│       ├── java/net/siteed/sherpaonnx/handlers/
+│       │   ├── PrefillPolicyTest.kt
+│       │   └── TtsHandlerWiringTest.kt
+│       └── resources/README.md            # fixtures are downloaded, not committed
 ```
 
 ### First Android Test
 
+The checked-in `BasicIntegrationTest.kt` reaches the module by reflection rather than
+calling it directly. `SherpaOnnxModule` is not a static object, `validateLibraryLoaded`
+takes a `Promise`, and there is no `initializeTts`, so a direct call would not compile.
+
 ```kotlin
-// android/src/androidTest/java/com/siteed/sherpaonnx/BasicIntegrationTest.kt
-package com.siteed.sherpaonnx
-
-import androidx.test.ext.junit.runners.AndroidJUnit4
-import org.junit.Test
-import org.junit.runner.RunWith
-import org.junit.Assert.*
-
+// android/src/androidTest/java/net/siteed/sherpaonnx/BasicIntegrationTest.kt
 @RunWith(AndroidJUnit4::class)
 class BasicIntegrationTest {
-    
+
     @Test
-    fun testLibraryLoads() {
-        // Test 1: Can we load the JNI library?
-        val loaded = SherpaOnnxModule.validateLibraryLoaded()
-        assertTrue("Sherpa-ONNX library should load", loaded)
-    }
-    
-    @Test
-    fun testTtsInitWithoutModel() {
-        // Test 2: Does it fail gracefully without model?
-        try {
-            SherpaOnnxModule.initializeTts("/invalid/path", "model.onnx")
-            fail("Should throw exception for missing model")
-        } catch (e: Exception) {
-            // Expected - document the error
-            println("Android Error for missing model: ${e.message}")
-        }
+    fun testSherpaOnnxModuleReflection() {
+        val moduleClass = Class.forName("net.siteed.sherpaonnx.SherpaOnnxModule")
+        assertNotNull("SherpaOnnxModule class should be available", moduleClass)
+
+        val methodNames = moduleClass.declaredMethods.map { it.name }
+        assertTrue("Should have initTts method", methodNames.contains("initTts"))
+        assertTrue("Should have validateLibraryLoaded method",
+            methodNames.contains("validateLibraryLoaded"))
     }
 }
 ```
@@ -121,14 +88,16 @@ class BasicIntegrationTest {
 ### Running Android Tests
 
 ```bash
-# From android directory
-cd android
+# Run from packages/sherpa-onnx.rn. Each command cds to the host app itself.
 
 # Run instrumented tests on connected device
-./gradlew connectedAndroidTest
+(cd ../../apps/sherpa-voice/android && APP_VARIANT=development \
+  ./gradlew :siteed_sherpa-onnx.rn:connectedAndroidTest)
 
 # Run specific test
-./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.siteed.sherpaonnx.BasicIntegrationTest
+(cd ../../apps/sherpa-voice/android && APP_VARIANT=development \
+  ./gradlew :siteed_sherpa-onnx.rn:connectedAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=net.siteed.sherpaonnx.BasicIntegrationTest)
 ```
 
 ## Key Native Tests to Implement
@@ -168,9 +137,10 @@ Keep a log of discovered differences:
 # Native Platform Differences
 
 ## iOS
-- Requires .xcframework inclusion
-- Uses CAF audio format
-- NSTemporaryDirectory() for files
+- Links vendored static `.a` libraries via the podspec's `vendored_libraries`, not an
+  xcframework
+- Writes `.wav`
+- TTS writes into `.cachesDirectory`; denoising uses `NSTemporaryDirectory()`
 
 ## Android
 - Requires libc++_shared.so
@@ -183,13 +153,15 @@ Keep a log of discovered differences:
 ```
 1. Write test: "TTS generates audio file"
 2. Run on iOS simulator
-   Result: ✅ Pass - file at /tmp/sherpa_audio.caf
+   Result: ✅ Pass - file at <caches>/sherpa_audio.wav
 3. Run on Android emulator
-   Result: ❌ Fail - "Permission denied"
-4. Fix: Add WRITE_EXTERNAL_STORAGE permission
+   Result: ✅ Pass - file in the app-private cache dir
+4. (No storage permission is involved: TtsHandler writes to context.cacheDir,
+   which needs none. An earlier version of this example invented a
+   WRITE_EXTERNAL_STORAGE fix for a failure that does not happen.)
 5. Run again on Android
    Result: ✅ Pass - file at /data/cache/sherpa_audio.wav
-6. Document: Different audio formats and paths per platform
+6. Document: both platforms write WAV; only the output directory differs
 ```
 
 ## Tips for Native Testing
@@ -206,31 +178,32 @@ The native integration testing framework has been implemented with the following
 
 ### iOS Test Structure ✅
 - `ios/SherpaOnnxTests/BasicIntegrationTest.swift` - Basic library loading tests
-- `ios/SherpaOnnxTests/TtsIntegrationTests.swift` - TTS-specific tests  
+- `ios/SherpaOnnxTests/TtsIntegrationTests.swift` - TTS-specific tests
 - `ios/SherpaOnnxTests/Info.plist` - Test bundle configuration
 - `ios/test_models/` - Directory for test models with setup docs
 
-### Android Test Structure ✅  
-- `android/src/androidTest/java/com/siteed/sherpaonnx/BasicIntegrationTest.kt` - Basic library tests
-- `android/src/androidTest/java/com/siteed/sherpaonnx/TtsIntegrationTest.kt` - TTS-specific tests
+### Android Test Structure ✅
+- `android/src/androidTest/java/net/siteed/sherpaonnx/BasicIntegrationTest.kt` - Basic library tests
+- `android/src/androidTest/java/net/siteed/sherpaonnx/TtsIntegrationTest.kt` - TTS-specific tests
 - `android/src/test/resources/` - Directory for test models with setup docs
 - Updated `android/build.gradle` with test dependencies and instrumentation runner
 
-### Test Execution ✅
-- Android: `yarn test:android` - Runs comprehensive integration tests via gradle
-- iOS: `yarn test:ios:info` - Provides guidance for manual testing due to platform limitations
+### Test Execution
+- Android: `yarn test:android` - wired to gradle, but the suites currently fail to run (#475)
+- iOS: `yarn test:ios:info` - prints guidance only; there is no XCTest target to run
 
 ### Documentation ✅
-- `PLATFORM_DIFFERENCES.md` - Comprehensive platform comparison
-- Updated `NATIVE_TEST_CHECKLIST.md` with implementation status
+- `platform-differences.md` - platform comparison
+- `test-checklist.md` - implementation status
 - README files in test directories explaining model setup
 
 ## Next Steps
 
 1. **Add Actual sherpa-onnx Integration**: Replace test placeholders with real library calls
-2. **Set up Test Models**: Download/generate small test models for validation  
+2. **Set up Test Models**: Download/generate small test models for validation
 3. **Create Xcode Test Target**: Add proper test target to iOS project for automated testing
 4. **Run Initial Tests**: Execute `yarn test:android` to validate framework on Android
 5. **Implement Real Validation**: Replace placeholder assertions with actual library validation
 
-The testing framework is ready - now integrate with actual sherpa-onnx implementation! 
+The framework is not ready to run: Android is blocked by #475 and iOS has no XCTest
+target. Clearing those is the prerequisite for the steps above.

@@ -4,11 +4,14 @@ This directory contains documentation for the native integration testing framewo
 
 ## Framework Overview
 
-The native integration testing framework validates React Native module integration with the sherpa-onnx C++ library across Android and iOS platforms.
+The native integration testing framework is meant to validate React Native module
+integration with the sherpa-onnx C++ library on Android and iOS. Neither half runs today:
+Android is blocked by #475 and iOS has no XCTest target, so what follows describes the
+intent and the sources, not working validation.
 
 ### Key Features
 
-- ✅ **Cross-platform testing** - Android instrumented tests, iOS XCTest integration
+- ✅ **Android instrumented tests** - iOS has XCTest sources but no target to run them
 - ✅ **Lightweight model management** - CI-friendly testing without large model downloads
 - ✅ **Native library validation** - Confirms JNI/Swift bridge functionality
 - ✅ **Tiered testing strategy** - From basic validation to full functionality testing
@@ -16,7 +19,9 @@ The native integration testing framework validates React Native module integrati
 
 ## Test Results
 
-**Latest Android Test Results**: 100% success rate (12/12 tests pass)
+**Historical Android result**: 12/12 passed when these were last runnable. They do not
+run today: the instrumentation APK is missing the React Native libraries and the test
+manifest lacks `INTERNET` (#475). Treat the numbers below as a record, not current state.
 - **BasicIntegrationTest**: 7 tests validating module structure and native integration
 - **TtsIntegrationTest**: 5 tests validating model management and TTS functionality
 - **Execution time**: ~0.05 seconds for complete test suite
@@ -29,6 +34,9 @@ The native integration testing framework validates React Native module integrati
 - [`platform-differences.md`](./platform-differences.md) - Android vs iOS testing considerations
 
 ## Quick Start
+
+The commands below are wired up but do not currently pass: the instrumentation APK is
+missing the React Native libraries and the test manifest lacks `INTERNET` (#475).
 
 ### Run Android Tests
 ```bash
@@ -50,10 +58,10 @@ open android/build/reports/androidTests/connected/debug/index.html
 
 ## Architecture
 
-The framework supports testing across React Native architectures:
-- **Old Architecture** (Bridge-based) - Traditional Promise-based communication
+The repo is new-architecture only (#457), so there is one architecture to test:
 - **New Architecture** (Fabric + TurboModules) - JSI direct calls
-- **Bridgeless Mode** - Experimental direct JSI without bridge
+
+Old-architecture and bridgeless testing were removed with the comparison tests in #434.
 
 ## Model Management
 
@@ -64,4 +72,6 @@ Lightweight model strategy optimized for different testing environments:
 
 ## Next Steps
 
-See [`../architecture/next-validation-phase.md`](../architecture/next-validation-phase.md) for planned React Native architecture-specific testing and real ONNX functionality validation.
+Architecture-specific testing is no longer planned: the repo is new-architecture only
+(#457), and the old-vs-new comparison tests were deleted in #434. The
+`next-validation-phase.md` this used to link to does not exist (#458).

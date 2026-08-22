@@ -32,20 +32,22 @@ object LightweightModelDownloader {
         val sha256: String?,
         val description: String
     ) {
-        // TTS Model - 30.3MB
+        // TTS Model. The archive name is the en_US one: the previous
+        // `vits-icefall-en-low.tar.bz2` returns 404, so every test that downloaded it
+        // failed during setup (#458). Verified HTTP 200.
         VITS_EN_LOW(
             modelName = "vits-icefall-en-low",
-            url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-icefall-en-low.tar.bz2",
-            sizeBytes = 31_786_393L, // ~30.3MB
+            url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-icefall-en_US-ljspeech-low.tar.bz2",
+            sizeBytes = 31_722_013L, // measured via content-length
             sha256 = null, // Add SHA256 for integrity check
             description = "Lightweight English TTS model for testing"
         ),
         
-        // VAD Model - 2.2MB
+        // VAD Model - ~0.6MB
         SILERO_VAD(
             modelName = "silero-vad",
             url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx",
-            sizeBytes = 2_289_284L, // ~2.2MB
+            sizeBytes = 643_854L, // measured via content-length
             sha256 = null,
             description = "Voice Activity Detection model"
         ),
@@ -53,17 +55,17 @@ object LightweightModelDownloader {
         // Audio Tagging Model - 27.2MB
         CED_TINY(
             modelName = "ced-tiny",
-            url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/audio-tagging-models/ced-tiny.tar.bz2",
-            sizeBytes = 28_523_699L, // ~27.2MB
+            url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/audio-tagging-models/sherpa-onnx-ced-tiny-audio-tagging-2024-04-19.tar.bz2",
+            sizeBytes = 28_531_989L, // measured via content-length
             sha256 = null,
             description = "Tiny audio tagging model for event detection"
         ),
         
-        // Lightweight ASR model - for future use
+        // ASR model, ~112MB: whisper-tiny.en ships fp32 and int8 variants in one archive
         WHISPER_TINY(
             modelName = "whisper-tiny",
-            url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/whisper-tiny.tar.bz2",
-            sizeBytes = 39_116_718L, // ~37.3MB
+            url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-tiny.en.tar.bz2",
+            sizeBytes = 118_071_777L, // measured via content-length
             sha256 = null,
             description = "Tiny Whisper model for speech recognition"
         );
