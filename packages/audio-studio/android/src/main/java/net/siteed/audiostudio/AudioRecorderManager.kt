@@ -2280,6 +2280,9 @@ class AudioRecorderManager(
         // stopRecording() joins separately, before flushing its final chunk, so by the
         // time it calls cleanup() this is already finished.
         val wasRecording = _isRecording.getAndSet(false)
+        // Captured with wasRecording: isPrepared is cleared later in this same teardown,
+        // so reading it at the release site below would always be false.
+        val wasPrepared = isPrepared
 
         // Capture into a local before deciding anything. Clearing the shared field to opt
         // out of the join let a concurrent cleanup(callerHoldsRecordLock = true) — from
@@ -2334,6 +2337,12 @@ class AudioRecorderManager(
                     }
                 }
 
+                // Only the teardown that observed the live recording owns the recorders.
+                // Clearing _isRecording before taking this lock (required, so the worker
+                // can exit) let a second cleanup enter with wasRecording=false and release
+                // the compressedRecorder the first one was still finalizing, truncating
+                // the file. The getAndSet above makes exactly one caller the winner (#446).
+                //
                 // Reclaim unless the caller is about to finalize it itself. stopRecording()
                 // calls cleanup() *before* its own finalization block, which is what stops
                 // and releases an active compressed recorder and writes out the file, so
@@ -2342,7 +2351,12 @@ class AudioRecorderManager(
                 // startRecordingProcess() failure — has no finalization coming, and an
                 // earlier `isPrepared && !_isRecording` gate silently skipped all of them,
                 // stopping the recorder and never releasing it (#446).
-                if (!compressedFinalizationPending) {
+                // wasRecording OR isPrepared: the first is the teardown that won the
+                // getAndSet and owns an active recording's recorders; the second is a
+                // preparation that never started, which is the original #446 leak and has
+                // no finalization coming. A concurrent cleanup that observed neither has
+                // nothing of its own to release, so it leaves the recorders alone.
+                if (!compressedFinalizationPending && (wasRecording || wasPrepared)) {
                     try {
                         compressedRecorder?.release()
                     } catch (e: Exception) {
