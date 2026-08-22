@@ -22,6 +22,72 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
     // Read on the generation thread, written by stop()/release(). Volatile so the
     // write is visible if either ever runs off the shared single-thread executor.
     @Volatile private var isGenerating = false
+
+    /**
+     * Monotonic id of the newest generation request (#440).
+     *
+     * A boolean alone loses a cancellation that arrives while generation is queued but not
+     * yet running: stop() clears an already-false flag, then the queued task sets it true
+     * and runs to completion, and stop() reports success having interrupted nothing.
+     *
+     * generate() claims an id before queueing. stop()/release() raise [cancelledThrough] to
+     * the newest claimed id, so every request outstanding at that moment is cancelled
+     * whether it had started or not. A request runs only while its own id is above the bar,
+     * so a generation started after the cancel is unaffected.
+     */
+    private val requestCounter = java.util.concurrent.atomic.AtomicLong(0)
+
+    /** Highest request id that has been cancelled. See [requestCounter]. */
+    private val cancelledThrough = java.util.concurrent.atomic.AtomicLong(0)
+
+    /**
+     * Guards the cancel-versus-complete transition.
+     *
+     * A recheck before writing the file narrows that race but cannot close it: the WAV
+     * write is synchronous and a stop can land partway through, leaving the request
+     * cancelled and resolved at once. Holding this across both decisions makes exactly one
+     * of them win (#440).
+     *
+     * A plain lock rather than a set of completed ids: nothing ever read those entries, so
+     * the set only grew, one boxed Long per successful synthesis.
+     */
+    private val completionLock = Any()
+
+    /** The request that owns [audioTrack], or 0 when nothing does. */
+    @Volatile
+    private var audioTrackOwner: Long = 0
+
+    /**
+     * Claim completion for [requestId], or report that a cancel got there first.
+     *
+     * Returns false if the request was already cancelled, in which case the caller must
+     * not resolve.
+     */
+    private fun tryCompleteRequest(requestId: Long): Boolean =
+        synchronized(completionLock) { isActive(requestId) }
+
+    /** Whether [requestId] may keep generating, or has been cancelled out from under it. */
+    private fun isActive(requestId: Long): Boolean =
+        requestId > cancelledThrough.get()
+
+    /** Cancel every request claimed so far. Safe to call from any thread. */
+    private fun cancelOutstandingRequests() {
+        val newest = requestCounter.get()
+        // Under the same lock as tryCompleteRequest, so cancel and complete cannot
+        // interleave: whichever takes it first decides that request's fate.
+        synchronized(completionLock) {
+            // Raise the bar rather than assigning: a concurrent cancel must not lower it.
+            while (true) {
+                val current = cancelledThrough.get()
+                if (current >= newest || cancelledThrough.compareAndSet(current, newest)) break
+            }
+        }
+        // isGenerating is deliberately NOT cleared here. It is a coarse "something is
+        // running" flag shared by every request, and clearing it aborted the callback of a
+        // request that claimed its id after the snapshot above — one this cancel does not
+        // cover. cancelledThrough already names exactly which requests are cancelled; the
+        // generation that owns the flag clears it in its own finally (#440).
+    }
     private var audioTrack: AudioTrack? = null
     private var ttsModelConfig: OfflineTtsModelConfig? = null
     private var currentSampleRate: Int = 22050 // Default to 22050 Hz (common for speech)
@@ -398,6 +464,10 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
         Log.d(TAG, "Style parameters: lengthScale=$lengthScale, noiseScale=$noiseScale, noiseScaleW=$noiseScaleW")
         Log.d(TAG, "Using sample rate: $currentSampleRate Hz")
         
+        // Claimed here, not inside the executor: a cancel that arrives while this request is
+        // still queued must be able to see it (#440).
+        val requestId = requestCounter.incrementAndGet()
+
         executor.execute {
             try {
                 if (tts == null) {
@@ -406,6 +476,12 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
 
                 if (isGenerating) {
                     throw Exception("TTS is already generating speech")
+                }
+
+                if (!isActive(requestId)) {
+                    // Cancelled while queued. Reject rather than resolve: nothing was
+                    // produced, and reporting success here is the bug this guards.
+                    throw Exception("TTS generation was cancelled before it started")
                 }
 
                 isGenerating = true
@@ -441,7 +517,7 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                     
                     // Prefill the track before starting playback. Starting an empty stream
                     // makes the first callback prone to an audible underrun.
-                    initAudioTrack(currentSampleRate, startPlayback = false)
+                    initAudioTrack(currentSampleRate, startPlayback = false, ownerRequestId = requestId)
                     
                     if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
                         Log.e(TAG, "Failed to initialize AudioTrack for playback!")
@@ -473,7 +549,7 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                     // of invoke([F)Ljava/lang/Integer; in generateWithCallbackImpl.
                     tts?.generateWithCallback(text, speakerId, speakingRate, object : Function1<FloatArray, Int> {
                         override fun invoke(samples: FloatArray): Int {
-                        if (!isGenerating) {
+                        if (!isActive(requestId)) {
                             Log.i(TAG, "TTS generation interrupted by stop request")
                             return 0  // Stop generating
                         }
@@ -489,7 +565,7 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                                 // prefill before starting. Carrying playbackStarted over
                                 // would start it immediately and let a remainder below the
                                 // threshold play as silence — or not at all.
-                                initAudioTrack(currentSampleRate, startPlayback = false)
+                                initAudioTrack(currentSampleRate, startPlayback = false, ownerRequestId = requestId)
                                 PrefillPolicy.onTrackReplaced().let {
                                     framesInCurrentTrack = it.framesInCurrentTrack
                                     playbackStarted = it.playbackStarted
@@ -520,6 +596,14 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                             var offset = 0
 
                             while (offset < shortSamples.size) {
+                                // Checked every chunk, not just on callback entry. A stop
+                                // landing mid-chunk otherwise kept issuing blocking writes
+                                // and returned 1, so the engine carried on generating
+                                // while stop()'s pause/flush sat queued behind it (#440).
+                                if (!isActive(requestId)) {
+                                    Log.i(TAG, "TTS generation interrupted mid-chunk by stop request")
+                                    return 0
+                                }
                                 val remainingSize = shortSamples.size - offset
                                 val currentChunkSize = kotlin.math.min(chunkSize, remainingSize)
 
@@ -527,7 +611,7 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                                 if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
                                     Log.w(TAG, "AudioTrack disabled during chunk write, reinitializing...")
                                     releaseAudioTrack()
-                                    initAudioTrack(currentSampleRate, startPlayback = false)
+                                    initAudioTrack(currentSampleRate, startPlayback = false, ownerRequestId = requestId)
                                     PrefillPolicy.onTrackReplaced().let {
                                         framesInCurrentTrack = it.framesInCurrentTrack
                                         playbackStarted = it.playbackStarted
@@ -544,7 +628,12 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                                     totalSamplesWritten += written
                                     framesInCurrentTrack += written
                                     offset += written
-                                    if (PrefillPolicy.shouldStart(
+                                    // isActive first: the AudioTrack.write() above blocks,
+                                    // so a stop can land between the callback's entry check
+                                    // and here. stop()'s pause/flush is queued behind this
+                                    // generation and cannot undo a play() that already
+                                    // ran (#440).
+                                    if (isActive(requestId) && PrefillPolicy.shouldStart(
                                             playbackStarted,
                                             framesInCurrentTrack,
                                             currentSampleRate,
@@ -554,6 +643,21 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                                     ) {
                                         audioTrack?.play()
                                         playbackStarted = true
+                                        // Recheck after play(): a cancel landing between
+                                        // the guard above and here would otherwise start
+                                        // playback that stop() cannot undo, since its
+                                        // pause/flush is queued behind this generation.
+                                        // We are the only actor that can stop it now.
+                                        if (!isActive(requestId)) {
+                                            Log.i(TAG, "Cancelled during playback start; stopping the track")
+                                            try {
+                                                audioTrack?.pause()
+                                                audioTrack?.flush()
+                                            } catch (e: Exception) {
+                                                Log.w(TAG, "Failed to stop playback after cancel: ${e.message}")
+                                            }
+                                            return 0
+                                        }
                                         // Head is expected to still be 0 here — output advances
                                         // asynchronously. The value logged at generation end is
                                         // the one that shows whether playback actually ran.
@@ -581,14 +685,13 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
 
                     // Short utterances can finish before reaching the prefill threshold.
                     //
-                    // The isGenerating check is defensive. stop() and release() clear the
-                    // flag, but both run on the same single-thread executor as this
-                    // generation, so today they queue behind it and cannot flip it here.
-                    // If any of them ever moves off that executor, an unguarded start
-                    // would play the buffered samples after the caller asked to stop,
-                    // because stop() only pauses a track already in PLAYSTATE_PLAYING and
-                    // a prefilling track is still STOPPED.
-                    if (isGenerating && !playbackStarted && framesInCurrentTrack > 0) {
+                    // The cancellation check is load-bearing, not defensive. stop() and
+                    // release() now cancel on the caller's thread rather than queueing
+                    // behind this generation (#440), so they can and do flip this mid-flight.
+                    // Without the guard, a stop during prefill would still play the buffered
+                    // samples: stop() only pauses a track already in PLAYSTATE_PLAYING, and a
+                    // prefilling track is still STOPPED.
+                    if (isActive(requestId) && !playbackStarted && framesInCurrentTrack > 0) {
                         // The utterance ended below the prefill target, so the start
                         // threshold will never be reached on its own. On API 31+ lower it
                         // to what is actually buffered. Below API 31 the threshold is fixed
@@ -619,9 +722,27 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                                 Log.d(TAG, "Padded short utterance with $padded silent frames to reach the pre-S start threshold")
                             }
                         }
-                        audioTrack?.play()
-                        playbackStarted = true
-                        Log.d(TAG, "AudioTrack playback started after short utterance prefill: $framesInCurrentTrack samples")
+                        // Re-checked immediately before play(): the padding writes above
+                        // block, so a stop can land between the guard on this branch and
+                        // here. stop()'s pause/flush is queued behind this generation, so
+                        // audio started now would keep playing after the cancel (#440).
+                        if (isActive(requestId)) {
+                            audioTrack?.play()
+                            playbackStarted = true
+                            // Same recheck as the chunk-loop play() above.
+                            if (!isActive(requestId)) {
+                                Log.i(TAG, "Cancelled during short-utterance playback start; stopping the track")
+                                try {
+                                    audioTrack?.pause()
+                                    audioTrack?.flush()
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Failed to stop playback after cancel: ${e.message}")
+                                }
+                            }
+                            Log.d(TAG, "AudioTrack playback started after short utterance prefill: $framesInCurrentTrack samples")
+                        } else {
+                            Log.i(TAG, "Skipping playback start: generation was cancelled during prefill")
+                        }
                     }
 
                     Log.d(TAG, "Completed callback generation. Total samples: $totalSamplesWritten in $totalCalls callback calls, head=${audioTrack?.playbackHeadPosition}, playState=${audioTrack?.playState}")
@@ -629,7 +750,22 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                     // Generate without playback
                     Log.d(TAG, "Using generate method without callback")
                     val generatedAudio = tts?.generate(text, speakerId, speakingRate)
+                    // tts.generate() blocks for the whole synthesis and cannot be
+                    // interrupted, so a stop arriving during it is only observable here.
+                    // Without this the cancelled request still saved a file and resolved
+                    // success (#440).
+                    if (!isActive(requestId)) {
+                        throw Exception("TTS generation was cancelled")
+                    }
                     audio = generatedAudio?.samples
+                }
+
+                // Both branches above can block for the whole synthesis — tts.generate()
+                // cannot be interrupted at all — so a stop that arrives during one of them
+                // is only observable here. Without this check the cancelled request still
+                // fell through to promise.resolve({success: true}) below (#440).
+                if (!isActive(requestId)) {
+                    throw Exception("TTS generation was cancelled")
                 }
 
                 val endTime = System.currentTimeMillis()
@@ -642,6 +778,13 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                         ?: "generated_audio_${System.currentTimeMillis()}"
                     val filePath = "${reactContext.cacheDir.absolutePath}/$fileName.wav"
                     
+                    // Claim completion before writing. The write is synchronous, so a
+                    // recheck alone leaves a window where a stop lands partway through and
+                    // the request is both cancelled and resolved (#440).
+                    if (!tryCompleteRequest(requestId)) {
+                        throw Exception("TTS generation was cancelled")
+                    }
+
                     // Use the correct sample rate from the model
                     val saved = AudioUtils.saveAsWav(audio, currentSampleRate, filePath)
                     Log.d(TAG, "Audio saved: $saved, file path: $filePath")
@@ -651,11 +794,27 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                     resultMap.putString("filePath", filePath)
                     promise.resolve(resultMap)
                 } else {
+                    // A cancelled generation also lands here — generateWithCallback returns
+                    // 0 and this path sees no audio — and tts.generate() cannot be
+                    // interrupted, so falling through restarted synthesis and resolved it as
+                    // success, undoing the stop entirely (#440).
+                    if (!isActive(requestId)) {
+                        throw Exception("TTS generation was cancelled")
+                    }
+
                     // If no audio was generated, try again without callback
                     Log.w(TAG, "No audio generated with callback method, trying again without callback")
                     
                     // Fallback: try again without callback
                     val generatedAudio = tts?.generate(text, speakerId, speakingRate)
+                    // Same recheck as the other fallback: this call blocks for the
+                    // whole synthesis and cannot be interrupted, so a stop during it
+                    // is only observable here. This is the common path, not the
+                    // exceptional one — the callback's return is discarded above, so
+                    // every uninterrupted playAudio=true request lands here (#440).
+                    if (!isActive(requestId)) {
+                        throw Exception("TTS generation was cancelled")
+                    }
                     audio = generatedAudio?.samples
                     
                     if (audio == null) {
@@ -666,6 +825,13 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
                         ?: "generated_audio_${System.currentTimeMillis()}"
                     val filePath = "${reactContext.cacheDir.absolutePath}/$fileName.wav"
                     
+                    // Claim completion before writing. The write is synchronous, so a
+                    // recheck alone leaves a window where a stop lands partway through and
+                    // the request is both cancelled and resolved (#440).
+                    if (!tryCompleteRequest(requestId)) {
+                        throw Exception("TTS generation was cancelled")
+                    }
+
                     // Use the correct sample rate from the model
                     val saved = AudioUtils.saveAsWav(audio, currentSampleRate, filePath)
                     Log.d(TAG, "Audio saved: $saved, file path: $filePath")
@@ -689,6 +855,9 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
      * Release AudioTrack resources
      */
     private fun releaseAudioTrack() {
+        // No owner once the track is gone; a stale id here would make stop() skip cleanup
+        // for a track that no longer exists.
+        audioTrackOwner = 0
         try {
             // Release whenever the track is non-null, not only when it reached
             // STATE_INITIALIZED. A track whose build() succeeded but whose init
@@ -711,7 +880,7 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
     /**
      * Initialize audio track for playback
      */
-    private fun initAudioTrack(sampleRate: Int, startPlayback: Boolean = true) {
+    private fun initAudioTrack(sampleRate: Int, startPlayback: Boolean = true, ownerRequestId: Long = 0) {
         try {
             // Release any existing AudioTrack first to prevent resource conflicts.
             // Same unconditional release as releaseAudioTrack(): an uninitialized
@@ -742,6 +911,9 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
             Log.d(TAG, "Creating AudioTrack with buffer size: $minBufferSize bytes, sample rate: $sherpaModelSampleRate Hz")
 
             // Create with explicit stream type for maximum compatibility
+            // Claim ownership before building: stop() uses this to tell a track that
+            // belongs to a newer generation from one left behind by a cancelled request.
+            audioTrackOwner = ownerRequestId
             audioTrack = AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()
@@ -821,15 +993,35 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
      * Stop TTS generation
      */
     fun stop(promise: Promise) {
+        // Cancel on the CALLING thread, not the executor. init/generate/stop/release share
+        // one single-threaded executor, so queueing this behind an in-flight generate() meant
+        // it could not run until that generation had already finished — the checks inside the
+        // callback loop could never fire during the generation they exist to interrupt,
+        // making stopTts() a no-op (#440). The fields are atomic/@Volatile, so the loop is
+        // guaranteed to see this write rather than a cached value.
+        cancelOutstandingRequests()
+        // The cutoff this stop established. A generation that claims a later id is not
+        // covered by it, so the queued cleanup below must not touch the shared AudioTrack
+        // on its behalf — that would contradict the promise that post-cutoff requests are
+        // unaffected (#440).
+        val cutoff = cancelledThrough.get()
+
         executor.execute {
             try {
                 Log.i(TAG, "Stopping TTS generation")
-                
-                // Set flag to stop callback-based generation
-                isGenerating = false
-                
-                // Stop audio playback
-                if (audioTrack?.playState == AudioTrack.PLAYSTATE_PLAYING) {
+
+                // Already cleared above; the executor body handles the AudioTrack, which must
+                // stay on this thread because the generation loop writes to it from here.
+
+                // Stop audio playback, unless a newer generation now owns the track.
+                // The owner, not the counter. A newer request existing does not mean it
+                // owns the track: stopTts() followed immediately by a playAudio=false
+                // generate bumps the counter while the cancelled request's track is still
+                // playing, and nothing else would ever release it (#440).
+                val owner = audioTrackOwner
+                if (owner > cutoff) {
+                    Log.d(TAG, "Skipping AudioTrack cleanup: request $owner owns the track and started after this stop")
+                } else if (audioTrack?.playState == AudioTrack.PLAYSTATE_PLAYING) {
                     audioTrack?.pause()
                     audioTrack?.flush()
                     Log.d(TAG, "Paused and flushed AudioTrack")
@@ -856,12 +1048,13 @@ class TtsHandler(private val reactContext: ReactApplicationContext) {
      * Release TTS resources
      */
     fun release(promise: Promise) {
+        // Same reason as stop(): cancel before queueing, so an in-flight generation stops
+        // feeding the executor rather than blocking this call behind itself (#440).
+        cancelOutstandingRequests()
+
         executor.execute {
             try {
                 Log.i(TAG, "Releasing TTS resources")
-                
-                // Set flag to stop any ongoing generation
-                isGenerating = false
                 
                 // Release TTS resources
                 releaseTtsResources()
