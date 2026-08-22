@@ -676,147 +676,158 @@ class AudioRecorderManager(
 
     @RequiresApi(Build.VERSION_CODES.R)
     fun startRecording(options: Map<String, Any?>, promise: Promise) {
-        try {
-            // Any live recording, paused or not, is rejected. Allowing a start while
-            // paused meant this path re-ran initialization against recorders the paused
-            // recording still owns: compressed init overwrote the retained recorder and
-            // leaked the old one, and either failure path then released the live
-            // AudioRecord while _isRecording stayed true, leaving resume and stop running
-            // against broken state. resumeRecording() is the API for a paused recording
-            // (#446).
-            if (_isRecording.get()) {
-                val reason = if (isPaused.get()) {
-                    "Recording is paused; call resumeRecording() instead of startRecording()"
-                } else {
-                    "Recording is already in progress"
-                }
-                promise.reject("ALREADY_RECORDING", reason, null)
-                return
-            }
-
-            // If already prepared, we can skip initialization
-            if (!isPrepared) {
-                LogUtils.d(CLASS_NAME, "Not prepared, preparing recording first")
-                
-                // Initialize phone state listener only if enabled
-                if (enablePhoneStateHandling) {
-                    initializePhoneStateListener()
-                }
-
-                LogUtils.d(CLASS_NAME, "Starting recording with options: $options")
-
-                // Check permissions
-                if (!checkPermissions(options, promise)) return
-
-                // Parse recording configuration FIRST
-                val configResult = RecordingConfig.fromMap(options)
-                if (configResult.isFailure) {
-                    promise.reject(
-                        "INVALID_CONFIG",
-                        configResult.exceptionOrNull()?.message ?: "Invalid configuration",
-                        configResult.exceptionOrNull()
-                    )
-                    return
-                }
-
-                val (tempRecordingConfig, audioFormatInfo) = configResult.getOrNull()!!
-                
-                recordingConfig = tempRecordingConfig
-                
-                // Request audio focus AFTER config is parsed so strategy is correct
-                if (!requestAudioFocus()) {
-                    promise.reject("AUDIO_FOCUS_ERROR", "Failed to obtain audio focus", null)
-                    return
-                }
-                
-                // Store device-related settings
-                selectedDeviceId = recordingConfig.deviceId
-                deviceDisconnectionBehavior = recordingConfig.deviceDisconnectionBehavior ?: "pause"
-                
-                audioFormat = audioFormatInfo.format
-                mimeType = audioFormatInfo.mimeType
-
-                if (!initializeAudioFormat(promise)) return
-
-                if (!initializeBufferSize(promise)) return
-
-                if (!initializeAudioRecord(promise)) return
-
-                if (recordingConfig.output.compressed.enabled && !initializeCompressedRecorder(
-                    if (recordingConfig.output.compressed.format == "aac") "aac" else "opus",
-                    promise
-                )) return
-
-                if (!initializeRecordingResources(audioFormatInfo.fileExtension, promise)) return
-            } else {
-                LogUtils.d(CLASS_NAME, "Using prepared recording state")
-                
-                // Even when prepared, update device settings from the new options.
-                // A parse failure is rejected rather than ignored: swallowing it accepted
-                // an invalid filename on the prepared path while the unprepared one
-                // refused the same value (#452).
-                val configResult = RecordingConfig.fromMap(options)
-                if (configResult.isFailure) {
-                    promise.reject(
-                        "INVALID_CONFIG",
-                        configResult.exceptionOrNull()?.message ?: "Invalid configuration",
-                        configResult.exceptionOrNull()
-                    )
-                    return
-                }
-                run {
-                    val (tempRecordingConfig, _) = configResult.getOrNull()!!
-                    // Update device-related settings
-                    selectedDeviceId = tempRecordingConfig.deviceId ?: selectedDeviceId
-                    deviceDisconnectionBehavior = tempRecordingConfig.deviceDisconnectionBehavior 
-                        ?: deviceDisconnectionBehavior
-                        ?: "pause"
-                }
-                
-                // Request audio focus with current config
-                if (!requestAudioFocus()) {
-                    promise.reject("AUDIO_FOCUS_ERROR", "Failed to obtain audio focus", null)
-                    return
-                }
-            }
-
-            if (!startRecordingProcess(promise)) return
-
-            // Start compressed recording if enabled
+        // Serialized on audioRecordLock like every other entry point, so
+        // recorder state cannot be mutated while a teardown is mid-flight.
+        // This path creates both recorders; leaving it unlocked is what let a
+        synchronized(audioRecordLock) {
             try {
-                compressedRecorder?.start()
+                // Any live recording, paused or not, is rejected. Allowing a start while
+                // paused meant this path re-ran initialization against recorders the paused
+                // recording still owns: compressed init overwrote the retained recorder and
+                // leaked the old one, and either failure path then released the live
+                // AudioRecord while _isRecording stayed true, leaving resume and stop running
+                // against broken state. resumeRecording() is the API for a paused recording
+                // (#446).
+                if (_isRecording.get()) {
+                    val reason = if (isPaused.get()) {
+                        "Recording is paused; call resumeRecording() instead of startRecording()"
+                    } else {
+                        "Recording is already in progress"
+                    }
+                    promise.reject("ALREADY_RECORDING", reason, null)
+                    return
+                }
+
+                // If already prepared, we can skip initialization
+                if (!isPrepared) {
+                    LogUtils.d(CLASS_NAME, "Not prepared, preparing recording first")
+                
+                    // Initialize phone state listener only if enabled
+                    if (enablePhoneStateHandling) {
+                        initializePhoneStateListener()
+                    }
+
+                    LogUtils.d(CLASS_NAME, "Starting recording with options: $options")
+
+                    // Check permissions
+                    if (!checkPermissions(options, promise)) return
+
+                    // Parse recording configuration FIRST
+                    val configResult = RecordingConfig.fromMap(options)
+                    if (configResult.isFailure) {
+                        promise.reject(
+                            "INVALID_CONFIG",
+                            configResult.exceptionOrNull()?.message ?: "Invalid configuration",
+                            configResult.exceptionOrNull()
+                        )
+                        return
+                    }
+
+                    val (tempRecordingConfig, audioFormatInfo) = configResult.getOrNull()!!
+                
+                    recordingConfig = tempRecordingConfig
+                
+                    // Request audio focus AFTER config is parsed so strategy is correct
+                    if (!requestAudioFocus()) {
+                        promise.reject("AUDIO_FOCUS_ERROR", "Failed to obtain audio focus", null)
+                        return
+                    }
+                
+                    // Store device-related settings
+                    selectedDeviceId = recordingConfig.deviceId
+                    deviceDisconnectionBehavior = recordingConfig.deviceDisconnectionBehavior ?: "pause"
+                
+                    audioFormat = audioFormatInfo.format
+                    mimeType = audioFormatInfo.mimeType
+
+                    if (!initializeAudioFormat(promise)) return
+
+                    if (!initializeBufferSize(promise)) return
+
+                    if (!initializeAudioRecord(promise)) return
+
+                    if (recordingConfig.output.compressed.enabled && !initializeCompressedRecorder(
+                        if (recordingConfig.output.compressed.format == "aac") "aac" else "opus",
+                        promise
+                    )) return
+
+                    if (!initializeRecordingResources(audioFormatInfo.fileExtension, promise)) return
+                } else {
+                    LogUtils.d(CLASS_NAME, "Using prepared recording state")
+                
+                    // Even when prepared, update device settings from the new options.
+                    // A parse failure is rejected rather than ignored: swallowing it accepted
+                    // an invalid filename on the prepared path while the unprepared one
+                    // refused the same value (#452).
+                    val configResult = RecordingConfig.fromMap(options)
+                    if (configResult.isFailure) {
+                        promise.reject(
+                            "INVALID_CONFIG",
+                            configResult.exceptionOrNull()?.message ?: "Invalid configuration",
+                            configResult.exceptionOrNull()
+                        )
+                        return
+                    }
+                    run {
+                        val (tempRecordingConfig, _) = configResult.getOrNull()!!
+                        // Update device-related settings
+                        selectedDeviceId = tempRecordingConfig.deviceId ?: selectedDeviceId
+                        deviceDisconnectionBehavior = tempRecordingConfig.deviceDisconnectionBehavior 
+                            ?: deviceDisconnectionBehavior
+                            ?: "pause"
+                    }
+                
+                    // Request audio focus with current config
+                    if (!requestAudioFocus()) {
+                        promise.reject("AUDIO_FOCUS_ERROR", "Failed to obtain audio focus", null)
+                        return
+                    }
+                }
+
+                if (!startRecordingProcess(promise)) return
+
+                // Start compressed recording if enabled
+                try {
+                    compressedRecorder?.start()
+                } catch (e: Exception) {
+                    LogUtils.e(CLASS_NAME, "Failed to start compressed recording", e)
+                    // Signal the worker instead of joining it: we hold audioRecordLock,
+                    // which the recording loop needs to reach its exit, so a join here
+                    // would deadlock. It stops on the cleared flag, and it cannot touch
+                    // the recorders released below without taking the lock we hold (#446).
+                    _isRecording.set(false)
+                    recordingThreadRef.getAndSet(null)?.interrupt()
+                    cleanup(callerHoldsRecordLock = true)
+                    promise.reject("COMPRESSED_START_FAILED", "Failed to start compressed recording", e)
+                    return
+                }
+
+                // Return success result with both file URIs
+                val result = bundleOf(
+                    "fileUri" to audioFile?.toURI().toString(),
+                    "channels" to recordingConfig.channels,
+                    "bitDepth" to AudioFormatUtils.getBitDepth(recordingConfig.encoding),
+                    "sampleRate" to recordingConfig.sampleRate,
+                    "mimeType" to mimeType,
+                    // The source actually opened, which may differ from the request when the
+                    // device does not support it (#428).
+                    "androidAudioSource" to requireAudioSource.name,
+                    "compression" to if (compressedFile != null) bundleOf(
+                        "mimeType" to if (recordingConfig.output.compressed.format == "aac") "audio/aac" else "audio/opus",
+                        "bitrate" to recordingConfig.output.compressed.bitrate,
+                        "format" to recordingConfig.output.compressed.format,
+                        "size" to 0,
+                        "compressedFileUri" to compressedFile?.toURI().toString()
+                    ) else null
+                )
+                startMaxDurationTimer()
+                promise.resolve(result)
+
             } catch (e: Exception) {
-                LogUtils.e(CLASS_NAME, "Failed to start compressed recording", e)
-                cleanup()
-                promise.reject("COMPRESSED_START_FAILED", "Failed to start compressed recording", e)
-                return
+                releaseAudioFocus()
+                unregisterPhoneStateListener()
+                promise.reject("UNEXPECTED_ERROR", "Unexpected error: ${e.message}", e)
             }
-
-            // Return success result with both file URIs
-            val result = bundleOf(
-                "fileUri" to audioFile?.toURI().toString(),
-                "channels" to recordingConfig.channels,
-                "bitDepth" to AudioFormatUtils.getBitDepth(recordingConfig.encoding),
-                "sampleRate" to recordingConfig.sampleRate,
-                "mimeType" to mimeType,
-                // The source actually opened, which may differ from the request when the
-                // device does not support it (#428).
-                "androidAudioSource" to requireAudioSource.name,
-                "compression" to if (compressedFile != null) bundleOf(
-                    "mimeType" to if (recordingConfig.output.compressed.format == "aac") "audio/aac" else "audio/opus",
-                    "bitrate" to recordingConfig.output.compressed.bitrate,
-                    "format" to recordingConfig.output.compressed.format,
-                    "size" to 0,
-                    "compressedFileUri" to compressedFile?.toURI().toString()
-                ) else null
-            )
-            startMaxDurationTimer()
-            promise.resolve(result)
-
-        } catch (e: Exception) {
-            releaseAudioFocus()
-            unregisterPhoneStateListener()
-            promise.reject("UNEXPECTED_ERROR", "Unexpected error: ${e.message}", e)
         }
     }
 
@@ -1388,7 +1399,11 @@ class AudioRecorderManager(
 
         } catch (e: Exception) {
             LogUtils.e(CLASS_NAME, "Failed to start recording", e)
-            cleanup()
+            // Same reason as the compressed-start failure above: this runs inside
+            // startRecording's audioRecordLock, so signal rather than join.
+            _isRecording.set(false)
+            recordingThreadRef.getAndSet(null)?.interrupt()
+            cleanup(callerHoldsRecordLock = true)
             promise.reject("START_FAILED", "Failed to start recording: ${e.message}", e)
             return false
         }
@@ -1722,27 +1737,32 @@ class AudioRecorderManager(
     }
 
     private fun pauseRecording(promise: Promise, isSystemInterruption: Boolean) {
-        if (_isRecording.get() && !isPaused.get()) {
-            audioRecord?.stop()
-            compressedRecorder?.pause()
+        // Serialized on audioRecordLock like every other entry point, so
+        // recorder state cannot be mutated while a teardown is mid-flight.
+        // It stops AudioRecord, which teardown also touches.
+        synchronized(audioRecordLock) {
+            if (_isRecording.get() && !isPaused.get()) {
+                audioRecord?.stop()
+                compressedRecorder?.pause()
             
-            lastPauseTime = System.currentTimeMillis()
-            isPaused.set(true)
-            pausedBySystemInterruption.set(isSystemInterruption)
-            pauseMaxDurationTimer()
+                lastPauseTime = System.currentTimeMillis()
+                isPaused.set(true)
+                pausedBySystemInterruption.set(isSystemInterruption)
+                pauseMaxDurationTimer()
 
-            if (recordingConfig.showNotification) {
-                notificationManager.pauseUpdates()
+                if (recordingConfig.showNotification) {
+                    notificationManager.pauseUpdates()
+                }
+
+                releaseWakeLock()
+                promise.resolve("Recording paused")
+            } else {
+                promise.reject(
+                    "NOT_RECORDING_OR_ALREADY_PAUSED",
+                    "Recording is either not active or already paused",
+                    null
+                )
             }
-
-            releaseWakeLock()
-            promise.resolve("Recording paused")
-        } else {
-            promise.reject(
-                "NOT_RECORDING_OR_ALREADY_PAUSED",
-                "Recording is either not active or already paused",
-                null
-            )
         }
     }
 
@@ -2283,26 +2303,16 @@ class AudioRecorderManager(
         //
         // stopRecording() joins separately, before flushing its final chunk, so by the
         // time it calls cleanup() this is already finished.
-        val wasRecording = _isRecording.getAndSet(false)
-        // Captured with wasRecording: isPrepared is cleared later in this same teardown,
-        // so reading it at the release site below would always be false.
-        val wasPrepared = isPrepared
-
-        // Capture into a local before deciding anything. Clearing the shared field to opt
-        // out of the join let a concurrent cleanup(callerHoldsRecordLock = true) — from
-        // getStatus's orphan path — take the reference away from a cleanup that had
-        // already cleared _isRecording but not yet read it, so that one skipped the
-        // interrupt entirely and the worker survived teardown (#446).
-        // Claim the thread only if this caller will actually terminate it. Taking it and
-        // then declining to join is what orphaned the worker: a lock-holding caller could
-        // win getAndSet(null), skip the join, and leave the cleanup that would have joined
-        // looking at null (#446).
+        // Phase 1, outside audioRecordLock: signal the worker and wait for it.
         //
-        // A caller holding audioRecordLock must not join — the join would be nested inside
-        // that monitor, where a worker queued for the lock cannot exit, so it would burn
-        // its full 2s while stalling stopRecording and getStatus(). Those callers either
-        // terminated the thread themselves (stopRecording) or know it is already gone
-        // (getStatus's orphan path), so they leave the reference for whoever can.
+        // This is the one thing that cannot happen under the lock. The recording loop
+        // acquires audioRecordLock on every read, so a thread waiting on that monitor
+        // cannot reach its exit check while we hold it — the join would burn its whole
+        // timeout every time. Clearing _isRecording first is what lets the loop finish.
+        //
+        // A caller that already owns the lock has, by construction, terminated the thread
+        // itself (stopRecording) or knows there is none (getStatus's orphan path).
+        val wasRecording = _isRecording.getAndSet(false)
         if (!callerHoldsRecordLock) {
             val thread = recordingThreadRef.getAndSet(null)
             if (thread != null && thread.isAlive) {
@@ -2316,9 +2326,18 @@ class AudioRecorderManager(
             }
         }
 
-
-
+        // Phase 2, under audioRecordLock: tear the recorders down.
+        //
+        // Every path that creates or mutates recorder state now holds this same lock —
+        // startRecording, prepareRecording, pauseRecording, resumeRecording, stopRecording,
+        // getStatus, handleDeviceChange — so nothing can install or replace a recorder
+        // while this runs. That is what removes the race class outright, rather than
+        // guarding each interleaving as it is found (#446). The monitor is reentrant, so
+        // callers that already hold it nest here harmlessly.
         synchronized(audioRecordLock) {
+            // Read inside the lock: with the mutators serialized, this is the live value,
+            // not a snapshot that a concurrent start could have invalidated.
+            val stillPrepared = isPrepared
             try {
                 // Every stop() is individually guarded. An unguarded one jumps to the
                 // outer catch and skips every release below it, abandoning both recorders
@@ -2361,7 +2380,7 @@ class AudioRecorderManager(
                 // no finalization coming. Those are disjoint — starting a prepared
                 // recording clears isPrepared — so a losing cleanup observes neither and
                 // leaves the recorders alone.
-                if (!compressedFinalizationPending && (wasRecording || wasPrepared)) {
+                if (!compressedFinalizationPending && (wasRecording || stillPrepared)) {
                     try {
                         compressedRecorder?.release()
                     } catch (e: Exception) {
@@ -2739,78 +2758,86 @@ class AudioRecorderManager(
      * This reuses the existing validation and setup functions for compatibility.
      */
     fun prepareRecording(options: Map<String, Any?>): Boolean {
-        if (_isRecording.get()) {
-            LogUtils.d(CLASS_NAME, "Cannot prepare recording - already recording")
-            return false
-        }
-        
-        if (isPrepared) {
-            // Still validate: returning early accepted a traversing filename that a
-            // first preparation would have refused (#452). The prepared file itself is
-            // safe, but the caller must not be told an invalid request succeeded.
-            val recheck = RecordingConfig.fromMap(options)
-            if (recheck.isFailure) {
-                LogUtils.e(CLASS_NAME, "Invalid configuration: ${recheck.exceptionOrNull()?.message}")
+        // Serialized on audioRecordLock like every other entry point, so
+        // recorder state cannot be mutated while a teardown is mid-flight.
+        // concurrent cleanup release recorders another call had just installed (#446).
+        synchronized(audioRecordLock) {
+            if (_isRecording.get()) {
+                LogUtils.d(CLASS_NAME, "Cannot prepare recording - already recording")
                 return false
             }
-            LogUtils.d(CLASS_NAME, "Already prepared")
-            return true
-        }
         
-        try {
-            // Initialize phone state listener only if enabled
-            if (enablePhoneStateHandling) {
-                initializePhoneStateListener()
-            }
-
-            // Check permissions - create a dummy promise to avoid rejections
-            val dummyPromise = object : Promise {
-                override fun resolve(value: Any?) {}
-                override fun reject(code: String?, message: String?, cause: Throwable?) {
-                    LogUtils.e(CLASS_NAME, "Preparation error: $code - $message", cause)
+            if (isPrepared) {
+                // Still validate: returning early accepted a traversing filename that a
+                // first preparation would have refused (#452). The prepared file itself is
+                // safe, but the caller must not be told an invalid request succeeded.
+                val recheck = RecordingConfig.fromMap(options)
+                if (recheck.isFailure) {
+                    LogUtils.e(CLASS_NAME, "Invalid configuration: ${recheck.exceptionOrNull()?.message}")
+                    return false
                 }
+                LogUtils.d(CLASS_NAME, "Already prepared")
+                return true
             }
-            
-            if (!checkPermissions(options, dummyPromise)) return false
+        
+            try {
+                // Initialize phone state listener only if enabled
+                if (enablePhoneStateHandling) {
+                    initializePhoneStateListener()
+                }
 
-            // Parse recording configuration - reuse existing code
-            val configResult = RecordingConfig.fromMap(options)
-            if (configResult.isFailure) {
-                LogUtils.e(CLASS_NAME, "Invalid configuration: ${configResult.exceptionOrNull()?.message}")
+                // Check permissions - create a dummy promise to avoid rejections
+                val dummyPromise = object : Promise {
+                    override fun resolve(value: Any?) {}
+                    override fun reject(code: String?, message: String?, cause: Throwable?) {
+                        LogUtils.e(CLASS_NAME, "Preparation error: $code - $message", cause)
+                    }
+                }
+            
+                if (!checkPermissions(options, dummyPromise)) return false
+
+                // Parse recording configuration - reuse existing code
+                val configResult = RecordingConfig.fromMap(options)
+                if (configResult.isFailure) {
+                    LogUtils.e(CLASS_NAME, "Invalid configuration: ${configResult.exceptionOrNull()?.message}")
+                    return false
+                }
+
+                val (tempRecordingConfig, audioFormatInfo) = configResult.getOrNull()!!
+                recordingConfig = tempRecordingConfig
+            
+                // Store device-related settings
+                selectedDeviceId = recordingConfig.deviceId
+                deviceDisconnectionBehavior = recordingConfig.deviceDisconnectionBehavior ?: "pause"
+            
+                audioFormat = audioFormatInfo.format
+                mimeType = audioFormatInfo.mimeType
+
+                // Use all the existing validation functions with our dummy promise
+                if (!initializeAudioFormat(dummyPromise)) return false
+                if (!initializeBufferSize(dummyPromise)) return false
+                if (!initializeAudioRecord(dummyPromise)) return false
+            
+                if (recordingConfig.output.compressed.enabled && !initializeCompressedRecorder(
+                    if (recordingConfig.output.compressed.format == "aac") "aac" else "opus",
+                    dummyPromise
+                )) return false
+
+                if (!initializeRecordingResources(audioFormatInfo.fileExtension, dummyPromise)) return false
+            
+                // Everything is ready, mark as prepared
+                isPrepared = true
+                LogUtils.d(CLASS_NAME, "Recording prepared successfully")
+                return true
+            } catch (e: Exception) {
+                LogUtils.e(CLASS_NAME, "Error during preparation: ${e.message}", e)
+                // This now runs inside prepareRecording's audioRecordLock. Preparation
+                // never starts the recording thread, so there is nothing to join — and a
+                // join here would deadlock against the lock we hold.
+                cleanup(callerHoldsRecordLock = true)
+                isPrepared = false
                 return false
             }
-
-            val (tempRecordingConfig, audioFormatInfo) = configResult.getOrNull()!!
-            recordingConfig = tempRecordingConfig
-            
-            // Store device-related settings
-            selectedDeviceId = recordingConfig.deviceId
-            deviceDisconnectionBehavior = recordingConfig.deviceDisconnectionBehavior ?: "pause"
-            
-            audioFormat = audioFormatInfo.format
-            mimeType = audioFormatInfo.mimeType
-
-            // Use all the existing validation functions with our dummy promise
-            if (!initializeAudioFormat(dummyPromise)) return false
-            if (!initializeBufferSize(dummyPromise)) return false
-            if (!initializeAudioRecord(dummyPromise)) return false
-            
-            if (recordingConfig.output.compressed.enabled && !initializeCompressedRecorder(
-                if (recordingConfig.output.compressed.format == "aac") "aac" else "opus",
-                dummyPromise
-            )) return false
-
-            if (!initializeRecordingResources(audioFormatInfo.fileExtension, dummyPromise)) return false
-            
-            // Everything is ready, mark as prepared
-            isPrepared = true
-            LogUtils.d(CLASS_NAME, "Recording prepared successfully")
-            return true
-        } catch (e: Exception) {
-            LogUtils.e(CLASS_NAME, "Error during preparation: ${e.message}", e)
-            cleanup()
-            isPrepared = false
-            return false
         }
     }
 }
