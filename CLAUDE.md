@@ -308,10 +308,13 @@ What is measured, on a Pixel 6a:
 - **Crashes.** An evaluation whose expression leaves a JS promise from
   `startRecording()` outstanding while audio starts flowing — the app dies in ~90ms,
   `mqt_v_js`, `libhermesvm.so`, SIGSEGV at null.
-- **Was crashing, now passes.** The `validate-recipe.js` path used to die reproducibly at
-  the *stop* step even with fire-and-store throughout. After the rewrite in `5962eda1` it
-  runs 12/12 with the same pid start to finish. #436 still fires intermittently elsewhere,
-  so this is one path known good, not the crash being fixed.
+- **Still crashes, intermittently.** The `validate-recipe.js` path passed 12/12 with one
+  pid at `5962eda1`, so it is not reproducible any more. It is not fixed either: on
+  2026-08-22 the max-duration recipe died three runs in a row at the same node
+  (`wait-notify-only-event`, the first step that starts audio), signal 11 in
+  `libhermesvm.so`, with `AudioRecordingService` restarted by ActivityManager afterwards.
+  Treat a recipe run that dies at a recording step as #436 until proven otherwise, and
+  check `adb logcat` for `libhermesvm.so` before blaming the recipe.
 
 So fire-and-store is what to write. Polling is not the thing to avoid.
 
