@@ -309,7 +309,10 @@ class RecorderConcurrencyInstrumentedTest {
     }
 
     private fun currentRecordedSize(): Long {
-        return (recorderStateField("totalDataSize") as Number).toLong()
+        val field = AudioRecorderManager::class.java.getDeclaredField("totalDataSize")
+        field.isAccessible = true
+        // Field.getInt preserves the volatile read used by production.
+        return field.getInt(manager).toLong()
     }
 
     private fun recorderStateField(name: String): Any? {

@@ -124,11 +124,23 @@ class RecorderLockingTest {
 
     @Test
     fun `device switch failure events settle once`() {
-        assertEquals(
-            2,
-            Regex("""eventSent\.compareAndSet\(false,\s*true\)""").findAll(source).count(),
-            "Both failure paths must suppress duplicate Promise callbacks"
-        )
+        for (signature in listOf(
+            "fun handleDeviceChange()",
+            "private fun handleDeviceChangeTransition(): Boolean"
+        )) {
+            val body = bodyOf(signature)
+            val guardAt = body.indexOf("eventSent.compareAndSet(false, true)")
+            val eventAt = body.indexOf("eventSender.sendExpoEvent", guardAt)
+            assertEquals(
+                1,
+                Regex("""eventSent\.compareAndSet\(false,\s*true\)""").findAll(body).count(),
+                "$signature must have one settle-once guard"
+            )
+            assertTrue(
+                guardAt >= 0 && eventAt > guardAt,
+                "$signature must guard its deviceSwitchFailed event"
+            )
+        }
     }
 
     @Test

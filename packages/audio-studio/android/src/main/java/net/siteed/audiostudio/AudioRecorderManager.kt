@@ -282,6 +282,7 @@ class AudioRecorderManager(
     }
     private var recordingStartTime: Long = 0
     private var totalRecordedTime: Long = 0
+    @Volatile
     private var totalDataSize = 0
     private var lastEmitTime = SystemClock.elapsedRealtime()
     private var lastPauseTime = 0L
