@@ -426,6 +426,7 @@ class RealTtsFunctionalityTest {
         // Test 3: The native VITS boundary falls back to speaker 0 when the model
         // has one speaker and the requested ID is out of range.
         initializeTts()
+        assertEquals("Fallback test requires the single-speaker LJSpeech fixture", 1, getNumSpeakers())
         println("\nTest 3: Invalid speaker ID falls back to speaker 0")
         latch = CountDownLatch(1)
         result = null
@@ -453,11 +454,15 @@ class RealTtsFunctionalityTest {
         ))
 
         assertTrue("Invalid-speaker generation should complete", latch.await(10, TimeUnit.SECONDS))
-        assertNull("Invalid-speaker generation should use the model fallback: $errorMessage", errorCode)
-        assertTrue("Invalid-speaker generation should succeed", result?.getBoolean("success") == true)
-        val fallbackFile = File(result?.getString("filePath").orEmpty())
-        assertTrue("Invalid-speaker generation should create audio", fallbackFile.length() > 44)
-        fallbackFile.delete()
+        val fallbackPath = result?.getString("filePath")
+        try {
+            assertNull("Invalid-speaker generation should use the model fallback: $errorMessage", errorCode)
+            assertTrue("Invalid-speaker generation should succeed", result?.getBoolean("success") == true)
+            assertNotNull("Invalid-speaker generation should return a file path", fallbackPath)
+            assertTrue("Invalid-speaker generation should create audio", File(fallbackPath!!).length() > 44)
+        } finally {
+            fallbackPath?.let { File(it).delete() }
+        }
     }
 
     // Helper functions
