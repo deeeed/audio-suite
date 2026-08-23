@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Build
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
+import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
@@ -235,7 +236,7 @@ class ForegroundServiceLifecycleInstrumentedTest {
         showNotification: Boolean? = null,
         keepAwake: Boolean? = null
     ): Map<String, Any> = buildMap {
-        put("sampleRate", 16_000)
+        put("sampleRate", SAMPLE_RATE.toInt())
         put("channels", 1)
         put("encoding", "pcm_16bit")
         put("interval", 100)
@@ -299,25 +300,29 @@ class ForegroundServiceLifecycleInstrumentedTest {
         val minimumBytes = WAV_HEADER_BYTES +
             SAMPLE_RATE * BYTES_PER_SAMPLE * MINIMUM_RECORDED_MS / 1_000
         assertTrue("Recording should contain at least ${MINIMUM_RECORDED_MS}ms of PCM", file.length() >= minimumBytes)
-        assertEquals("Reported size should match the WAV file", file.length(), (result["size"] as Number).toLong())
+        assertEquals(
+            "Reported size should match the WAV file; mismatch may mean the worker appended after stop timed out",
+            file.length(),
+            (result["size"] as Number).toLong()
+        )
         assertTrue("Recording duration should be positive", (result["durationMs"] as Number).toLong() > 0)
     }
 
     private fun awaitServiceState(expectedRunning: Boolean): Boolean {
-        val deadline = android.os.SystemClock.elapsedRealtime() + SERVICE_TIMEOUT_MS
+        val deadline = SystemClock.elapsedRealtime() + SERVICE_TIMEOUT_MS
         do {
             if (isServiceRunning() == expectedRunning) return true
             if (!sleepForServicePoll()) break
-        } while (android.os.SystemClock.elapsedRealtime() < deadline)
+        } while (SystemClock.elapsedRealtime() < deadline)
         return isServiceRunning() == expectedRunning
     }
 
     private fun serviceRemainsStopped(): Boolean {
-        val deadline = android.os.SystemClock.elapsedRealtime() + SERVICE_ABSENCE_OBSERVATION_MS
+        val deadline = SystemClock.elapsedRealtime() + SERVICE_ABSENCE_OBSERVATION_MS
         do {
             if (isServiceRunning()) return false
             if (!sleepForServicePoll()) return false
-        } while (android.os.SystemClock.elapsedRealtime() < deadline)
+        } while (SystemClock.elapsedRealtime() < deadline)
         return !isServiceRunning()
     }
 
@@ -341,13 +346,15 @@ class ForegroundServiceLifecycleInstrumentedTest {
         // prints the full class name rather than abbreviating it to `/.ClassName`.
         return dump.lineSequence().any { line ->
             line.contains("ServiceRecord") &&
+                !line.contains("restarting=") &&
                 line.contains(AudioRecordingService::class.java.name)
         }
     }
 
-    // These probes intentionally fail on a production rename. Keeping test state private
+    // These probes intentionally fail on a production rename. Keeping production state private
     // is preferable to widening production visibility for instrumentation.
     private fun resetNotificationManager() {
+        // Safe only after destroy() calls stopUpdates(), which removes pending callbacks.
         notificationBuilderField().set(AudioNotificationManager.getInstance(context), null)
     }
 
