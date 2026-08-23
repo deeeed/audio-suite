@@ -74,6 +74,7 @@ class RecorderConcurrencyInstrumentedTest {
     @Test
     fun stopDuringDeviceChange_doesNotRestartADeadRecorder() {
         startRecording()
+        // Establish enough PCM for the file-floor assertion before opening the race window.
         Thread.sleep(300)
         val handlerFailure = AtomicReference<Throwable?>()
         val handler = Thread {
@@ -106,6 +107,7 @@ class RecorderConcurrencyInstrumentedTest {
     fun pauseDuringDeviceChange_doesNotRestartPausedRecorder() {
         val compressed = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q
         startRecording(compressed = compressed)
+        // Establish enough PCM for the file-floor assertion before opening the race window.
         Thread.sleep(300)
         val handlerFailure = AtomicReference<Throwable?>()
         val handler = Thread {
@@ -132,7 +134,7 @@ class RecorderConcurrencyInstrumentedTest {
         assertNull("No AudioRecord should restart while paused", currentAudioRecord())
         assertFalse("Paused transition should not emit deviceChanged", emittedReasons().contains("deviceChanged"))
 
-        val pausedSize = status.getInt("size").toLong()
+        val pausedSize = currentRecordedSize()
         resumeRecording()
         assertTrue(
             "Resumed recording should capture new PCM",
@@ -155,6 +157,7 @@ class RecorderConcurrencyInstrumentedTest {
                 put("encoding", "pcm_16bit")
                 put("interval", 100)
                 put("enableProcessing", false)
+                // This test targets recorder ownership, not the foreground-service contract.
                 put("keepAwake", false)
                 put("filename", "device_change_race")
                 if (compressed) {
@@ -261,15 +264,20 @@ class RecorderConcurrencyInstrumentedTest {
         try {
             extractor.setDataSource(file.absolutePath)
             assertTrue("Compressed recording should contain an audio track", extractor.trackCount > 0)
-            val durationUs = (0 until extractor.trackCount).maxOf { track ->
+            val audioDurations = (0 until extractor.trackCount).mapNotNull { track ->
                 val format = extractor.getTrackFormat(track)
-                if (format.containsKey(MediaFormat.KEY_DURATION)) {
+                val mimeType = format.getString(MediaFormat.KEY_MIME)
+                if (
+                    mimeType?.startsWith("audio/") == true &&
+                    format.containsKey(MediaFormat.KEY_DURATION)
+                ) {
                     format.getLong(MediaFormat.KEY_DURATION)
                 } else {
-                    0L
+                    null
                 }
             }
-            assertTrue("Compressed recording should have positive duration", durationUs > 0)
+            assertTrue("Compressed recording should contain an audio track", audioDurations.isNotEmpty())
+            assertTrue("Compressed recording should have positive duration", (audioDurations.maxOrNull() ?: 0L) > 0)
         } finally {
             extractor.release()
         }
@@ -281,10 +289,10 @@ class RecorderConcurrencyInstrumentedTest {
     private fun awaitRecordedSizeAbove(size: Long): Boolean {
         val deadline = System.currentTimeMillis() + 2_000L
         do {
-            if (manager.getStatus().getInt("size").toLong() > size) return true
+            if (currentRecordedSize() > size) return true
             Thread.sleep(20)
         } while (System.currentTimeMillis() < deadline)
-        return manager.getStatus().getInt("size").toLong() > size
+        return currentRecordedSize() > size
     }
 
     private fun awaitRecorderState(predicate: (AudioRecord?) -> Boolean): Boolean {
@@ -297,13 +305,21 @@ class RecorderConcurrencyInstrumentedTest {
     }
 
     private fun currentAudioRecord(): AudioRecord? {
+        return recorderStateField("audioRecord") as? AudioRecord
+    }
+
+    private fun currentRecordedSize(): Long {
+        return (recorderStateField("totalDataSize") as Number).toLong()
+    }
+
+    private fun recorderStateField(name: String): Any? {
         val lockField = AudioRecorderManager::class.java.getDeclaredField("audioRecordLock")
         lockField.isAccessible = true
         val lock = checkNotNull(lockField.get(manager))
-        val field = AudioRecorderManager::class.java.getDeclaredField("audioRecord")
+        val field = AudioRecorderManager::class.java.getDeclaredField(name)
         field.isAccessible = true
         return synchronized(lock) {
-            field.get(manager) as? AudioRecord
+            field.get(manager)
         }
     }
 

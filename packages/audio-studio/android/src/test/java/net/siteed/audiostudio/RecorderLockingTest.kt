@@ -1,6 +1,7 @@
 package net.siteed.audiostudio
 
 import java.io.File
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.junit.Test
@@ -118,6 +119,15 @@ class RecorderLockingTest {
             bodyOf("private fun recordingProcess()")
                 .contains("changingDeviceSession.get() == sessionId"),
             "A device change must gate only the worker for its own session"
+        )
+    }
+
+    @Test
+    fun `device switch failure events settle once`() {
+        assertEquals(
+            2,
+            Regex("""eventSent\.compareAndSet\(false,\s*true\)""").findAll(source).count(),
+            "Both failure paths must suppress duplicate Promise callbacks"
         )
     }
 
