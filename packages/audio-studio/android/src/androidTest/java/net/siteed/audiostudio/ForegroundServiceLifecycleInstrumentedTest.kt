@@ -20,8 +20,8 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
-import java.util.concurrent.CountDownLatch
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -47,6 +47,7 @@ class ForegroundServiceLifecycleInstrumentedTest {
 
     @Before
     fun setUp() {
+        // @After still runs for a failed assumption and needs context, but not manager.
         context = InstrumentationRegistry.getInstrumentation().targetContext
         assumeTrue(
             "AudioRecorderManager.startRecording requires Android 11+",
