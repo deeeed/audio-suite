@@ -9,7 +9,9 @@ import com.facebook.react.bridge.ReadableMap
 import junit.framework.TestCase.*
 import kotlinx.coroutines.runBlocking
 import net.siteed.sherpaonnx.utils.LightweightModelDownloader
+import net.siteed.sherpaonnx.utils.ModelExtractionCache
 import net.siteed.sherpaonnx.utils.createPromise
+import net.siteed.sherpaonnx.utils.extractModelArchive
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -90,64 +92,36 @@ class RealAsrFunctionalityTest {
         
         // Extract the model
         val targetDir = File(context.cacheDir, "extracted-models/${model.modelName}")
-        val completionMarker = File(targetDir, ".extraction-complete")
         val modelDir = File(targetDir, "sherpa-onnx-whisper-tiny.en")
-        val requiredFiles = listOf(
-            File(modelDir, "tiny.en-encoder.onnx"),
-            File(modelDir, "tiny.en-decoder.onnx"),
-            File(modelDir, "tiny.en-tokens.txt")
+        val cache = ModelExtractionCache(
+            targetDir = targetDir,
+            requiredFiles = listOf(
+                File(modelDir, "tiny.en-encoder.onnx"),
+                File(modelDir, "tiny.en-decoder.onnx"),
+                File(modelDir, "tiny.en-tokens.txt")
+            )
         )
-        if (completionMarker.isFile && requiredFiles.all { it.isFile && it.length() > 0 }) {
+        if (cache.isComplete()) {
             extractedModelPath = targetDir.absolutePath
             println("Using extracted ASR model: ${targetDir.absolutePath}")
             return
         }
 
-        targetDir.deleteRecursively()
-        targetDir.mkdirs()
+        cache.reset()
         
         println("Extracting model to: ${targetDir.absolutePath}")
-        val latch = CountDownLatch(1)
-        var extractionSuccess = false
-        var extractionError: String? = null
-        
-        sherpaOnnxImpl.extractTarBz2(
-            modelFile.absolutePath,
-            targetDir.absolutePath,
-            createPromise(
-                onResolve = { result ->
-                    try {
-                        val map = result as? ReadableMap
-                        extractionSuccess = map?.getBoolean("success") ?: false
-                        check(!extractionSuccess || requiredFiles.all { it.isFile && it.length() > 0 }) {
-                            "Extraction completed without all required ASR files"
-                        }
-                        if (extractionSuccess) {
-                            completionMarker.writeText("complete")
-                            extractedModelPath = targetDir.absolutePath
-                            println("Extraction successful")
-                        }
-                    } catch (error: Throwable) {
-                        extractionSuccess = false
-                        extractionError = error.message ?: error.toString()
-                    } finally {
-                        latch.countDown()
-                    }
-                },
-                onReject = { _, message, _ ->
-                    extractionError = message
-                    println("Extraction failed: $message")
-                    latch.countDown()
-                }
-            )
+        val extraction = extractModelArchive(
+            sherpaOnnxImpl = sherpaOnnxImpl,
+            sourcePath = modelFile.absolutePath,
+            cache = cache,
+            timeoutSeconds = MODEL_EXTRACTION_TIMEOUT_SECONDS
         )
-        
-        assertTrue(
-            "Extraction should complete",
-            latch.await(MODEL_EXTRACTION_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        )
-        assertNull("Extraction failed: $extractionError", extractionError)
-        assertTrue("Extraction should succeed", extractionSuccess)
+
+        assertTrue("Extraction should complete: ${extraction.error}", extraction.completed)
+        assertNull("Extraction failed: ${extraction.error}", extraction.error)
+        assertTrue("Extraction should succeed", extraction.success)
+        extractedModelPath = targetDir.absolutePath
+        println("Extraction successful")
     }
 
     @Test
