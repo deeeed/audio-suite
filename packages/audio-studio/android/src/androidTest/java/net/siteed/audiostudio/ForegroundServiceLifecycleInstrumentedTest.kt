@@ -64,11 +64,14 @@ class ForegroundServiceLifecycleInstrumentedTest {
 
     @After
     fun tearDown() {
-        AudioRecorderManager.destroy()
-        AudioRecordingService.stopService(context)
-        assertTrue("Foreground service should stop during teardown", awaitServiceState(false))
-        context.filesDir.listFiles()?.filter { it.name.startsWith("service_lifecycle_") }
-            ?.forEach { it.delete() }
+        try {
+            AudioRecorderManager.destroy()
+            AudioRecordingService.stopService(context)
+            assertTrue("Foreground service should stop during teardown", awaitServiceState(false))
+        } finally {
+            context.filesDir.listFiles()?.filter { it.name.startsWith("service_lifecycle_") }
+                ?.forEach { it.delete() }
+        }
     }
 
     @Test
@@ -154,11 +157,13 @@ class ForegroundServiceLifecycleInstrumentedTest {
             // cleanup can inspect sessionId, regardless of how long hardware setup takes.
             synchronized(recordLock) {
                 releaseCleanup.countDown()
+                // cleanupJoining proves phase 0 cleared _isRecording, which is the
+                // prepareRecording guard. Holding the lock keeps phase 2 behind us.
                 val successorOptions = options("prepared_successor_new")
                 assertTrue("Successor preparation should succeed", manager.prepareRecording(successorOptions))
                 assertTrue("Successor should be prepared before cleanup resumes", manager.isPrepared)
                 assertTrue("Successor preparation should publish a new session", sessionId() > ownedSession)
-                assertTrue("Cleanup should wait for the session handoff", cleanupThread.isAlive)
+                assertTrue("Cleanup should not finish before the session handoff", cleanupThread.isAlive)
             }
             cleanupThread.join(3_000L)
 
