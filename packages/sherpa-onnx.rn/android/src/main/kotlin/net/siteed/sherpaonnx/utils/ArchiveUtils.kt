@@ -22,6 +22,9 @@ object ArchiveUtils {
     )
 
     internal fun resolveArchiveEntry(targetDir: File, entryName: String): File {
+        if (File(entryName).isAbsolute) {
+            throw IOException("Archive entry uses an absolute path: $entryName")
+        }
         val canonicalTarget = targetDir.canonicalFile
         val outputFile = File(canonicalTarget, entryName).canonicalFile
         val targetPrefix = canonicalTarget.path + File.separator
@@ -62,58 +65,42 @@ object ArchiveUtils {
         val extractedFiles = mutableListOf<String>()
         
         try {
-            // Create a buffered input stream for better performance
-            val fileInputStream = FileInputStream(sourceFile)
-            val bufferedInputStream = BufferedInputStream(fileInputStream)
-            
-            // Create BZip2 decompressor
-            val bzip2InputStream = BZip2CompressorInputStream(bufferedInputStream)
-            
-            // Create TAR archive input stream
-            val tarInputStream = TarArchiveInputStream(bzip2InputStream)
-            
-            // Process each entry in the TAR archive
-            var entry = tarInputStream.nextTarEntry
-            while (entry != null) {
-                val entryName = entry.name
-                val outputFile = resolveArchiveEntry(targetDirFile, entryName)
-                
-                Log.d(TAG, "Extracting entry: $entryName")
-                
-                if (entry.isDirectory) {
-                    // Create directory
-                    if (!outputFile.exists() && !outputFile.mkdirs()) {
-                        Log.w(TAG, "Failed to create directory: ${outputFile.absolutePath}")
+            FileInputStream(sourceFile).buffered().use { sourceStream ->
+                BZip2CompressorInputStream(sourceStream).use { bzip2Stream ->
+                    TarArchiveInputStream(bzip2Stream).use { tarInputStream ->
+                        var entry = tarInputStream.nextTarEntry
+                        while (entry != null) {
+                            val entryName = entry.name
+                            val outputFile = resolveArchiveEntry(targetDirFile, entryName)
+
+                            Log.d(TAG, "Extracting entry: $entryName")
+
+                            if (entry.isDirectory) {
+                                if (!outputFile.exists() && !outputFile.mkdirs()) {
+                                    Log.w(TAG, "Failed to create directory: ${outputFile.absolutePath}")
+                                }
+                            } else {
+                                val parent = outputFile.parentFile
+                                if (parent != null && !parent.exists() && !parent.mkdirs()) {
+                                    Log.w(TAG, "Failed to create parent directory: ${parent.absolutePath}")
+                                }
+
+                                FileOutputStream(outputFile).use { outputStream ->
+                                    val buffer = ByteArray(8192)
+                                    var bytesRead: Int
+                                    while (tarInputStream.read(buffer).also { bytesRead = it } != -1) {
+                                        outputStream.write(buffer, 0, bytesRead)
+                                    }
+                                }
+                                extractedFiles.add(entryName)
+                            }
+
+                            entry = tarInputStream.nextTarEntry
+                        }
                     }
-                } else {
-                    // Create parent directories if needed
-                    val parent = outputFile.parentFile
-                    if (parent != null && !parent.exists() && !parent.mkdirs()) {
-                        Log.w(TAG, "Failed to create parent directory: ${parent.absolutePath}")
-                    }
-                    
-                    // Extract file
-                    val outputStream = FileOutputStream(outputFile)
-                    val buffer = ByteArray(8192)
-                    var bytesRead: Int
-                    
-                    while (tarInputStream.read(buffer).also { bytesRead = it } != -1) {
-                        outputStream.write(buffer, 0, bytesRead)
-                    }
-                    
-                    outputStream.close()
-                    extractedFiles.add(entryName)
                 }
-                
-                entry = tarInputStream.nextTarEntry
             }
-            
-            // Close streams
-            tarInputStream.close()
-            bzip2InputStream.close()
-            bufferedInputStream.close()
-            fileInputStream.close()
-            
+
             val elapsedTime = System.currentTimeMillis() - startTime
             Log.i(TAG, "Extraction completed in ${elapsedTime}ms. Extracted ${extractedFiles.size} files.")
             

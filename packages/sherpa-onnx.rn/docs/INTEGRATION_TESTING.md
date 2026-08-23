@@ -65,11 +65,10 @@ The test APK initializes React Native's merged native-library mapping from
 with React Native 0.86, whose APK contains `libreactnative.so` rather than the old
 `libreactnativejni_common.so` requested by the bridge without that mapping.
 
-Verified on a Pixel 6a with real model downloads and extraction. Native library loading,
-TTS error handling, ASR file recognition, and ASR error handling all reached their
-assertions and passed. The Whisper extraction took about 59 seconds on that device, so
-the ASR setup allows 90 seconds and reuses only a completed extraction.
-All six `RealTtsFunctionalityTest` cases later passed together in 1 minute 19 seconds.
+Earlier Pixel 6a runs covered native loading, TTS error handling, ASR file recognition,
+ASR error handling, and all six `RealTtsFunctionalityTest` cases. The current cache change
+passed its five cache/path tests plus a cold staged TTS extraction and initialization on the
+same device. Whisper extraction previously took about 59 seconds, so ASR allows 90 seconds.
 
 Repository CI does not run `connectedAndroidTest`; the generated Android project and
 physical-device run remain manual validation (#449).
@@ -101,6 +100,7 @@ APP_VARIANT=development ./gradlew :siteed_sherpa-onnx.rn:connectedAndroidTest \
 
 The classes that exist: `AudioTrackPrefillTest`, `BasicIntegrationTest`,
 `ComprehensiveIntegrationTestSuite`, `MemoryAndPerformanceProfilerTest`,
+`utils.ModelExtractionCacheTest`,
 `RealAsrFunctionalityTest`, `RealTtsFunctionalityTest`, `SystemInfoTest`,
 `TestModelManagementTest`, `TestReactContextDispatchTest`, `TtsIntegrationTest`,
 `WaveReaderJniTest`. There is no `RealModelIntegrationTest`.
@@ -153,8 +153,9 @@ Use an `en_US` name. If a download 404s, that is the likely reason.
 
 ### Android (Real Device - Pixel 6a)
 
-These full-suite results are historical. Current validation covers the four focused paths
-listed above and a later run of all six `RealTtsFunctionalityTest` cases, not all 26 tests.
+These full-suite results are historical. Current validation covers the five cache/path cases
+plus cold TTS staged extraction and initialization. Earlier runs covered the focused ASR/TTS
+paths and all six `RealTtsFunctionalityTest` cases, not all 26 tests.
 
 ```
 System Information: ✅ PASS

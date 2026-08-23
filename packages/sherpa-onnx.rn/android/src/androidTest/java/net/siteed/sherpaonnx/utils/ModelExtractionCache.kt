@@ -10,6 +10,9 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.locks.ReentrantLock
+
+private const val EXTRACTION_LOG_TAG = "ModelExtractionCache"
 
 /** Serializes promotion within this instrumentation process. */
 internal class ModelExtractionCache(
@@ -41,17 +44,32 @@ internal class ModelExtractionCache(
         }
     }
 
-    fun promote(attemptDir: File) {
+    fun promote(attemptDir: File, deadlineNanos: Long) {
         check(assetsExist(attemptDir)) { "Extraction completed without all required model assets" }
         completionMarker(attemptDir).writeText("complete")
 
-        synchronized(promotionLock(targetDir)) {
+        val lock = promotionLock(targetDir)
+        val remainingNanos = deadlineNanos - System.nanoTime()
+        val acquired = if (remainingNanos > 0) {
+            try {
+                lock.tryLock(remainingNanos, TimeUnit.NANOSECONDS)
+            } catch (error: InterruptedException) {
+                Thread.currentThread().interrupt()
+                throw error
+            }
+        } else {
+            false
+        }
+        check(acquired) {
+            "Timed out waiting to promote ${targetDir.absolutePath}"
+        }
+        var backupDir: File? = null
+        try {
             if (isComplete()) {
-                discardAttempt(attemptDir)
                 return
             }
 
-            val backupDir = File(
+            backupDir = File(
                 targetDir.parentFile,
                 ".${targetDir.name}.replaced-${UUID.randomUUID()}"
             )
@@ -69,8 +87,17 @@ internal class ModelExtractionCache(
                 }
                 error("Could not promote extraction attempt to ${targetDir.absolutePath}")
             }
-
-            deleteRecursively(backupDir, "replaced extraction cache")
+        } finally {
+            lock.unlock()
+        }
+        backupDir?.let { replacedDir ->
+            try {
+                deleteRecursively(replacedDir, "replaced extraction cache")
+            } catch (cleanupError: Exception) {
+                // The new cache is already committed. Report the leftover backup without
+                // turning a successful promotion into a false failure.
+                Log.w(EXTRACTION_LOG_TAG, "Could not discard replaced extraction cache", cleanupError)
+            }
         }
     }
 
@@ -94,10 +121,10 @@ internal class ModelExtractionCache(
     companion object {
         // Tests use two fixed model targets. Retaining their locks for the process lifetime
         // avoids unsafe removal while another thread is waiting on the same monitor.
-        private val promotionLocks = ConcurrentHashMap<String, Any>()
+        private val promotionLocks = ConcurrentHashMap<String, ReentrantLock>()
 
-        private fun promotionLock(targetDir: File): Any =
-            promotionLocks.getOrPut(targetDir.absoluteFile.normalize().path) { Any() }
+        private fun promotionLock(targetDir: File): ReentrantLock =
+            promotionLocks.getOrPut(targetDir.absoluteFile.normalize().path) { ReentrantLock() }
     }
 }
 
@@ -136,6 +163,7 @@ internal fun extractModelArchive(
     startExtraction: ArchiveExtractionStarter,
 ): ModelExtractionResult {
     val attemptDir = cache.createAttemptDir()
+    val deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
     val latch = CountDownLatch(1)
     val state = AtomicReference<ExtractionState>(ExtractionState.Pending)
 
@@ -145,7 +173,7 @@ internal fun extractModelArchive(
         } catch (cleanupError: Exception) {
             // The caller already received a timeout. A late cleanup failure must not crash
             // the main looper long after that test returned.
-            Log.w("ModelExtractionCache", "Could not discard timed-out extraction", cleanupError)
+            Log.w(EXTRACTION_LOG_TAG, "Could not discard timed-out extraction", cleanupError)
         }
     }
 
@@ -230,9 +258,21 @@ internal fun extractModelArchive(
         }
     }
 
-    if (!latch.await(timeoutSeconds, TimeUnit.SECONDS) &&
-        state.compareAndSet(ExtractionState.Pending, ExtractionState.TimedOut)
-    ) {
+    val completedInTime = try {
+        latch.await(timeoutSeconds, TimeUnit.SECONDS)
+    } catch (_: InterruptedException) {
+        Thread.currentThread().interrupt()
+        val previous = state.getAndSet(ExtractionState.TimedOut)
+        if (previous is ExtractionState.Finished) discardTimedOutAttempt()
+        return ModelExtractionResult(
+            completed = false,
+            success = false,
+            error = "Interrupted while waiting for model extraction",
+        )
+    }
+    if (!completedInTime) {
+        val previous = state.getAndSet(ExtractionState.TimedOut)
+        if (previous is ExtractionState.Finished) discardTimedOutAttempt()
         return ModelExtractionResult(
             completed = false,
             success = false,
@@ -240,12 +280,10 @@ internal fun extractModelArchive(
         )
     }
 
-    // If the timeout CAS lost, the callback already published Finished. No unbounded
-    // boundary wait is needed, and only this waiting thread may promote the attempt.
     var result = (state.get() as ExtractionState.Finished).result
     if (result.success) {
         result = try {
-            cache.promote(attemptDir)
+            cache.promote(attemptDir, deadlineNanos)
             result
         } catch (promotionError: Exception) {
             ModelExtractionResult(

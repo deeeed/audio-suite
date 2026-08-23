@@ -31,6 +31,14 @@ class ModelExtractionCacheTest {
             ArchiveUtils.resolveArchiveEntry(targetDir, "../shared/model.onnx")
         }.exceptionOrNull()
         assertTrue("Traversal should fail with IOException: $failure", failure is IOException)
+
+        val absoluteFailure = runCatching {
+            ArchiveUtils.resolveArchiveEntry(targetDir, "/etc/passwd")
+        }.exceptionOrNull()
+        assertTrue(
+            "Absolute paths should fail with IOException: $absoluteFailure",
+            absoluteFailure is IOException
+        )
     }
 
     @Test
