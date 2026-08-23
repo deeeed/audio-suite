@@ -6,7 +6,7 @@
     "main": "index.js",
     "types": "index.d.ts",
     "dependencies": {
-        "@siteed/audio-studio": "workspace:^"
+        "@siteed/audio-studio": "3.2.1"
     },
     "publishConfig": {
         "access": "public",
