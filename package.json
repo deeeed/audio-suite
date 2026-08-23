@@ -9,7 +9,8 @@
     "scripts": {
         "format": "prettier --write .",
         "android:ort:check": "bash scripts/check-android-ort-compat.sh",
-        "check:deps": "bash scripts/check-runtime-deps.sh && node scripts/check-hermes-version.mjs"
+        "check:deps": "bash scripts/check-runtime-deps.sh && node scripts/check-hermes-version.mjs",
+        "check": "bash scripts/check.sh"
     },
     "nohoist": [
         "**/react-native",
