@@ -42,7 +42,7 @@
         "registry": "https://registry.npmjs.org"
     },
     "dependencies": {
-        "@siteed/audio-studio": "3.2.1"
+        "@siteed/audio-studio": "workspace:^"
     },
     "devDependencies": {
         "typescript": "~6.0.3"

@@ -1,6 +1,6 @@
 {
   "name": "@siteed/moonshine.rn",
-  "version": "0.4.0",
+  "version": "0.4.1-beta.1",
   "description": "React Native wrapper for Moonshine Voice on-device transcription",
   "source": "./src/index.ts",
   "main": "./lib/commonjs/index.js",
@@ -112,7 +112,7 @@
   "moonshineCommit": "520ba083085a14efcb77d701b35544f81d7b1acf",
   "moonshineArtifacts": {
     "ios": {
-      "xcframeworkSha256": "3756a7d4aae038ace7d40fbb6ebbb27fa80dfe005394127d61d1b1514c330ab0"
+      "xcframeworkSha256": "06a7cd98e6a479f3ed919d16d54675a86d3f86bc7ab4bb5e32dc9ba58cdd24fe"
     }
   },
   "eslintConfig": {
