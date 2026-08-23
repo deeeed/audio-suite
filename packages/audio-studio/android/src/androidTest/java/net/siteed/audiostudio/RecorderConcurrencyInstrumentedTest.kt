@@ -97,7 +97,7 @@ class RecorderConcurrencyInstrumentedTest {
 
     @Test
     fun pauseDuringDeviceChange_doesNotRestartPausedRecorder() {
-        startRecording()
+        startRecording(compressed = true)
         Thread.sleep(150)
         val handlerFailure = AtomicReference<Throwable?>()
         val handler = Thread {
@@ -123,21 +123,32 @@ class RecorderConcurrencyInstrumentedTest {
         assertTrue("Manager should remain paused", status.getBoolean("isPaused"))
         assertNull("No AudioRecord should restart while paused", currentAudioRecord())
 
-        assertRecordingResult(stopRecording())
+        val result = stopRecording()
+        assertRecordingResult(result)
+        assertCompressedRecordingResult(result)
     }
 
-    private fun startRecording() {
+    private fun startRecording(compressed: Boolean = false) {
         val latch = CountDownLatch(1)
         var error: String? = null
         manager.startRecording(
-            mapOf(
-                "sampleRate" to SAMPLE_RATE,
-                "channels" to 1,
-                "encoding" to "pcm_16bit",
-                "interval" to 100,
-                "enableProcessing" to false,
-                "filename" to "device_change_race"
-            ),
+            buildMap {
+                put("sampleRate", SAMPLE_RATE)
+                put("channels", 1)
+                put("encoding", "pcm_16bit")
+                put("interval", 100)
+                put("enableProcessing", false)
+                put("filename", "device_change_race")
+                if (compressed) {
+                    put("output", mapOf(
+                        "compressed" to mapOf(
+                            "enabled" to true,
+                            "format" to "aac",
+                            "bitrate" to 128_000
+                        )
+                    ))
+                }
+            },
             object : Promise {
                 override fun resolve(value: Any?) {
                     latch.countDown()
@@ -202,6 +213,15 @@ class RecorderConcurrencyInstrumentedTest {
             fileBytes >= minimumFileBytes
         )
         assertTrue("Stopped recording should have positive duration", result.getLong("durationMs") > 0)
+    }
+
+    private fun assertCompressedRecordingResult(result: Bundle) {
+        val compression = result.getBundle("compression")
+        assertNotNull("Compression metadata should exist", compression)
+        val fileUri = compression!!.getString("compressedFileUri")
+        assertNotNull("Compressed file URI should exist", fileUri)
+        val file = File(java.net.URI(fileUri))
+        assertTrue("Compressed recording should contain audio", file.length() > 0)
     }
 
     private fun awaitRecorderState(predicate: (AudioRecord?) -> Boolean): Boolean {

@@ -105,6 +105,11 @@ class RecorderLockingTest {
             body.contains("isChangingDevice.set(false)"),
             "Every device-change exit must let the recording worker use audioRecordLock again"
         )
+        assertTrue(
+            bodyOf("private fun pauseRecording(promise: Promise, isSystemInterruption: Boolean)")
+                .contains("if (!isChangingDevice.get())"),
+            "A pause during device change must not pause the compressed recorder twice"
+        )
     }
 
     @Test

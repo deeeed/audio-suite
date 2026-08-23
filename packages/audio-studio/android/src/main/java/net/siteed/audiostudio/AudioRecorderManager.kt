@@ -431,6 +431,8 @@ class AudioRecorderManager(
             // Phase 2 restarts only if no stop, pause, or new session won during the delay.
             return synchronized(audioRecordLock) {
                 if (!_isRecording.get() || isPaused.get() || sessionId != deviceChangeSession) {
+                    // A user pause defers the restart. resumeRecording sees the null
+                    // AudioRecord left by phase 1 and rebuilds it on the selected device.
                     LogUtils.d(CLASS_NAME, "🔄 Device change cancelled because the session ended or paused")
                     return@synchronized false
                 }
@@ -1836,7 +1838,11 @@ class AudioRecorderManager(
         synchronized(audioRecordLock) {
             if (_isRecording.get() && !isPaused.get()) {
                 audioRecord?.stop()
-                compressedRecorder?.pause()
+                // Device-change phase 1 already paused the compressed recorder before
+                // releasing this lock. Calling pause() twice can throw before isPaused is set.
+                if (!isChangingDevice.get()) {
+                    compressedRecorder?.pause()
+                }
             
                 lastPauseTime = System.currentTimeMillis()
                 isPaused.set(true)
