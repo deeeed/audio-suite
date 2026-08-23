@@ -356,8 +356,8 @@ class AudioRecorderManager(
 
     // Add a method to handle device changes
     fun handleDeviceChange() {
-        val shouldStop = handleDeviceChangeTransition()
-        if (shouldStop) {
+        val failedSession = handleDeviceChangeTransition()
+        if (failedSession != null) {
             val eventSent = AtomicBoolean(false)
             fun sendFailureEvent() {
                 if (eventSent.compareAndSet(false, true)) {
@@ -367,7 +367,7 @@ class AudioRecorderManager(
                     )
                 }
             }
-            stopRecording(object : Promise {
+            stopRecordingAfterDeviceChangeFailure(failedSession, object : Promise {
                 override fun resolve(value: Any?) {
                     sendFailureEvent()
                 }
@@ -380,7 +380,41 @@ class AudioRecorderManager(
         }
     }
 
-    private fun handleDeviceChangeTransition(): Boolean {
+    private fun stopRecordingAfterDeviceChangeFailure(
+        claimedSession: Long,
+        promise: Promise
+    ) {
+        synchronized(audioRecordLock) {
+            if (sessionId != claimedSession || !_isRecording.get()) {
+                promise.reject(
+                    "SESSION_CHANGED",
+                    "Recording session changed before device-switch recovery",
+                    null
+                )
+                return
+            }
+            stopRecording(promise)
+        }
+    }
+
+    private fun pauseRecordingAfterDeviceChangeFailure(
+        claimedSession: Long,
+        promise: Promise
+    ) {
+        synchronized(audioRecordLock) {
+            if (sessionId != claimedSession || !_isRecording.get()) {
+                promise.reject(
+                    "SESSION_CHANGED",
+                    "Recording session changed before device-switch recovery",
+                    null
+                )
+                return
+            }
+            pauseRecording(promise, isSystemInterruption = false)
+        }
+    }
+
+    private fun handleDeviceChangeTransition(): Long? {
         var ownsTransition = false
         var claimedSession = NO_DEVICE_CHANGE_SESSION
         try {
@@ -392,19 +426,19 @@ class AudioRecorderManager(
                 LogUtils.d(CLASS_NAME, "🔄 handleDeviceChange called - isRecording=${_isRecording.get()}, isPaused=${isPaused.get()}")
                 if (!_isRecording.get()) {
                     LogUtils.d(CLASS_NAME, "🔄 handleDeviceChange: Not recording, no action needed")
-                    return false
+                    return null
                 }
 
                 if (isPaused.get()) {
                     LogUtils.d(CLASS_NAME, "🔄 handleDeviceChange: Recording is paused, marking for restart with new device when resumed")
                     audioRecord?.release()
                     audioRecord = null
-                    return false
+                    return null
                 }
 
                 if (!::recordingConfig.isInitialized) {
                     LogUtils.w(CLASS_NAME, "recordingConfig not initialized in handleDeviceChange")
-                    return false
+                    return null
                 }
 
                 claimedSession = sessionId
@@ -414,7 +448,7 @@ class AudioRecorderManager(
                     )
                 ) {
                     LogUtils.d(CLASS_NAME, "🔄 A device change is already in progress")
-                    return false
+                    return null
                 }
                 ownsTransition = true
 
@@ -446,7 +480,7 @@ class AudioRecorderManager(
                     // A user pause defers the restart. resumeRecording sees the null
                     // AudioRecord left by phase 1 and rebuilds it on the selected device.
                     LogUtils.d(CLASS_NAME, "🔄 Device change cancelled because the session ended or paused")
-                    return@synchronized false
+                    return@synchronized null
                 }
 
                 LogUtils.d(CLASS_NAME, "🔄 Reinitializing AudioRecord with new device")
@@ -458,7 +492,7 @@ class AudioRecorderManager(
                     }) || audioRecord?.state != AudioRecord.STATE_INITIALIZED
                 ) {
                     LogUtils.e(CLASS_NAME, "🔄 Failed to reinitialize audio record, stopping recording")
-                    return@synchronized true
+                    return@synchronized deviceChangeSession
                 }
 
                 LogUtils.d(CLASS_NAME, "🔄 Starting recording with new device")
@@ -476,7 +510,7 @@ class AudioRecorderManager(
                     "deviceInfo" to newDeviceInfo
                 ))
                 LogUtils.d(CLASS_NAME, "🔄 Device change handling completed successfully")
-                false
+                null
             }
 
         } catch (e: Exception) {
@@ -495,7 +529,7 @@ class AudioRecorderManager(
                 }
             }
             // If something went wrong, try to pause recording
-            pauseRecording(object : Promise {
+            pauseRecordingAfterDeviceChangeFailure(claimedSession, object : Promise {
                 override fun resolve(value: Any?) {
                     sendFailureEvent(true)
                 }
@@ -505,7 +539,7 @@ class AudioRecorderManager(
                     sendFailureEvent(isPaused.get())
                 }
             })
-            return false
+            return null
         } finally {
             if (ownsTransition) {
                 compressedPausedForDeviceChangeSession.compareAndSet(

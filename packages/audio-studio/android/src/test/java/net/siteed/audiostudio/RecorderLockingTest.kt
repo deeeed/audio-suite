@@ -88,7 +88,7 @@ class RecorderLockingTest {
 
     @Test
     fun `device change rechecks session after its unlocked transition`() {
-        val body = bodyOf("private fun handleDeviceChangeTransition(): Boolean")
+        val body = bodyOf("private fun handleDeviceChangeTransition(): Long?")
         val claimAt = body.indexOf("val deviceChangeSession = synchronized(audioRecordLock)")
         val delayAt = body.indexOf("Thread.sleep(200)")
         val restartAt = body.indexOf("return synchronized(audioRecordLock)", delayAt)
@@ -126,7 +126,7 @@ class RecorderLockingTest {
     fun `device switch failure events settle once`() {
         for (signature in listOf(
             "fun handleDeviceChange()",
-            "private fun handleDeviceChangeTransition(): Boolean"
+            "private fun handleDeviceChangeTransition(): Long?"
         )) {
             val body = bodyOf(signature)
             val guardPattern = Regex(
@@ -142,6 +142,37 @@ class RecorderLockingTest {
             assertTrue(
                 guardAt >= 0 && eventAt > guardAt,
                 "$signature must guard its deviceSwitchFailed event"
+            )
+        }
+    }
+
+    @Test
+    fun `device switch recovery cannot mutate a successor session`() {
+        val transition = bodyOf("private fun handleDeviceChangeTransition(): Long?")
+        assertTrue(
+            transition.contains("return@synchronized deviceChangeSession"),
+            "A failed transition must return the session it claimed"
+        )
+
+        for (signature in listOf(
+            "private fun stopRecordingAfterDeviceChangeFailure(",
+            "private fun pauseRecordingAfterDeviceChangeFailure("
+        )) {
+            val recovery = bodyOf(signature)
+            val lockAt = recovery.indexOf("synchronized(audioRecordLock)")
+            val ownershipAt = recovery.indexOf(
+                "sessionId != claimedSession || !_isRecording.get()",
+                lockAt
+            )
+            val mutationAt = listOf(
+                recovery.indexOf("stopRecording(promise)", lockAt),
+                recovery.indexOf("pauseRecording(promise, isSystemInterruption = false)", lockAt)
+            ).filter { it >= 0 }.minOrNull() ?: -1
+
+            assertTrue(lockAt >= 0, "$signature must take audioRecordLock")
+            assertTrue(
+                ownershipAt > lockAt && mutationAt > ownershipAt,
+                "$signature must recheck session ownership under the lock before recovery"
             )
         }
     }
