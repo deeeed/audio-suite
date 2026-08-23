@@ -339,14 +339,14 @@ class ForegroundServiceLifecycleTest {
     @Test
     fun cleanupStopsTheServiceThroughThePredicate() {
         assertServiceCallIsCorrectlyGuarded(
-            "cleanup", "AudioRecordingService.stopService(context)"
+            "cleanupInternal", "AudioRecordingService.stopService(context)"
         )
 
         // cleanup owns two stops and needs both. The session-mismatch return releases a
         // service the successor does not own; the main teardown releases this session's.
         // Requiring only one lets either be deleted while the other keeps the test green.
         val occurrences = Regex("""AudioRecordingService\.stopService""")
-            .findAll(bodyOf("cleanup")).count()
+            .findAll(bodyOf("cleanupInternal")).count()
         assertEquals(
             "cleanup must stop the service on both paths: the session-mismatch return " +
                 "and the main teardown. Dropping either strands a service (#474).",
@@ -410,7 +410,7 @@ class ForegroundServiceLifecycleTest {
         // Two things the truth table cannot see: that the decision is captured when the
         // session is claimed rather than reconstructed later from mutable state, and that
         // the call site actually consults the rule.
-        val body = bodyOf("cleanup").lines().joinToString("\n") { it.substringBefore("//") }
+        val body = bodyOf("cleanupInternal").lines().joinToString("\n") { it.substringBefore("//") }
 
         // Position is the point: the capture has to happen where the session is claimed,
         // before the unlocked join. Asserting only that an assignment exists somewhere
@@ -539,7 +539,7 @@ class ForegroundServiceLifecycleTest {
         // The mismatch branch was fixed first and the sibling left recomputing, which is
         // the path most recordings actually take. Both must use the captured value: after
         // the join, recordingConfig may belong to an attempt that failed before publishing.
-        val body = bodyOf("cleanup").lines().joinToString("\n") { it.substringBefore("//") }
+        val body = bodyOf("cleanupInternal").lines().joinToString("\n") { it.substringBefore("//") }
         val mismatchIndex = body.indexOf("sessionId != ownedSession")
         val stops = Regex("""AudioRecordingService\.stopService""").findAll(body).toList()
         assertEquals("cleanup should still have two stops", 2, stops.size)

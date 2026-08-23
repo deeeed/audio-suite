@@ -1282,15 +1282,18 @@ class AudioStudioModule : Module(), EventSender, AudioStreamDecoderDelegate {
                     if (success) {
                         LogUtils.d(CLASS_NAME, "📱 Successfully selected default device, notifying AudioRecorderManager")
                         // Notify AudioRecorderManager to update its recording source
-                        audioRecorderManager.handleDeviceChange()
-                        
-                        // Notify JS about fallback
-                        LogUtils.d(CLASS_NAME, "📱 Sending deviceFallback event to JS")
-                        safeSendEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
-                            "reason" to "deviceFallback",
-                            "isPaused" to false,
-                            "deviceId" to deviceId
-                        ))
+                        val fallbackActive = audioRecorderManager.handleDeviceChange()
+
+                        // A stop, pause, failure, or successor session won while switching.
+                        // Those paths already report their own truthful state.
+                        if (fallbackActive) {
+                            LogUtils.d(CLASS_NAME, "📱 Sending deviceFallback event to JS")
+                            safeSendEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
+                                "reason" to "deviceFallback",
+                                "isPaused" to false,
+                                "deviceId" to deviceId
+                            ))
+                        }
                     } else {
                         LogUtils.e(CLASS_NAME, "📱 Failed to select default device, pausing recording")
                         

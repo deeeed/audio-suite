@@ -352,13 +352,19 @@ class AudioRecorderManager(
     private val changingDeviceSession = AtomicLong(NO_DEVICE_CHANGE_SESSION)
     private val compressedPausedForDeviceChangeSession =
         AtomicLong(NO_DEVICE_CHANGE_SESSION)
+    // Read and written only under audioRecordLock. Device-failure recovery emits its own
+    // interruption reason, so its teardown must not also emit recordingStopped.
+    private var suppressRecordingStoppedEvent = false
     
     // Cache file sizes to avoid file system calls during stop
     private var cachedPrimaryFileSize: Long = 44L  // Start with WAV header size
     private var cachedCompressedFileSize: Long = 0L
 
     // Add a method to handle device changes
-    fun handleDeviceChange() {
+    fun handleDeviceChange(): Boolean {
+        val requestedSession = synchronized(audioRecordLock) {
+            if (_isRecording.get()) sessionId else NO_DEVICE_CHANGE_SESSION
+        }
         val failedSession = handleDeviceChangeTransition()
         if (failedSession != null) {
             val eventSent = AtomicBoolean(false)
@@ -381,12 +387,17 @@ class AudioRecorderManager(
                 }
             })
         }
+        return failedSession == null && requestedSession != NO_DEVICE_CHANGE_SESSION &&
+            synchronized(audioRecordLock) {
+                sessionId == requestedSession && _isRecording.get() && !isPaused.get()
+            }
     }
 
     private fun stopRecordingAfterDeviceChangeFailure(
         claimedSession: Long,
         promise: Promise
     ) {
+        var recoveryFailure: Exception? = null
         synchronized(audioRecordLock) {
             if (sessionId != claimedSession) {
                 promise.reject(
@@ -405,17 +416,22 @@ class AudioRecorderManager(
                 return
             }
             try {
+                suppressRecordingStoppedEvent = true
                 stopRecording(promise)
             } catch (recoveryError: Exception) {
-                failDeviceChangeRecovery(recoveryError, promise)
+                recoveryFailure = recoveryError
+            } finally {
+                suppressRecordingStoppedEvent = false
             }
         }
+        recoveryFailure?.let { failDeviceChangeRecovery(claimedSession, it, promise) }
     }
 
     private fun pauseRecordingAfterDeviceChangeFailure(
         claimedSession: Long,
         promise: Promise
     ) {
+        var recoveryFailure: Exception? = null
         synchronized(audioRecordLock) {
             if (sessionId != claimedSession) {
                 promise.reject(
@@ -436,20 +452,30 @@ class AudioRecorderManager(
             try {
                 pauseRecording(promise, isSystemInterruption = false)
             } catch (recoveryError: Exception) {
-                failDeviceChangeRecovery(recoveryError, promise)
+                recoveryFailure = recoveryError
             }
         }
+        recoveryFailure?.let { failDeviceChangeRecovery(claimedSession, it, promise) }
     }
 
-    private fun failDeviceChangeRecovery(recoveryError: Exception, promise: Promise) {
+    private fun failDeviceChangeRecovery(
+        claimedSession: Long,
+        recoveryError: Exception,
+        promise: Promise
+    ) {
         LogUtils.e(CLASS_NAME, "Device-switch recovery failed: ${recoveryError.message}", recoveryError)
-        // The worker is waiting outside audioRecordLock on this transition's session.
-        // Claim it before cleanup so no stale thread survives into a later recording.
-        recordingThreadRef.getAndSet(null)?.interrupt()
-        try {
-            cleanup(callerHoldsRecordLock = true)
-        } catch (cleanupError: Exception) {
-            LogUtils.e(CLASS_NAME, "Device-switch recovery cleanup failed", cleanupError)
+        val cleaned = cleanupInternal(
+            callerHoldsRecordLock = false,
+            expectedSession = claimedSession,
+            emitStoppedEvent = false
+        )
+        if (!cleaned || synchronized(audioRecordLock) { sessionId != claimedSession }) {
+            promise.reject(
+                DEVICE_RECOVERY_SUPERSEDED,
+                "Recording session changed during device-switch recovery",
+                recoveryError
+            )
+            return
         }
         promise.reject(
             DEVICE_RECOVERY_FAILED,
@@ -475,6 +501,9 @@ class AudioRecorderManager(
 
                 if (isPaused.get()) {
                     LogUtils.d(CLASS_NAME, "🔄 handleDeviceChange: Recording is paused, marking for restart with new device when resumed")
+                    // Capture ownership before release so a throwing release cannot report
+                    // failure against a session that resumes in the recovery gap.
+                    claimedSession = sessionId
                     audioRecord?.release()
                     audioRecord = null
                     return null
@@ -2505,8 +2534,18 @@ class AudioRecorderManager(
      * thread reference for a caller that can act on it (#446).
      */
     internal fun cleanup(callerHoldsRecordLock: Boolean) {
-        cancelMaxDurationTimer()
+        cleanupInternal(
+            callerHoldsRecordLock = callerHoldsRecordLock,
+            expectedSession = null,
+            emitStoppedEvent = true
+        )
+    }
 
+    private fun cleanupInternal(
+        callerHoldsRecordLock: Boolean,
+        expectedSession: Long?,
+        emitStoppedEvent: Boolean
+    ): Boolean {
         // Terminate the recording thread, not just the flag it watches, and do it BEFORE
         // taking audioRecordLock — the recording loop acquires that same lock on every
         // read, so joining while holding it would deadlock until the timeout expired.
@@ -2536,6 +2575,7 @@ class AudioRecorderManager(
         val ownedService: Boolean
         if (callerHoldsRecordLock) {
             // Already inside the caller's monitor; taking it again is free (reentrant).
+            if (expectedSession != null && sessionId != expectedSession) return false
             wasRecording = _isRecording.getAndSet(false)
             ownedSession = sessionId
             ownedService = ::recordingConfig.isInitialized && serviceWasStartedFor(recordingConfig)
@@ -2543,6 +2583,7 @@ class AudioRecorderManager(
             ownedWorker = null
         } else {
             synchronized(audioRecordLock) {
+                if (expectedSession != null && sessionId != expectedSession) return false
                 wasRecording = _isRecording.getAndSet(false)
                 ownedSession = sessionId
                 ownedService = ::recordingConfig.isInitialized &&
@@ -2554,6 +2595,7 @@ class AudioRecorderManager(
                 ownedWorker = recordingThreadRef.getAndSet(null)
             }
         }
+        cancelMaxDurationTimer()
 
         // Phase 1, outside audioRecordLock: signal the worker and wait for it.
         //
@@ -2612,7 +2654,7 @@ class AudioRecorderManager(
                 ) {
                     AudioRecordingService.stopService(context)
                 }
-                return
+                return true
             }
             // Read inside the lock: with the mutators serialized, this is the live value,
             // not a snapshot that a concurrent start could have invalidated.
@@ -2718,15 +2760,17 @@ class AudioRecorderManager(
                     }
                 }
 
-                // Send event to notify that recording was stopped
-                eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
-                    "reason" to "recordingStopped",
-                    "isPaused" to false
-                ))
+                if (emitStoppedEvent && !suppressRecordingStoppedEvent) {
+                    eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
+                        "reason" to "recordingStopped",
+                        "isPaused" to false
+                    ))
+                }
             } catch (e: Exception) {
                 LogUtils.e(CLASS_NAME, "Error during cleanup", e)
             }
         }
+        return true
     }
 
     @RequiresApi(Build.VERSION_CODES.Q)

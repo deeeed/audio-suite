@@ -110,6 +110,13 @@ class RecorderLockingTest {
                 body.contains("claimedSession"),
             "Device-change ownership must be claimed and cleared for the same session"
         )
+        val pausedAt = body.indexOf("if (isPaused.get())")
+        val pausedClaimAt = body.indexOf("claimedSession = sessionId", pausedAt)
+        val pausedReleaseAt = body.indexOf("audioRecord?.release()", pausedAt)
+        assertTrue(
+            pausedAt >= 0 && pausedClaimAt > pausedAt && pausedReleaseAt > pausedClaimAt,
+            "Paused device changes must capture their session before a throwing release"
+        )
         assertTrue(
             bodyOf("private fun pauseRecording(promise: Promise, isSystemInterruption: Boolean)")
                 .contains("compressedPausedForDeviceChangeSession.get() != sessionId"),
@@ -172,18 +179,26 @@ class RecorderLockingTest {
             )
             assertTrue(
                 recovery.contains("catch (recoveryError: Exception)") &&
-                    recovery.contains("failDeviceChangeRecovery(recoveryError, promise)"),
+                    recovery.contains("failDeviceChangeRecovery(claimedSession, it, promise)"),
                 "$signature must settle failures from repeated recorder operations"
             )
         }
 
         val failedRecovery = bodyOf("private fun failDeviceChangeRecovery(")
-        val claimWorkerAt = failedRecovery.indexOf("recordingThreadRef.getAndSet(null)?.interrupt()")
-        val cleanupAt = failedRecovery.indexOf("cleanup(callerHoldsRecordLock = true)")
+        val cleanupAt = failedRecovery.indexOf("cleanupInternal(")
         val rejectAt = failedRecovery.indexOf("promise.reject(")
         assertTrue(
-            claimWorkerAt >= 0 && cleanupAt > claimWorkerAt && rejectAt > cleanupAt,
-            "Failed recovery must claim the worker, force teardown, then settle the promise"
+            cleanupAt >= 0 && rejectAt > cleanupAt &&
+                failedRecovery.contains("expectedSession = claimedSession") &&
+                failedRecovery.contains("emitStoppedEvent = false"),
+            "Failed recovery must join and tear down only its session before settling"
+        )
+        val cleanup = bodyOf("private fun cleanupInternal(")
+        val expectedAt = cleanup.indexOf("sessionId != expectedSession")
+        val workerAt = cleanup.indexOf("recordingThreadRef.getAndSet(null)")
+        assertTrue(
+            expectedAt >= 0 && workerAt > expectedAt,
+            "Expected-session cleanup must reject a successor before claiming its worker"
         )
     }
 
@@ -193,7 +208,7 @@ class RecorderLockingTest {
         // then tear down under it again. The join must sit between the two locked blocks —
         // the recording loop takes the same lock on every read, so a join while holding it
         // cannot finish until the timeout expires.
-        val body = bodyOf("internal fun cleanup(callerHoldsRecordLock: Boolean)")
+        val body = bodyOf("private fun cleanupInternal(")
         val claimAt = body.indexOf("synchronized(audioRecordLock)")
         val joinAt = body.indexOf(".join(")
         val teardownAt = body.lastIndexOf("synchronized(audioRecordLock)")
@@ -219,7 +234,7 @@ class RecorderLockingTest {
 
     @Test
     fun `cleanup refuses to tear down a session it does not own`() {
-        val body = bodyOf("internal fun cleanup(callerHoldsRecordLock: Boolean)")
+        val body = bodyOf("private fun cleanupInternal(")
         assertTrue(
             body.contains("sessionId != ownedSession"),
             "cleanup must compare sessionId against the value it claimed and bail out if " +
@@ -250,7 +265,7 @@ class RecorderLockingTest {
         // The join is the one thing that must not happen under the lock, so a caller that
         // already owns it says so and skips the join. Those callers either terminated the
         // thread themselves or know there is none.
-        val body = bodyOf("internal fun cleanup(callerHoldsRecordLock: Boolean)")
+        val body = bodyOf("private fun cleanupInternal(")
         assertTrue(
             body.contains("ownedWorker = null"),
             "a caller already holding audioRecordLock must claim no worker, so the join " +
@@ -268,7 +283,7 @@ class RecorderLockingTest {
     fun `cleanup claims the worker with the session`() {
         // Claiming the session but taking the worker later, outside the lock, let a start
         // that published its thread in the gap have it stolen and interrupted.
-        val body = bodyOf("internal fun cleanup(callerHoldsRecordLock: Boolean)")
+        val body = bodyOf("private fun cleanupInternal(")
         val claimAt = body.indexOf("ownedWorker = recordingThreadRef.getAndSet(null)")
         val joinAt = body.indexOf(".join(")
         assertTrue(claimAt >= 0, "cleanup must claim the worker under audioRecordLock")
@@ -375,7 +390,7 @@ class RecorderLockingTest {
         // join throws InterruptedException. Letting it propagate skipped all of phase 2:
         // recorders, the foreground service, the wake lock, audio focus, listeners, and
         // destroy()'s singleton clear.
-        val body = bodyOf("internal fun cleanup(callerHoldsRecordLock: Boolean)")
+        val body = bodyOf("private fun cleanupInternal(")
         val joinAt = body.indexOf(".join(")
         val guarded = body.lastIndexOf("try {", joinAt)
         assertTrue(
