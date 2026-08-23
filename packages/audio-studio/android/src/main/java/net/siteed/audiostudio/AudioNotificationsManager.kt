@@ -110,18 +110,10 @@ class AudioNotificationManager private constructor(context: Context) {
             getResourceIdByName(it)
         } ?: R.drawable.ic_microphone
 
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            0,
-            context.packageManager.getLaunchIntentForPackage(context.packageName),
-            PendingIntent.FLAG_IMMUTABLE
-        )
-
         // Configure notification builder with settings optimized for recording service
         // and wearable device compatibility
         notificationBuilder = NotificationCompat.Builder(context, recordingConfig.notification.channelId)
             .setSmallIcon(iconResId)
-            .setContentIntent(pendingIntent)
             .setOngoing(true)  // Notification cannot be dismissed by user
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
@@ -135,6 +127,17 @@ class AudioNotificationManager private constructor(context: Context) {
             .setVibrate(null)        // Disable vibration
             .setDefaults(0)          // Clear all default notification behaviors
             .setLocalOnly(true)      // Prevent notification from appearing on wearable devices
+
+        context.packageManager.getLaunchIntentForPackage(context.packageName)?.let { launchIntent ->
+            notificationBuilder.setContentIntent(
+                PendingIntent.getActivity(
+                    context,
+                    0,
+                    launchIntent,
+                    PendingIntent.FLAG_IMMUTABLE
+                )
+            )
+        }
 
         addNotificationActions(context)
     }
