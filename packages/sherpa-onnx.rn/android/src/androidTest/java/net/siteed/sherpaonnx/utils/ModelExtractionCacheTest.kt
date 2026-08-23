@@ -6,6 +6,7 @@ import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -59,6 +60,11 @@ class ModelExtractionCacheTest {
 
             assertFalse(timedOut.completed)
             assertFalse(fixture.cache.isComplete())
+            for (attempt in 0 until 100) {
+                if (latePromise.get() != null) break
+                Thread.sleep(10)
+            }
+            assertNotNull("Starter should publish its late promise", latePromise.get())
 
             val current = extractModelArchive(
                 sourcePath = "second.tar.bz2",

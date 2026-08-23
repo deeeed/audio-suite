@@ -65,6 +65,9 @@ internal class ModelExtractionCache(
         }
         var backupDir: File? = null
         try {
+            check(System.nanoTime() < deadlineNanos) {
+                "Timed out before promoting ${targetDir.absolutePath}"
+            }
             if (isComplete()) {
                 return
             }
@@ -74,6 +77,9 @@ internal class ModelExtractionCache(
                 ".${targetDir.name}.replaced-${UUID.randomUUID()}"
             )
             if (targetDir.exists()) {
+                check(System.nanoTime() < deadlineNanos) {
+                    "Timed out before replacing ${targetDir.absolutePath}"
+                }
                 check(targetDir.renameTo(backupDir)) {
                     "Could not move stale extraction cache: ${targetDir.absolutePath}"
                 }
@@ -245,23 +251,31 @@ internal fun extractModelArchive(
             }
         },
     )
-    try {
-        startExtraction(sourcePath, attemptDir.absolutePath, promise)
-    } catch (error: Exception) {
-        finish {
-            ModelExtractionResult(
-                completed = true,
-                success = false,
-                error = error.message ?: error.toString(),
-                cause = error,
-            )
+    val starterThread = Thread {
+        try {
+            startExtraction(sourcePath, attemptDir.absolutePath, promise)
+        } catch (error: Exception) {
+            finish {
+                ModelExtractionResult(
+                    completed = true,
+                    success = false,
+                    error = error.message ?: error.toString(),
+                    cause = error,
+                )
+            }
         }
+    }.apply {
+        name = "model-extraction-starter"
+        isDaemon = true
+        start()
     }
 
     val completedInTime = try {
-        latch.await(timeoutSeconds, TimeUnit.SECONDS)
+        val remainingNanos = deadlineNanos - System.nanoTime()
+        remainingNanos > 0 && latch.await(remainingNanos, TimeUnit.NANOSECONDS)
     } catch (_: InterruptedException) {
         Thread.currentThread().interrupt()
+        starterThread.interrupt()
         val previous = state.getAndSet(ExtractionState.TimedOut)
         if (previous is ExtractionState.Finished) discardTimedOutAttempt()
         return ModelExtractionResult(
@@ -271,6 +285,7 @@ internal fun extractModelArchive(
         )
     }
     if (!completedInTime) {
+        starterThread.interrupt()
         val previous = state.getAndSet(ExtractionState.TimedOut)
         if (previous is ExtractionState.Finished) discardTimedOutAttempt()
         return ModelExtractionResult(

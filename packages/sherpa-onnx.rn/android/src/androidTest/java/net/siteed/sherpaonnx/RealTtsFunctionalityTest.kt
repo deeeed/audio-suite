@@ -299,6 +299,7 @@ class RealTtsFunctionalityTest {
             
             val latch = CountDownLatch(1)
             var generateResult: ReadableMap? = null
+            var error: String? = null
             
             val config = Arguments.createMap().apply {
                 putString("text", "Testing different speaking rates")
@@ -314,18 +315,26 @@ class RealTtsFunctionalityTest {
                         generateResult = result as? ReadableMap
                         latch.countDown()
                     },
-                    onReject = { _, _, _ ->
+                    onReject = { code, message, _ ->
+                        error = "$code: $message"
                         latch.countDown()
                     }
                 ))
-                
-                latch.await(10, TimeUnit.SECONDS)
+                assertTrue("Generation should complete for rate $rate", latch.await(10, TimeUnit.SECONDS))
             }
-            
-            val success = generateResult?.getBoolean("success") ?: false
-            assertTrue("Generation should succeed for rate $rate", success)
-            
-            println("  Generation time: ${generateTime}ms")
+
+            val filePath = generateResult?.getString("filePath")
+            try {
+                assertNull("Generation failed for rate $rate: $error", error)
+                assertTrue(
+                    "Generation should succeed for rate $rate",
+                    generateResult?.getBoolean("success") == true
+                )
+                assertNotNull("Generation should return a file for rate $rate", filePath)
+                println("  Generation time: ${generateTime}ms")
+            } finally {
+                filePath?.let { File(it).delete() }
+            }
         }
     }
 
