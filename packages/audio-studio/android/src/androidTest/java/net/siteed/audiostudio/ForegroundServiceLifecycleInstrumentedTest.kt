@@ -66,7 +66,7 @@ class ForegroundServiceLifecycleInstrumentedTest {
     fun tearDown() {
         AudioRecorderManager.destroy()
         AudioRecordingService.stopService(context)
-        awaitServiceState(false)
+        assertTrue("Foreground service should stop during teardown", awaitServiceState(false))
         context.filesDir.listFiles()?.filter { it.name.startsWith("service_lifecycle_") }
             ?.forEach { it.delete() }
     }
@@ -123,11 +123,13 @@ class ForegroundServiceLifecycleInstrumentedTest {
                 releaseCleanup.await()
             }
         }
+        blocker.isDaemon = true
         blocker.start()
         assertTrue("Blocking worker should start", blockerReady.await(1, TimeUnit.SECONDS))
 
         val threadRef = recordingThreadReference()
         val recordingState = recordingState()
+        val recordLock = audioRecordLock()
         val cleanupThread = Thread { manager.cleanup() }
         try {
             val displacedWorker = threadRef.getAndSet(blocker)
@@ -147,13 +149,17 @@ class ForegroundServiceLifecycleInstrumentedTest {
                 cleanupJoining.await(1, TimeUnit.SECONDS)
             )
 
-            val successorOptions = options("prepared_successor_new")
-            assertTrue("Successor preparation should succeed", manager.prepareRecording(successorOptions))
-            assertTrue("Successor should be prepared before cleanup resumes", manager.isPrepared)
-            assertTrue("Successor preparation should publish a new session", sessionId() > ownedSession)
-            assertTrue("Cleanup should remain blocked until released", cleanupThread.isAlive)
-
-            releaseCleanup.countDown()
+            // Move cleanup out of its bounded join, then keep phase 2 behind the same lock
+            // prepareRecording uses. The reentrant prepare publishes the successor before
+            // cleanup can inspect sessionId, regardless of how long hardware setup takes.
+            synchronized(recordLock) {
+                releaseCleanup.countDown()
+                val successorOptions = options("prepared_successor_new")
+                assertTrue("Successor preparation should succeed", manager.prepareRecording(successorOptions))
+                assertTrue("Successor should be prepared before cleanup resumes", manager.isPrepared)
+                assertTrue("Successor preparation should publish a new session", sessionId() > ownedSession)
+                assertTrue("Cleanup should wait for the session handoff", cleanupThread.isAlive)
+            }
             cleanupThread.join(3_000L)
 
             assertFalse("Cleanup should finish", cleanupThread.isAlive)
@@ -279,6 +285,8 @@ class ForegroundServiceLifecycleInstrumentedTest {
         return dump.contains(AudioRecordingService::class.java.name)
     }
 
+    // These probes intentionally fail on a production rename. Keeping recorder ownership
+    // private is preferable to widening production visibility for one instrumentation test.
     @Suppress("UNCHECKED_CAST")
     private fun recordingThreadReference(): AtomicReference<Thread?> {
         val field = AudioRecorderManager::class.java.getDeclaredField("recordingThreadRef")
@@ -292,9 +300,16 @@ class ForegroundServiceLifecycleInstrumentedTest {
         return field.get(manager) as AtomicBoolean
     }
 
+    private fun audioRecordLock(): Any {
+        val field = AudioRecorderManager::class.java.getDeclaredField("audioRecordLock")
+        field.isAccessible = true
+        return field.get(manager)
+    }
+
     private fun sessionId(): Long {
         val field = AudioRecorderManager::class.java.getDeclaredField("sessionId")
         field.isAccessible = true
+        // Field.getLong preserves the volatile read used by production.
         return field.getLong(manager)
     }
 
