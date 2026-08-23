@@ -99,6 +99,10 @@ class RecorderConcurrencyInstrumentedTest {
         assertFalse("Manager should remain stopped", manager.isRecording)
         assertNull("No AudioRecord should survive stop", currentAudioRecord())
         assertFalse("Stopped transition should not emit deviceChanged", emittedReasons().contains("deviceChanged"))
+        assertTrue(
+            "A stopped transition should emit deviceSwitchFailed at most once",
+            emittedReasons().count { it == "deviceSwitchFailed" } <= 1
+        )
 
         assertRecordingResult(stopResult)
     }
@@ -133,6 +137,10 @@ class RecorderConcurrencyInstrumentedTest {
         assertTrue("Manager should remain paused", status.getBoolean("isPaused"))
         assertNull("No AudioRecord should restart while paused", currentAudioRecord())
         assertFalse("Paused transition should not emit deviceChanged", emittedReasons().contains("deviceChanged"))
+        assertTrue(
+            "A paused transition should emit deviceSwitchFailed at most once",
+            emittedReasons().count { it == "deviceSwitchFailed" } <= 1
+        )
 
         val pausedSize = currentRecordedSize()
         resumeRecording()

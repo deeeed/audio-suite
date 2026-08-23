@@ -372,9 +372,9 @@ class AudioRecorderManager(
                     sendFailureEvent()
                 }
                 override fun reject(code: String?, message: String?, cause: Throwable?) {
-                    // Another stop may win after handleDeviceChangeTransition releases the
-                    // lock. The device switch still failed, so JS must receive the event.
-                    sendFailureEvent()
+                    // A successor superseded this transition and is healthy. Do not report
+                    // its recording as failed. A stop on the claimed session still reports.
+                    if (code != "SESSION_CHANGED") sendFailureEvent()
                 }
             })
         }
@@ -385,10 +385,18 @@ class AudioRecorderManager(
         promise: Promise
     ) {
         synchronized(audioRecordLock) {
-            if (sessionId != claimedSession || !_isRecording.get()) {
+            if (sessionId != claimedSession) {
                 promise.reject(
                     "SESSION_CHANGED",
                     "Recording session changed before device-switch recovery",
+                    null
+                )
+                return
+            }
+            if (!_isRecording.get()) {
+                promise.reject(
+                    "NOT_RECORDING",
+                    "Recording stopped before device-switch recovery",
                     null
                 )
                 return
@@ -402,10 +410,18 @@ class AudioRecorderManager(
         promise: Promise
     ) {
         synchronized(audioRecordLock) {
-            if (sessionId != claimedSession || !_isRecording.get()) {
+            if (sessionId != claimedSession) {
                 promise.reject(
                     "SESSION_CHANGED",
                     "Recording session changed before device-switch recovery",
+                    null
+                )
+                return
+            }
+            if (!_isRecording.get()) {
+                promise.reject(
+                    "NOT_RECORDING",
+                    "Recording stopped before device-switch recovery",
                     null
                 )
                 return
@@ -528,15 +544,19 @@ class AudioRecorderManager(
                     )
                 }
             }
+            if (claimedSession == NO_DEVICE_CHANGE_SESSION) {
+                sendFailureEvent(isPaused.get())
+                return null
+            }
             // If something went wrong, try to pause recording
             pauseRecordingAfterDeviceChangeFailure(claimedSession, object : Promise {
                 override fun resolve(value: Any?) {
                     sendFailureEvent(true)
                 }
                 override fun reject(code: String?, message: String?, cause: Throwable?) {
-                    // A concurrent stop or pause can make this pause reject. The switch
-                    // still failed, so report the state that won instead of dropping it.
-                    sendFailureEvent(isPaused.get())
+                    // Do not attach an old transition's failure to a healthy successor.
+                    // A stop or pause on the claimed session still reports its final state.
+                    if (code != "SESSION_CHANGED") sendFailureEvent(isPaused.get())
                 }
             })
             return null

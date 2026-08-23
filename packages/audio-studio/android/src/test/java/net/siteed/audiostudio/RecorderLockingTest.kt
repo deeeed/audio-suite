@@ -88,7 +88,7 @@ class RecorderLockingTest {
 
     @Test
     fun `device change rechecks session after its unlocked transition`() {
-        val body = bodyOf("private fun handleDeviceChangeTransition(): Long?")
+        val body = bodyOf("private fun handleDeviceChangeTransition(")
         val claimAt = body.indexOf("val deviceChangeSession = synchronized(audioRecordLock)")
         val delayAt = body.indexOf("Thread.sleep(200)")
         val restartAt = body.indexOf("return synchronized(audioRecordLock)", delayAt)
@@ -126,7 +126,7 @@ class RecorderLockingTest {
     fun `device switch failure events settle once`() {
         for (signature in listOf(
             "fun handleDeviceChange()",
-            "private fun handleDeviceChangeTransition(): Long?"
+            "private fun handleDeviceChangeTransition("
         )) {
             val body = bodyOf(signature)
             val guardPattern = Regex(
@@ -148,30 +148,26 @@ class RecorderLockingTest {
 
     @Test
     fun `device switch recovery cannot mutate a successor session`() {
-        val transition = bodyOf("private fun handleDeviceChangeTransition(): Long?")
+        val transition = bodyOf("private fun handleDeviceChangeTransition(")
         assertTrue(
             transition.contains("return@synchronized deviceChangeSession"),
             "A failed transition must return the session it claimed"
         )
 
-        for (signature in listOf(
-            "private fun stopRecordingAfterDeviceChangeFailure(",
-            "private fun pauseRecordingAfterDeviceChangeFailure("
+        for ((signature, expectedMutation) in listOf(
+            "private fun stopRecordingAfterDeviceChangeFailure(" to "stopRecording(promise)",
+            "private fun pauseRecordingAfterDeviceChangeFailure(" to
+                "pauseRecording(promise, isSystemInterruption = false)"
         )) {
             val recovery = bodyOf(signature)
             val lockAt = recovery.indexOf("synchronized(audioRecordLock)")
-            val ownershipAt = recovery.indexOf(
-                "sessionId != claimedSession || !_isRecording.get()",
-                lockAt
-            )
-            val mutationAt = listOf(
-                recovery.indexOf("stopRecording(promise)", lockAt),
-                recovery.indexOf("pauseRecording(promise, isSystemInterruption = false)", lockAt)
-            ).filter { it >= 0 }.minOrNull() ?: -1
+            val sessionAt = recovery.indexOf("sessionId != claimedSession", lockAt)
+            val recordingAt = recovery.indexOf("!_isRecording.get()", sessionAt)
+            val mutationAt = recovery.indexOf(expectedMutation, lockAt)
 
             assertTrue(lockAt >= 0, "$signature must take audioRecordLock")
             assertTrue(
-                ownershipAt > lockAt && mutationAt > ownershipAt,
+                sessionAt > lockAt && recordingAt > sessionAt && mutationAt > recordingAt,
                 "$signature must recheck session ownership under the lock before recovery"
             )
         }
