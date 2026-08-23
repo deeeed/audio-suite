@@ -14,6 +14,8 @@ import org.junit.runner.RunWith
 import java.io.File
 import java.io.IOException
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 @RunWith(AndroidJUnit4::class)
@@ -48,22 +50,21 @@ class ModelExtractionCacheTest {
         try {
             val latePromise = AtomicReference<Promise>()
             val lateTarget = AtomicReference<String>()
-            // Zero seconds returns before this deliberately unresolved callback.
+            val starterReady = CountDownLatch(1)
+            // The starter returns without resolving, so the one-second deadline expires.
             val timedOut = extractModelArchive(
                 sourcePath = "first.tar.bz2",
                 cache = fixture.cache,
-                timeoutSeconds = 0,
+                timeoutSeconds = 1,
             ) { _, targetDir, promise ->
                 lateTarget.set(targetDir)
                 latePromise.set(promise)
+                starterReady.countDown()
             }
 
             assertFalse(timedOut.completed)
             assertFalse(fixture.cache.isComplete())
-            for (attempt in 0 until 100) {
-                if (latePromise.get() != null) break
-                Thread.sleep(10)
-            }
+            assertTrue("Starter should run", starterReady.await(1, TimeUnit.SECONDS))
             assertNotNull("Starter should publish its late promise", latePromise.get())
 
             val current = extractModelArchive(

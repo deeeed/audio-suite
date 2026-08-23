@@ -77,11 +77,24 @@ internal class ModelExtractionCache(
                 ".${targetDir.name}.replaced-${UUID.randomUUID()}"
             )
             if (targetDir.exists()) {
+                check(!isSymbolicLink(targetDir)) {
+                    "Extraction cache target must not be a symbolic link: ${targetDir.absolutePath}"
+                }
                 check(System.nanoTime() < deadlineNanos) {
                     "Timed out before replacing ${targetDir.absolutePath}"
                 }
                 check(targetDir.renameTo(backupDir)) {
                     "Could not move stale extraction cache: ${targetDir.absolutePath}"
+                }
+                if (System.nanoTime() >= deadlineNanos) {
+                    check(backupDir.renameTo(targetDir)) {
+                        "Could not restore extraction cache after promotion timed out: ${targetDir.absolutePath}"
+                    }
+                    error("Timed out before committing ${targetDir.absolutePath}")
+                }
+            } else {
+                check(System.nanoTime() < deadlineNanos) {
+                    "Timed out before committing ${targetDir.absolutePath}"
                 }
             }
 
@@ -119,9 +132,19 @@ internal class ModelExtractionCache(
     private fun completionMarker(rootDir: File): File = File(rootDir, ".extraction-complete")
 
     private fun deleteRecursively(directory: File, description: String) {
+        if (directory.exists() && isSymbolicLink(directory)) {
+            check(directory.delete()) { "Could not delete symbolic-link $description: ${directory.absolutePath}" }
+            return
+        }
         check(!directory.exists() || directory.deleteRecursively()) {
             "Could not delete $description: ${directory.absolutePath}"
         }
+    }
+
+    private fun isSymbolicLink(file: File): Boolean {
+        val parent = file.parentFile ?: return false
+        val leafWithoutFollowing = File(parent.canonicalFile, file.name).absolutePath
+        return leafWithoutFollowing != file.canonicalPath
     }
 
     companion object {
@@ -168,8 +191,8 @@ internal fun extractModelArchive(
     timeoutSeconds: Long,
     startExtraction: ArchiveExtractionStarter,
 ): ModelExtractionResult {
-    val attemptDir = cache.createAttemptDir()
     val deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
+    val attemptDir = cache.createAttemptDir()
     val latch = CountDownLatch(1)
     val state = AtomicReference<ExtractionState>(ExtractionState.Pending)
 
@@ -252,6 +275,10 @@ internal fun extractModelArchive(
         },
     )
     val starterThread = Thread {
+        if (state.get() != ExtractionState.Pending || System.nanoTime() >= deadlineNanos) {
+            discardTimedOutAttempt()
+            return@Thread
+        }
         try {
             startExtraction(sourcePath, attemptDir.absolutePath, promise)
         } catch (error: Exception) {

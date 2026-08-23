@@ -331,6 +331,10 @@ class RealTtsFunctionalityTest {
                     generateResult?.getBoolean("success") == true
                 )
                 assertNotNull("Generation should return a file for rate $rate", filePath)
+                assertTrue(
+                    "Speaking-rate output should contain audio",
+                    File(filePath!!).length() > WAV_HEADER_SIZE_BYTES
+                )
                 println("  Generation time: ${generateTime}ms")
             } finally {
                 filePath?.let { File(it).delete() }

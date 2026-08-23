@@ -79,7 +79,7 @@ object ArchiveUtils {
                                 if (!outputFile.exists() && !outputFile.mkdirs()) {
                                     Log.w(TAG, "Failed to create directory: ${outputFile.absolutePath}")
                                 }
-                            } else {
+                            } else if (entry.isFile) {
                                 val parent = outputFile.parentFile
                                 if (parent != null && !parent.exists() && !parent.mkdirs()) {
                                     Log.w(TAG, "Failed to create parent directory: ${parent.absolutePath}")
@@ -93,6 +93,8 @@ object ArchiveUtils {
                                     }
                                 }
                                 extractedFiles.add(entryName)
+                            } else {
+                                throw IOException("Unsupported TAR entry type: $entryName")
                             }
 
                             entry = tarInputStream.nextTarEntry
