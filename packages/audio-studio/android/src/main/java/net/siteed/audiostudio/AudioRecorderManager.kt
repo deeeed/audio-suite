@@ -48,6 +48,8 @@ class AudioRecorderManager(
     companion object {
         private const val CLASS_NAME = "AudioRecorderManager"
         private const val NO_DEVICE_CHANGE_SESSION = -1L
+        private const val DEVICE_RECOVERY_SUPERSEDED = "SESSION_CHANGED"
+        private const val DEVICE_RECOVERY_NOT_RECORDING = "NOT_RECORDING"
 
         /**
          * The single rule deciding whether a recording runs the foreground service.
@@ -374,7 +376,7 @@ class AudioRecorderManager(
                 override fun reject(code: String?, message: String?, cause: Throwable?) {
                     // A successor superseded this transition and is healthy. Do not report
                     // its recording as failed. A stop on the claimed session still reports.
-                    if (code != "SESSION_CHANGED") sendFailureEvent()
+                    if (code != DEVICE_RECOVERY_SUPERSEDED) sendFailureEvent()
                 }
             })
         }
@@ -387,7 +389,7 @@ class AudioRecorderManager(
         synchronized(audioRecordLock) {
             if (sessionId != claimedSession) {
                 promise.reject(
-                    "SESSION_CHANGED",
+                    DEVICE_RECOVERY_SUPERSEDED,
                     "Recording session changed before device-switch recovery",
                     null
                 )
@@ -395,7 +397,7 @@ class AudioRecorderManager(
             }
             if (!_isRecording.get()) {
                 promise.reject(
-                    "NOT_RECORDING",
+                    DEVICE_RECOVERY_NOT_RECORDING,
                     "Recording stopped before device-switch recovery",
                     null
                 )
@@ -412,7 +414,7 @@ class AudioRecorderManager(
         synchronized(audioRecordLock) {
             if (sessionId != claimedSession) {
                 promise.reject(
-                    "SESSION_CHANGED",
+                    DEVICE_RECOVERY_SUPERSEDED,
                     "Recording session changed before device-switch recovery",
                     null
                 )
@@ -420,7 +422,7 @@ class AudioRecorderManager(
             }
             if (!_isRecording.get()) {
                 promise.reject(
-                    "NOT_RECORDING",
+                    DEVICE_RECOVERY_NOT_RECORDING,
                     "Recording stopped before device-switch recovery",
                     null
                 )
@@ -556,7 +558,7 @@ class AudioRecorderManager(
                 override fun reject(code: String?, message: String?, cause: Throwable?) {
                     // Do not attach an old transition's failure to a healthy successor.
                     // A stop or pause on the claimed session still reports its final state.
-                    if (code != "SESSION_CHANGED") sendFailureEvent(isPaused.get())
+                    if (code != DEVICE_RECOVERY_SUPERSEDED) sendFailureEvent(isPaused.get())
                 }
             })
             return null
