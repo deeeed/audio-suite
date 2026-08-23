@@ -3,6 +3,8 @@ package net.siteed.audiostudio
 import android.Manifest
 import android.content.Context
 import android.media.AudioRecord
+import android.media.MediaExtractor
+import android.media.MediaFormat
 import android.os.Bundle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -21,6 +23,7 @@ import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.CopyOnWriteArrayList
 
 @RunWith(AndroidJUnit4::class)
 class RecorderConcurrencyInstrumentedTest {
@@ -31,18 +34,24 @@ class RecorderConcurrencyInstrumentedTest {
 
     private lateinit var context: Context
     private lateinit var manager: AudioRecorderManager
+    private val interruptionEvents = CopyOnWriteArrayList<Bundle>()
 
     @Before
     fun setUp() {
         context = InstrumentationRegistry.getInstrumentation().targetContext
         AudioRecorderManager.destroy()
+        interruptionEvents.clear()
         manager = AudioRecorderManager.initialize(
             context = context,
             filesDir = context.filesDir,
             permissionUtils = PermissionUtils(context),
             audioDataEncoder = AudioDataEncoder(),
             eventSender = object : EventSender {
-                override fun sendExpoEvent(eventName: String, params: Bundle) = Unit
+                override fun sendExpoEvent(eventName: String, params: Bundle) {
+                    if (eventName == Constants.RECORDING_INTERRUPTED_EVENT_NAME) {
+                        interruptionEvents.add(Bundle(params))
+                    }
+                }
             },
             enablePhoneStateHandling = false,
             enableBackgroundAudio = false
@@ -59,13 +68,13 @@ class RecorderConcurrencyInstrumentedTest {
     /**
      * The production transition leaves audioRecord null for 200 ms, which gives this 5 ms
      * poll enough time to request stop inside the old race window. The final ownership
-     * assertions prove that stop wins; the timing assertion prevents the transition delay
-     * from moving back under the monitor. Observing null only coordinates the interleaving.
+     * assertions prove that stop wins; RecorderLockingTest guards the static lock ordering.
+     * Observing null only coordinates the interleaving.
      */
     @Test
     fun stopDuringDeviceChange_doesNotRestartADeadRecorder() {
         startRecording()
-        Thread.sleep(150)
+        Thread.sleep(300)
         val handlerFailure = AtomicReference<Throwable?>()
         val handler = Thread {
             try {
@@ -81,16 +90,14 @@ class RecorderConcurrencyInstrumentedTest {
             awaitRecorderState { it == null }
         )
 
-        val stopStartedAt = android.os.SystemClock.elapsedRealtime()
         val stopResult = stopRecording()
-        val stopElapsedMs = android.os.SystemClock.elapsedRealtime() - stopStartedAt
         handler.join(3_000)
 
         assertFalse("Device-change handler should finish", handler.isAlive)
         assertNull("Device-change handler should not throw", handlerFailure.get())
         assertFalse("Manager should remain stopped", manager.isRecording)
         assertNull("No AudioRecord should survive stop", currentAudioRecord())
-        assertTrue("Stop should not exhaust its 2-second join timeout: ${stopElapsedMs}ms", stopElapsedMs < 1_500)
+        assertFalse("Stopped transition should not emit deviceChanged", emittedReasons().contains("deviceChanged"))
 
         assertRecordingResult(stopResult)
     }
@@ -99,7 +106,7 @@ class RecorderConcurrencyInstrumentedTest {
     fun pauseDuringDeviceChange_doesNotRestartPausedRecorder() {
         val compressed = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q
         startRecording(compressed = compressed)
-        Thread.sleep(150)
+        Thread.sleep(300)
         val handlerFailure = AtomicReference<Throwable?>()
         val handler = Thread {
             try {
@@ -123,7 +130,14 @@ class RecorderConcurrencyInstrumentedTest {
         assertTrue("Manager should remain recording", status.getBoolean("isRecording"))
         assertTrue("Manager should remain paused", status.getBoolean("isPaused"))
         assertNull("No AudioRecord should restart while paused", currentAudioRecord())
+        assertFalse("Paused transition should not emit deviceChanged", emittedReasons().contains("deviceChanged"))
 
+        val pausedSize = status.getInt("size").toLong()
+        resumeRecording()
+        assertTrue(
+            "Resumed recording should capture new PCM",
+            awaitRecordedSizeAbove(pausedSize)
+        )
         val result = stopRecording()
         assertRecordingResult(result)
         if (compressed) {
@@ -141,6 +155,7 @@ class RecorderConcurrencyInstrumentedTest {
                 put("encoding", "pcm_16bit")
                 put("interval", 100)
                 put("enableProcessing", false)
+                put("keepAwake", false)
                 put("filename", "device_change_race")
                 if (compressed) {
                     put("output", mapOf(
@@ -205,6 +220,23 @@ class RecorderConcurrencyInstrumentedTest {
         assertNull("Recording pause failed", error)
     }
 
+    private fun resumeRecording() {
+        val latch = CountDownLatch(1)
+        var error: String? = null
+        manager.resumeRecording(object : Promise {
+            override fun resolve(value: Any?) {
+                latch.countDown()
+            }
+
+            override fun reject(code: String?, message: String?, cause: Throwable?) {
+                error = "$code: $message"
+                latch.countDown()
+            }
+        })
+        assertTrue("Recording should resume", latch.await(3, TimeUnit.SECONDS))
+        assertNull("Recording resume failed", error)
+    }
+
     private fun assertRecordingResult(result: Bundle) {
         val fileUri = result.getString("fileUri")
         assertNotNull("Stop should return a file URI", fileUri)
@@ -225,6 +257,34 @@ class RecorderConcurrencyInstrumentedTest {
         assertNotNull("Compressed file URI should exist", fileUri)
         val file = File(java.net.URI(fileUri))
         assertTrue("Compressed recording should contain audio", file.length() > 0)
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(file.absolutePath)
+            assertTrue("Compressed recording should contain an audio track", extractor.trackCount > 0)
+            val durationUs = (0 until extractor.trackCount).maxOf { track ->
+                val format = extractor.getTrackFormat(track)
+                if (format.containsKey(MediaFormat.KEY_DURATION)) {
+                    format.getLong(MediaFormat.KEY_DURATION)
+                } else {
+                    0L
+                }
+            }
+            assertTrue("Compressed recording should have positive duration", durationUs > 0)
+        } finally {
+            extractor.release()
+        }
+    }
+
+    private fun emittedReasons(): List<String> =
+        interruptionEvents.mapNotNull { it.getString("reason") }
+
+    private fun awaitRecordedSizeAbove(size: Long): Boolean {
+        val deadline = System.currentTimeMillis() + 2_000L
+        do {
+            if (manager.getStatus().getInt("size").toLong() > size) return true
+            Thread.sleep(20)
+        } while (System.currentTimeMillis() < deadline)
+        return manager.getStatus().getInt("size").toLong() > size
     }
 
     private fun awaitRecorderState(predicate: (AudioRecord?) -> Boolean): Boolean {
@@ -237,9 +297,14 @@ class RecorderConcurrencyInstrumentedTest {
     }
 
     private fun currentAudioRecord(): AudioRecord? {
+        val lockField = AudioRecorderManager::class.java.getDeclaredField("audioRecordLock")
+        lockField.isAccessible = true
+        val lock = checkNotNull(lockField.get(manager))
         val field = AudioRecorderManager::class.java.getDeclaredField("audioRecord")
         field.isAccessible = true
-        return field.get(manager) as? AudioRecord
+        return synchronized(lock) {
+            field.get(manager) as? AudioRecord
+        }
     }
 
     companion object {

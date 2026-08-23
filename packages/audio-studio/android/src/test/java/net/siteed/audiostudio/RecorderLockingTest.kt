@@ -22,6 +22,9 @@ import org.junit.Test
  * These source assertions keep the static lock and ownership rules visible in the fast unit
  * suite. `RecorderConcurrencyInstrumentedTest` exercises the #472 stop interleaving with a
  * real `AudioRecord` on device.
+ *
+ * Source assertions are deliberate here: the manager still has no injectable AudioRecord
+ * seam. They guard structural lock/session invariants; device tests cover behavior.
  */
 class RecorderLockingTest {
 
@@ -102,13 +105,19 @@ class RecorderLockingTest {
             "Device change must not restart after stop, pause, or a new session wins during the delay"
         )
         assertTrue(
-            body.contains("isChangingDevice.set(false)"),
-            "Every device-change exit must let the recording worker use audioRecordLock again"
+            body.contains("changingDeviceSession.compareAndSet(") &&
+                body.contains("claimedSession"),
+            "Device-change ownership must be claimed and cleared for the same session"
         )
         assertTrue(
             bodyOf("private fun pauseRecording(promise: Promise, isSystemInterruption: Boolean)")
-                .contains("if (!isChangingDevice.get())"),
-            "A pause during device change must not pause the compressed recorder twice"
+                .contains("compressedPausedForDeviceChangeSession.get() != sessionId"),
+            "Only the session whose compressed recorder phase 1 paused may skip a second pause"
+        )
+        assertTrue(
+            bodyOf("private fun recordingProcess()")
+                .contains("changingDeviceSession.get() == sessionId"),
+            "A device change must gate only the worker for its own session"
         )
     }
 
