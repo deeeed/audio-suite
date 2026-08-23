@@ -19,12 +19,9 @@ import org.junit.Test
  *  2. The recording thread is joined only *outside* that lock, because the recording loop
  *     takes the same lock on every read and cannot reach its exit while it is held.
  *
- * These are source assertions rather than behavioural tests. That is a deliberate limit,
- * not an oversight: `AudioRecorderManager` needs a real `AudioRecord`, so the interleavings
- * cannot be reproduced in a unit test until the injectable-recorder seam in #472 exists.
- * What these do catch is the regression that actually happened — someone adding or moving
- * a path and leaving it unsynchronized. They fail loudly with the reason rather than
- * letting the next race be discovered in review.
+ * These source assertions keep the static lock and ownership rules visible in the fast unit
+ * suite. `RecorderConcurrencyInstrumentedTest` exercises the #472 stop interleaving with a
+ * real `AudioRecord` on device.
  */
 class RecorderLockingTest {
 
@@ -86,14 +83,25 @@ class RecorderLockingTest {
     }
 
     @Test
-    fun `device change holds one lock across the full transition`() {
-        val body = bodyOf("fun handleDeviceChange()")
-            .replace(Regex("""\s+"""), " ")
+    fun `device change rechecks session after its unlocked transition`() {
+        val body = bodyOf("private fun handleDeviceChangeTransition(): Boolean")
+        val claimAt = body.indexOf("val deviceChangeSession = synchronized(audioRecordLock)")
+        val delayAt = body.indexOf("Thread.sleep(200)")
+        val restartAt = body.indexOf("return synchronized(audioRecordLock)", delayAt)
 
+        assertTrue(claimAt >= 0, "Device change must claim its session under audioRecordLock")
         assertTrue(
-            body.contains("synchronized(audioRecordLock) { handleDeviceChangeLocked() }"),
-            "handleDeviceChange must call the full release-delay-restart transition inside " +
-                "one audioRecordLock block. Separate locked fragments reopen the stop race."
+            claimAt < delayAt && delayAt < restartAt,
+            "Device change must release audioRecordLock for the transition delay, then retake it"
+        )
+        val restart = body.substring(restartAt)
+        assertTrue(
+            restart.contains("!_isRecording.get() || sessionId != deviceChangeSession"),
+            "Device change must not restart after stop or a new session wins during the delay"
+        )
+        assertTrue(
+            body.contains("isChangingDevice.set(false)"),
+            "Every device-change exit must let the recording worker use audioRecordLock again"
         )
     }
 

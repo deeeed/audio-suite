@@ -56,6 +56,11 @@ class RecorderConcurrencyInstrumentedTest {
             ?.forEach { it.delete() }
     }
 
+    /**
+     * The production transition leaves audioRecord null for 200 ms, which gives this 5 ms
+     * poll enough time to request stop inside the old race window. The final ownership and
+     * timing assertions are the proof; observing null only coordinates the interleaving.
+     */
     @Test
     fun stopDuringDeviceChange_doesNotRestartADeadRecorder() {
         startRecording()
