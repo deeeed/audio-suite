@@ -345,6 +345,8 @@ export type RecordingInterruptionReason =
     | 'deviceFallback'
     /** A new audio device was connected */
     | 'deviceConnected'
+    /** Recording restarted on a changed audio device */
+    | 'deviceChanged'
     /** Device switching failed */
     | 'deviceSwitchFailed'
 

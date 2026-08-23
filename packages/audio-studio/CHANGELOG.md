@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Android device changes now claim their recording session before the transition delay and recheck it before restart. A concurrent stop could previously finish during that delay, leaving a header-only WAV or restarting an `AudioRecord` after the manager had stopped. Pauses now defer restart without double-pausing compressed output, and a failed switch emits one truthful interruption event (#472).
 - iOS `trimAudio` AAC output now honours the requested sample rate. Writing source-format buffers to a target-rate writer mis-timed the output — one second at 44.1kHz came back as 2.0s at 22.05kHz and 0.92s at 48kHz. The AAC path now converts against the writer's resolved format, the same treatment the WAV path received. An explicitly requested bitrate the encoder cannot serve is now an error rather than a silent substitution; only the library's own default gives way. A requested rate the AAC encoder would resolve to something else — 1Hz to 8kHz, 384kHz to 192kHz — is refused rather than returned as success (#451).
 - iOS `trimAudio` preserves the input's bit depth when none is requested, and honours a bitDepth-only request instead of ignoring it via the fast path. An omitted depth previously forced 16-bit during any rate or channel change, contrary to the documented contract (#451).
 

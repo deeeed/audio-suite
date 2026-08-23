@@ -148,13 +148,26 @@ class AudioStudioModule : Module(), EventSender, AudioStreamDecoderDelegate {
         AsyncFunction("selectInputDevice") { deviceId: String, promise: Promise ->
             try {
                 LogUtils.d(CLASS_NAME, "selectInputDevice called with ID: $deviceId")
-                audioDeviceManager.selectInputDevice(deviceId, promise)
-                
-                // Update recording if in progress
-                if (audioRecorderManager.isRecording || audioRecorderManager.isPrepared) {
-                    LogUtils.d(CLASS_NAME, "selectInputDevice: Notifying recorder of device change")
-                    audioRecorderManager.handleDeviceChange()
+                val requestedSession = audioRecorderManager.activeRecordingSession()
+                val selected = if (requestedSession == null) {
+                    audioDeviceManager.selectDeviceNow(deviceId)
+                } else {
+                    audioRecorderManager.runForActiveSession(requestedSession) {
+                        audioDeviceManager.selectDeviceNow(deviceId)
+                    } ?: false
                 }
+                if (!selected) {
+                    promise.reject(
+                        "DEVICE_ERROR",
+                        "Failed to select audio device $deviceId",
+                        null
+                    )
+                    return@AsyncFunction
+                }
+                if (requestedSession != null) {
+                    audioRecorderManager.handleDeviceChange(requestedSession)
+                }
+                promise.resolve(true)
             } catch (e: Exception) {
                 LogUtils.e(CLASS_NAME, "Error selecting input device: ${e.message}", e)
                 promise.reject("DEVICE_ERROR", "Failed to select audio device: ${e.message}", e)
@@ -165,19 +178,22 @@ class AudioStudioModule : Module(), EventSender, AudioStreamDecoderDelegate {
         AsyncFunction("resetToDefaultDevice") { promise: Promise ->
             try {
                 LogUtils.d(CLASS_NAME, "resetToDefaultDevice called")
-                audioDeviceManager.resetToDefaultDevice { success, error ->
-                    if (success) {
-                        // Update recording if in progress
-                        if (audioRecorderManager.isRecording || audioRecorderManager.isPrepared) {
-                            LogUtils.d(CLASS_NAME, "resetToDefaultDevice: Notifying recorder of device change")
-                            audioRecorderManager.handleDeviceChange()
-                        }
-                        promise.resolve(true)
-                    } else {
-                        LogUtils.e(CLASS_NAME, "Failed to reset to default device: ${error?.message}")
-                        promise.reject("DEVICE_ERROR", "Failed to reset to default device: ${error?.message}", error)
-                    }
+                val requestedSession = audioRecorderManager.activeRecordingSession()
+                val reset = if (requestedSession == null) {
+                    audioDeviceManager.resetToDefaultDeviceNow()
+                } else {
+                    audioRecorderManager.runForActiveSession(requestedSession) {
+                        audioDeviceManager.resetToDefaultDeviceNow()
+                    } ?: false
                 }
+                if (!reset) {
+                    promise.reject("DEVICE_ERROR", "Failed to reset to default device", null)
+                    return@AsyncFunction
+                }
+                if (requestedSession != null) {
+                    audioRecorderManager.handleDeviceChange(requestedSession)
+                }
+                promise.resolve(true)
             } catch (e: Exception) {
                 LogUtils.e(CLASS_NAME, "Error resetting to default device: ${e.message}", e)
                 promise.reject("DEVICE_ERROR", "Failed to reset to default device: ${e.message}", e)
@@ -1199,12 +1215,14 @@ class AudioStudioModule : Module(), EventSender, AudioStreamDecoderDelegate {
         audioDeviceManager.delegate = object : AudioDeviceManagerDelegate {
             override fun onDeviceDisconnected(deviceId: String) {
                 LogUtils.d(CLASS_NAME, "📱 Device disconnected: $deviceId")
+                // Capture at callback delivery. The coroutine may run after a replacement
+                // recording starts, and must not bind this disconnect to that successor.
+                val disconnectedSession = audioRecorderManager.activeRecordingSession()
                 // Handle device disconnection
                 coroutineScope.launch {
                     try {
-                        // If recording is active, handle the disconnection based on the recording config
-                        if (audioRecorderManager.isRecording) {
-                            handleDeviceDisconnection(deviceId)
+                        if (disconnectedSession != null) {
+                            handleDeviceDisconnection(deviceId, disconnectedSession)
                         }
                         
                         // Notify JS about the disconnection
@@ -1257,7 +1275,7 @@ class AudioStudioModule : Module(), EventSender, AudioStreamDecoderDelegate {
     /**
      * Handles audio device disconnection based on the recording configuration
      */
-    private suspend fun handleDeviceDisconnection(deviceId: String) {
+    private suspend fun handleDeviceDisconnection(deviceId: String, disconnectedSession: Long) {
         LogUtils.d(CLASS_NAME, "📱 handleDeviceDisconnection called for device: $deviceId")
         // Get disconnection behavior from recorder config
         val behavior = audioRecorderManager.getDeviceDisconnectionBehavior()
@@ -1277,30 +1295,32 @@ class AudioStudioModule : Module(), EventSender, AudioStreamDecoderDelegate {
                     // Select default device
                     val deviceId = defaultDevice["id"] as String
                     LogUtils.d(CLASS_NAME, "📱 Attempting to select default device: $deviceId")
-                    val success = audioDeviceManager.selectDevice(deviceId)
+                    val success = audioRecorderManager.runForActiveSession(disconnectedSession) {
+                        audioDeviceManager.selectDeviceNow(deviceId)
+                    } ?: return
                     
                     if (success) {
                         LogUtils.d(CLASS_NAME, "📱 Successfully selected default device, notifying AudioRecorderManager")
                         // Notify AudioRecorderManager to update its recording source
-                        audioRecorderManager.handleDeviceChange()
-                        
-                        // Notify JS about fallback
-                        LogUtils.d(CLASS_NAME, "📱 Sending deviceFallback event to JS")
-                        safeSendEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
-                            "reason" to "deviceFallback",
-                            "isPaused" to false,
-                            "deviceId" to deviceId
-                        ))
+                        val fallbackActive = audioRecorderManager.handleDeviceChange(disconnectedSession)
+
+                        // A stop, pause, failure, or successor session won while switching.
+                        // Those paths already report their own truthful state.
+                        if (fallbackActive) {
+                            LogUtils.d(CLASS_NAME, "📱 Sending deviceFallback event to JS")
+                            safeSendEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
+                                "reason" to "deviceFallback",
+                                "isPaused" to false,
+                                "deviceId" to deviceId
+                            ))
+                        }
                     } else {
                         LogUtils.e(CLASS_NAME, "📱 Failed to select default device, pausing recording")
                         
                         // Fall back to pause if we can't select the default device
-                        audioRecorderManager.pauseRecording(object : Promise {
+                        audioRecorderManager.pauseRecordingForSession(disconnectedSession, object : Promise {
                             override fun resolve(value: Any?) {
                                 LogUtils.d(CLASS_NAME, "📱 Recording successfully paused, notifying AudioRecorderManager")
-                                // Notify AudioRecorderManager to handle device change while paused
-                                audioRecorderManager.handleDeviceChange()
-                                
                                 safeSendEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
                                     "reason" to "deviceSwitchFailed",
                                     "isPaused" to true
@@ -1315,13 +1335,10 @@ class AudioStudioModule : Module(), EventSender, AudioStreamDecoderDelegate {
                     LogUtils.e(CLASS_NAME, "📱 No default device found, pausing recording")
                     
                     // Fall back to pause if we can't find a default device
-                    audioRecorderManager.pauseRecording(object : Promise {
-                        override fun resolve(value: Any?) {
-                            LogUtils.d(CLASS_NAME, "📱 Recording successfully paused when no default device found")
-                            // Notify AudioRecorderManager to handle device change while paused
-                            audioRecorderManager.handleDeviceChange()
-                            
-                            safeSendEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
+                    audioRecorderManager.pauseRecordingForSession(disconnectedSession, object : Promise {
+                            override fun resolve(value: Any?) {
+                                LogUtils.d(CLASS_NAME, "📱 Recording successfully paused when no default device found")
+                                safeSendEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
                                 "reason" to "deviceDisconnected",
                                 "isPaused" to true
                             ))
@@ -1337,12 +1354,9 @@ class AudioStudioModule : Module(), EventSender, AudioStreamDecoderDelegate {
                 LogUtils.d(CLASS_NAME, "📱 Using pause behavior for device disconnection")
                 
                 // Pause recording
-                audioRecorderManager.pauseRecording(object : Promise {
+                audioRecorderManager.pauseRecordingForSession(disconnectedSession, object : Promise {
                     override fun resolve(value: Any?) {
                         LogUtils.d(CLASS_NAME, "📱 Recording successfully paused after device disconnection")
-                        // Notify AudioRecorderManager to handle device change while paused
-                        audioRecorderManager.handleDeviceChange()
-                        
                         safeSendEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
                             "reason" to "deviceDisconnected",
                             "isPaused" to true

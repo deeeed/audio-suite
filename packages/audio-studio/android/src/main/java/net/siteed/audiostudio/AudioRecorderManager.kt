@@ -23,6 +23,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import android.media.AudioManager
@@ -46,6 +47,10 @@ class AudioRecorderManager(
 ) {
     companion object {
         private const val CLASS_NAME = "AudioRecorderManager"
+        private const val NO_DEVICE_CHANGE_SESSION = -1L
+        private const val DEVICE_RECOVERY_SUPERSEDED = "SESSION_CHANGED"
+        private const val DEVICE_RECOVERY_NOT_RECORDING = "NOT_RECORDING"
+        private const val DEVICE_RECOVERY_FAILED = "DEVICE_RECOVERY_FAILED"
 
         /**
          * The single rule deciding whether a recording runs the foreground service.
@@ -95,6 +100,12 @@ class AudioRecorderManager(
             config: RecordingConfig,
             enableBackgroundAudio: Boolean
         ): Boolean = (config.showNotification || config.keepAwake) && enableBackgroundAudio
+
+        internal fun shouldCleanupOrphanService(
+            isServiceRunning: Boolean,
+            isRecording: Boolean,
+            teardownInProgress: Boolean
+        ): Boolean = isServiceRunning && !isRecording && !teardownInProgress
         
         @SuppressLint("StaticFieldLeak")
         @Volatile
@@ -280,6 +291,7 @@ class AudioRecorderManager(
     }
     private var recordingStartTime: Long = 0
     private var totalRecordedTime: Long = 0
+    @Volatile
     private var totalDataSize = 0
     private var lastEmitTime = SystemClock.elapsedRealtime()
     private var lastPauseTime = 0L
@@ -290,6 +302,7 @@ class AudioRecorderManager(
     private var maxDurationAccumulatedActiveMs = 0L
     private var maxDurationSegmentStartElapsed = 0L
     private var maxDurationReached = false
+    private var maxDurationSession = NO_DEVICE_CHANGE_SESSION
     private var lastEmittedSize = 0L
     private var lastEmittedCompressedSize = 0L
     private var streamPosition = 0L  // Track total bytes processed in the stream
@@ -343,160 +356,304 @@ class AudioRecorderManager(
     var isPrepared = false
     private var selectedDeviceId: String? = null
     private var deviceDisconnectionBehavior: String? = null
+    private val changingDeviceSession = AtomicLong(NO_DEVICE_CHANGE_SESSION)
+    private val compressedPausedForDeviceChangeSession =
+        AtomicLong(NO_DEVICE_CHANGE_SESSION)
+    // Read and written only under audioRecordLock. Device-failure recovery emits its own
+    // interruption reason, so its teardown must not also emit recordingStopped.
+    private var suppressRecordingStoppedEvent = false
+
+    private sealed interface DeviceTransitionResult {
+        data object Completed : DeviceTransitionResult
+        data object Cancelled : DeviceTransitionResult
+        data class Failed(val session: Long) : DeviceTransitionResult
+    }
+
+    private data class StopClaim(
+        val session: Long,
+        val worker: Thread?,
+        val wasPaused: Boolean
+    )
+
+    /** Session whose recorders are being reclaimed during an unlocked worker join. */
+    private var tearingDownSession = NO_DEVICE_CHANGE_SESSION
     
     // Cache file sizes to avoid file system calls during stop
     private var cachedPrimaryFileSize: Long = 44L  // Start with WAV header size
     private var cachedCompressedFileSize: Long = 0L
 
     // Add a method to handle device changes
-    fun handleDeviceChange() {
-        LogUtils.d(CLASS_NAME, "🔄 handleDeviceChange called - isRecording=${_isRecording.get()}, isPaused=${isPaused.get()}")
-        if (!_isRecording.get()) {
-            LogUtils.d(CLASS_NAME, "🔄 handleDeviceChange: Not recording, no action needed")
-            return
-        }
+    fun handleDeviceChange(): Boolean {
+        val requestedSession = activeRecordingSession() ?: return false
+        return handleDeviceChange(requestedSession)
+    }
 
-        if (isPaused.get()) {
-            LogUtils.d(CLASS_NAME, "🔄 handleDeviceChange: Recording is paused, marking for restart with new device when resumed")
-            
-            // When paused after device disconnection, we need to release the existing AudioRecord
-            // so that it can be properly reinitialized when resumed
-            synchronized(audioRecordLock) {
-                if (audioRecord != null) {
-                    LogUtils.d(CLASS_NAME, "🔄 Releasing current AudioRecord while paused to allow proper reinitialization")
-                    audioRecord?.release()
-                    audioRecord = null
-                    LogUtils.d(CLASS_NAME, "🔄 AudioRecord released successfully")
+    internal fun handleDeviceChange(requestedSession: Long): Boolean {
+        val transition = handleDeviceChangeTransition(requestedSession)
+        if (transition is DeviceTransitionResult.Failed) {
+            val eventSent = AtomicBoolean(false)
+            fun sendFailureEvent() {
+                if (eventSent.compareAndSet(false, true)) {
+                    eventSender.sendExpoEvent(
+                        Constants.RECORDING_INTERRUPTED_EVENT_NAME,
+                        bundleOf("reason" to "deviceSwitchFailed", "isPaused" to false)
+                    )
                 }
             }
-            
-            return
+            stopRecordingAfterDeviceChangeFailure(transition.session, object : Promise {
+                override fun resolve(value: Any?) {
+                    sendFailureEvent()
+                }
+                override fun reject(code: String?, message: String?, cause: Throwable?) {
+                    // A successor superseded this transition and is healthy. Do not report
+                    // its recording as failed. A stop on the claimed session still reports.
+                    if (shouldReportDeviceRecoveryFailure(code)) sendFailureEvent()
+                }
+            })
         }
+        return transition == DeviceTransitionResult.Completed &&
+            synchronized(audioRecordLock) {
+                sessionId == requestedSession && _isRecording.get() && !isPaused.get()
+            }
+    }
 
-        LogUtils.d(CLASS_NAME, "🔄 handleDeviceChange: Restarting recording with new device")
-        
+    private fun shouldReportDeviceRecoveryFailure(code: String?): Boolean =
+        code != DEVICE_RECOVERY_SUPERSEDED && code != DEVICE_RECOVERY_NOT_RECORDING
+
+    private fun stopRecordingAfterDeviceChangeFailure(
+        claimedSession: Long,
+        promise: Promise
+    ) {
+        var recoveryFailure: Exception? = null
+        val ownsSession = synchronized(audioRecordLock) {
+            if (sessionId != claimedSession) {
+                promise.reject(
+                    DEVICE_RECOVERY_SUPERSEDED,
+                    "Recording session changed before device-switch recovery",
+                    null
+                )
+                false
+            } else if (!_isRecording.get()) {
+                promise.reject(
+                    DEVICE_RECOVERY_NOT_RECORDING,
+                    "Recording stopped before device-switch recovery",
+                    null
+                )
+                false
+            } else {
+                true
+            }
+        }
+        if (!ownsSession) return
         try {
-            // Log current device configuration for debugging
-            val deviceInfo = getAudioDeviceInfo()
-            LogUtils.d(CLASS_NAME, "🔄 Current device info: ${deviceInfo["id"] ?: "unknown"} (${deviceInfo["type"] ?: "unknown"})")
-            
-            // Make a copy of current recording settings
-            if (!::recordingConfig.isInitialized) {
-                LogUtils.w(CLASS_NAME, "recordingConfig not initialized in handleDeviceChange")
+            // This overload rechecks claimedSession when it claims the recording, then
+            // joins the worker without audioRecordLock held.
+            stopRecording(claimedSession, promise, suppressStoppedEvent = true)
+        } catch (recoveryError: Exception) {
+            recoveryFailure = recoveryError
+        }
+        recoveryFailure?.let { failDeviceChangeRecovery(claimedSession, it, promise) }
+    }
+
+    private fun pauseRecordingAfterDeviceChangeFailure(
+        claimedSession: Long,
+        promise: Promise
+    ) {
+        var recoveryFailure: Exception? = null
+        synchronized(audioRecordLock) {
+            if (sessionId != claimedSession) {
+                promise.reject(
+                    DEVICE_RECOVERY_SUPERSEDED,
+                    "Recording session changed before device-switch recovery",
+                    null
+                )
                 return
             }
-            val currentSettings = recordingConfig
-            
-            // Pause the current recording
-            synchronized(audioRecordLock) {
-                if (audioRecord != null && audioRecord!!.state == AudioRecord.STATE_INITIALIZED) {
-                    LogUtils.d(CLASS_NAME, "🔄 Stopping current AudioRecord")
-                    audioRecord!!.stop()
-                    LogUtils.d(CLASS_NAME, "🔄 AudioRecord stopped")
+            if (!_isRecording.get()) {
+                promise.reject(
+                    DEVICE_RECOVERY_NOT_RECORDING,
+                    "Recording stopped before device-switch recovery",
+                    null
+                )
+                return
+            }
+            try {
+                pauseRecording(promise, isSystemInterruption = false)
+            } catch (recoveryError: Exception) {
+                recoveryFailure = recoveryError
+            }
+        }
+        recoveryFailure?.let { failDeviceChangeRecovery(claimedSession, it, promise) }
+    }
+
+    private fun failDeviceChangeRecovery(
+        claimedSession: Long,
+        recoveryError: Exception,
+        promise: Promise
+    ) {
+        LogUtils.e(CLASS_NAME, "Device-switch recovery failed: ${recoveryError.message}", recoveryError)
+        val cleaned = cleanupInternal(
+            callerHoldsRecordLock = false,
+            expectedSession = claimedSession,
+            emitStoppedEvent = false
+        )
+        synchronized(audioRecordLock) {
+            if (!cleaned || sessionId != claimedSession) {
+                promise.reject(
+                    DEVICE_RECOVERY_SUPERSEDED,
+                    "Recording session changed during device-switch recovery",
+                    recoveryError
+                )
+            } else {
+                // Settle while holding the same lock as session publication, so a successor
+                // cannot land between the final ownership check and the failure event.
+                promise.reject(
+                    DEVICE_RECOVERY_FAILED,
+                    "Device-switch recovery failed: ${recoveryError.message}",
+                    recoveryError
+                )
+            }
+        }
+    }
+
+    private fun handleDeviceChangeTransition(expectedSession: Long): DeviceTransitionResult {
+        var ownsTransition = false
+        var claimedSession = expectedSession
+        try {
+            // Phase 1 claims the recording and releases its old recorder under the lock.
+            // The transition delay cannot hold this monitor because stopRecording joins
+            // the PCM worker while holding it. A worker queued behind a long-held monitor
+            // could otherwise keep stop blocked until its two-second timeout (#472).
+            val deviceChangeSession = synchronized(audioRecordLock) {
+                LogUtils.d(CLASS_NAME, "🔄 handleDeviceChange called - isRecording=${_isRecording.get()}, isPaused=${isPaused.get()}")
+                if (!_isRecording.get() || sessionId != expectedSession) {
+                    LogUtils.d(CLASS_NAME, "🔄 Device change cancelled before session claim")
+                    return DeviceTransitionResult.Cancelled
                 }
-                
+
+                if (isPaused.get()) {
+                    LogUtils.d(CLASS_NAME, "🔄 handleDeviceChange: Recording is paused, marking for restart with new device when resumed")
+                    // Capture ownership before release so a throwing release cannot report
+                    // failure against a session that resumes in the recovery gap.
+                    audioRecord?.release()
+                    audioRecord = null
+                    return DeviceTransitionResult.Cancelled
+                }
+
+                if (!::recordingConfig.isInitialized) {
+                    LogUtils.w(CLASS_NAME, "recordingConfig not initialized in handleDeviceChange")
+                    return DeviceTransitionResult.Cancelled
+                }
+
+                if (!changingDeviceSession.compareAndSet(
+                        NO_DEVICE_CHANGE_SESSION,
+                        claimedSession
+                    )
+                ) {
+                    LogUtils.d(CLASS_NAME, "🔄 A device change is already in progress")
+                    return DeviceTransitionResult.Cancelled
+                }
+                ownsTransition = true
+
+                if (audioRecord?.state == AudioRecord.STATE_INITIALIZED) {
+                    LogUtils.d(CLASS_NAME, "🔄 Stopping current AudioRecord")
+                    audioRecord?.stop()
+                }
                 if (compressedRecorder != null) {
                     LogUtils.d(CLASS_NAME, "🔄 Pausing compressed recorder")
-                    compressedRecorder!!.pause()
-                    LogUtils.d(CLASS_NAME, "🔄 Compressed recorder paused")
+                    compressedRecorder?.pause()
+                    compressedPausedForDeviceChangeSession.set(claimedSession)
                 }
-            }
-            
-            // Release the current audio record resources
-            synchronized(audioRecordLock) {
-                LogUtils.d(CLASS_NAME, "🔄 Releasing current AudioRecord")
                 audioRecord?.release()
                 audioRecord = null
                 LogUtils.d(CLASS_NAME, "🔄 AudioRecord resources released")
+                claimedSession
             }
-            
+
             // Log available devices
             logAvailableDevices()
-            
+
             // Give a small delay for the system to fully complete device transition
             LogUtils.d(CLASS_NAME, "🔄 Waiting for device transition to complete")
             Thread.sleep(200)
-            
-            // Initialize a new audio record with the same settings
-            LogUtils.d(CLASS_NAME, "🔄 Reinitializing AudioRecord with new device")
-            if (!initializeAudioRecord(object : Promise {
-                override fun resolve(value: Any?) {
-                    LogUtils.d(CLASS_NAME, "🔄 Successfully reinitialized AudioRecord with new device")
+
+            // Phase 2 restarts only if no stop, pause, or new session won during the delay.
+            return synchronized(audioRecordLock) {
+                if (!_isRecording.get() || isPaused.get() || sessionId != deviceChangeSession) {
+                    // A user pause defers the restart. resumeRecording sees the null
+                    // AudioRecord left by phase 1 and rebuilds it on the selected device.
+                    LogUtils.d(CLASS_NAME, "🔄 Device change cancelled because the session ended or paused")
+                    return@synchronized DeviceTransitionResult.Cancelled
                 }
-                override fun reject(code: String?, message: String?, cause: Throwable?) {
-                    LogUtils.e(CLASS_NAME, "🔄 Failed to reinitialize AudioRecord: $message")
-                }
-            })) {
-                LogUtils.e(CLASS_NAME, "🔄 Failed to reinitialize audio record, stopping recording")
-                stopRecording(object : Promise {
-                    override fun resolve(value: Any?) {
-                        eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
-                            "reason" to "deviceSwitchFailed",
-                            "isPaused" to true
-                        ))
-                    }
-                    override fun reject(code: String?, message: String?, cause: Throwable?) {}
-                })
-                return
-            }
-            
-            // Re-verify recording state
-            synchronized(audioRecordLock) {
-                if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-                    LogUtils.e(CLASS_NAME, "🔄 AudioRecord not properly initialized after device change")
-                    stopRecording(object : Promise {
-                        override fun resolve(value: Any?) {
-                            eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
-                                "reason" to "deviceSwitchFailed",
-                                "isPaused" to true
-                            ))
+
+                LogUtils.d(CLASS_NAME, "🔄 Reinitializing AudioRecord with new device")
+                if (!initializeAudioRecord(object : Promise {
+                        override fun resolve(value: Any?) = Unit
+                        override fun reject(code: String?, message: String?, cause: Throwable?) {
+                            LogUtils.e(CLASS_NAME, "🔄 Failed to reinitialize AudioRecord: $message")
                         }
-                        override fun reject(code: String?, message: String?, cause: Throwable?) {}
-                    })
-                    return
+                    }) || audioRecord?.state != AudioRecord.STATE_INITIALIZED
+                ) {
+                    LogUtils.e(CLASS_NAME, "🔄 Failed to reinitialize audio record, stopping recording")
+                    return@synchronized DeviceTransitionResult.Failed(deviceChangeSession)
                 }
-            }
-            
-            // Restart the audio record
-            synchronized(audioRecordLock) {
+
                 LogUtils.d(CLASS_NAME, "🔄 Starting recording with new device")
                 audioRecord?.startRecording()
-                LogUtils.d(CLASS_NAME, "🔄 AudioRecord started recording")
-                
-                // Resume compressed recorder if it was active
-                if (compressedRecorder != null) {
-                    LogUtils.d(CLASS_NAME, "🔄 Resuming compressed recorder")
-                    compressedRecorder!!.resume()
-                    LogUtils.d(CLASS_NAME, "🔄 Compressed recorder resumed")
-                }
+                compressedRecorder?.resume()
+                compressedPausedForDeviceChangeSession.compareAndSet(
+                    claimedSession,
+                    NO_DEVICE_CHANGE_SESSION
+                )
+
+                val newDeviceInfo = getAudioDeviceInfo()
+                eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
+                    "reason" to "deviceChanged",
+                    "isPaused" to false,
+                    "deviceInfo" to newDeviceInfo
+                ))
+                LogUtils.d(CLASS_NAME, "🔄 Device change handling completed successfully")
+                DeviceTransitionResult.Completed
             }
-            
-            // Get new device info
-            val newDeviceInfo = getAudioDeviceInfo()
-            LogUtils.d(CLASS_NAME, "🔄 New device info: ${newDeviceInfo["id"] ?: "unknown"} (${newDeviceInfo["type"] ?: "unknown"})")
-            
-            // Notify JavaScript
-            LogUtils.d(CLASS_NAME, "🔄 Sending device changed event to JavaScript")
-            eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
-                "reason" to "deviceChanged",
-                "isPaused" to false,
-                "deviceInfo" to newDeviceInfo
-            ))
-            LogUtils.d(CLASS_NAME, "🔄 Device change handling completed successfully")
-            
+
         } catch (e: Exception) {
             LogUtils.e(CLASS_NAME, "🔄 Error handling device change: ${e.message}", e)
-            // If something went wrong, try to pause recording
-            pauseRecording(object : Promise {
-                override fun resolve(value: Any?) {
-                    eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
-                        "reason" to "deviceSwitchFailed", 
-                        "isPaused" to true,
-                        "error" to e.message
-                    ))
+            val eventSent = AtomicBoolean(false)
+            fun sendFailureEvent(paused: Boolean) {
+                if (eventSent.compareAndSet(false, true)) {
+                    eventSender.sendExpoEvent(
+                        Constants.RECORDING_INTERRUPTED_EVENT_NAME,
+                        bundleOf(
+                            "reason" to "deviceSwitchFailed",
+                            "isPaused" to paused,
+                            "error" to e.message
+                        )
+                    )
                 }
-                override fun reject(code: String?, message: String?, cause: Throwable?) {}
+            }
+            // If something went wrong, try to pause recording
+            pauseRecordingAfterDeviceChangeFailure(claimedSession, object : Promise {
+                override fun resolve(value: Any?) {
+                    sendFailureEvent(true)
+                }
+                override fun reject(code: String?, message: String?, cause: Throwable?) {
+                    // Do not attach an old transition's failure to a healthy successor.
+                    // A stop or pause on the claimed session still reports its final state.
+                    if (shouldReportDeviceRecoveryFailure(code)) sendFailureEvent(isPaused.get())
+                }
             })
+            return DeviceTransitionResult.Cancelled
+        } finally {
+            if (ownsTransition) {
+                compressedPausedForDeviceChangeSession.compareAndSet(
+                    claimedSession,
+                    NO_DEVICE_CHANGE_SESSION
+                )
+                changingDeviceSession.compareAndSet(
+                    claimedSession,
+                    NO_DEVICE_CHANGE_SESSION
+                )
+            }
         }
     }
     
@@ -588,6 +745,105 @@ class AudioRecorderManager(
     val isRecording: Boolean
         get() = _isRecording.get()
 
+    internal fun activeRecordingSession(): Long? = synchronized(audioRecordLock) {
+        sessionId.takeIf { _isRecording.get() }
+    }
+
+    internal fun <T> runForActiveSession(expectedSession: Long, block: () -> T): T? =
+        synchronized(audioRecordLock) {
+            if (!_isRecording.get() || sessionId != expectedSession) null else block()
+        }
+
+    internal fun pauseRecordingForSession(expectedSession: Long, promise: Promise) {
+        synchronized(audioRecordLock) {
+            if (!_isRecording.get() || sessionId != expectedSession) {
+                promise.reject(
+                    DEVICE_RECOVERY_SUPERSEDED,
+                    "Recording session changed before device-disconnection pause",
+                    null
+                )
+                return
+            }
+            if (isPaused.get()) {
+                releaseAudioRecordForDisconnectedRoute()
+                promise.resolve("Recording already paused")
+                return
+            }
+            pauseRecording(object : Promise {
+                override fun resolve(value: Any?) {
+                    releaseAudioRecordForDisconnectedRoute()
+                    promise.resolve(value)
+                }
+
+                override fun reject(code: String?, message: String?, cause: Throwable?) {
+                    promise.reject(code, message, cause)
+                }
+            }, isSystemInterruption = false)
+        }
+    }
+
+    private fun releaseAudioRecordForDisconnectedRoute() {
+        try {
+            audioRecord?.release()
+        } finally {
+            audioRecord = null
+        }
+    }
+
+    private fun systemPauseSession(): Long? = synchronized(audioRecordLock) {
+        sessionId.takeIf { _isRecording.get() && !isPaused.get() }
+    }
+
+    private fun systemResumeSession(): Long? = synchronized(audioRecordLock) {
+        val autoResume = if (::recordingConfig.isInitialized) {
+            recordingConfig.autoResumeAfterInterruption
+        } else {
+            false
+        }
+        sessionId.takeIf {
+            InterruptionAutoResumePolicy.shouldAutoResume(
+                autoResumeAfterInterruption = autoResume,
+                isRecording = _isRecording.get(),
+                isPaused = isPaused.get(),
+                pausedBySystemInterruption = pausedBySystemInterruption.get()
+            )
+        }
+    }
+
+    private fun postSystemPause(recordingSession: Long, reason: String) {
+        mainHandler.post {
+            pauseRecordingForSystemInterruption(recordingSession, object : Promise {
+                override fun resolve(value: Any?) {
+                    eventSender.sendExpoEvent(
+                        Constants.RECORDING_INTERRUPTED_EVENT_NAME,
+                        bundleOf("reason" to reason, "isPaused" to true)
+                    )
+                }
+
+                override fun reject(code: String?, message: String?, cause: Throwable?) {
+                    LogUtils.d(CLASS_NAME, "Ignoring stale $reason pause for session $recordingSession")
+                }
+            })
+        }
+    }
+
+    private fun postSystemResume(recordingSession: Long, reason: String) {
+        mainHandler.post {
+            resumeRecordingForSession(recordingSession, object : Promise {
+                override fun resolve(value: Any?) {
+                    eventSender.sendExpoEvent(
+                        Constants.RECORDING_INTERRUPTED_EVENT_NAME,
+                        bundleOf("reason" to reason, "isPaused" to false)
+                    )
+                }
+
+                override fun reject(code: String?, message: String?, cause: Throwable?) {
+                    LogUtils.d(CLASS_NAME, "Ignoring stale $reason resume for session $recordingSession")
+                }
+            })
+        }
+    }
+
     /**
      * Shared handler for call state changes, used by both the modern TelephonyCallback (API 31+)
      * and the legacy PhoneStateListener (API < 31).
@@ -604,55 +860,24 @@ class AudioRecorderManager(
         when (state) {
             TelephonyManager.CALL_STATE_RINGING,
             TelephonyManager.CALL_STATE_OFFHOOK -> {
-                if (_isRecording.get() && !isPaused.get()) {
+                systemPauseSession()?.let { recordingSession ->
                     LogUtils.d(CLASS_NAME, "Pausing recording due to incoming/ongoing call")
-                    mainHandler.post {
-                        pauseRecordingForSystemInterruption(object : Promise {
-                            override fun resolve(value: Any?) {
-                                LogUtils.d(CLASS_NAME, "Successfully paused recording due to call")
-                                eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
-                                    "reason" to "phoneCall",
-                                    "isPaused" to true
-                                ))
-                            }
-                            override fun reject(code: String?, message: String?, cause: Throwable?) {
-                                LogUtils.e(CLASS_NAME, "Failed to pause recording on phone call", cause)
-                            }
-                        })
-                    }
+                    postSystemPause(recordingSession, "phoneCall")
                 }
             }
             TelephonyManager.CALL_STATE_IDLE -> {
-                if (_isRecording.get() && isPaused.get()) {
-                    val autoResume = if (::recordingConfig.isInitialized) recordingConfig.autoResumeAfterInterruption else false
-                    val shouldAutoResume = InterruptionAutoResumePolicy.shouldAutoResume(
-                        autoResumeAfterInterruption = autoResume,
-                        isRecording = _isRecording.get(),
-                        isPaused = isPaused.get(),
-                        pausedBySystemInterruption = pausedBySystemInterruption.get()
-                    )
-                    LogUtils.d(CLASS_NAME, "Call ended, handling auto-resume (enabled: $autoResume, pausedBySystemInterruption: ${pausedBySystemInterruption.get()})")
-                    if (shouldAutoResume) {
-                        mainHandler.post {
-                            resumeRecording(object : Promise {
-                                override fun resolve(value: Any?) {
-                                    LogUtils.d(CLASS_NAME, "Successfully resumed recording after call")
-                                    eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
-                                        "reason" to "phoneCallEnded",
-                                        "isPaused" to false
-                                    ))
-                                }
-                                override fun reject(code: String?, message: String?, cause: Throwable?) {
-                                    LogUtils.e(CLASS_NAME, "Failed to resume recording after phone call", cause)
-                                }
-                            })
+                val resumeSession = systemResumeSession()
+                if (resumeSession != null) {
+                    val recordingSession = resumeSession
+                    postSystemResume(recordingSession, "phoneCallEnded")
+                } else {
+                    synchronized(audioRecordLock) {
+                        if (_isRecording.get() && isPaused.get()) {
+                            eventSender.sendExpoEvent(
+                                Constants.RECORDING_INTERRUPTED_EVENT_NAME,
+                                bundleOf("reason" to "phoneCallEnded", "isPaused" to true)
+                            )
                         }
-                    } else {
-                        LogUtils.d(CLASS_NAME, "Auto-resume not permitted, staying paused")
-                        eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
-                            "reason" to "phoneCallEnded",
-                            "isPaused" to true
-                        ))
                     }
                 }
             }
@@ -744,6 +969,10 @@ class AudioRecorderManager(
         // This path creates both recorders; leaving it unlocked is what let a
         synchronized(audioRecordLock) {
             try {
+                if (tearingDownSession != NO_DEVICE_CHANGE_SESSION) {
+                    promise.reject("RECORDING_STOPPING", "The previous recording is still stopping", null)
+                    return
+                }
                 // Any live recording, paused or not, is rejected. Allowing a start while
                 // paused meant this path re-ran initialization against recorders the paused
                 // recording still owns: compressed init overwrote the retained recorder and
@@ -887,7 +1116,7 @@ class AudioRecorderManager(
                         "compressedFileUri" to compressedFile?.toURI().toString()
                     ) else null
                 )
-                startMaxDurationTimer()
+                startMaxDurationTimer(sessionId)
                 promise.resolve(result)
 
             } catch (e: Exception) {
@@ -944,7 +1173,7 @@ class AudioRecorderManager(
         }
     }
 
-    private fun startMaxDurationTimer() {
+    private fun startMaxDurationTimer(recordingSession: Long) {
         synchronized(maxDurationLock) {
             maxDurationRunnable?.let { mainHandler.removeCallbacks(it) }
             maxDurationRunnable = null
@@ -952,6 +1181,7 @@ class AudioRecorderManager(
             maxDurationAccumulatedActiveMs = 0L
             maxDurationSegmentStartElapsed = 0L
             maxDurationReached = false
+            maxDurationSession = recordingSession
 
             if (maxDurationTargetMs <= 0L) {
                 return
@@ -959,12 +1189,13 @@ class AudioRecorderManager(
 
             maxDurationSegmentStartElapsed = SystemClock.elapsedRealtime()
         }
-        scheduleMaxDurationTimer()
+        scheduleMaxDurationTimer(recordingSession)
     }
 
-    private fun scheduleMaxDurationTimer() {
-        val remainingMs = synchronized(maxDurationLock) {
+    private fun scheduleMaxDurationTimer(recordingSession: Long) {
+        synchronized(maxDurationLock) {
             if (
+                maxDurationSession != recordingSession ||
                 maxDurationTargetMs <= 0L ||
                 maxDurationReached ||
                 !_isRecording.get() ||
@@ -974,14 +1205,11 @@ class AudioRecorderManager(
             }
 
             maxDurationRunnable?.let { mainHandler.removeCallbacks(it) }
-            (maxDurationTargetMs - getMaxDurationActiveMs()).coerceAtLeast(0L)
-        }
-
-        val runnable = Runnable { emitMaxDurationReached() }
-        synchronized(maxDurationLock) {
+            val remainingMs = (maxDurationTargetMs - getMaxDurationActiveMs()).coerceAtLeast(0L)
+            val runnable = Runnable { emitMaxDurationReached(recordingSession) }
             maxDurationRunnable = runnable
+            mainHandler.postDelayed(runnable, remainingMs)
         }
-        mainHandler.postDelayed(runnable, remainingMs)
     }
 
     private fun pauseMaxDurationTimer() {
@@ -995,20 +1223,25 @@ class AudioRecorderManager(
         }
     }
 
-    private fun resumeMaxDurationTimer() {
+    private fun resumeMaxDurationTimer(recordingSession: Long) {
         synchronized(maxDurationLock) {
-            if (maxDurationTargetMs <= 0L || maxDurationReached) {
+            if (
+                maxDurationSession != recordingSession ||
+                maxDurationTargetMs <= 0L ||
+                maxDurationReached
+            ) {
                 return
             }
             maxDurationSegmentStartElapsed = SystemClock.elapsedRealtime()
         }
-        scheduleMaxDurationTimer()
+        scheduleMaxDurationTimer(recordingSession)
     }
 
     private fun cancelMaxDurationTimer() {
         synchronized(maxDurationLock) {
             maxDurationRunnable?.let { mainHandler.removeCallbacks(it) }
             maxDurationRunnable = null
+            maxDurationSession = NO_DEVICE_CHANGE_SESSION
             maxDurationSegmentStartElapsed = 0L
             if (!maxDurationReached) {
                 maxDurationTargetMs = 0L
@@ -1017,30 +1250,41 @@ class AudioRecorderManager(
         }
     }
 
-    private fun emitMaxDurationReached() {
-        val event = synchronized(maxDurationLock) {
-            if (maxDurationTargetMs <= 0L || maxDurationReached) {
+    private fun emitMaxDurationReached(recordingSession: Long) {
+        val autoStop = synchronized(audioRecordLock) {
+            if (
+                sessionId != recordingSession ||
+                !_isRecording.get() ||
+                isPaused.get()
+            ) {
                 return
             }
-            if (!_isRecording.get() || isPaused.get()) {
-                return
-            }
+            val event = synchronized(maxDurationLock) {
+                if (
+                    maxDurationSession != recordingSession ||
+                    maxDurationTargetMs <= 0L ||
+                    maxDurationReached
+                ) {
+                    return
+                }
 
-            val durationMs = getMaxDurationActiveMs()
-            maxDurationReached = true
-            maxDurationRunnable = null
-            bundleOf(
-                "durationMs" to durationMs,
-                "maxDurationMs" to maxDurationTargetMs,
-                "overrunMs" to (durationMs - maxDurationTargetMs).coerceAtLeast(0L),
-                "streamUuid" to streamUuid,
-                "autoStopped" to recordingConfig.autoStopOnMaxDuration,
-            )
+                val durationMs = getMaxDurationActiveMs()
+                maxDurationReached = true
+                maxDurationRunnable = null
+                bundleOf(
+                    "durationMs" to durationMs,
+                    "maxDurationMs" to maxDurationTargetMs,
+                    "overrunMs" to (durationMs - maxDurationTargetMs).coerceAtLeast(0L),
+                    "streamUuid" to streamUuid,
+                    "autoStopped" to recordingConfig.autoStopOnMaxDuration,
+                )
+            }
+            eventSender.sendExpoEvent(Constants.MAX_DURATION_REACHED_EVENT_NAME, event)
+            recordingConfig.autoStopOnMaxDuration
         }
 
-        eventSender.sendExpoEvent(Constants.MAX_DURATION_REACHED_EVENT_NAME, event)
-        if (recordingConfig.autoStopOnMaxDuration) {
-            stopRecording(object : Promise {
+        if (autoStop) {
+            stopRecording(recordingSession, object : Promise {
                 override fun resolve(value: Any?) {
                     LogUtils.d(CLASS_NAME, "Auto-stopped recording after maxDurationMs")
                 }
@@ -1466,7 +1710,8 @@ class AudioRecorderManager(
             // recording would suppress this one's first error (#447).
             reportedRecordingErrors.clear()
             failedDeliveryAttempts.clear()
-            recordingThreadRef.set(Thread { recordingProcess() }.apply { start() })
+            val recordingSession = sessionId
+            recordingThreadRef.set(Thread { recordingProcess(recordingSession) }.apply { start() })
 
             return true
 
@@ -1481,14 +1726,54 @@ class AudioRecorderManager(
         }
     }
 
-    fun stopRecording(promise: Promise) {
+    fun stopRecording(promise: Promise) =
+        stopRecording(expectedSession = null, promise = promise)
+
+    private fun stopRecording(
+        expectedSession: Long?,
+        promise: Promise,
+        suppressStoppedEvent: Boolean = false
+    ) {
         val stopStartTime = System.currentTimeMillis()
-        cancelMaxDurationTimer()
-        
-        synchronized(audioRecordLock) {
-            if (!_isRecording.get()) {
+        val claim = synchronized(audioRecordLock) {
+            if (
+                !_isRecording.get() ||
+                (expectedSession != null && sessionId != expectedSession)
+            ) {
                 LogUtils.e(CLASS_NAME, "Recording is not active")
                 promise.reject("NOT_RECORDING", "Recording is not active", null)
+                return
+            }
+
+            cancelMaxDurationTimer()
+            val claimedSession = sessionId
+            val wasPaused = isPaused.getAndSet(false)
+            tearingDownSession = claimedSession
+            _isRecording.set(false)
+            isPrepared = false
+            audioSourceLifecycle.onTeardown()
+            StopClaim(
+                session = claimedSession,
+                worker = recordingThreadRef.getAndSet(null),
+                wasPaused = wasPaused
+            )
+        }
+
+        claim.worker?.interrupt()
+        try {
+            claim.worker?.join(2000L)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            LogUtils.w(CLASS_NAME, "Interrupted while joining the recording thread; continuing stop")
+        }
+        if (claim.worker?.isAlive == true) {
+            LogUtils.w(CLASS_NAME, "Recording thread did not exit within 2s of stop")
+        }
+
+        synchronized(audioRecordLock) {
+            if (sessionId != claim.session) {
+                tearingDownSession = NO_DEVICE_CHANGE_SESSION
+                promise.reject(DEVICE_RECOVERY_SUPERSEDED, "Recording session changed while stopping", null)
                 return
             }
 
@@ -1498,7 +1783,7 @@ class AudioRecorderManager(
 
             try {
                 
-                if (isPaused.get()) {
+                if (claim.wasPaused) {
                     val readStartTime = System.currentTimeMillis()
                     val remainingData = ByteArray(bufferSizeInBytes)
                     val bytesRead = audioRecord?.read(remainingData, 0, bufferSizeInBytes) ?: -1
@@ -1517,37 +1802,6 @@ class AudioRecorderManager(
                 }
                 if (serviceWasStartedFor(recordingConfig)) {
                     AudioRecordingService.stopService(context)
-                }
-
-                _isRecording.set(false)
-                isPrepared = false  // Reset preparation state
-                audioSourceLifecycle.onTeardown()  // Next recording resolves fresh
-
-                // This join runs while audioRecordLock is held, and the recording loop
-                // takes that same lock on every read — so in principle the loop cannot
-                // reach its exit check until this join returns.
-                //
-                // In practice it does not stall: the read is READ_NON_BLOCKING, so the
-                // loop holds the lock for microseconds per iteration and the join
-                // acquires it almost immediately. Measured on a Pixel 6a, stopRecording
-                // end to end: 62ms plain, and 110/174/145ms with enableProcessing, a
-                // 100ms interval and compressed output — against a 2000ms budget.
-                //
-                // Not restructured to release the lock first: this synchronized block runs
-                // ~200 lines and the join must stay ahead of the final data flush below,
-                // so splitting it is a large change against a hazard that does not
-                // reproduce. The warning below is what would surface it if that ever
-                // changes.
-                val timeoutMs = 2000L // 2 seconds should be more than enough
-                val threadJoinStartTime = System.currentTimeMillis()
-                // Taken, not read: this path terminates the thread itself, and its
-                // cleanup(callerHoldsRecordLock = true) deliberately does not claim it.
-                val stopJoinThread = recordingThreadRef.getAndSet(null)
-                stopJoinThread?.join(timeoutMs)
-                if (stopJoinThread?.isAlive == true) {
-                    LogUtils.w(CLASS_NAME,
-                        "Recording thread still alive ${System.currentTimeMillis() - threadJoinStartTime}ms " +
-                        "after stop requested it to exit; audioRecordLock contention is the likely cause")
                 }
 
                 // This ensures complete audio data is captured even when stopped before interval threshold
@@ -1600,9 +1854,11 @@ class AudioRecorderManager(
                 // here cannot strand the flag and disable reclamation for every later
                 // caller (#446).
                 compressedFinalizationPending = true
+                suppressRecordingStoppedEvent = suppressStoppedEvent
                 try {
                     cleanup(callerHoldsRecordLock = true)
                 } finally {
+                    suppressRecordingStoppedEvent = false
                     compressedFinalizationPending = false
                 }
             } catch (e: IllegalStateException) {
@@ -1718,25 +1974,38 @@ class AudioRecorderManager(
                 promise.reject("STOP_FAILED", "Failed to stop recording", e)
             } finally {
                 audioRecord = null
+                if (tearingDownSession == claim.session) {
+                    tearingDownSession = NO_DEVICE_CHANGE_SESSION
+                }
             }
         }
     }
 
-    fun resumeRecording(promise: Promise) {
+    fun resumeRecording(promise: Promise) =
+        resumeRecording(expectedSession = null, promise = promise)
+
+    internal fun resumeRecordingForSession(expectedSession: Long, promise: Promise) {
+        resumeRecording(expectedSession = expectedSession, promise = promise)
+    }
+
+    private fun resumeRecording(expectedSession: Long?, promise: Promise) {
         LogUtils.d(CLASS_NAME, "⏺️ resumeRecording method entered - isPaused=${isPaused.get()}, isRecording=${_isRecording.get()}")
-        if (!isPaused.get()) {
-            LogUtils.e(CLASS_NAME, "⏺️ Cannot resume recording: not paused")
-            promise.reject("NOT_PAUSED", "Recording is not paused", null)
-            return
-        }
-        // _isRecording is the ownership flag cleanup claims in its phase 0. Checking only
-        // isPaused let a resume proceed after a teardown had already taken the session and
-        // the PCM worker: it restarted both recorders and resolved success on a recording
-        // with nothing reading from them (#446).
-        if (!_isRecording.get()) {
-            LogUtils.e(CLASS_NAME, "⏺️ Cannot resume recording: teardown already claimed this session")
-            promise.reject("NOT_RECORDING", "Recording was stopped and cannot be resumed", null)
-            return
+        val resumeSession = synchronized(audioRecordLock) {
+            if (expectedSession != null && sessionId != expectedSession) {
+                promise.reject(DEVICE_RECOVERY_SUPERSEDED, "Recording session changed before resume", null)
+                return
+            }
+            if (!isPaused.get()) {
+                LogUtils.e(CLASS_NAME, "⏺️ Cannot resume recording: not paused")
+                promise.reject("NOT_PAUSED", "Recording is not paused", null)
+                return
+            }
+            if (!_isRecording.get()) {
+                LogUtils.e(CLASS_NAME, "⏺️ Cannot resume recording: teardown already claimed this session")
+                promise.reject("NOT_RECORDING", "Recording was stopped and cannot be resumed", null)
+                return
+            }
+            sessionId
         }
 
         if (isOngoingCall()) {
@@ -1746,88 +2015,64 @@ class AudioRecorderManager(
         }
 
         try {
-            // Check if audioRecord needs reinitializing
-            var needsReinitialize = false
             synchronized(audioRecordLock) {
+                if (sessionId != resumeSession || !_isRecording.get() || !isPaused.get()) {
+                    throw IllegalStateException("Recording session changed while resuming")
+                }
                 LogUtils.d(CLASS_NAME, "⏺️ Checking audioRecord state: ${audioRecord?.state ?: "null"}")
                 if (audioRecord == null || audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-                    LogUtils.d(CLASS_NAME, "⏺️ AudioRecord is null or not properly initialized, will reinitialize")
-                    needsReinitialize = true
-                }
-            }
-
-            // Reinitialize audioRecord if needed (like after device disconnection)
-            if (needsReinitialize) {
-                LogUtils.d(CLASS_NAME, "⏺️ Starting reinitialization of AudioRecord for resumption after disconnection")
-                if (!initializeAudioRecord(object : Promise {
-                    override fun resolve(value: Any?) {
-                        LogUtils.d(CLASS_NAME, "⏺️ Successfully reinitialized AudioRecord for resumption")
+                    LogUtils.d(CLASS_NAME, "⏺️ Reinitializing AudioRecord for resumption")
+                    if (!initializeAudioRecord(object : Promise {
+                            override fun resolve(value: Any?) = Unit
+                            override fun reject(code: String?, message: String?, cause: Throwable?) {
+                                throw IllegalStateException("Failed to reinitialize AudioRecord: $message")
+                            }
+                        })
+                    ) {
+                        throw IllegalStateException("Failed to reinitialize AudioRecord for resumption")
                     }
-                    override fun reject(code: String?, message: String?, cause: Throwable?) {
-                        LogUtils.e(CLASS_NAME, "⏺️ Failed to reinitialize AudioRecord: $message")
-                        // We'll let the main try-catch handle this error
-                        throw IllegalStateException("Failed to reinitialize AudioRecord: $message")
-                    }
-                })) {
-                    LogUtils.e(CLASS_NAME, "⏺️ Failed to reinitialize AudioRecord")
-                    throw IllegalStateException("Failed to reinitialize AudioRecord for resumption")
-                }
-                LogUtils.d(CLASS_NAME, "⏺️ Reinitialization completed successfully")
-            }
-
-            if (recordingConfig.showNotification) {
-                LogUtils.d(CLASS_NAME, "⏺️ Resuming notification updates")
-                notificationManager.resumeUpdates()
-            }
-
-            acquireWakeLock()
-            pausedDuration += System.currentTimeMillis() - lastPauseTime
-            // Cleared only after the ownership recheck below succeeds, so a resume that
-            // loses the race leaves the recording paused rather than half-resumed.
-            resumeMaxDurationTimer()
-            
-            synchronized(audioRecordLock) {
-                // Revalidate ownership here, not just at entry. The guard at the top runs
-                // outside this lock, so a teardown can claim the session in between: the
-                // resume would then restart both recorders and resolve success on a
-                // session cleanup already owns, with no PCM worker (#446). Inside the lock
-                // the claim cannot land between this check and the restart below.
-                if (!_isRecording.get()) {
-                    LogUtils.e(CLASS_NAME, "⏺️ Teardown claimed this session while resuming")
-                    throw IllegalStateException("Recording was stopped while resuming")
                 }
 
-                // Double-check audioRecord is valid after potential reinitialization
                 LogUtils.d(CLASS_NAME, "⏺️ Final check of audioRecord state: ${audioRecord?.state ?: "null"}")
                 if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-                    LogUtils.e(CLASS_NAME, "⏺️ AudioRecord is not properly initialized")
                     throw IllegalStateException("AudioRecord is not properly initialized")
                 }
-                
-                LogUtils.d(CLASS_NAME, "⏺️ Starting AudioRecord recording")
-                // A resume republishes the recorders, so it is a new session for cleanup's
-                // ownership check. Without this, a teardown that claimed the session before
-                // the resume saw an unchanged sessionId in phase 2 and released the
-                // recorders this call had just restarted (#446).
-                sessionId++
-                isPaused.set(false)
+
+                if (recordingConfig.showNotification) notificationManager.resumeUpdates()
+                acquireWakeLock()
+                pausedDuration += System.currentTimeMillis() - lastPauseTime
                 audioRecord?.startRecording()
-                LogUtils.d(CLASS_NAME, "⏺️ AudioRecord.startRecording called")
-                
-                if (compressedRecorder != null) {
-                    LogUtils.d(CLASS_NAME, "⏺️ Resuming compressed recorder")
-                    compressedRecorder?.resume()
-                    LogUtils.d(CLASS_NAME, "⏺️ Compressed recorder resumed")
-                }
+                compressedRecorder?.resume()
+                // Pause and resume stay within one recording session. Changing this ID
+                // would retire the PCM worker, which is bound to it for its whole lifetime.
+                isPaused.set(false)
+                pausedBySystemInterruption.set(false)
+                resumeMaxDurationTimer(sessionId)
+                promise.resolve("Recording resumed")
             }
-            
             LogUtils.d(CLASS_NAME, "⏺️ Recording resumed successfully")
-            pausedBySystemInterruption.set(false)
-            promise.resolve("Recording resumed")
         } catch (e: Exception) {
             LogUtils.e(CLASS_NAME, "⏺️ Failed to resume recording: ${e.message}", e)
-            releaseWakeLock()
-            promise.reject("RESUME_FAILED", "Failed to resume recording: ${e.message}", e)
+            synchronized(audioRecordLock) {
+                val sameSession = sessionId == resumeSession
+                if (sameSession) {
+                    releaseWakeLock()
+                    try {
+                        audioRecord?.stop()
+                    } catch (stopError: Exception) {
+                        LogUtils.w(CLASS_NAME, "Failed to restore paused AudioRecord: ${stopError.message}")
+                    }
+                    try {
+                        compressedRecorder?.pause()
+                    } catch (pauseError: Exception) {
+                        LogUtils.w(CLASS_NAME, "Failed to restore paused compressed recorder: ${pauseError.message}")
+                    }
+                    pauseMaxDurationTimer()
+                    if (recordingConfig.showNotification) notificationManager.pauseUpdates()
+                }
+                val code = if (sameSession) "RESUME_FAILED" else DEVICE_RECOVERY_SUPERSEDED
+                promise.reject(code, "Failed to resume recording: ${e.message}", e)
+            }
         }
     }
 
@@ -1835,8 +2080,14 @@ class AudioRecorderManager(
         pauseRecording(promise, isSystemInterruption = false)
     }
 
-    private fun pauseRecordingForSystemInterruption(promise: Promise) {
-        pauseRecording(promise, isSystemInterruption = true)
+    private fun pauseRecordingForSystemInterruption(expectedSession: Long, promise: Promise) {
+        synchronized(audioRecordLock) {
+            if (!_isRecording.get() || sessionId != expectedSession) {
+                promise.reject(DEVICE_RECOVERY_SUPERSEDED, "Recording session changed before pause", null)
+                return
+            }
+            pauseRecording(promise, isSystemInterruption = true)
+        }
     }
 
     private fun pauseRecording(promise: Promise, isSystemInterruption: Boolean) {
@@ -1846,7 +2097,11 @@ class AudioRecorderManager(
         synchronized(audioRecordLock) {
             if (_isRecording.get() && !isPaused.get()) {
                 audioRecord?.stop()
-                compressedRecorder?.pause()
+                // Device-change phase 1 already paused the compressed recorder before
+                // releasing this lock. Calling pause() twice can throw before isPaused is set.
+                if (compressedPausedForDeviceChangeSession.get() != sessionId) {
+                    compressedRecorder?.pause()
+                }
             
                 lastPauseTime = System.currentTimeMillis()
                 isPaused.set(true)
@@ -1879,7 +2134,12 @@ class AudioRecorderManager(
             } ?: false
 
             // If service is running but we think we're not recording, clean up
-            if (isServiceRunning && !_isRecording.get()) {
+            if (shouldCleanupOrphanService(
+                    isServiceRunning = isServiceRunning,
+                    isRecording = _isRecording.get(),
+                    teardownInProgress = tearingDownSession != NO_DEVICE_CHANGE_SESSION
+                )
+            ) {
                 LogUtils.d(CLASS_NAME, "Detected orphaned recording service, cleaning up...")
                 // The recording is already gone — that is what makes the service orphaned —
                 // so there is no thread to join, and this caller holds audioRecordLock.
@@ -1986,6 +2246,14 @@ class AudioRecorderManager(
         }
     }
 
+    private fun releaseWakeLockForSession(expectedSession: Long) {
+        synchronized(audioRecordLock) {
+            if (sessionId == expectedSession && !isPaused.get()) {
+                releaseWakeLock()
+            }
+        }
+    }
+
     /**
      * Checks if there is an ongoing call that would interfere with recording
      */
@@ -2019,7 +2287,7 @@ class AudioRecorderManager(
         audioFileHandler.clearAudioStorage()
     }
 
-    private fun recordingProcess() {
+    private fun recordingProcess(recordingSession: Long) {
         try {
             LogUtils.i(CLASS_NAME, "Starting recording process...")
             
@@ -2066,13 +2334,24 @@ class AudioRecorderManager(
 
                 // Recording loop
                 var loopCount = 0
-                while (_isRecording.get() && !Thread.currentThread().isInterrupted) {
+                while (
+                    _isRecording.get() &&
+                    sessionId == recordingSession &&
+                    !Thread.currentThread().isInterrupted
+                ) {
                     loopCount++
                     if (loopCount % 100 == 0) {
                         LogUtils.d(CLASS_NAME, "Recording loop iteration $loopCount, isRecording: ${_isRecording.get()}, accumulatedAudioSize: ${accumulatedAudioData?.size() ?: 0}, accumulatedAnalysisSize: ${accumulatedAnalysisData.size()}")
                     }
                     if (isPaused.get()) {
                         Thread.sleep(100) // Add small delay when paused
+                        continue
+                    }
+                    if (changingDeviceSession.get() == recordingSession) {
+                        // The old recorder has been released and its replacement is not
+                        // ready yet. Stay out of audioRecordLock so a concurrent stop can
+                        // claim the session and join this worker without timing out.
+                        Thread.sleep(10)
                         continue
                     }
 
@@ -2082,6 +2361,13 @@ class AudioRecorderManager(
                         (isFirstAnalysis || timeSinceLastAnalysis >= recordingConfig.intervalAnalysis)
 
                     val bytesRead = synchronized(audioRecordLock) {
+                        if (
+                            sessionId != recordingSession ||
+                            !_isRecording.get() ||
+                            Thread.currentThread().isInterrupted
+                        ) {
+                            return@synchronized AudioRecord.ERROR_INVALID_OPERATION
+                        }
                         audioRecord?.let {
                             if (it.state != AudioRecord.STATE_INITIALIZED) {
                                 LogUtils.e(CLASS_NAME, "AudioRecord not initialized")
@@ -2237,15 +2523,11 @@ class AudioRecorderManager(
             // as a degraded recording would fire a JS `error` event on every ordinary stop
             // and on module destruction (#447).
             Thread.currentThread().interrupt()
-            if (!isPaused.get()) {
-                releaseWakeLock()
-            }
+            releaseWakeLockForSession(recordingSession)
             LogUtils.d(CLASS_NAME, "Recording thread interrupted for teardown")
         } catch (e: Exception) {
             // Wake lock release stays conditional — a paused recording still holds it.
-            if (!isPaused.get()) {
-                releaseWakeLock()
-            }
+            releaseWakeLockForSession(recordingSession)
             // The failure itself is reported either way. Gating this on !isPaused swallowed
             // a genuine loop exception that raced pauseRecording(): the worker exits
             // regardless, so resume would then report success with no PCM thread behind
@@ -2392,8 +2674,18 @@ class AudioRecorderManager(
      * thread reference for a caller that can act on it (#446).
      */
     internal fun cleanup(callerHoldsRecordLock: Boolean) {
-        cancelMaxDurationTimer()
+        cleanupInternal(
+            callerHoldsRecordLock = callerHoldsRecordLock,
+            expectedSession = null,
+            emitStoppedEvent = true
+        )
+    }
 
+    private fun cleanupInternal(
+        callerHoldsRecordLock: Boolean,
+        expectedSession: Long?,
+        emitStoppedEvent: Boolean
+    ): Boolean {
         // Terminate the recording thread, not just the flag it watches, and do it BEFORE
         // taking audioRecordLock — the recording loop acquires that same lock on every
         // read, so joining while holding it would deadlock until the timeout expired.
@@ -2423,15 +2715,24 @@ class AudioRecorderManager(
         val ownedService: Boolean
         if (callerHoldsRecordLock) {
             // Already inside the caller's monitor; taking it again is free (reentrant).
+            if (expectedSession != null && sessionId != expectedSession) return false
+            cancelMaxDurationTimer()
             wasRecording = _isRecording.getAndSet(false)
+            isPaused.set(false)
             ownedSession = sessionId
+            tearingDownSession = ownedSession
             ownedService = ::recordingConfig.isInitialized && serviceWasStartedFor(recordingConfig)
             // This caller terminates the worker itself, or knows there is none.
             ownedWorker = null
         } else {
             synchronized(audioRecordLock) {
+                if (tearingDownSession != NO_DEVICE_CHANGE_SESSION) return false
+                if (expectedSession != null && sessionId != expectedSession) return false
+                cancelMaxDurationTimer()
                 wasRecording = _isRecording.getAndSet(false)
+                isPaused.set(false)
                 ownedSession = sessionId
+                tearingDownSession = ownedSession
                 ownedService = ::recordingConfig.isInitialized &&
                     serviceWasStartedFor(recordingConfig)
                 // Claimed here, with the session. Taking it later, outside the lock, let a
@@ -2441,7 +2742,6 @@ class AudioRecorderManager(
                 ownedWorker = recordingThreadRef.getAndSet(null)
             }
         }
-
         // Phase 1, outside audioRecordLock: signal the worker and wait for it.
         //
         // This cannot happen under the lock. The recording loop acquires audioRecordLock
@@ -2499,7 +2799,10 @@ class AudioRecorderManager(
                 ) {
                     AudioRecordingService.stopService(context)
                 }
-                return
+                if (tearingDownSession == ownedSession) {
+                    tearingDownSession = NO_DEVICE_CHANGE_SESSION
+                }
+                return true
             }
             // Read inside the lock: with the mutators serialized, this is the live value,
             // not a snapshot that a concurrent start could have invalidated.
@@ -2519,10 +2822,12 @@ class AudioRecorderManager(
                     }
                     // stop() only inside the gate: it throws on a recorder that was
                     // prepared but never started. release() is unconditional below.
-                    try {
-                        compressedRecorder?.stop()
-                    } catch (e: Exception) {
-                        LogUtils.w(CLASS_NAME, "Failed to stop compressed recorder: ${e.message}")
+                    if (!compressedFinalizationPending) {
+                        try {
+                            compressedRecorder?.stop()
+                        } catch (e: Exception) {
+                            LogUtils.w(CLASS_NAME, "Failed to stop compressed recorder: ${e.message}")
+                        }
                     }
                 }
 
@@ -2603,15 +2908,20 @@ class AudioRecorderManager(
                     }
                 }
 
-                // Send event to notify that recording was stopped
-                eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
-                    "reason" to "recordingStopped",
-                    "isPaused" to false
-                ))
+                if (emitStoppedEvent && !suppressRecordingStoppedEvent) {
+                    eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
+                        "reason" to "recordingStopped",
+                        "isPaused" to false
+                    ))
+                }
             } catch (e: Exception) {
                 LogUtils.e(CLASS_NAME, "Error during cleanup", e)
             }
+            if (tearingDownSession == ownedSession) {
+                tearingDownSession = NO_DEVICE_CHANGE_SESSION
+            }
         }
+        return true
     }
 
     @RequiresApi(Build.VERSION_CODES.Q)
@@ -2737,43 +3047,13 @@ class AudioRecorderManager(
             when (focusChange) {
                 AudioManager.AUDIOFOCUS_LOSS,
                 AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-                    if (_isRecording.get() && !isPaused.get()) {
-                        mainHandler.post {
-                            pauseRecordingForSystemInterruption(object : Promise {
-                                override fun resolve(value: Any?) {
-                                    eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
-                                        "reason" to "audioFocusLoss",
-                                        "isPaused" to true
-                                    ))
-                                }
-                                override fun reject(code: String?, message: String?, cause: Throwable?) {
-                                    LogUtils.e(CLASS_NAME, "Failed to pause recording on audio focus loss")
-                                }
-                            })
-                        }
+                    systemPauseSession()?.let { recordingSession ->
+                        postSystemPause(recordingSession, "audioFocusLoss")
                     }
                 }
                 AudioManager.AUDIOFOCUS_GAIN -> {
-                    val autoResume = if (::recordingConfig.isInitialized) recordingConfig.autoResumeAfterInterruption else false
-                    if (InterruptionAutoResumePolicy.shouldAutoResume(
-                            autoResumeAfterInterruption = autoResume,
-                            isRecording = _isRecording.get(),
-                            isPaused = isPaused.get(),
-                            pausedBySystemInterruption = pausedBySystemInterruption.get()
-                        )) {
-                        mainHandler.post {
-                            resumeRecording(object : Promise {
-                                override fun resolve(value: Any?) {
-                                    eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
-                                        "reason" to "audioFocusGain",
-                                        "isPaused" to false
-                                    ))
-                                }
-                                override fun reject(code: String?, message: String?, cause: Throwable?) {
-                                    LogUtils.e(CLASS_NAME, "Failed to resume recording on audio focus gain")
-                                }
-                            })
-                        }
+                    systemResumeSession()?.let { recordingSession ->
+                        postSystemResume(recordingSession, "audioFocusGain")
                     }
                 }
             }
@@ -2807,20 +3087,8 @@ class AudioRecorderManager(
             when (focusChange) {
                 AudioManager.AUDIOFOCUS_LOSS -> {
                     // Only pause for permanent focus loss (like phone calls)
-                    if (_isRecording.get() && !isPaused.get()) {
-                        mainHandler.post {
-                            pauseRecordingForSystemInterruption(object : Promise {
-                                override fun resolve(value: Any?) {
-                                    eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
-                                        "reason" to "audioFocusLoss",
-                                        "isPaused" to true
-                                    ))
-                                }
-                                override fun reject(code: String?, message: String?, cause: Throwable?) {
-                                    LogUtils.e(CLASS_NAME, "Failed to pause recording on audio focus loss")
-                                }
-                            })
-                        }
+                    systemPauseSession()?.let { recordingSession ->
+                        postSystemPause(recordingSession, "audioFocusLoss")
                     }
                 }
                 AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
@@ -2828,26 +3096,8 @@ class AudioRecorderManager(
                     LogUtils.d(CLASS_NAME, "Ignoring transient audio focus loss in communication mode")
                 }
                 AudioManager.AUDIOFOCUS_GAIN -> {
-                    val autoResume = if (::recordingConfig.isInitialized) recordingConfig.autoResumeAfterInterruption else false
-                    if (InterruptionAutoResumePolicy.shouldAutoResume(
-                            autoResumeAfterInterruption = autoResume,
-                            isRecording = _isRecording.get(),
-                            isPaused = isPaused.get(),
-                            pausedBySystemInterruption = pausedBySystemInterruption.get()
-                        )) {
-                        mainHandler.post {
-                            resumeRecording(object : Promise {
-                                override fun resolve(value: Any?) {
-                                    eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
-                                        "reason" to "audioFocusGain",
-                                        "isPaused" to false
-                                    ))
-                                }
-                                override fun reject(code: String?, message: String?, cause: Throwable?) {
-                                    LogUtils.e(CLASS_NAME, "Failed to resume recording on audio focus gain")
-                                }
-                            })
-                        }
+                    systemResumeSession()?.let { recordingSession ->
+                        postSystemResume(recordingSession, "audioFocusGain")
                     }
                 }
             }
@@ -2934,6 +3184,10 @@ class AudioRecorderManager(
         // recorder state cannot be mutated while a teardown is mid-flight.
         // concurrent cleanup release recorders another call had just installed (#446).
         synchronized(audioRecordLock) {
+            if (tearingDownSession != NO_DEVICE_CHANGE_SESSION) {
+                LogUtils.d(CLASS_NAME, "Cannot prepare recording - previous session is stopping")
+                return false
+            }
             if (_isRecording.get()) {
                 LogUtils.d(CLASS_NAME, "Cannot prepare recording - already recording")
                 return false
