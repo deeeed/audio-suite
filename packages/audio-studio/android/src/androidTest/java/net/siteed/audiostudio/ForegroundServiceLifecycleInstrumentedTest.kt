@@ -45,6 +45,10 @@ class ForegroundServiceLifecycleInstrumentedTest {
     @Before
     fun setUp() {
         context = InstrumentationRegistry.getInstrumentation().targetContext
+        org.junit.Assume.assumeTrue(
+            "AudioRecorderManager.startRecording requires Android 11+",
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+        )
         AudioRecorderManager.destroy()
         AudioRecordingService.stopService(context)
         assertTrue("Previous foreground service should stop", awaitServiceState(false))
@@ -111,77 +115,90 @@ class ForegroundServiceLifecycleInstrumentedTest {
     @Test
     fun preparedSuccessor_duringCleanup_stopsOldServiceAndPreservesPreparation() {
         val recordingOptions = options("prepared_successor_old")
+        val successorOptions = options("prepared_successor_new")
         startRecording(recordingOptions)
         assertTrue("Recording should start the service", awaitServiceState(true))
 
         val blockerReady = CountDownLatch(1)
-        val cleanupJoining = CountDownLatch(1)
-        val releaseCleanup = CountDownLatch(1)
+        val successorPrepared = CountDownLatch(1)
+        val prepareOnInterrupt = AtomicBoolean(false)
+        val successorResult = AtomicReference<Boolean?>(null)
         val blocker = Thread {
             blockerReady.countDown()
             try {
                 Thread.sleep(Long.MAX_VALUE)
             } catch (_: InterruptedException) {
-                cleanupJoining.countDown()
-                releaseCleanup.await()
+                try {
+                    if (prepareOnInterrupt.get()) {
+                        // cleanup phase 0 cleared _isRecording before interrupting this
+                        // worker. Preparation reclaims the old recorder and publishes the
+                        // successor before the worker exits, so phase 2 must see its session.
+                        successorResult.set(manager.prepareRecording(successorOptions))
+                    }
+                } finally {
+                    successorPrepared.countDown()
+                }
             }
         }
         blocker.isDaemon = true
-        blocker.start()
-        assertTrue("Blocking worker should start", blockerReady.await(1, TimeUnit.SECONDS))
 
         val threadRef = recordingThreadReference()
         val recordingState = recordingState()
-        val recordLock = audioRecordLock()
         val cleanupThread = Thread { manager.cleanup() }
+        var displacedWorker: Thread? = null
+        var cleanupStarted = false
         try {
-            val displacedWorker = threadRef.getAndSet(blocker)
+            blocker.start()
+            assertTrue("Blocking worker should start", blockerReady.await(1, TimeUnit.SECONDS))
+
+            displacedWorker = threadRef.getAndSet(blocker)
             assertNotNull("Active recording should have a PCM worker", displacedWorker)
 
             // Stop and join the displaced worker before cleanup's bounded two-second join.
             // Restore the flag afterwards so cleanup still claims an active recording.
             recordingState.set(false)
             displacedWorker!!.join(5_000L)
-            assertFalse("Displaced recording worker should stop", displacedWorker.isAlive)
+            assertFalse("Displaced recording worker should stop", displacedWorker!!.isAlive)
             recordingState.set(true)
             val ownedSession = sessionId()
 
+            prepareOnInterrupt.set(true)
+            cleanupStarted = true
             cleanupThread.start()
             assertTrue(
-                "Cleanup should reach the unlocked worker join",
-                cleanupJoining.await(1, TimeUnit.SECONDS)
+                "Cleanup worker should publish the prepared successor",
+                successorPrepared.await(5, TimeUnit.SECONDS)
             )
-
-            // Move cleanup out of its bounded join, then keep phase 2 behind the same lock
-            // prepareRecording uses. The reentrant prepare publishes the successor before
-            // cleanup can inspect sessionId, regardless of how long hardware setup takes.
-            synchronized(recordLock) {
-                releaseCleanup.countDown()
-                // cleanupJoining proves phase 0 cleared _isRecording, which is the
-                // prepareRecording guard. Holding the lock keeps phase 2 behind us.
-                val successorOptions = options("prepared_successor_new")
-                assertTrue("Successor preparation should succeed", manager.prepareRecording(successorOptions))
-                assertTrue("Successor should be prepared before cleanup resumes", manager.isPrepared)
-                assertTrue("Successor preparation should publish a new session", sessionId() > ownedSession)
-                assertTrue("Cleanup should not finish before the session handoff", cleanupThread.isAlive)
-            }
+            assertTrue("Successor preparation should succeed", successorResult.get() == true)
+            assertTrue("Successor should be prepared", manager.isPrepared)
+            assertTrue("Successor preparation should publish a new session", sessionId() > ownedSession)
             cleanupThread.join(3_000L)
 
-            assertFalse("Cleanup should finish", cleanupThread.isAlive)
+            assertFalse("Cleanup should finish within 3 seconds", cleanupThread.isAlive)
             assertTrue("Cleanup should stop the old service", awaitServiceState(false))
+            // join establishes visibility for cleanup-thread writes before this plain read.
             assertTrue("Cleanup should preserve the prepared successor", manager.isPrepared)
         } finally {
+            prepareOnInterrupt.set(false)
             recordingState.set(false)
-            releaseCleanup.countDown()
+            displacedWorker?.interrupt()
+            displacedWorker?.join(3_000L)
             blocker.interrupt()
-            cleanupThread.join(3_000L)
+            blocker.join(3_000L)
+            if (cleanupStarted) {
+                cleanupThread.join(3_000L)
+            } else {
+                // Restore active ownership so failure cleanup stops and releases recorders.
+                recordingState.set(true)
+                manager.cleanup()
+            }
         }
     }
 
     @Test
-    fun disabledFlags_neverStartService() {
+    fun disabledFlags_leaveServiceStopped() {
         startRecording(options("disabled", showNotification = false, keepAwake = false))
-        assertTrue("Both flags disabled should leave the service stopped", serviceRemainsStopped())
+        assertTrue("Both flags disabled should not leave a running service", serviceRemainsStopped())
 
         Thread.sleep(RECORDING_MS)
         assertRecordingResult(stopRecording())
@@ -252,9 +269,8 @@ class ForegroundServiceLifecycleInstrumentedTest {
 
     private fun assertRecordingResult(result: Map<String, Any>) {
         val fileUri = result["fileUri"] as? String
-        assertNotNull("Recording should return a file URI", fileUri)
-        assertTrue("Recording should return a file URI: $fileUri", fileUri!!.startsWith("file:"))
-        val file = File(java.net.URI(fileUri))
+        assertTrue("Recording should return a file URI: $fileUri", fileUri?.startsWith("file:") == true)
+        val file = File(java.net.URI(fileUri!!))
         assertTrue("Recording should contain PCM data", file.length() > 44)
         assertTrue("Recording duration should be positive", (result["durationMs"] as Number).toLong() > 0)
     }
@@ -263,7 +279,7 @@ class ForegroundServiceLifecycleInstrumentedTest {
         val deadline = System.currentTimeMillis() + SERVICE_TIMEOUT_MS
         do {
             if (isServiceRunning() == expectedRunning) return true
-            Thread.sleep(50)
+            Thread.sleep(SERVICE_POLL_MS)
         } while (System.currentTimeMillis() < deadline)
         return isServiceRunning() == expectedRunning
     }
@@ -272,7 +288,7 @@ class ForegroundServiceLifecycleInstrumentedTest {
         val deadline = System.currentTimeMillis() + SERVICE_ABSENCE_OBSERVATION_MS
         do {
             if (isServiceRunning()) return false
-            Thread.sleep(50)
+            Thread.sleep(SERVICE_POLL_MS)
         } while (System.currentTimeMillis() < deadline)
         return !isServiceRunning()
     }
@@ -305,12 +321,6 @@ class ForegroundServiceLifecycleInstrumentedTest {
         return field.get(manager) as AtomicBoolean
     }
 
-    private fun audioRecordLock(): Any {
-        val field = AudioRecorderManager::class.java.getDeclaredField("audioRecordLock")
-        field.isAccessible = true
-        return field.get(manager)
-    }
-
     private fun sessionId(): Long {
         val field = AudioRecorderManager::class.java.getDeclaredField("sessionId")
         field.isAccessible = true
@@ -320,6 +330,7 @@ class ForegroundServiceLifecycleInstrumentedTest {
 
     companion object {
         private const val RECORDING_MS = 300L
+        private const val SERVICE_POLL_MS = 100L
         private const val SERVICE_ABSENCE_OBSERVATION_MS = 500L
         private const val SERVICE_TIMEOUT_MS = 3_000L
     }
