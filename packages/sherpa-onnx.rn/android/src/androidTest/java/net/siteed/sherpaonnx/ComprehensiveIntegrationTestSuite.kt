@@ -3,7 +3,6 @@ package net.siteed.sherpaonnx
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.facebook.react.bridge.ReactApplicationContext
-import com.facebook.soloader.SoLoader
 import junit.framework.TestCase.*
 import kotlinx.coroutines.runBlocking
 import net.siteed.sherpaonnx.utils.LightweightModelDownloader
@@ -35,7 +34,6 @@ class ComprehensiveIntegrationTestSuite {
         @JvmStatic
         fun setUpClass() {
             context = InstrumentationRegistry.getInstrumentation().targetContext
-            SoLoader.init(context, false)
             
             reactContext = createTestReactContext(context)
             sherpaOnnxImpl = SherpaOnnxImpl(reactContext)

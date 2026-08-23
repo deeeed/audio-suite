@@ -60,19 +60,18 @@ cd apps/sherpa-voice && yarn expo prebuild        # both platforms
 `--platform android` is enough for the Gradle commands below, but the iOS section further
 down needs the iOS half.
 
-**These tests do not currently run.** Verified on a Pixel 6a: the library module's test
-APK does not bundle React Native's native libraries, so anything touching the bridge dies
-before reaching its assertions:
+The test APK initializes React Native's merged native-library mapping from
+`SherpaTestRunner` and declares `INTERNET` for downloader-backed tests. This is required
+with React Native 0.86, whose APK contains `libreactnative.so` rather than the old
+`libreactnativejni_common.so` requested by the bridge without that mapping.
 
-```
-java.lang.UnsatisfiedLinkError: dlopen failed: library "libreactnativejni_common.so" not found
-java.lang.NoClassDefFoundError: com.facebook.react.bridge.WritableNativeMap
-```
+Earlier Pixel 6a runs covered native loading, TTS error handling, ASR file recognition,
+ASR error handling, and all six `RealTtsFunctionalityTest` cases. The current cache change
+passed its five cache/path tests plus a cold staged TTS extraction and initialization on the
+same device. Whisper extraction previously took about 59 seconds, so ASR allows 90 seconds.
 
-The downloader-backed tests additionally lack the `INTERNET` permission in the test
-manifest. Both are harness gaps tracked in #475, not something a different command works
-around. (They were attributed to #449, which is about no CI running the audio-studio
-suites and mentions neither.) The commands below are the right ones for when the harness can run them.
+Repository CI does not run `connectedAndroidTest`; the generated Android project and
+physical-device run remain manual validation (#449).
 
 Then the package ships a script that already has the right app directory and module name:
 
@@ -101,6 +100,7 @@ APP_VARIANT=development ./gradlew :siteed_sherpa-onnx.rn:connectedAndroidTest \
 
 The classes that exist: `AudioTrackPrefillTest`, `BasicIntegrationTest`,
 `ComprehensiveIntegrationTestSuite`, `MemoryAndPerformanceProfilerTest`,
+`utils.ModelExtractionCacheTest`,
 `RealAsrFunctionalityTest`, `RealTtsFunctionalityTest`, `SystemInfoTest`,
 `TestModelManagementTest`, `TestReactContextDispatchTest`, `TtsIntegrationTest`,
 `WaveReaderJniTest`. There is no `RealModelIntegrationTest`.
@@ -153,8 +153,9 @@ Use an `en_US` name. If a download 404s, that is the likely reason.
 
 ### Android (Real Device - Pixel 6a)
 
-Recorded when these suites still ran. They do not run today (#475), so this is a record,
-not current state.
+These full-suite results are historical. Current validation covers the five cache/path cases
+plus cold TTS staged extraction and initialization. Earlier runs covered the focused ASR/TTS
+paths and all six `RealTtsFunctionalityTest` cases, not all 26 tests.
 
 ```
 System Information: ✅ PASS
