@@ -50,6 +50,9 @@ jobs:
       - name: Install
         run: yarn install --immutable --mode=skip-build
 
+      - name: Verify runtime dependencies
+        run: yarn check:deps
+
       - name: Typecheck
         run: yarn workspace @siteed/audio-studio typecheck
 

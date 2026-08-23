@@ -32,8 +32,7 @@ For those using AI agents or seeking 10x productivity gains through automated fe
 ```bash
 cd apps/playground
 scripts/agentic/start-metro.sh                                            # Start Metro
-# Recording via CDP must be fire-and-store: an eval that leaves a recording promise outstanding as audio starts
-# flowing crashes the app (#436). See CLAUDE.md "Recording via CDP".
+# Hermes CDP does not await promises. Store async recording results and poll them separately.
 scripts/agentic/app-state.sh eval "(() => { globalThis.__V = {}; setTimeout(async () => { try { const r = await __AGENTIC__.startRecording({ sampleRate: 44100, channels: 1 }); if (r && r.error) { globalThis.__V = { err: r.error }; return } await new Promise(r2 => setTimeout(r2, 3000)); const s = await __AGENTIC__.stopRecording(); globalThis.__V = (s && s.error) ? { err: s.error } : { uri: s.fileUri, size: s.size, dur: s.durationMs } } catch (e) { globalThis.__V = { err: String(e) } } }, 1500); return 'scheduled' })()"
 sleep 10
 scripts/agentic/app-state.sh eval "JSON.stringify(globalThis.__V)"
@@ -281,8 +280,7 @@ scripts/agentic/start-metro.sh
 scripts/agentic/app-navigate.sh "/(tabs)/record"
 
 # 4. Validate via CDP bridge (< 2 minutes)
-#    Recording must be fire-and-store — an eval that leaves a recording promise outstanding as audio starts
-#    flowing crashes the app (#436). See CLAUDE.md "Recording via CDP".
+#    Hermes CDP does not await promises. Store async recording results and poll them separately.
 scripts/agentic/app-state.sh eval "(() => { globalThis.__V = {}; setTimeout(async () => { try { const r = await __AGENTIC__.startRecording({ sampleRate: 44100, channels: 1 }); if (r && r.error) { globalThis.__V = { err: r.error }; return } await new Promise(r2 => setTimeout(r2, 3000)); const s = await __AGENTIC__.stopRecording(); globalThis.__V = (s && s.error) ? { err: s.error } : { uri: s.fileUri, size: s.size, dur: s.durationMs } } catch (e) { globalThis.__V = { err: String(e) } } }, 1500); return 'scheduled' })()"
 sleep 10
 scripts/agentic/app-state.sh state
@@ -678,4 +676,4 @@ it('should produce consistent results across platforms', async () => {
 - **Issues**: GitHub issues for bugs/features
 - **Discussions**: GitHub discussions for questions
 
-**Note**: The testing framework is continuously improving. Contributors are encouraged to help expand test coverage and improve testing practices as the project evolves. 
+**Note**: The testing framework is continuously improving. Contributors are encouraged to help expand test coverage and improve testing practices as the project evolves.
