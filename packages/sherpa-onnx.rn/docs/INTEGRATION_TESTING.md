@@ -149,8 +149,8 @@ Use an `en_US` name. If a download 404s, that is the likely reason.
 
 ### Android (Real Device - Pixel 6a)
 
-Recorded when these suites still ran. They do not run today (#475), so this is a record,
-not current state.
+These full-suite results are historical. Current validation covers the four focused paths
+listed above, not all 26 tests.
 
 ```
 System Information: ✅ PASS
