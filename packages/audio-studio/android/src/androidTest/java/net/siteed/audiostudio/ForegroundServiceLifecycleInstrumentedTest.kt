@@ -103,6 +103,7 @@ class ForegroundServiceLifecycleInstrumentedTest {
     fun notificationConfig_stopsServiceAfterRecording() {
         startRecording(options("notification", showNotification = true, keepAwake = false))
         assertTrue("Notification config should start the service", awaitServiceState(true))
+        assertTrue("Notification manager should initialize", notificationManagerIsInitialized())
 
         Thread.sleep(RECORDING_MS)
         val result = stopRecording()
@@ -326,6 +327,12 @@ class ForegroundServiceLifecycleInstrumentedTest {
         // The service package differs from the generated `.test` package, so dumpsys
         // prints the full class name rather than abbreviating it to `/.ClassName`.
         return dump.contains(AudioRecordingService::class.java.name)
+    }
+
+    private fun notificationManagerIsInitialized(): Boolean {
+        val field = AudioNotificationManager::class.java.getDeclaredField("notificationBuilder")
+        field.isAccessible = true
+        return field.get(AudioNotificationManager.getInstance(context)) != null
     }
 
     // These probes intentionally fail on a production rename. Keeping recorder ownership
