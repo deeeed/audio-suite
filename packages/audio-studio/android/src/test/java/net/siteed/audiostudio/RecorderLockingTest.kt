@@ -86,6 +86,18 @@ class RecorderLockingTest {
     }
 
     @Test
+    fun `device change holds one lock across the full transition`() {
+        val body = bodyOf("fun handleDeviceChange()")
+            .replace(Regex("""\s+"""), " ")
+
+        assertTrue(
+            body.contains("synchronized(audioRecordLock) { handleDeviceChangeLocked() }"),
+            "handleDeviceChange must call the full release-delay-restart transition inside " +
+                "one audioRecordLock block. Separate locked fragments reopen the stop race."
+        )
+    }
+
+    @Test
     fun `cleanup joins the worker with the lock released`() {
         // Three phases, in order: claim the session under the lock, join with it released,
         // then tear down under it again. The join must sit between the two locked blocks —

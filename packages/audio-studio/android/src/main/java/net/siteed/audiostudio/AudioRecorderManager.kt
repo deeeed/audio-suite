@@ -350,31 +350,53 @@ class AudioRecorderManager(
 
     // Add a method to handle device changes
     fun handleDeviceChange() {
+        // Releasing the recorder, waiting for the route transition, and starting its
+        // replacement are one state change. A stop in the old unlocked gap could finish
+        // first, then this path restarted a recorder owned by a dead session (#472).
+        val shouldStop = synchronized(audioRecordLock) { handleDeviceChangeLocked() }
+        if (shouldStop) {
+            stopRecording(object : Promise {
+                override fun resolve(value: Any?) {
+                    eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
+                        "reason" to "deviceSwitchFailed",
+                        "isPaused" to true
+                    ))
+                }
+                override fun reject(code: String?, message: String?, cause: Throwable?) {
+                    // Another stop may win after handleDeviceChangeLocked releases the
+                    // lock. The device switch still failed, so JS must receive the event.
+                    eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
+                        "reason" to "deviceSwitchFailed",
+                        "isPaused" to true
+                    ))
+                }
+            })
+        }
+    }
+
+    private fun handleDeviceChangeLocked(): Boolean {
         LogUtils.d(CLASS_NAME, "🔄 handleDeviceChange called - isRecording=${_isRecording.get()}, isPaused=${isPaused.get()}")
         if (!_isRecording.get()) {
             LogUtils.d(CLASS_NAME, "🔄 handleDeviceChange: Not recording, no action needed")
-            return
+            return false
         }
 
         if (isPaused.get()) {
             LogUtils.d(CLASS_NAME, "🔄 handleDeviceChange: Recording is paused, marking for restart with new device when resumed")
-            
-            // When paused after device disconnection, we need to release the existing AudioRecord
-            // so that it can be properly reinitialized when resumed
-            synchronized(audioRecordLock) {
-                if (audioRecord != null) {
-                    LogUtils.d(CLASS_NAME, "🔄 Releasing current AudioRecord while paused to allow proper reinitialization")
-                    audioRecord?.release()
-                    audioRecord = null
-                    LogUtils.d(CLASS_NAME, "🔄 AudioRecord released successfully")
-                }
+
+            // When paused after device disconnection, release the old AudioRecord so
+            // resume can initialize one for the new device.
+            if (audioRecord != null) {
+                LogUtils.d(CLASS_NAME, "🔄 Releasing current AudioRecord while paused to allow proper reinitialization")
+                audioRecord?.release()
+                audioRecord = null
+                LogUtils.d(CLASS_NAME, "🔄 AudioRecord released successfully")
             }
-            
-            return
+            return false
         }
 
         LogUtils.d(CLASS_NAME, "🔄 handleDeviceChange: Restarting recording with new device")
-        
+
         try {
             // Log current device configuration for debugging
             val deviceInfo = getAudioDeviceInfo()
@@ -383,32 +405,27 @@ class AudioRecorderManager(
             // Make a copy of current recording settings
             if (!::recordingConfig.isInitialized) {
                 LogUtils.w(CLASS_NAME, "recordingConfig not initialized in handleDeviceChange")
-                return
+                return false
             }
             val currentSettings = recordingConfig
             
             // Pause the current recording
-            synchronized(audioRecordLock) {
-                if (audioRecord != null && audioRecord!!.state == AudioRecord.STATE_INITIALIZED) {
-                    LogUtils.d(CLASS_NAME, "🔄 Stopping current AudioRecord")
-                    audioRecord!!.stop()
-                    LogUtils.d(CLASS_NAME, "🔄 AudioRecord stopped")
-                }
-                
-                if (compressedRecorder != null) {
-                    LogUtils.d(CLASS_NAME, "🔄 Pausing compressed recorder")
-                    compressedRecorder!!.pause()
-                    LogUtils.d(CLASS_NAME, "🔄 Compressed recorder paused")
-                }
+            if (audioRecord != null && audioRecord!!.state == AudioRecord.STATE_INITIALIZED) {
+                LogUtils.d(CLASS_NAME, "🔄 Stopping current AudioRecord")
+                audioRecord!!.stop()
+                LogUtils.d(CLASS_NAME, "🔄 AudioRecord stopped")
             }
-            
-            // Release the current audio record resources
-            synchronized(audioRecordLock) {
-                LogUtils.d(CLASS_NAME, "🔄 Releasing current AudioRecord")
-                audioRecord?.release()
-                audioRecord = null
-                LogUtils.d(CLASS_NAME, "🔄 AudioRecord resources released")
+
+            if (compressedRecorder != null) {
+                LogUtils.d(CLASS_NAME, "🔄 Pausing compressed recorder")
+                compressedRecorder!!.pause()
+                LogUtils.d(CLASS_NAME, "🔄 Compressed recorder paused")
             }
+
+            LogUtils.d(CLASS_NAME, "🔄 Releasing current AudioRecord")
+            audioRecord?.release()
+            audioRecord = null
+            LogUtils.d(CLASS_NAME, "🔄 AudioRecord resources released")
             
             // Log available devices
             logAvailableDevices()
@@ -419,50 +436,27 @@ class AudioRecorderManager(
             
             // Initialize a new audio record with the same settings
             LogUtils.d(CLASS_NAME, "🔄 Reinitializing AudioRecord with new device")
-            if (!initializeAudioRecord(object : Promise {
+            val reinitialized = initializeAudioRecord(object : Promise {
                 override fun resolve(value: Any?) {
                     LogUtils.d(CLASS_NAME, "🔄 Successfully reinitialized AudioRecord with new device")
                 }
                 override fun reject(code: String?, message: String?, cause: Throwable?) {
                     LogUtils.e(CLASS_NAME, "🔄 Failed to reinitialize AudioRecord: $message")
                 }
-            })) {
+            })
+            if (!reinitialized) {
                 LogUtils.e(CLASS_NAME, "🔄 Failed to reinitialize audio record, stopping recording")
-                stopRecording(object : Promise {
-                    override fun resolve(value: Any?) {
-                        eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
-                            "reason" to "deviceSwitchFailed",
-                            "isPaused" to true
-                        ))
-                    }
-                    override fun reject(code: String?, message: String?, cause: Throwable?) {}
-                })
-                return
+                return true
             }
-            
-            // Re-verify recording state
-            synchronized(audioRecordLock) {
-                if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-                    LogUtils.e(CLASS_NAME, "🔄 AudioRecord not properly initialized after device change")
-                    stopRecording(object : Promise {
-                        override fun resolve(value: Any?) {
-                            eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
-                                "reason" to "deviceSwitchFailed",
-                                "isPaused" to true
-                            ))
-                        }
-                        override fun reject(code: String?, message: String?, cause: Throwable?) {}
-                    })
-                    return
-                }
-            }
-            
-            // Restart the audio record
-            synchronized(audioRecordLock) {
+
+            if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
+                LogUtils.e(CLASS_NAME, "🔄 AudioRecord not properly initialized after device change")
+                return true
+            } else {
                 LogUtils.d(CLASS_NAME, "🔄 Starting recording with new device")
                 audioRecord?.startRecording()
                 LogUtils.d(CLASS_NAME, "🔄 AudioRecord started recording")
-                
+
                 // Resume compressed recorder if it was active
                 if (compressedRecorder != null) {
                     LogUtils.d(CLASS_NAME, "🔄 Resuming compressed recorder")
@@ -483,7 +477,8 @@ class AudioRecorderManager(
                 "deviceInfo" to newDeviceInfo
             ))
             LogUtils.d(CLASS_NAME, "🔄 Device change handling completed successfully")
-            
+            return false
+
         } catch (e: Exception) {
             LogUtils.e(CLASS_NAME, "🔄 Error handling device change: ${e.message}", e)
             // If something went wrong, try to pause recording
@@ -497,6 +492,7 @@ class AudioRecorderManager(
                 }
                 override fun reject(code: String?, message: String?, cause: Throwable?) {}
             })
+            return false
         }
     }
     
