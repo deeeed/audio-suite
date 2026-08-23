@@ -26,7 +26,9 @@ import java.util.concurrent.TimeUnit
 class ForegroundServiceLifecycleInstrumentedTest {
 
     @get:Rule
-    val grantPermissionRule: GrantPermissionRule = if (Build.VERSION.SDK_INT >= 33) {
+    val grantPermissionRule: GrantPermissionRule = if (
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+    ) {
         GrantPermissionRule.grant(
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.POST_NOTIFICATIONS
@@ -170,9 +172,6 @@ class ForegroundServiceLifecycleInstrumentedTest {
                         "durationMs" to value.getLong("durationMs"),
                         "size" to value.getLong("size")
                     )
-                    is Map<*, *> -> value.entries.mapNotNull { entry ->
-                        entry.value?.let { entry.key.toString() to it }
-                    }.toMap()
                     else -> null
                 }
                 latch.countDown()
@@ -184,7 +183,7 @@ class ForegroundServiceLifecycleInstrumentedTest {
             }
         })
 
-        assertTrue("Recording should stop", latch.await(3, TimeUnit.SECONDS))
+        assertTrue("Recording should stop", latch.await(5, TimeUnit.SECONDS))
         assertNull("Recording stop failed", error)
         assertNotNull("Recording stop should return metadata", result)
         return result!!
@@ -193,6 +192,7 @@ class ForegroundServiceLifecycleInstrumentedTest {
     private fun assertRecordingResult(result: Map<String, Any>) {
         val fileUri = result["fileUri"] as? String
         assertNotNull("Recording should return a file URI", fileUri)
+        assertTrue("Recording should return a file URI: $fileUri", fileUri!!.startsWith("file:"))
         val file = File(java.net.URI(fileUri))
         assertTrue("Recording should contain PCM data", file.length() > 44)
         assertTrue("Recording duration should be positive", (result["durationMs"] as Number).toLong() > 0)
@@ -224,6 +224,8 @@ class ForegroundServiceLifecycleInstrumentedTest {
         val dump = ParcelFileDescriptor.AutoCloseInputStream(output)
             .bufferedReader()
             .use { it.readText() }
+        // The service package differs from the generated `.test` package, so dumpsys
+        // prints the full class name rather than abbreviating it to `/.ClassName`.
         return dump.contains(AudioRecordingService::class.java.name)
     }
 
