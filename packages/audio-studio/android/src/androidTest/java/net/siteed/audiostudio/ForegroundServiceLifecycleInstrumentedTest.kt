@@ -10,6 +10,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
 import expo.modules.kotlin.Promise
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -57,6 +58,7 @@ class ForegroundServiceLifecycleInstrumentedTest {
         AudioRecordingService.stopService(context)
         assertTrue("Previous foreground service should stop", awaitServiceState(false))
         interruptionReasons.clear()
+        resetNotificationManager()
 
         manager = AudioRecorderManager.initialize(
             context = context,
@@ -294,26 +296,37 @@ class ForegroundServiceLifecycleInstrumentedTest {
         val fileUri = result["fileUri"] as? String
         assertTrue("Recording should return a file URI: $fileUri", fileUri?.startsWith("file:") == true)
         val file = File(java.net.URI(fileUri!!))
-        assertTrue("Recording should contain PCM data", file.length() > 44)
+        val minimumBytes = WAV_HEADER_BYTES +
+            SAMPLE_RATE * BYTES_PER_SAMPLE * MINIMUM_RECORDED_MS / 1_000
+        assertTrue("Recording should contain at least ${MINIMUM_RECORDED_MS}ms of PCM", file.length() >= minimumBytes)
+        assertEquals("Reported size should match the WAV file", file.length(), (result["size"] as Number).toLong())
         assertTrue("Recording duration should be positive", (result["durationMs"] as Number).toLong() > 0)
     }
 
     private fun awaitServiceState(expectedRunning: Boolean): Boolean {
-        val deadline = System.currentTimeMillis() + SERVICE_TIMEOUT_MS
+        val deadline = android.os.SystemClock.elapsedRealtime() + SERVICE_TIMEOUT_MS
         do {
             if (isServiceRunning() == expectedRunning) return true
-            Thread.sleep(SERVICE_POLL_MS)
-        } while (System.currentTimeMillis() < deadline)
+            if (!sleepForServicePoll()) break
+        } while (android.os.SystemClock.elapsedRealtime() < deadline)
         return isServiceRunning() == expectedRunning
     }
 
     private fun serviceRemainsStopped(): Boolean {
-        val deadline = System.currentTimeMillis() + SERVICE_ABSENCE_OBSERVATION_MS
+        val deadline = android.os.SystemClock.elapsedRealtime() + SERVICE_ABSENCE_OBSERVATION_MS
         do {
             if (isServiceRunning()) return false
-            Thread.sleep(SERVICE_POLL_MS)
-        } while (System.currentTimeMillis() < deadline)
+            if (!sleepForServicePoll()) return false
+        } while (android.os.SystemClock.elapsedRealtime() < deadline)
         return !isServiceRunning()
+    }
+
+    private fun sleepForServicePoll(): Boolean = try {
+        Thread.sleep(SERVICE_POLL_MS)
+        true
+    } catch (_: InterruptedException) {
+        Thread.currentThread().interrupt()
+        false
     }
 
     private fun isServiceRunning(): Boolean {
@@ -326,17 +339,27 @@ class ForegroundServiceLifecycleInstrumentedTest {
             .use { it.readText() }
         // The service package differs from the generated `.test` package, so dumpsys
         // prints the full class name rather than abbreviating it to `/.ClassName`.
-        return dump.contains(AudioRecordingService::class.java.name)
+        return dump.lineSequence().any { line ->
+            line.contains("ServiceRecord") &&
+                line.contains(AudioRecordingService::class.java.name)
+        }
+    }
+
+    // These probes intentionally fail on a production rename. Keeping test state private
+    // is preferable to widening production visibility for instrumentation.
+    private fun resetNotificationManager() {
+        notificationBuilderField().set(AudioNotificationManager.getInstance(context), null)
     }
 
     private fun notificationManagerIsInitialized(): Boolean {
-        val field = AudioNotificationManager::class.java.getDeclaredField("notificationBuilder")
-        field.isAccessible = true
-        return field.get(AudioNotificationManager.getInstance(context)) != null
+        return notificationBuilderField().get(AudioNotificationManager.getInstance(context)) != null
     }
 
-    // These probes intentionally fail on a production rename. Keeping recorder ownership
-    // private is preferable to widening production visibility for one instrumentation test.
+    private fun notificationBuilderField() =
+        AudioNotificationManager::class.java.getDeclaredField("notificationBuilder").apply {
+            isAccessible = true
+        }
+
     @Suppress("UNCHECKED_CAST")
     private fun recordingThreadReference(): AtomicReference<Thread?> {
         val field = AudioRecorderManager::class.java.getDeclaredField("recordingThreadRef")
@@ -359,8 +382,12 @@ class ForegroundServiceLifecycleInstrumentedTest {
 
     companion object {
         private const val RECORDING_MS = 300L
+        private const val SAMPLE_RATE = 16_000L
+        private const val BYTES_PER_SAMPLE = 2L
+        private const val MINIMUM_RECORDED_MS = 50L
+        private const val WAV_HEADER_BYTES = 44L
         private const val SERVICE_POLL_MS = 100L
-        private const val SERVICE_ABSENCE_OBSERVATION_MS = 500L
+        private const val SERVICE_ABSENCE_OBSERVATION_MS = 1_000L
         private const val SERVICE_TIMEOUT_MS = 3_000L
     }
 }
