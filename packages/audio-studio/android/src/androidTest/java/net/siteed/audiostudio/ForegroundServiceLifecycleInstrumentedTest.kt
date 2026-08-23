@@ -344,9 +344,10 @@ class ForegroundServiceLifecycleInstrumentedTest {
             .use { it.readText() }
         // The service package differs from the generated `.test` package, so dumpsys
         // prints the full class name rather than abbreviating it to `/.ClassName`.
+        // A sticky service waiting to restart is not stopped, so its ServiceRecord should
+        // keep this check false until Android removes it or the timeout exposes the leak.
         return dump.lineSequence().any { line ->
             line.contains("ServiceRecord") &&
-                !line.contains("restarting=") &&
                 line.contains(AudioRecordingService::class.java.name)
         }
     }
@@ -390,6 +391,7 @@ class ForegroundServiceLifecycleInstrumentedTest {
     companion object {
         private const val RECORDING_MS = 300L
         private const val SAMPLE_RATE = 16_000L
+        // options() selects pcm_16bit, which stores one two-byte sample per channel.
         private const val BYTES_PER_SAMPLE = 2L
         private const val MINIMUM_RECORDED_MS = 50L
         private const val WAV_HEADER_BYTES = 44L
