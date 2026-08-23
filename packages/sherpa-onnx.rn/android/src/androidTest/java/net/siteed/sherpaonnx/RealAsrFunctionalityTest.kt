@@ -109,22 +109,33 @@ class RealAsrFunctionalityTest {
         println("Extracting model to: ${targetDir.absolutePath}")
         val latch = CountDownLatch(1)
         var extractionSuccess = false
+        var extractionError: String? = null
         
         sherpaOnnxImpl.extractTarBz2(
             modelFile.absolutePath,
             targetDir.absolutePath,
             createPromise(
                 onResolve = { result ->
-                    val map = result as? ReadableMap
-                    extractionSuccess = map?.getBoolean("success") ?: false
-                    if (extractionSuccess) {
-                        completionMarker.writeText("complete")
-                        extractedModelPath = targetDir.absolutePath
-                        println("Extraction successful")
+                    try {
+                        val map = result as? ReadableMap
+                        extractionSuccess = map?.getBoolean("success") ?: false
+                        check(!extractionSuccess || requiredFiles.all { it.isFile && it.length() > 0 }) {
+                            "Extraction completed without all required ASR files"
+                        }
+                        if (extractionSuccess) {
+                            completionMarker.writeText("complete")
+                            extractedModelPath = targetDir.absolutePath
+                            println("Extraction successful")
+                        }
+                    } catch (error: Throwable) {
+                        extractionSuccess = false
+                        extractionError = error.message ?: error.toString()
+                    } finally {
+                        latch.countDown()
                     }
-                    latch.countDown()
                 },
                 onReject = { _, message, _ ->
+                    extractionError = message
                     println("Extraction failed: $message")
                     latch.countDown()
                 }
@@ -135,6 +146,7 @@ class RealAsrFunctionalityTest {
             "Extraction should complete",
             latch.await(MODEL_EXTRACTION_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         )
+        assertNull("Extraction failed: $extractionError", extractionError)
         assertTrue("Extraction should succeed", extractionSuccess)
     }
 
