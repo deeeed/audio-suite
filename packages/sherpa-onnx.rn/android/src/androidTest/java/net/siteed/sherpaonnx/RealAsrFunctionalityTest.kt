@@ -6,7 +6,6 @@ import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.ReadableMap
-import com.facebook.soloader.SoLoader
 import junit.framework.TestCase.*
 import kotlinx.coroutines.runBlocking
 import net.siteed.sherpaonnx.utils.LightweightModelDownloader
@@ -35,14 +34,10 @@ class RealAsrFunctionalityTest {
     private var extractedModelPath: String? = null
 
     companion object {
-        init {
-            val context = InstrumentationRegistry.getInstrumentation().targetContext
-            SoLoader.init(context, false)
-        }
-        
         private const val SAMPLE_RATE = 16000
         private const val TONE_FREQUENCY = 440.0 // A4 note
         private const val SILENCE_THRESHOLD = 0.01f
+        private const val MODEL_EXTRACTION_TIMEOUT_SECONDS = 90L
     }
 
     @Before
@@ -94,6 +89,20 @@ class RealAsrFunctionalityTest {
         
         // Extract the model
         val targetDir = File(context.cacheDir, "extracted-models/${model.modelName}")
+        val completionMarker = File(targetDir, ".extraction-complete")
+        val modelDir = File(targetDir, "sherpa-onnx-whisper-tiny.en")
+        val requiredFiles = listOf(
+            File(modelDir, "tiny.en-encoder.onnx"),
+            File(modelDir, "tiny.en-decoder.onnx"),
+            File(modelDir, "tiny.en-tokens.txt")
+        )
+        if (completionMarker.isFile && requiredFiles.all { it.isFile && it.length() > 0 }) {
+            extractedModelPath = targetDir.absolutePath
+            println("Using extracted ASR model: ${targetDir.absolutePath}")
+            return
+        }
+
+        targetDir.deleteRecursively()
         targetDir.mkdirs()
         
         println("Extracting model to: ${targetDir.absolutePath}")
@@ -108,6 +117,7 @@ class RealAsrFunctionalityTest {
                     val map = result as? ReadableMap
                     extractionSuccess = map?.getBoolean("success") ?: false
                     if (extractionSuccess) {
+                        completionMarker.writeText("complete")
                         extractedModelPath = targetDir.absolutePath
                         println("Extraction successful")
                     }
@@ -120,7 +130,10 @@ class RealAsrFunctionalityTest {
             )
         )
         
-        assertTrue("Extraction should complete", latch.await(30, TimeUnit.SECONDS))
+        assertTrue(
+            "Extraction should complete",
+            latch.await(MODEL_EXTRACTION_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        )
         assertTrue("Extraction should succeed", extractionSuccess)
     }
 
@@ -248,11 +261,9 @@ class RealAsrFunctionalityTest {
             assertTrue("Recognition should be successful", recognizeResult?.getBoolean("success") ?: false)
             
             val text = recognizeResult?.getString("text") ?: ""
-            val duration = recognizeResult?.getInt("durationMs") ?: 0
             
             println("Recognition result for $filename:")
             println("  Text: '$text'")
-            println("  Duration: ${duration}ms")
         }
     }
 
@@ -337,41 +348,52 @@ class RealAsrFunctionalityTest {
         }
         
         var latch = CountDownLatch(1)
-        var error: String? = null
+        var result: ReadableMap? = null
+        var errorCode: String? = null
+        var errorMessage: String? = null
         
         sherpaOnnxImpl.recognizeFromSamples(SAMPLE_RATE, samplesArray, createPromise(
-            onResolve = { _ ->
+            onResolve = { value ->
+                result = value as? ReadableMap
                 latch.countDown()
             },
-            onReject = { _, message, _ ->
-                error = message
+            onReject = { code, message, _ ->
+                errorCode = code
+                errorMessage = message
                 latch.countDown()
             }
         ))
         
-        latch.await(5, TimeUnit.SECONDS)
-        // Should either reject or return success:false
+        assertTrue("Uninitialized recognition should complete", latch.await(5, TimeUnit.SECONDS))
+        assertNull("Uninitialized recognition should not resolve", result)
+        assertEquals("ERR_ASR_RECOGNIZE", errorCode)
+        assertTrue(errorMessage?.contains("Offline ASR is not initialized") == true)
         
         // Test 2: Recognize from non-existent file
         initializeAsr()
         
         println("\nTest 2: Recognize from non-existent file")
         latch = CountDownLatch(1)
+        result = null
+        errorCode = null
+        errorMessage = null
         
         sherpaOnnxImpl.recognizeFromFile("/non/existent/file.wav", createPromise(
-            onResolve = { result ->
-                val map = result as? ReadableMap
-                val success = map?.getBoolean("success") ?: false
-                println("Non-existent file result: success=$success")
+            onResolve = { value ->
+                result = value as? ReadableMap
                 latch.countDown()
             },
-            onReject = { _, message, _ ->
-                println("Non-existent file rejected: $message")
+            onReject = { code, message, _ ->
+                errorCode = code
+                errorMessage = message
                 latch.countDown()
             }
         ))
         
-        latch.await(5, TimeUnit.SECONDS)
+        assertTrue("Missing-file recognition should complete", latch.await(5, TimeUnit.SECONDS))
+        assertNull("Missing-file recognition should not resolve", result)
+        assertEquals("ERR_ASR_RECOGNIZE", errorCode)
+        assertTrue(errorMessage?.contains("Failed to recognize speech from file") == true)
     }
 
     // Helper functions

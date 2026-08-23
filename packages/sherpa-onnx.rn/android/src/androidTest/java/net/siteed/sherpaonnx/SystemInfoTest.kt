@@ -6,7 +6,6 @@ import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableMap
-import com.facebook.soloader.SoLoader
 import junit.framework.TestCase.*
 import net.siteed.sherpaonnx.utils.createPromise
 import org.junit.Before
@@ -21,14 +20,6 @@ class SystemInfoTest {
 
     private lateinit var sherpaOnnxImpl: SherpaOnnxImpl
     private lateinit var reactContext: ReactApplicationContext
-
-    companion object {
-        init {
-            // Initialize SoLoader for loading native libraries
-            val context = InstrumentationRegistry.getInstrumentation().targetContext
-            SoLoader.init(context, false)
-        }
-    }
 
     @Before
     fun setUp() {

@@ -183,47 +183,18 @@ class TtsIntegrationTest {
 
     @Test
     fun testNativeLibraryIntegration() {
-        // Test 5: Test native library integration with TTS functionality
-        try {
-            // Check if SherpaOnnxImpl is available
-            val implClass = Class.forName("net.siteed.sherpaonnx.SherpaOnnxImpl")
-            assertNotNull("SherpaOnnxImpl should be available", implClass)
-            
-            // Check library loading status
-            val companionClass = Class.forName("net.siteed.sherpaonnx.SherpaOnnxImpl\$Companion")
-            val isLoadedField = companionClass.getDeclaredField("isLibraryLoaded")
-            isLoadedField.isAccessible = true
-            val companionInstance = implClass.getDeclaredField("Companion").get(null)
-            val isLoaded = isLoadedField.getBoolean(companionInstance)
-            
-            Log.i(TAG, "📚 Native library loaded: $isLoaded")
-            
-            if (isLoaded) {
-                // Test that sherpa-onnx TTS classes are available when library is loaded
-                val ttsClass = Class.forName("com.k2fsa.sherpa.onnx.Tts")
-                assertNotNull("Tts class should be available when library is loaded", ttsClass)
-                
-                // Test OnlineStream class (used in testOnnxIntegration)
-                val streamClass = Class.forName("com.k2fsa.sherpa.onnx.OnlineStream")
-                assertNotNull("OnlineStream class should be available", streamClass)
-                
-                Log.i(TAG, "✅ Native integration validation successful")
-            } else {
-                Log.w(TAG, "⚠️ Native library not loaded - skipping integration validation")
-            }
-            
-            // Test TTS handler availability
-            val ttsHandlerClass = Class.forName("net.siteed.sherpaonnx.handlers.TtsHandler")
-            assertNotNull("TtsHandler should be available", ttsHandlerClass)
-            
-            Log.i(TAG, "✅ TTS handler validation successful")
-            
-        } catch (e: ClassNotFoundException) {
-            fail("Required classes should be available: ${e.message}")
-        } catch (e: Exception) {
-            Log.w(TAG, "⚠️ Native library integration test completed with limitations: ${e.message}")
-            // Don't fail - this provides useful information even with limitations
-            assertTrue("Integration test completed", true)
-        }
+        assertTrue("Sherpa ONNX JNI library should load", SherpaOnnxImpl.isLibraryLoaded)
+        assertNotNull(
+            "OfflineTts class should be available when the library is loaded",
+            Class.forName("com.k2fsa.sherpa.onnx.OfflineTts")
+        )
+        assertNotNull(
+            "OnlineStream class should be available",
+            Class.forName("com.k2fsa.sherpa.onnx.OnlineStream")
+        )
+        assertNotNull(
+            "TtsHandler should be available",
+            Class.forName("net.siteed.sherpaonnx.handlers.TtsHandler")
+        )
     }
 }

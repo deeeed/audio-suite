@@ -5,7 +5,6 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableMap
-import com.facebook.soloader.SoLoader
 import junit.framework.TestCase.*
 import kotlinx.coroutines.runBlocking
 import net.siteed.sherpaonnx.utils.LightweightModelDownloader
@@ -31,11 +30,6 @@ class RealTtsFunctionalityTest {
     private var extractedModelPath: String? = null
 
     companion object {
-        init {
-            val context = InstrumentationRegistry.getInstrumentation().targetContext
-            SoLoader.init(context, false)
-        }
-        
         private const val TEST_TEXT_SHORT = "Hello, this is a test."
         private const val TEST_TEXT_MEDIUM = "The quick brown fox jumps over the lazy dog. This sentence contains every letter of the alphabet."
         private val TEST_TEXT_LONG = """
@@ -366,7 +360,9 @@ class RealTtsFunctionalityTest {
         // Test 1: Generate without initialization
         println("\nTest 1: Generate without initialization")
         var latch = CountDownLatch(1)
-        var error: String? = null
+        var result: ReadableMap? = null
+        var errorCode: String? = null
+        var errorMessage: String? = null
         
         val config = Arguments.createMap().apply {
             putString("text", "Test")
@@ -376,45 +372,54 @@ class RealTtsFunctionalityTest {
         }
         
         sherpaOnnxImpl.generateTts(config, createPromise(
-            onResolve = { _ ->
+            onResolve = { value ->
+                result = value as? ReadableMap
                 latch.countDown()
             },
-            onReject = { _, message, _ ->
-                error = message
+            onReject = { code, message, _ ->
+                errorCode = code
+                errorMessage = message
                 latch.countDown()
             }
         ))
         
-        latch.await(5, TimeUnit.SECONDS)
-        // Should either reject or return success:false
+        assertTrue("Uninitialized generation should complete", latch.await(5, TimeUnit.SECONDS))
+        assertNull("Uninitialized generation should not resolve", result)
+        assertEquals("ERR_GENERATION_FAILED", errorCode)
+        assertEquals("TTS not initialized", errorMessage)
         
-        // Test 2: Invalid speaker ID
+        // Test 2: Empty text
         initializeTts()
         
-        println("\nTest 2: Invalid speaker ID")
+        println("\nTest 2: Empty text")
         latch = CountDownLatch(1)
+        result = null
+        errorCode = null
+        errorMessage = null
         
         val invalidConfig = Arguments.createMap().apply {
-            putString("text", "Test")
-            putInt("speakerId", 999) // Invalid speaker ID
+            putString("text", "")
+            putInt("speakerId", 0)
             putDouble("speakingRate", 1.0)
             putBoolean("playAudio", false)
         }
         
         sherpaOnnxImpl.generateTts(invalidConfig, createPromise(
-            onResolve = { result ->
-                val map = result as? ReadableMap
-                val success = map?.getBoolean("success") ?: false
-                println("Invalid speaker result: success=$success")
+            onResolve = { value ->
+                result = value as? ReadableMap
                 latch.countDown()
             },
-            onReject = { _, message, _ ->
-                println("Invalid speaker rejected: $message")
+            onReject = { code, message, _ ->
+                errorCode = code
+                errorMessage = message
                 latch.countDown()
             }
         ))
         
-        latch.await(5, TimeUnit.SECONDS)
+        assertTrue("Empty-text generation should complete", latch.await(5, TimeUnit.SECONDS))
+        assertNull("Empty-text generation should not resolve", result)
+        assertEquals("ERR_INVALID_TEXT", errorCode)
+        assertEquals("Text cannot be empty", errorMessage)
     }
 
     // Helper functions

@@ -42,7 +42,7 @@ android {
         versionName "1.0"
 
         // Test instrumentation runner for integration tests
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner "net.siteed.sherpaonnx.SherpaTestRunner"
 
         ndk {
             abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'
@@ -147,4 +147,4 @@ dependencies {
     androidTestImplementation "androidx.test:runner:1.5.2"
     androidTestImplementation "androidx.test:rules:1.5.0"
 
-} 
+}
