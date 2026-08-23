@@ -7908,7 +7908,19 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@siteed/audio-studio@npm:3.2.1, @siteed/audio-studio@workspace:^, @siteed/audio-studio@workspace:packages/audio-studio":
+"@siteed/audio-studio@npm:3.2.1":
+  version: 3.2.1
+  resolution: "@siteed/audio-studio@npm:3.2.1"
+  peerDependencies:
+    "@expo/config-plugins": ">=7.0.0"
+    expo: ">=52.0.0"
+    react: "*"
+    react-native: "*"
+  checksum: 10/23ea83354fb8de9f2cf30f483871d66232f9489879810d6c3ff423074e8dac264baa22050d05e1c6d835abb38df98c044ca67bac11f8eab24e593673dc84d312
+  languageName: node
+  linkType: hard
+
+"@siteed/audio-studio@workspace:^, @siteed/audio-studio@workspace:packages/audio-studio":
   version: 0.0.0-use.local
   resolution: "@siteed/audio-studio@workspace:packages/audio-studio"
   dependencies:

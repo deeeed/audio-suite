@@ -7,11 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.2-beta.0] - 2026-08-24
+
 ### Fixed
 
 - Android TTS no longer aborts the process on `initTts`. The bundled Kotlin `OfflineTtsModelConfig` was missing the `zipvoice` and `supertonic` sub-configs that the prebuilt JNI library reads, so every model failed with `NoSuchFieldError: no field "zipvoice"`. Affected all TTS model types, not just those two.
 - Android TTS playback no longer starts before the first generated samples are written. The `AudioTrack` is created stopped, prefilled with roughly 200 ms of PCM, then started, removing the audible jitter and underrun warnings at the start of an utterance.
 - Android `AudioTrack` instances whose `build()` succeeded but whose initialization failed are now released instead of leaked, which previously leaked once per reinitialization retry.
+- Android `stopTts` now interrupts generation in progress instead of becoming a no-op until the utterance finishes.
+- Android `WaveReader` JNI declarations now match the prebuilt library's `WaveData` return type, avoiding a latent `ClassCastException` at the bridge boundary.
 
 ## [1.3.1] - 2026-06-20
 
@@ -173,7 +177,8 @@ First stable release — production-proven via the [Sherpa Voice](https://deeeed
 ## [0.1.0] - 2025-03-04
 - Initial development release
 
-[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/sherpa-onnx.rn@1.3.1...HEAD
+[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/sherpa-onnx.rn@1.3.2-beta.0...HEAD
+[1.3.2-beta.0]: https://github.com/deeeed/audiolab/compare/@siteed/sherpa-onnx.rn@1.3.1...@siteed/sherpa-onnx.rn@1.3.2-beta.0
 [1.3.1]: https://github.com/deeeed/audiolab/compare/@siteed/sherpa-onnx.rn@1.3.0...@siteed/sherpa-onnx.rn@1.3.1
 [1.3.0]: https://github.com/deeeed/audiolab/compare/@siteed/sherpa-onnx.rn@1.2.0...@siteed/sherpa-onnx.rn@1.3.0
 [1.2.0]: https://github.com/deeeed/audiolab/compare/@siteed/sherpa-onnx.rn@1.1.2...@siteed/sherpa-onnx.rn@1.2.0

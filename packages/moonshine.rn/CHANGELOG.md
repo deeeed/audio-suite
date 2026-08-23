@@ -7,9 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1-beta.1] - 2026-08-24
+
 ### Fixed
 
 - `build-moonshine-android.sh` now fails immediately with an actionable message when the `speaker-embedding-model-data.cpp` LFS asset is missing or unmaterialized, instead of letting gradle run on for ~80s into an opaque CMake "Cannot find source file" error.
+- Source builds now check out the pinned Moonshine commit rather than assuming the matching tag resolves to the intended source revision.
+- LFS pointer detection now uses portable `grep` instead of requiring `rg` on consumer build machines.
+
+### Changed
+
+- Updated the development and release-validation toolchain for React Native 0.86.
 
 ## [0.4.0] - 2026-05-15
 
@@ -83,7 +91,8 @@ Long-streaming release focused on keeping Moonshine transcription memory bounded
 - Moonshine RN package with iOS, Android, and web transcription support, source-built native tooling, offline progress events, and word timestamp parity fixes.
 - Beta release plan and external consumer validation checklist.
 
-[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.4.0...HEAD
+[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.4.1-beta.1...HEAD
+[0.4.1-beta.1]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.4.1-beta.0...@siteed/moonshine.rn@0.4.1-beta.1
 [0.4.0]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3...@siteed/moonshine.rn@0.4.0
 [0.3.3]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3-beta.7...@siteed/moonshine.rn@0.3.3
 [0.3.3-beta.7]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.2...@siteed/moonshine.rn@0.3.3-beta.7
