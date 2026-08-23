@@ -21,6 +21,7 @@ import org.junit.runner.RunWith
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 @RunWith(AndroidJUnit4::class)
@@ -126,23 +127,31 @@ class ForegroundServiceLifecycleInstrumentedTest {
         assertTrue("Blocking worker should start", blockerReady.await(1, TimeUnit.SECONDS))
 
         val threadRef = recordingThreadReference()
+        val recordingState = recordingState()
         val cleanupThread = Thread { manager.cleanup() }
         try {
             val displacedWorker = threadRef.getAndSet(blocker)
             assertNotNull("Active recording should have a PCM worker", displacedWorker)
 
+            // Stop and join the displaced worker before cleanup's bounded two-second join.
+            // Restore the flag afterwards so cleanup still claims an active recording.
+            recordingState.set(false)
+            displacedWorker!!.join(5_000L)
+            assertFalse("Displaced recording worker should stop", displacedWorker.isAlive)
+            recordingState.set(true)
+            val ownedSession = sessionId()
+
             cleanupThread.start()
             assertTrue(
                 "Cleanup should reach the unlocked worker join",
-                cleanupJoining.await(2, TimeUnit.SECONDS)
+                cleanupJoining.await(1, TimeUnit.SECONDS)
             )
-
-            displacedWorker!!.join(2_000L)
-            assertFalse("Displaced recording worker should stop", displacedWorker.isAlive)
 
             val successorOptions = options("prepared_successor_new")
             assertTrue("Successor preparation should succeed", manager.prepareRecording(successorOptions))
-            assertTrue("Old service should remain until cleanup resumes", isServiceRunning())
+            assertTrue("Successor should be prepared before cleanup resumes", manager.isPrepared)
+            assertTrue("Successor preparation should publish a new session", sessionId() > ownedSession)
+            assertTrue("Cleanup should remain blocked until released", cleanupThread.isAlive)
 
             releaseCleanup.countDown()
             cleanupThread.join(3_000L)
@@ -151,6 +160,7 @@ class ForegroundServiceLifecycleInstrumentedTest {
             assertTrue("Cleanup should stop the old service", awaitServiceState(false))
             assertTrue("Cleanup should preserve the prepared successor", manager.isPrepared)
         } finally {
+            recordingState.set(false)
             releaseCleanup.countDown()
             blocker.interrupt()
             cleanupThread.join(3_000L)
@@ -274,6 +284,18 @@ class ForegroundServiceLifecycleInstrumentedTest {
         val field = AudioRecorderManager::class.java.getDeclaredField("recordingThreadRef")
         field.isAccessible = true
         return field.get(manager) as AtomicReference<Thread?>
+    }
+
+    private fun recordingState(): AtomicBoolean {
+        val field = AudioRecorderManager::class.java.getDeclaredField("_isRecording")
+        field.isAccessible = true
+        return field.get(manager) as AtomicBoolean
+    }
+
+    private fun sessionId(): Long {
+        val field = AudioRecorderManager::class.java.getDeclaredField("sessionId")
+        field.isAccessible = true
+        return field.getLong(manager)
     }
 
     companion object {
