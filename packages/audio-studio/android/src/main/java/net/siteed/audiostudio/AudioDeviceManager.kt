@@ -1642,13 +1642,13 @@ internal fun selectCommunicationSink(
     if (candidates.isEmpty()) return null
 
     if (requested.address.isNotBlank()) {
-        candidates.firstOrNull { it.address == requested.address }?.let { return it.id }
+        return candidates.firstOrNull { it.address == requested.address }?.id
     }
-    if (requested.name.isNotBlank()) {
-        candidates.firstOrNull { it.name == requested.name }?.let { return it.id }
+    val isBuiltIn = requested.type == AudioDeviceInfo.TYPE_BUILTIN_MIC
+    if (!isBuiltIn && requested.name.isNotBlank()) {
+        return candidates.filter { it.name == requested.name }.singleOrNull()?.id
     }
 
-    val isBuiltIn = requested.type == AudioDeviceInfo.TYPE_BUILTIN_MIC
     return if (isBuiltIn || candidates.size == 1) candidates.first().id else null
 }
 

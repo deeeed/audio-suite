@@ -87,6 +87,22 @@ class AudioDeviceRoutingTest {
     }
 
     @Test
+    fun `addressed route does not fall back to a duplicate product name`() {
+        val requested = descriptor(
+            id = 10,
+            type = AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+            address = "missing",
+            name = "Same headset"
+        )
+        val sinks = listOf(
+            descriptor(20, AudioDeviceInfo.TYPE_BLUETOOTH_SCO, "headset-a", "Same headset"),
+            descriptor(21, AudioDeviceInfo.TYPE_BLUETOOTH_SCO, "headset-b", "Same headset")
+        )
+
+        assertNull(selectCommunicationSink(requested, sinks))
+    }
+
+    @Test
     fun `built in microphone prefers communication earpiece`() {
         val requested = descriptor(10, AudioDeviceInfo.TYPE_BUILTIN_MIC, "", "Built-in Mic")
         val sinks = listOf(
