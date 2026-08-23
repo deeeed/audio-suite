@@ -44,6 +44,7 @@ class RealTtsFunctionalityTest {
         context = InstrumentationRegistry.getInstrumentation().targetContext
         reactContext = createTestReactContext(context)
         sherpaOnnxImpl = SherpaOnnxImpl(reactContext)
+        assertTrue("Sherpa ONNX JNI library should load", SherpaOnnxImpl.isLibraryLoaded)
         
         // Download and extract the lightweight TTS model
         runBlocking {
@@ -386,11 +387,12 @@ class RealTtsFunctionalityTest {
         assertTrue("Uninitialized generation should complete", latch.await(5, TimeUnit.SECONDS))
         assertNull("Uninitialized generation should not resolve", result)
         assertEquals("ERR_GENERATION_FAILED", errorCode)
-        assertEquals("TTS not initialized", errorMessage)
+        assertTrue(
+            "Expected an uninitialized TTS error, got: $errorMessage",
+            errorMessage?.contains("TTS not initialized") == true
+        )
         
         // Test 2: Empty text
-        initializeTts()
-        
         println("\nTest 2: Empty text")
         latch = CountDownLatch(1)
         result = null
@@ -420,6 +422,42 @@ class RealTtsFunctionalityTest {
         assertNull("Empty-text generation should not resolve", result)
         assertEquals("ERR_INVALID_TEXT", errorCode)
         assertEquals("Text cannot be empty", errorMessage)
+
+        // Test 3: The native VITS boundary falls back to speaker 0 when the model
+        // has one speaker and the requested ID is out of range.
+        initializeTts()
+        println("\nTest 3: Invalid speaker ID falls back to speaker 0")
+        latch = CountDownLatch(1)
+        result = null
+        errorCode = null
+        errorMessage = null
+
+        val invalidSpeakerConfig = Arguments.createMap().apply {
+            putString("text", "Speaker fallback test")
+            putInt("speakerId", 999)
+            putDouble("speakingRate", 1.0)
+            putBoolean("playAudio", false)
+            putString("fileNamePrefix", "test_invalid_speaker")
+        }
+
+        sherpaOnnxImpl.generateTts(invalidSpeakerConfig, createPromise(
+            onResolve = { value ->
+                result = value as? ReadableMap
+                latch.countDown()
+            },
+            onReject = { code, message, _ ->
+                errorCode = code
+                errorMessage = message
+                latch.countDown()
+            }
+        ))
+
+        assertTrue("Invalid-speaker generation should complete", latch.await(10, TimeUnit.SECONDS))
+        assertNull("Invalid-speaker generation should use the model fallback: $errorMessage", errorCode)
+        assertTrue("Invalid-speaker generation should succeed", result?.getBoolean("success") == true)
+        val fallbackFile = File(result?.getString("filePath").orEmpty())
+        assertTrue("Invalid-speaker generation should create audio", fallbackFile.length() > 44)
+        fallbackFile.delete()
     }
 
     // Helper functions

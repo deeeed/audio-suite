@@ -45,6 +45,7 @@ class RealAsrFunctionalityTest {
         context = InstrumentationRegistry.getInstrumentation().targetContext
         reactContext = createTestReactContext(context)
         sherpaOnnxImpl = SherpaOnnxImpl(reactContext)
+        assertTrue("Sherpa ONNX JNI library should load", SherpaOnnxImpl.isLibraryLoaded)
         
         // Download and extract the lightweight ASR model
         runBlocking {
@@ -367,7 +368,10 @@ class RealAsrFunctionalityTest {
         assertTrue("Uninitialized recognition should complete", latch.await(5, TimeUnit.SECONDS))
         assertNull("Uninitialized recognition should not resolve", result)
         assertEquals("ERR_ASR_RECOGNIZE", errorCode)
-        assertTrue(errorMessage?.contains("Offline ASR is not initialized") == true)
+        assertTrue(
+            "Expected an uninitialized ASR error, got: $errorMessage",
+            errorMessage?.contains("Offline ASR is not initialized") == true
+        )
         
         // Test 2: Recognize from non-existent file
         initializeAsr()
@@ -393,7 +397,10 @@ class RealAsrFunctionalityTest {
         assertTrue("Missing-file recognition should complete", latch.await(5, TimeUnit.SECONDS))
         assertNull("Missing-file recognition should not resolve", result)
         assertEquals("ERR_ASR_RECOGNIZE", errorCode)
-        assertTrue(errorMessage?.contains("Failed to recognize speech from file") == true)
+        assertTrue(
+            "Expected a missing-file ASR error, got: $errorMessage",
+            errorMessage?.contains("Failed to recognize speech from file") == true
+        )
     }
 
     // Helper functions

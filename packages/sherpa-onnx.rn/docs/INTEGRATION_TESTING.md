@@ -60,19 +60,15 @@ cd apps/sherpa-voice && yarn expo prebuild        # both platforms
 `--platform android` is enough for the Gradle commands below, but the iOS section further
 down needs the iOS half.
 
-**These tests do not currently run.** Verified on a Pixel 6a: the library module's test
-APK does not bundle React Native's native libraries, so anything touching the bridge dies
-before reaching its assertions:
+The test APK initializes React Native's merged native-library mapping from
+`SherpaTestRunner` and declares `INTERNET` for downloader-backed tests. This is required
+with React Native 0.86, whose APK contains `libreactnative.so` rather than the old
+`libreactnativejni_common.so` requested by the bridge without that mapping.
 
-```
-java.lang.UnsatisfiedLinkError: dlopen failed: library "libreactnativejni_common.so" not found
-java.lang.NoClassDefFoundError: com.facebook.react.bridge.WritableNativeMap
-```
-
-The downloader-backed tests additionally lack the `INTERNET` permission in the test
-manifest. Both are harness gaps tracked in #475, not something a different command works
-around. (They were attributed to #449, which is about no CI running the audio-studio
-suites and mentions neither.) The commands below are the right ones for when the harness can run them.
+Verified on a Pixel 6a with real model downloads and extraction. Native library loading,
+TTS error handling, ASR file recognition, and ASR error handling all reached their
+assertions and passed. The Whisper extraction took about 59 seconds on that device, so
+the ASR setup allows 90 seconds and reuses only a completed extraction.
 
 Then the package ships a script that already has the right app directory and module name:
 
