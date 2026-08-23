@@ -10,6 +10,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
 import expo.modules.kotlin.Promise
 import org.junit.After
+import org.junit.Assume.assumeTrue
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -20,6 +21,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -41,17 +43,19 @@ class ForegroundServiceLifecycleInstrumentedTest {
 
     private lateinit var context: Context
     private lateinit var manager: AudioRecorderManager
+    private val interruptionReasons = CopyOnWriteArrayList<String>()
 
     @Before
     fun setUp() {
         context = InstrumentationRegistry.getInstrumentation().targetContext
-        org.junit.Assume.assumeTrue(
+        assumeTrue(
             "AudioRecorderManager.startRecording requires Android 11+",
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
         )
         AudioRecorderManager.destroy()
         AudioRecordingService.stopService(context)
         assertTrue("Previous foreground service should stop", awaitServiceState(false))
+        interruptionReasons.clear()
 
         manager = AudioRecorderManager.initialize(
             context = context,
@@ -59,7 +63,11 @@ class ForegroundServiceLifecycleInstrumentedTest {
             permissionUtils = PermissionUtils(context),
             audioDataEncoder = AudioDataEncoder(),
             eventSender = object : EventSender {
-                override fun sendExpoEvent(eventName: String, params: Bundle) = Unit
+                override fun sendExpoEvent(eventName: String, params: Bundle) {
+                    if (eventName == Constants.RECORDING_INTERRUPTED_EVENT_NAME) {
+                        params.getString("reason")?.let(interruptionReasons::add)
+                    }
+                }
             },
             enablePhoneStateHandling = false,
             enableBackgroundAudio = true
@@ -123,6 +131,7 @@ class ForegroundServiceLifecycleInstrumentedTest {
         val successorPrepared = CountDownLatch(1)
         val prepareOnInterrupt = AtomicBoolean(false)
         val successorResult = AtomicReference<Boolean?>(null)
+        val successorFailure = AtomicReference<Throwable?>(null)
         val blocker = Thread {
             blockerReady.countDown()
             try {
@@ -132,11 +141,17 @@ class ForegroundServiceLifecycleInstrumentedTest {
                     if (prepareOnInterrupt.get()) {
                         // cleanup phase 0 cleared _isRecording before interrupting this
                         // worker. Preparation reclaims the old recorder and publishes the
-                        // successor before the worker exits, so phase 2 must see its session.
-                        successorResult.set(manager.prepareRecording(successorOptions))
+                        // successor while holding audioRecordLock. Even if cleanup's join
+                        // times out, phase 2 cannot inspect sessionId until it has advanced.
+                        try {
+                            successorResult.set(manager.prepareRecording(successorOptions))
+                        } catch (error: Throwable) {
+                            successorFailure.set(error)
+                        }
                     }
                 } finally {
                     successorPrepared.countDown()
+                    Thread.currentThread().interrupt()
                 }
             }
         }
@@ -169,6 +184,7 @@ class ForegroundServiceLifecycleInstrumentedTest {
                 "Cleanup worker should publish the prepared successor",
                 successorPrepared.await(5, TimeUnit.SECONDS)
             )
+            assertNull("Successor preparation threw: ${successorFailure.get()}", successorFailure.get())
             assertTrue("Successor preparation should succeed", successorResult.get() == true)
             assertTrue("Successor should be prepared", manager.isPrepared)
             assertTrue("Successor preparation should publish a new session", sessionId() > ownedSession)
@@ -176,11 +192,16 @@ class ForegroundServiceLifecycleInstrumentedTest {
 
             assertFalse("Cleanup should finish within 3 seconds", cleanupThread.isAlive)
             assertTrue("Cleanup should stop the old service", awaitServiceState(false))
+            assertFalse(
+                "Session-mismatch cleanup must not run full teardown",
+                interruptionReasons.contains("recordingStopped")
+            )
             // join establishes visibility for cleanup-thread writes before this plain read.
             assertTrue("Cleanup should preserve the prepared successor", manager.isPrepared)
         } finally {
             prepareOnInterrupt.set(false)
             recordingState.set(false)
+            // Retained for the failure where the first displaced-worker join times out.
             displacedWorker?.interrupt()
             displacedWorker?.join(3_000L)
             blocker.interrupt()
