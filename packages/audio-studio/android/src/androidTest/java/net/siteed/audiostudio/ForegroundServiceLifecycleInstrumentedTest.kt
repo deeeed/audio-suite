@@ -22,7 +22,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
-import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -45,7 +44,6 @@ class ForegroundServiceLifecycleInstrumentedTest {
 
     private lateinit var context: Context
     private lateinit var manager: AudioRecorderManager
-    private val interruptionReasons = CopyOnWriteArrayList<String>()
 
     @Before
     fun setUp() {
@@ -58,7 +56,6 @@ class ForegroundServiceLifecycleInstrumentedTest {
         AudioRecorderManager.destroy()
         AudioRecordingService.stopService(context)
         assertTrue("Previous foreground service should stop", awaitServiceState(false))
-        interruptionReasons.clear()
         resetNotificationManager()
 
         manager = AudioRecorderManager.initialize(
@@ -67,11 +64,7 @@ class ForegroundServiceLifecycleInstrumentedTest {
             permissionUtils = PermissionUtils(context),
             audioDataEncoder = AudioDataEncoder(),
             eventSender = object : EventSender {
-                override fun sendExpoEvent(eventName: String, params: Bundle) {
-                    if (eventName == Constants.RECORDING_INTERRUPTED_EVENT_NAME) {
-                        params.getString("reason")?.let(interruptionReasons::add)
-                    }
-                }
+                override fun sendExpoEvent(eventName: String, params: Bundle) = Unit
             },
             enablePhoneStateHandling = false,
             enableBackgroundAudio = true
@@ -126,7 +119,7 @@ class ForegroundServiceLifecycleInstrumentedTest {
     }
 
     @Test
-    fun preparedSuccessor_duringCleanup_stopsOldServiceAndPreservesPreparation() {
+    fun preparedSuccessor_waitsForCleanupAndOldServiceStops() {
         val recordingOptions = options("prepared_successor_old")
         val successorOptions = options("prepared_successor_new")
         startRecording(recordingOptions)
@@ -144,10 +137,8 @@ class ForegroundServiceLifecycleInstrumentedTest {
             } catch (_: InterruptedException) {
                 try {
                     if (prepareOnInterrupt.get()) {
-                        // cleanup phase 0 cleared _isRecording before interrupting this
-                        // worker. Preparation reclaims the old recorder and publishes the
-                        // successor while holding audioRecordLock. Even if cleanup's join
-                        // times out, phase 2 cannot inspect sessionId until it has advanced.
+                        // Teardown owns the session until its unlocked worker join finishes.
+                        // A successor must wait rather than publish recorders into that gap.
                         try {
                             successorResult.set(manager.prepareRecording(successorOptions))
                         } catch (error: Throwable) {
@@ -186,23 +177,23 @@ class ForegroundServiceLifecycleInstrumentedTest {
             cleanupStarted = true
             cleanupThread.start()
             assertTrue(
-                "Cleanup worker should publish the prepared successor",
+                "Cleanup worker should attempt successor preparation",
                 successorPrepared.await(5, TimeUnit.SECONDS)
             )
             assertNull("Successor preparation threw: ${successorFailure.get()}", successorFailure.get())
-            assertTrue("Successor preparation should succeed", successorResult.get() == true)
-            assertTrue("Successor should be prepared", manager.isPrepared)
-            assertTrue("Successor preparation should publish a new session", sessionId() > ownedSession)
+            assertTrue("Successor preparation should wait for teardown", successorResult.get() == false)
+            assertFalse("Successor must not publish during teardown", manager.isPrepared)
+            assertEquals("Teardown should retain session ownership", ownedSession, sessionId())
             cleanupThread.join(3_000L)
 
             assertFalse("Cleanup should finish within 3 seconds", cleanupThread.isAlive)
             assertTrue("Cleanup should stop the old service", awaitServiceState(false))
-            assertFalse(
-                "Session-mismatch cleanup must not run full teardown",
-                interruptionReasons.contains("recordingStopped")
+            assertTrue(
+                "Successor preparation should succeed after teardown",
+                manager.prepareRecording(successorOptions)
             )
-            // join establishes visibility for cleanup-thread writes before this plain read.
-            assertTrue("Cleanup should preserve the prepared successor", manager.isPrepared)
+            assertTrue("Successor should be prepared", manager.isPrepared)
+            assertTrue("Successor preparation should publish a new session", sessionId() > ownedSession)
         } finally {
             prepareOnInterrupt.set(false)
             recordingState.set(false)
