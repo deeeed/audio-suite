@@ -58,7 +58,8 @@ Day 5: Memory and threading tests
 ## Success Criteria
 
 Each test should:
-- Run in < 2 seconds
+- Keep unit and smoke-test setup under 2 seconds. Model-backed device tests may use their
+  documented download, extraction, and inference timeouts.
 - Have clear pass/fail result
 - Log platform-specific behavior
 - Not depend on other tests

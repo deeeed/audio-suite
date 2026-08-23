@@ -402,6 +402,10 @@ class RealTtsFunctionalityTest {
             "ERR_GENERATION_FAILED",
             errorCode
         )
+        assertTrue(
+            "Expected the uninitialized branch, got: $errorMessage",
+            errorMessage?.contains("TTS not initialized") == true
+        )
         
         // Test 2: Empty text
         println("\nTest 2: Empty text")
@@ -435,6 +439,10 @@ class RealTtsFunctionalityTest {
             "Unexpected empty-text TTS error: $errorMessage",
             "ERR_INVALID_TEXT",
             errorCode
+        )
+        assertTrue(
+            "Expected the empty-text branch, got: $errorMessage",
+            errorMessage?.contains("Text cannot be empty") == true
         )
 
         // Test 3: The native VITS boundary falls back to speaker 0 when the model

@@ -21,6 +21,16 @@ object ArchiveUtils {
         val extractedFiles: List<String> = emptyList()
     )
 
+    internal fun resolveArchiveEntry(targetDir: File, entryName: String): File {
+        val canonicalTarget = targetDir.canonicalFile
+        val outputFile = File(canonicalTarget, entryName).canonicalFile
+        val targetPrefix = canonicalTarget.path + File.separator
+        if (outputFile != canonicalTarget && !outputFile.path.startsWith(targetPrefix)) {
+            throw IOException("Archive entry escapes target directory: $entryName")
+        }
+        return outputFile
+    }
+
     /**
      * Extract a tar.bz2 file to a target directory
      *
@@ -66,7 +76,7 @@ object ArchiveUtils {
             var entry = tarInputStream.nextTarEntry
             while (entry != null) {
                 val entryName = entry.name
-                val outputFile = File(targetDirFile, entryName)
+                val outputFile = resolveArchiveEntry(targetDirFile, entryName)
                 
                 Log.d(TAG, "Extracting entry: $entryName")
                 
@@ -164,4 +174,4 @@ object ArchiveUtils {
             return ExtractionResult(false, "Error creating mock files: ${e.message}")
         }
     }
-} 
+}

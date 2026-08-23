@@ -356,6 +356,10 @@ class RealAsrFunctionalityTest {
             "ERR_ASR_RECOGNIZE",
             errorCode
         )
+        assertTrue(
+            "Expected the uninitialized branch, got: $errorMessage",
+            errorMessage?.contains("Offline ASR is not initialized") == true
+        )
         
         // Test 2: Recognize from non-existent file
         initializeAsr()
@@ -384,6 +388,10 @@ class RealAsrFunctionalityTest {
             "Unexpected missing-file ASR error: $errorMessage",
             "ERR_ASR_RECOGNIZE",
             errorCode
+        )
+        assertTrue(
+            "Expected the missing-file branch, got: $errorMessage",
+            errorMessage?.contains("Failed to recognize speech from file") == true
         )
     }
 

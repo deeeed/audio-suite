@@ -19,11 +19,27 @@ import java.util.concurrent.atomic.AtomicReference
 class ModelExtractionCacheTest {
 
     @Test
+    fun archiveEntryCannotEscapeTargetDirectory() {
+        val targetDir = File(
+            InstrumentationRegistry.getInstrumentation().targetContext.cacheDir,
+            "archive-entry-target"
+        )
+        val contained = ArchiveUtils.resolveArchiveEntry(targetDir, "model/model.onnx")
+        assertTrue(contained.path.startsWith(targetDir.canonicalPath + File.separator))
+
+        val failure = runCatching {
+            ArchiveUtils.resolveArchiveEntry(targetDir, "../shared/model.onnx")
+        }.exceptionOrNull()
+        assertTrue("Traversal should fail with IOException: $failure", failure is IOException)
+    }
+
+    @Test
     fun timedOutAttemptCannotReplaceLaterCache() {
         val fixture = createFixture()
         try {
             val latePromise = AtomicReference<Promise>()
             val lateTarget = AtomicReference<String>()
+            // Zero seconds returns before this deliberately unresolved callback.
             val timedOut = extractModelArchive(
                 sourcePath = "first.tar.bz2",
                 cache = fixture.cache,
@@ -77,6 +93,7 @@ class ModelExtractionCacheTest {
             assertFalse(result.success)
             assertTrue(result.error.orEmpty().contains("without all required model assets"))
             assertFalse(fixture.cache.isComplete())
+            assertFalse(fixture.hasAttemptDirectories())
         } finally {
             fixture.delete()
         }
@@ -100,6 +117,7 @@ class ModelExtractionCacheTest {
             assertTrue(result.completed)
             assertFalse(result.success)
             assertEquals("archive reported a corrupt entry", result.error)
+            assertFalse(fixture.hasAttemptDirectories())
         } finally {
             fixture.delete()
         }
@@ -123,6 +141,7 @@ class ModelExtractionCacheTest {
             assertEquals("ERR_TEST_EXTRACTION", result.errorCode)
             assertSame(rejectionCause, result.cause)
             assertEquals("ERR_TEST_EXTRACTION: archive rejected: disk write failed", result.error)
+            assertFalse(fixture.hasAttemptDirectories())
         } finally {
             fixture.delete()
         }
@@ -163,6 +182,9 @@ class ModelExtractionCacheTest {
         val requiredModel: File,
         val cache: ModelExtractionCache,
     ) {
+        fun hasAttemptDirectories(): Boolean =
+            rootDir.listFiles()?.any { it.name.startsWith(".shared.extracting-") } == true
+
         fun delete() {
             check(!rootDir.exists() || rootDir.deleteRecursively()) {
                 "Could not delete test fixture: ${rootDir.absolutePath}"

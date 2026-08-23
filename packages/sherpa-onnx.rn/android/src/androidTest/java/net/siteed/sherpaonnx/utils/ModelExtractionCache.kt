@@ -1,5 +1,6 @@
 package net.siteed.sherpaonnx.utils
 
+import android.util.Log
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReadableMap
 import net.siteed.sherpaonnx.SherpaOnnxImpl
@@ -10,6 +11,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
+/** Serializes promotion within this instrumentation process. */
 internal class ModelExtractionCache(
     val targetDir: File,
     requiredFiles: List<File>,
@@ -90,6 +92,8 @@ internal class ModelExtractionCache(
     }
 
     companion object {
+        // Tests use two fixed model targets. Retaining their locks for the process lifetime
+        // avoids unsafe removal while another thread is waiting on the same monitor.
         private val promotionLocks = ConcurrentHashMap<String, Any>()
 
         private fun promotionLock(targetDir: File): Any =
@@ -107,7 +111,6 @@ internal data class ModelExtractionResult(
 
 private sealed class ExtractionState {
     data object Pending : ExtractionState()
-    data object Completing : ExtractionState()
     data object TimedOut : ExtractionState()
     data class Finished(val result: ModelExtractionResult) : ExtractionState()
 }
@@ -136,17 +139,21 @@ internal fun extractModelArchive(
     val latch = CountDownLatch(1)
     val state = AtomicReference<ExtractionState>(ExtractionState.Pending)
 
+    fun discardTimedOutAttempt() {
+        try {
+            cache.discardAttempt(attemptDir)
+        } catch (cleanupError: Exception) {
+            // The caller already received a timeout. A late cleanup failure must not crash
+            // the main looper long after that test returned.
+            Log.w("ModelExtractionCache", "Could not discard timed-out extraction", cleanupError)
+        }
+    }
+
     fun finish(createResult: () -> ModelExtractionResult) {
         // React Native promises should invoke one terminal callback. The state transition
-        // enforces that contract so a duplicate or late callback cannot promote this attempt.
-        if (!state.compareAndSet(ExtractionState.Pending, ExtractionState.Completing)) {
-            if (state.get() == ExtractionState.TimedOut) {
-                cache.discardAttempt(attemptDir)
-            }
-            return
-        }
-
-        var result = try {
+        // enforces that contract. Promotion stays on the waiting thread, so a timed-out
+        // callback can never promote after the timeout result has returned.
+        val result = try {
             createResult()
         } catch (error: Exception) {
             ModelExtractionResult(
@@ -156,20 +163,12 @@ internal fun extractModelArchive(
                 cause = error,
             )
         }
-
-        try {
-            cache.discardAttempt(attemptDir)
-        } catch (cleanupError: Exception) {
-            result = ModelExtractionResult(
-                completed = true,
-                success = false,
-                error = listOfNotNull(result.error, cleanupError.message).joinToString("; "),
-                errorCode = result.errorCode,
-                cause = result.cause ?: cleanupError,
-            )
+        if (!state.compareAndSet(ExtractionState.Pending, ExtractionState.Finished(result))) {
+            if (state.get() == ExtractionState.TimedOut) {
+                discardTimedOutAttempt()
+            }
+            return
         }
-
-        state.set(ExtractionState.Finished(result))
         latch.countDown()
     }
 
@@ -198,7 +197,6 @@ internal fun extractModelArchive(
                     )
                 }
 
-                cache.promote(attemptDir)
                 ModelExtractionResult(completed = true, success = true, error = null)
             }
         },
@@ -232,11 +230,9 @@ internal fun extractModelArchive(
         }
     }
 
-    if (latch.await(timeoutSeconds, TimeUnit.SECONDS)) {
-        return (state.get() as ExtractionState.Finished).result
-    }
-
-    if (state.compareAndSet(ExtractionState.Pending, ExtractionState.TimedOut)) {
+    if (!latch.await(timeoutSeconds, TimeUnit.SECONDS) &&
+        state.compareAndSet(ExtractionState.Pending, ExtractionState.TimedOut)
+    ) {
         return ModelExtractionResult(
             completed = false,
             success = false,
@@ -244,8 +240,32 @@ internal fun extractModelArchive(
         )
     }
 
-    // The callback claimed completion at the timeout boundary. Let that already-running,
-    // short validation and promotion finish instead of reporting a false timeout.
-    latch.await()
-    return (state.get() as ExtractionState.Finished).result
+    // If the timeout CAS lost, the callback already published Finished. No unbounded
+    // boundary wait is needed, and only this waiting thread may promote the attempt.
+    var result = (state.get() as ExtractionState.Finished).result
+    if (result.success) {
+        result = try {
+            cache.promote(attemptDir)
+            result
+        } catch (promotionError: Exception) {
+            ModelExtractionResult(
+                completed = true,
+                success = false,
+                error = promotionError.message ?: promotionError.toString(),
+                cause = promotionError,
+            )
+        }
+    }
+    try {
+        cache.discardAttempt(attemptDir)
+    } catch (cleanupError: Exception) {
+        result = ModelExtractionResult(
+            completed = true,
+            success = false,
+            error = listOfNotNull(result.error, cleanupError.message).joinToString("; "),
+            errorCode = result.errorCode,
+            cause = result.cause ?: cleanupError,
+        )
+    }
+    return result
 }
