@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Run the token-free checks shared by local development and Linux CI.
+# Do not call `yarn check` here; package.json maps it back to this script.
 
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+MAX_WARNINGS=18
 status=0
 
 run_check() {
@@ -28,10 +30,12 @@ run_check "TypeScript" yarn workspace @siteed/audio-studio typecheck
 # so a type error in the Expo config plugin failed nothing anywhere (#456).
 run_check "config plugin TypeScript" \
   yarn exec tsc --noEmit -p packages/audio-studio/plugin/tsconfig.json
+run_check "config plugin lint" \
+  yarn workspace @siteed/audio-studio lint plugin --max-warnings=0
 
 # Keep the current warning backlog visible and fail if it grows.
-run_check "lint (at most 18 warnings)" \
-  yarn workspace @siteed/audio-studio lint --max-warnings=18
+run_check "lint (at most $MAX_WARNINGS warnings)" \
+  yarn workspace @siteed/audio-studio lint --max-warnings="$MAX_WARNINGS"
 
 run_check "JavaScript tests" yarn workspace @siteed/audio-studio test
 
