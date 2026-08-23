@@ -495,7 +495,7 @@ class RealTtsFunctionalityTest {
         ))
         
         assertTrue("TTS init should complete", latch.await(10, TimeUnit.SECONDS))
-        assertNull("TTS init failed", error)
+        assertNull("TTS init failed: $error", error)
         assertTrue("TTS init should succeed", success)
         return numSpeakers
     }
