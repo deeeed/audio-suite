@@ -100,7 +100,13 @@ class RealTtsFunctionalityTest {
             File(modelDir, "model.onnx"),
             File(modelDir, "tokens.txt")
         )
-        if (completionMarker.isFile && requiredFiles.all { it.isFile && it.length() > 0 }) {
+        val espeakDataDir = File(modelDir, "espeak-ng-data")
+        if (
+            completionMarker.isFile &&
+            requiredFiles.all { it.isFile && it.length() > 0 } &&
+            espeakDataDir.isDirectory &&
+            !espeakDataDir.list().isNullOrEmpty()
+        ) {
             extractedModelPath = targetDir.absolutePath
             println("Using extracted TTS model: ${targetDir.absolutePath}")
             return

@@ -69,6 +69,7 @@ Verified on a Pixel 6a with real model downloads and extraction. Native library 
 TTS error handling, ASR file recognition, and ASR error handling all reached their
 assertions and passed. The Whisper extraction took about 59 seconds on that device, so
 the ASR setup allows 90 seconds and reuses only a completed extraction.
+All six `RealTtsFunctionalityTest` cases later passed together in 1 minute 19 seconds.
 
 Repository CI does not run `connectedAndroidTest`; the generated Android project and
 physical-device run remain manual validation (#449).
