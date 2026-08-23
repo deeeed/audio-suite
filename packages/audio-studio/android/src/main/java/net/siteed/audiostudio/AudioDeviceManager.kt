@@ -420,146 +420,10 @@ class AudioDeviceManager(
      */
     fun selectInputDevice(deviceId: String, promise: Promise) {
         LogUtils.d(TAG, "Selecting input device with ID: $deviceId")
-        
-        // Store the selected device ID for tracking
-        lastSelectedDeviceId = deviceId
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val audioDevices = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
-            val selectedDevice = audioDevices.firstOrNull { it.id.toString() == deviceId }
-            
-            if (selectedDevice == null) {
-                LogUtils.e(TAG, "Device not found with ID $deviceId")
-                promise.reject("DEVICE_NOT_FOUND", "The selected audio device is not available", null)
-                return
-            }
-            
-            // Handle device selection based on type
-            when (selectedDevice.type) {
-                AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> {
-                    // For Bluetooth SCO devices, start SCO connection
-                    if (!audioManager.isBluetoothScoOn) {
-                        audioManager.startBluetoothSco()
-                        audioManager.isBluetoothScoOn = true
-                    }
-                    
-                    // On Android S (API 31) and above, we can set communication device directly
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        try {
-                            val success = audioManager.setCommunicationDevice(selectedDevice)
-                            if (!success) {
-                                LogUtils.w(TAG, "Failed to set communication device for Bluetooth SCO")
-                            }
-                        } catch (e: Exception) {
-                            LogUtils.e(TAG, "Error setting communication device: ${e.message}")
-                        }
-                    }
-                }
-                
-                AudioDeviceInfo.TYPE_WIRED_HEADSET -> {
-                    // For wired headsets, just need to ensure SCO is off
-                    if (audioManager.isBluetoothScoOn) {
-                        audioManager.stopBluetoothSco()
-                        audioManager.isBluetoothScoOn = false
-                    }
-                    
-                    // On Android S (API 31) and above, we can set communication device directly
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        try {
-                            val success = audioManager.setCommunicationDevice(selectedDevice)
-                            if (!success) {
-                                LogUtils.w(TAG, "Failed to set communication device for wired headset")
-                            }
-                        } catch (e: Exception) {
-                            LogUtils.e(TAG, "Error setting communication device: ${e.message}")
-                        }
-                    }
-                }
-                
-                AudioDeviceInfo.TYPE_BUILTIN_MIC -> {
-                    // For built-in mic, ensure SCO is off
-                    if (audioManager.isBluetoothScoOn) {
-                        audioManager.stopBluetoothSco()
-                        audioManager.isBluetoothScoOn = false
-                    }
-                    
-                    // On Android S (API 31) and above, we can set communication device directly
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        try {
-                            val success = audioManager.setCommunicationDevice(selectedDevice)
-                            if (!success) {
-                                LogUtils.w(TAG, "Failed to set communication device for built-in mic")
-                            }
-                        } catch (e: Exception) {
-                            LogUtils.e(TAG, "Error setting communication device: ${e.message}")
-                        }
-                    }
-                }
-                
-                // Handle other device types as needed
-                else -> {
-                    // For other device types, ensure SCO is off
-                    if (audioManager.isBluetoothScoOn) {
-                        audioManager.stopBluetoothSco()
-                        audioManager.isBluetoothScoOn = false
-                    }
-                    
-                    // On Android S (API 31) and above, we can set communication device directly
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        try {
-                            val success = audioManager.setCommunicationDevice(selectedDevice)
-                            if (!success) {
-                                LogUtils.w(TAG, "Failed to set communication device for device type: ${selectedDevice.type}")
-                            }
-                        } catch (e: Exception) {
-                            LogUtils.e(TAG, "Error setting communication device: ${e.message}")
-                        }
-                    }
-                }
-            }
-            
-            LogUtils.d(TAG, "Successfully selected device: ${getDeviceName(selectedDevice)}")
+        if (selectDeviceNow(deviceId)) {
             promise.resolve(true)
         } else {
-            // For older Android versions, handle based on device ID
-            when (deviceId) {
-                "0" -> { // Built-in mic
-                    if (audioManager.isBluetoothScoOn) {
-                        audioManager.stopBluetoothSco()
-                        audioManager.isBluetoothScoOn = false
-                    }
-                    LogUtils.d(TAG, "Selected built-in microphone")
-                    promise.resolve(true)
-                }
-                "1" -> { // Wired headset
-                    if (audioManager.isWiredHeadsetOn) {
-                        if (audioManager.isBluetoothScoOn) {
-                            audioManager.stopBluetoothSco()
-                            audioManager.isBluetoothScoOn = false
-                        }
-                        LogUtils.d(TAG, "Selected wired headset")
-                        promise.resolve(true)
-                    } else {
-                        LogUtils.e(TAG, "Wired headset is not connected")
-                        promise.reject("DEVICE_NOT_AVAILABLE", "Wired headset is not connected", null)
-                    }
-                }
-                "2" -> { // Bluetooth headset
-                    if (isBluetoothHeadsetConnected()) {
-                        audioManager.startBluetoothSco()
-                        audioManager.isBluetoothScoOn = true
-                        LogUtils.d(TAG, "Selected Bluetooth headset")
-                        promise.resolve(true)
-                    } else {
-                        LogUtils.e(TAG, "Bluetooth headset is not connected")
-                        promise.reject("DEVICE_NOT_AVAILABLE", "Bluetooth headset is not connected", null)
-                    }
-                }
-                else -> {
-                    LogUtils.e(TAG, "Unknown device ID: $deviceId")
-                    promise.reject("DEVICE_NOT_FOUND", "The selected audio device is not available", null)
-                }
-            }
+            promise.reject("DEVICE_NOT_AVAILABLE", "The selected audio device could not be routed", null)
         }
     }
     
@@ -570,7 +434,10 @@ class AudioDeviceManager(
 
     internal fun selectDeviceNow(deviceId: String): Boolean {
         LogUtils.d(TAG, "Asynchronously selecting device with ID: $deviceId")
-        lastSelectedDeviceId = deviceId
+        fun reportSelection(success: Boolean = true): Boolean {
+            if (success) lastSelectedDeviceId = deviceId
+            return success
+        }
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val audioDevices = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
@@ -591,18 +458,13 @@ class AudioDeviceManager(
                     }
                     
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        try {
-                            val success = audioManager.setCommunicationDevice(selectedDevice)
-                            LogUtils.d(TAG, "Setting communication device for Bluetooth SCO: $success")
-                            // Return true even if setCommunicationDevice fails
-                            return true
-                        } catch (e: Exception) {
-                            LogUtils.e(TAG, "Error setting communication device: ${e.message}")
-                            // Return true anyway to allow fallback to continue
-                            return true
+                        val success = attemptCommunicationDeviceSelection {
+                            audioManager.setCommunicationDevice(selectedDevice)
                         }
+                        LogUtils.d(TAG, "Setting communication device for Bluetooth SCO: $success")
+                        return reportSelection(success)
                     }
-                    return true
+                    return reportSelection()
                 }
                 
                 else -> {
@@ -613,18 +475,13 @@ class AudioDeviceManager(
                     }
                     
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        try {
-                            val success = audioManager.setCommunicationDevice(selectedDevice)
-                            LogUtils.d(TAG, "Setting communication device for other device type: $success")
-                            // Return true even if setCommunicationDevice fails
-                            return true
-                        } catch (e: Exception) {
-                            LogUtils.e(TAG, "Error setting communication device: ${e.message}")
-                            // Return true anyway to allow fallback to continue
-                            return true
+                        val success = attemptCommunicationDeviceSelection {
+                            audioManager.setCommunicationDevice(selectedDevice)
                         }
+                        LogUtils.d(TAG, "Setting communication device for other device type: $success")
+                        return reportSelection(success)
                     }
-                    return true
+                    return reportSelection()
                 }
             }
         } else {
@@ -635,7 +492,7 @@ class AudioDeviceManager(
                         audioManager.stopBluetoothSco()
                         audioManager.isBluetoothScoOn = false
                     }
-                    return true
+                    return reportSelection()
                 }
                 "1" -> { // Wired headset
                     if (audioManager.isWiredHeadsetOn) {
@@ -643,7 +500,7 @@ class AudioDeviceManager(
                             audioManager.stopBluetoothSco()
                             audioManager.isBluetoothScoOn = false
                         }
-                        return true
+                        return reportSelection()
                     }
                     return false
                 }
@@ -651,7 +508,7 @@ class AudioDeviceManager(
                     if (isBluetoothHeadsetConnected()) {
                         audioManager.startBluetoothSco()
                         audioManager.isBluetoothScoOn = true
-                        return true
+                        return reportSelection()
                     }
                     return false
                 }
@@ -664,6 +521,11 @@ class AudioDeviceManager(
      * Resets to the default audio input device (usually built-in mic)
      */
     fun resetToDefaultDevice(callback: (Boolean, Exception?) -> Unit) {
+        val success = resetToDefaultDeviceNow()
+        callback(success, if (success) null else IllegalStateException("Default input route was rejected"))
+    }
+
+    internal fun resetToDefaultDeviceNow(): Boolean {
         LogUtils.d(TAG, "Resetting to default input device")
         
         try {
@@ -679,16 +541,16 @@ class AudioDeviceManager(
                 val builtInMic = audioDevices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_MIC }
                 
                 if (builtInMic != null) {
-                    try {
-                        val success = audioManager.setCommunicationDevice(builtInMic)
-                        if (!success) {
-                            LogUtils.w(TAG, "Failed to reset to default device")
-                        }
-                    } catch (e: Exception) {
-                        LogUtils.e(TAG, "Error resetting to default device: ${e.message}")
-                        callback(false, e)
-                        return
+                    val success = attemptCommunicationDeviceSelection {
+                        audioManager.setCommunicationDevice(builtInMic)
                     }
+                    if (!success) {
+                        LogUtils.w(TAG, "Failed to reset to default device")
+                        return false
+                    }
+                } else {
+                    LogUtils.w(TAG, "Built-in microphone is unavailable")
+                    return false
                 }
             }
             
@@ -703,10 +565,10 @@ class AudioDeviceManager(
                 LogUtils.d(TAG, "No device detected after reset")
             }
             
-            callback(true, null)
+            return true
         } catch (e: Exception) {
             LogUtils.e(TAG, "Failed to reset to default device: ${e.message}")
-            callback(false, e)
+            return false
         }
     }
     
@@ -1741,3 +1603,10 @@ class AudioDeviceManager(
     
 
 }
+
+internal fun attemptCommunicationDeviceSelection(selection: () -> Boolean): Boolean =
+    try {
+        selection()
+    } catch (_: Exception) {
+        false
+    }

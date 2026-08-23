@@ -12,6 +12,7 @@ import androidx.test.rule.GrantPermissionRule
 import expo.modules.kotlin.Promise
 import org.junit.After
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -35,12 +36,14 @@ class RecorderConcurrencyInstrumentedTest {
     private lateinit var context: Context
     private lateinit var manager: AudioRecorderManager
     private val interruptionEvents = CopyOnWriteArrayList<Bundle>()
+    private val maxDurationEvents = CopyOnWriteArrayList<Bundle>()
 
     @Before
     fun setUp() {
         context = InstrumentationRegistry.getInstrumentation().targetContext
         AudioRecorderManager.destroy()
         interruptionEvents.clear()
+        maxDurationEvents.clear()
         manager = AudioRecorderManager.initialize(
             context = context,
             filesDir = context.filesDir,
@@ -50,6 +53,8 @@ class RecorderConcurrencyInstrumentedTest {
                 override fun sendExpoEvent(eventName: String, params: Bundle) {
                     if (eventName == Constants.RECORDING_INTERRUPTED_EVENT_NAME) {
                         interruptionEvents.add(Bundle(params))
+                    } else if (eventName == Constants.MAX_DURATION_REACHED_EVENT_NAME) {
+                        maxDurationEvents.add(Bundle(params))
                     }
                 }
             },
@@ -98,11 +103,7 @@ class RecorderConcurrencyInstrumentedTest {
         assertNull("Device-change handler should not throw", handlerFailure.get())
         assertFalse("Manager should remain stopped", manager.isRecording)
         assertNull("No AudioRecord should survive stop", currentAudioRecord())
-        assertFalse("Stopped transition should not emit deviceChanged", emittedReasons().contains("deviceChanged"))
-        assertTrue(
-            "A stopped transition should not emit deviceSwitchFailed",
-            emittedReasons().none { it == "deviceSwitchFailed" }
-        )
+        assertEquals("Stop should emit only its terminal event", listOf("recordingStopped"), emittedReasons())
 
         assertRecordingResult(stopResult)
     }
@@ -136,11 +137,7 @@ class RecorderConcurrencyInstrumentedTest {
         assertTrue("Manager should remain recording", status.getBoolean("isRecording"))
         assertTrue("Manager should remain paused", status.getBoolean("isPaused"))
         assertNull("No AudioRecord should restart while paused", currentAudioRecord())
-        assertFalse("Paused transition should not emit deviceChanged", emittedReasons().contains("deviceChanged"))
-        assertTrue(
-            "A paused transition should not emit deviceSwitchFailed",
-            emittedReasons().none { it == "deviceSwitchFailed" }
-        )
+        assertEquals("Pause should not emit a transition event", emptyList<String>(), emittedReasons())
 
         val pausedSize = currentRecordedSize()
         resumeRecording()
@@ -155,7 +152,82 @@ class RecorderConcurrencyInstrumentedTest {
         }
     }
 
-    private fun startRecording(compressed: Boolean = false) {
+    @Test
+    fun successfulDeviceChange_emitsExactPayload() {
+        startRecording()
+        Thread.sleep(200)
+
+        assertTrue("Device change should complete", manager.handleDeviceChange())
+        assertEquals("Device change should emit one reason", listOf("deviceChanged"), emittedReasons())
+        val event = interruptionEvents.single()
+        assertFalse("Successful device change should remain active", event.getBoolean("isPaused"))
+        assertTrue("Successful device change should report its route", event.containsKey("deviceInfo"))
+        stopRecording()
+    }
+
+    @Test
+    fun pausedDisconnect_releasesRouteBoundRecorderAndResumesFresh() {
+        startRecording()
+        Thread.sleep(200)
+        pauseRecording()
+        val session = checkNotNull(manager.activeRecordingSession())
+        val latch = CountDownLatch(1)
+        var error: String? = null
+        manager.pauseRecordingForSession(session, object : Promise {
+            override fun resolve(value: Any?) {
+                latch.countDown()
+            }
+
+            override fun reject(code: String?, message: String?, cause: Throwable?) {
+                error = "$code: $message"
+                latch.countDown()
+            }
+        })
+        assertTrue("Paused disconnect should settle", latch.await(2, TimeUnit.SECONDS))
+        assertNull("Paused disconnect failed", error)
+        assertNull("Disconnected AudioRecord must be released", currentAudioRecord())
+
+        val pausedSize = currentRecordedSize()
+        resumeRecording()
+        assertTrue("Resume should create a fresh recorder", awaitRecordedSizeAbove(pausedSize))
+        stopRecording()
+    }
+
+    @Test
+    fun maxDuration_resumeSchedulesRemainingActiveTime() {
+        startRecording(maxDurationMs = 700L)
+        Thread.sleep(200)
+        pauseRecording()
+        Thread.sleep(700)
+        assertTrue("Paused time must not reach max duration", maxDurationEvents.isEmpty())
+
+        resumeRecording()
+        assertTrue("Resumed timer should fire", awaitMaxDurationEvent())
+        assertTrue("Max-duration event should report active time", maxDurationEvents.single().getLong("durationMs") >= 700L)
+        stopRecording()
+    }
+
+    @Test
+    fun staleMaxDurationRunnable_doesNotStopSuccessor() {
+        startRecording(maxDurationMs = 10_000L, autoStopOnMaxDuration = true)
+        val staleRunnable = recorderStateField("maxDurationRunnable") as Runnable
+        stopRecording()
+        interruptionEvents.clear()
+        maxDurationEvents.clear()
+
+        startRecording()
+        staleRunnable.run()
+        Thread.sleep(100)
+        assertTrue("Stale timer must not stop successor", manager.isRecording)
+        assertTrue("Stale timer must not emit for successor", maxDurationEvents.isEmpty())
+        stopRecording()
+    }
+
+    private fun startRecording(
+        compressed: Boolean = false,
+        maxDurationMs: Long = 0L,
+        autoStopOnMaxDuration: Boolean = false
+    ) {
         val latch = CountDownLatch(1)
         var error: String? = null
         manager.startRecording(
@@ -168,6 +240,10 @@ class RecorderConcurrencyInstrumentedTest {
                 // This test targets recorder ownership, not the foreground-service contract.
                 put("keepAwake", false)
                 put("filename", "device_change_race")
+                if (maxDurationMs > 0L) {
+                    put("maxDurationMs", maxDurationMs)
+                    put("autoStopOnMaxDuration", autoStopOnMaxDuration)
+                }
                 if (compressed) {
                     put("output", mapOf(
                         "compressed" to mapOf(
@@ -301,6 +377,15 @@ class RecorderConcurrencyInstrumentedTest {
             Thread.sleep(20)
         } while (System.currentTimeMillis() < deadline)
         return currentRecordedSize() > size
+    }
+
+    private fun awaitMaxDurationEvent(): Boolean {
+        val deadline = System.currentTimeMillis() + 2_000L
+        do {
+            if (maxDurationEvents.isNotEmpty()) return true
+            Thread.sleep(20)
+        } while (System.currentTimeMillis() < deadline)
+        return maxDurationEvents.isNotEmpty()
     }
 
     private fun awaitRecorderState(predicate: (AudioRecord?) -> Boolean): Boolean {

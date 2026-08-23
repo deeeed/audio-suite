@@ -71,8 +71,8 @@ class RecorderLockingTest {
             "fun startRecording(options: Map<String, Any?>, promise: Promise)",
             "fun prepareRecording(options: Map<String, Any?>): Boolean",
             "private fun pauseRecording(promise: Promise, isSystemInterruption: Boolean)",
-            "fun resumeRecording(promise: Promise)",
-            "fun stopRecording(promise: Promise)",
+            "private fun resumeRecording(expectedSession: Long?, promise: Promise)",
+            "private fun stopRecording(expectedSession: Long?, promise: Promise)",
             "fun getStatus(): Bundle"
         )
 
@@ -129,8 +129,8 @@ class RecorderLockingTest {
             "Only the session whose compressed recorder phase 1 paused may skip a second pause"
         )
         assertTrue(
-            bodyOf("private fun recordingProcess()")
-                .contains("changingDeviceSession.get() == sessionId"),
+            bodyOf("private fun recordingProcess(recordingSession: Long)")
+                .contains("changingDeviceSession.get() == recordingSession"),
             "A device change must gate only the worker for its own session"
         )
     }
@@ -153,8 +153,12 @@ class RecorderLockingTest {
                 "$signature must have one settle-once guard"
             )
             assertTrue(
-                guardAt >= 0 && eventAt > guardAt,
-                "$signature must guard its deviceSwitchFailed event"
+                guardAt >= 0 && eventAt > guardAt &&
+                    Regex(
+                        """if\s*\(\s*eventSent\s*\.\s*compareAndSet\s*\(\s*false\s*,\s*true\s*\)\s*\)\s*\{[^}]*eventSender\.sendExpoEvent""",
+                        RegexOption.DOT_MATCHES_ALL
+                    ).containsMatchIn(body),
+                "$signature must send deviceSwitchFailed inside its settle-once guard"
             )
         }
     }
@@ -249,14 +253,111 @@ class RecorderLockingTest {
     }
 
     @Test
+    fun `teardown blocks publication and clears paused state before joining`() {
+        val cleanup = bodyOf("private fun cleanupInternal(")
+        val claimAt = cleanup.indexOf("_isRecording.getAndSet(false)")
+        val clearPausedAt = cleanup.indexOf("isPaused.set(false)", claimAt)
+        val reserveAt = cleanup.indexOf("tearingDownSession = ownedSession", clearPausedAt)
+        val joinAt = cleanup.indexOf("ownedWorker.join(", reserveAt)
+        assertTrue(
+            claimAt >= 0 && clearPausedAt > claimAt && reserveAt > clearPausedAt && joinAt > reserveAt,
+            "Cleanup must clear paused state and reserve teardown before its unlocked join"
+        )
+        assertTrue(
+            cleanup.contains("if (tearingDownSession != NO_DEVICE_CHANGE_SESSION) return false"),
+            "A second unlocked cleanup must not reclaim a session already being torn down"
+        )
+
+        for (signature in listOf(
+            "fun startRecording(options: Map<String, Any?>, promise: Promise)",
+            "fun prepareRecording(options: Map<String, Any?>): Boolean"
+        )) {
+            assertTrue(
+                bodyOf(signature).contains("tearingDownSession != NO_DEVICE_CHANGE_SESSION"),
+                "$signature must not publish recorders while a retiring session is joining"
+            )
+        }
+    }
+
+    @Test
+    fun `retiring worker cannot read or release a successor session`() {
+        val worker = bodyOf("private fun recordingProcess(recordingSession: Long)")
+        val readLockAt = worker.indexOf("val bytesRead = synchronized(audioRecordLock)")
+        val sessionAt = worker.indexOf("sessionId != recordingSession", readLockAt)
+        val readAt = worker.indexOf("it.read(", readLockAt)
+        assertTrue(
+            readLockAt >= 0 && sessionAt > readLockAt && readAt > sessionAt,
+            "The worker must recheck its session inside the lock before reading AudioRecord"
+        )
+        assertFalse(
+            worker.contains("releaseWakeLock()"),
+            "A retiring worker must not release the shared wake lock without a session check"
+        )
+        assertTrue(
+            worker.contains("releaseWakeLockForSession(recordingSession)"),
+            "Worker wake-lock cleanup must carry its recording session"
+        )
+    }
+
+    @Test
+    fun `stop interrupts and joins its worker outside audioRecordLock`() {
+        val stop = bodyOf("private fun stopRecording(expectedSession: Long?, promise: Promise)")
+        val claimLockAt = stop.indexOf("val claim = synchronized(audioRecordLock)")
+        val interruptAt = stop.indexOf("claim.worker?.interrupt()", claimLockAt)
+        val joinAt = stop.indexOf("claim.worker?.join(", interruptAt)
+        val teardownLockAt = stop.indexOf("synchronized(audioRecordLock)", joinAt)
+        assertTrue(
+            claimLockAt >= 0 && interruptAt > claimLockAt && joinAt > interruptAt &&
+                teardownLockAt > joinAt,
+            "Stop must claim under the lock, interrupt and join outside it, then retake it"
+        )
+        assertTrue(
+            stop.indexOf("catch (e: InterruptedException)", joinAt) > joinAt,
+            "Stop must settle teardown even when its join is interrupted"
+        )
+    }
+
+    @Test
+    fun `max duration callbacks and system posts carry their session`() {
+        val schedule = bodyOf("private fun scheduleMaxDurationTimer(recordingSession: Long)")
+        assertTrue(
+            schedule.contains("Runnable { emitMaxDurationReached(recordingSession) }") &&
+                schedule.contains("maxDurationSession != recordingSession"),
+            "Every max-duration runnable must be bound to its recording session"
+        )
+        val emit = bodyOf("private fun emitMaxDurationReached(recordingSession: Long)")
+        assertTrue(
+            emit.contains("sessionId != recordingSession") &&
+                emit.contains("stopRecording(recordingSession,"),
+            "A stale max-duration callback must neither emit for nor stop a successor"
+        )
+
+        val resume = bodyOf("private fun resumeRecording(expectedSession: Long?, promise: Promise)")
+        val clearPausedAt = resume.indexOf("isPaused.set(false)")
+        val resumeTimerAt = resume.indexOf("resumeMaxDurationTimer(sessionId)")
+        assertTrue(
+            clearPausedAt >= 0 && resumeTimerAt > clearPausedAt,
+            "Resume must clear isPaused before scheduling the max-duration timer"
+        )
+
+        for (signature in listOf("private fun postSystemPause(", "private fun postSystemResume(")) {
+            val post = bodyOf(signature)
+            assertTrue(
+                post.contains("recordingSession") &&
+                    (post.contains("pauseRecordingForSystemInterruption(recordingSession") ||
+                        post.contains("resumeRecordingForSession(recordingSession")),
+                "$signature must pass the captured session through its queued callback"
+            )
+        }
+    }
+
+    @Test
     fun `every session publication bumps sessionId`() {
         // If a publication point forgets this, cleanup cannot tell that a new session
         // appeared and will release its recorders.
         for (signature in listOf(
             "private fun startRecordingProcess(promise: Promise): Boolean",
-            "fun prepareRecording(options: Map<String, Any?>): Boolean",
-            // Resume restarts both recorders, so it republishes the session too.
-            "fun resumeRecording(promise: Promise)"
+            "fun prepareRecording(options: Map<String, Any?>): Boolean"
         )) {
             assertTrue(
                 bodyOf(signature).contains("sessionId++"),
@@ -264,6 +365,11 @@ class RecorderLockingTest {
                     "concurrent teardown cannot tell this session from the one it claimed."
             )
         }
+        assertFalse(
+            bodyOf("private fun resumeRecording(expectedSession: Long?, promise: Promise)")
+                .contains("sessionId++"),
+            "Pause and resume must retain the PCM worker's session identity"
+        )
     }
 
     @Test
@@ -304,7 +410,7 @@ class RecorderLockingTest {
         // Each of these runs inside a synchronized(audioRecordLock) block, so passing the
         // default would make cleanup try to join while the lock is held.
         for (signature in listOf(
-            "fun stopRecording(promise: Promise)",
+            "private fun stopRecording(expectedSession: Long?, promise: Promise)",
             "fun getStatus(): Bundle",
             "fun prepareRecording(options: Map<String, Any?>): Boolean"
         )) {
@@ -360,7 +466,7 @@ class RecorderLockingTest {
         // isPaused alone is not enough. cleanup's phase 0 clears _isRecording and takes
         // the worker, so a resume checking only isPaused would restart both recorders and
         // resolve success on a recording nothing is reading from.
-        val body = bodyOf("fun resumeRecording(promise: Promise)")
+        val body = bodyOf("private fun resumeRecording(expectedSession: Long?, promise: Promise)")
         assertTrue(
             body.contains("val resumeSession = synchronized(audioRecordLock)") &&
                 body.contains("if (!_isRecording.get())"),
