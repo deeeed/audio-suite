@@ -170,7 +170,21 @@ class RecorderLockingTest {
                 sessionAt > lockAt && recordingAt > sessionAt && mutationAt > recordingAt,
                 "$signature must recheck session ownership under the lock before recovery"
             )
+            assertTrue(
+                recovery.contains("catch (recoveryError: Exception)") &&
+                    recovery.contains("failDeviceChangeRecovery(recoveryError, promise)"),
+                "$signature must settle failures from repeated recorder operations"
+            )
         }
+
+        val failedRecovery = bodyOf("private fun failDeviceChangeRecovery(")
+        val claimWorkerAt = failedRecovery.indexOf("recordingThreadRef.getAndSet(null)?.interrupt()")
+        val cleanupAt = failedRecovery.indexOf("cleanup(callerHoldsRecordLock = true)")
+        val rejectAt = failedRecovery.indexOf("promise.reject(")
+        assertTrue(
+            claimWorkerAt >= 0 && cleanupAt > claimWorkerAt && rejectAt > cleanupAt,
+            "Failed recovery must claim the worker, force teardown, then settle the promise"
+        )
     }
 
     @Test

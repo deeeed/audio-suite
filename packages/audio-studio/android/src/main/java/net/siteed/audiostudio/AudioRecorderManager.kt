@@ -50,6 +50,7 @@ class AudioRecorderManager(
         private const val NO_DEVICE_CHANGE_SESSION = -1L
         private const val DEVICE_RECOVERY_SUPERSEDED = "SESSION_CHANGED"
         private const val DEVICE_RECOVERY_NOT_RECORDING = "NOT_RECORDING"
+        private const val DEVICE_RECOVERY_FAILED = "DEVICE_RECOVERY_FAILED"
 
         /**
          * The single rule deciding whether a recording runs the foreground service.
@@ -403,7 +404,11 @@ class AudioRecorderManager(
                 )
                 return
             }
-            stopRecording(promise)
+            try {
+                stopRecording(promise)
+            } catch (recoveryError: Exception) {
+                failDeviceChangeRecovery(recoveryError, promise)
+            }
         }
     }
 
@@ -428,8 +433,29 @@ class AudioRecorderManager(
                 )
                 return
             }
-            pauseRecording(promise, isSystemInterruption = false)
+            try {
+                pauseRecording(promise, isSystemInterruption = false)
+            } catch (recoveryError: Exception) {
+                failDeviceChangeRecovery(recoveryError, promise)
+            }
         }
+    }
+
+    private fun failDeviceChangeRecovery(recoveryError: Exception, promise: Promise) {
+        LogUtils.e(CLASS_NAME, "Device-switch recovery failed: ${recoveryError.message}", recoveryError)
+        // The worker is waiting outside audioRecordLock on this transition's session.
+        // Claim it before cleanup so no stale thread survives into a later recording.
+        recordingThreadRef.getAndSet(null)?.interrupt()
+        try {
+            cleanup(callerHoldsRecordLock = true)
+        } catch (cleanupError: Exception) {
+            LogUtils.e(CLASS_NAME, "Device-switch recovery cleanup failed", cleanupError)
+        }
+        promise.reject(
+            DEVICE_RECOVERY_FAILED,
+            "Device-switch recovery failed: ${recoveryError.message}",
+            recoveryError
+        )
     }
 
     private fun handleDeviceChangeTransition(): Long? {
