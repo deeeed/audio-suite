@@ -21,6 +21,7 @@ import org.junit.runner.RunWith
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 @RunWith(AndroidJUnit4::class)
 class ForegroundServiceLifecycleInstrumentedTest {
@@ -94,27 +95,66 @@ class ForegroundServiceLifecycleInstrumentedTest {
     }
 
     @Test
-    fun notificationOnlyConfig_cleanupStopsService() {
-        startRecording(options("notification_cleanup", showNotification = true, keepAwake = false))
-        assertTrue("Notification-only config should start the service", awaitServiceState(true))
+    fun defaultConfig_cleanupStopsService() {
+        startRecording(options("default_cleanup"))
+        assertTrue("Default config should start the service", awaitServiceState(true))
 
         AudioRecorderManager.destroy()
 
-        assertTrue("Cleanup should stop the notification-only service", awaitServiceState(false))
+        assertTrue("Cleanup should stop the default-config service", awaitServiceState(false))
     }
 
     @Test
-    fun preparedSuccessor_doesNotKeepStoppedServiceAlive() {
-        val recordingOptions = options("prepared_successor")
+    fun preparedSuccessor_duringCleanup_stopsOldServiceAndPreservesPreparation() {
+        val recordingOptions = options("prepared_successor_old")
         startRecording(recordingOptions)
         assertTrue("Recording should start the service", awaitServiceState(true))
 
-        Thread.sleep(RECORDING_MS)
-        assertRecordingResult(stopRecording())
-        assertTrue("Stopping should remove the service", awaitServiceState(false))
+        val blockerReady = CountDownLatch(1)
+        val cleanupJoining = CountDownLatch(1)
+        val releaseCleanup = CountDownLatch(1)
+        val blocker = Thread {
+            blockerReady.countDown()
+            try {
+                Thread.sleep(Long.MAX_VALUE)
+            } catch (_: InterruptedException) {
+                cleanupJoining.countDown()
+                releaseCleanup.await()
+            }
+        }
+        blocker.start()
+        assertTrue("Blocking worker should start", blockerReady.await(1, TimeUnit.SECONDS))
 
-        assertTrue("Successor preparation should succeed", manager.prepareRecording(recordingOptions))
-        assertTrue("Preparing a successor should not start the service", serviceRemainsStopped())
+        val threadRef = recordingThreadReference()
+        val cleanupThread = Thread { manager.cleanup() }
+        try {
+            val displacedWorker = threadRef.getAndSet(blocker)
+            assertNotNull("Active recording should have a PCM worker", displacedWorker)
+
+            cleanupThread.start()
+            assertTrue(
+                "Cleanup should reach the unlocked worker join",
+                cleanupJoining.await(2, TimeUnit.SECONDS)
+            )
+
+            displacedWorker!!.join(2_000L)
+            assertFalse("Displaced recording worker should stop", displacedWorker.isAlive)
+
+            val successorOptions = options("prepared_successor_new")
+            assertTrue("Successor preparation should succeed", manager.prepareRecording(successorOptions))
+            assertTrue("Old service should remain until cleanup resumes", isServiceRunning())
+
+            releaseCleanup.countDown()
+            cleanupThread.join(3_000L)
+
+            assertFalse("Cleanup should finish", cleanupThread.isAlive)
+            assertTrue("Cleanup should stop the old service", awaitServiceState(false))
+            assertTrue("Cleanup should preserve the prepared successor", manager.isPrepared)
+        } finally {
+            releaseCleanup.countDown()
+            blocker.interrupt()
+            cleanupThread.join(3_000L)
+        }
     }
 
     @Test
@@ -227,6 +267,13 @@ class ForegroundServiceLifecycleInstrumentedTest {
         // The service package differs from the generated `.test` package, so dumpsys
         // prints the full class name rather than abbreviating it to `/.ClassName`.
         return dump.contains(AudioRecordingService::class.java.name)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun recordingThreadReference(): AtomicReference<Thread?> {
+        val field = AudioRecorderManager::class.java.getDeclaredField("recordingThreadRef")
+        field.isAccessible = true
+        return field.get(manager) as AtomicReference<Thread?>
     }
 
     companion object {
