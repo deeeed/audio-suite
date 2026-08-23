@@ -5,7 +5,6 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableMap
-import com.facebook.soloader.SoLoader
 import junit.framework.TestCase.*
 import kotlinx.coroutines.runBlocking
 import net.siteed.sherpaonnx.utils.LightweightModelDownloader
@@ -30,13 +29,6 @@ class MemoryAndPerformanceProfilerTest {
     private lateinit var context: android.content.Context
     private lateinit var profileDataFile: File
     private var baselineSystemInfo: SystemInfoSnapshot? = null
-
-    companion object {
-        init {
-            val context = InstrumentationRegistry.getInstrumentation().targetContext
-            SoLoader.init(context, false)
-        }
-    }
 
     @Before
     fun setUp() {

@@ -4,10 +4,9 @@ This directory contains documentation for the native integration testing framewo
 
 ## Framework Overview
 
-The native integration testing framework is meant to validate React Native module
-integration with the sherpa-onnx C++ library on Android and iOS. Neither half runs today:
-Android is blocked by #475 and iOS has no XCTest target, so what follows describes the
-intent and the sources, not working validation.
+The native integration testing framework validates React Native module integration with
+the sherpa-onnx C++ library. Android tests run from the generated sherpa-voice project;
+iOS still has no XCTest target.
 
 ### Key Features
 
@@ -19,9 +18,8 @@ intent and the sources, not working validation.
 
 ## Test Results
 
-**Historical Android result**: 12/12 passed when these were last runnable. They do not
-run today: the instrumentation APK is missing the React Native libraries and the test
-manifest lacks `INTERNET` (#475). Treat the numbers below as a record, not current state.
+**Historical Android result**: 12/12 passed in this older run. Current Pixel 6a results,
+including real ASR and TTS models, are recorded in `../INTEGRATION_TESTING.md`.
 - **BasicIntegrationTest**: 7 tests validating module structure and native integration
 - **TtsIntegrationTest**: 5 tests validating model management and TTS functionality
 - **Execution time**: ~0.05 seconds for complete test suite
@@ -35,8 +33,8 @@ manifest lacks `INTERNET` (#475). Treat the numbers below as a record, not curre
 
 ## Quick Start
 
-The commands below are wired up but do not currently pass: the instrumentation APK is
-missing the React Native libraries and the test manifest lacks `INTERNET` (#475).
+Run Android tests after generating `apps/sherpa-voice/android`. The test runner initializes
+React Native's merged library mapping, and the test manifest declares `INTERNET`.
 
 ### Run Android Tests
 ```bash

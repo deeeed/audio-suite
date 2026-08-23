@@ -142,8 +142,8 @@ described a CAF-versus-WAV problem that the implementation never had.
 
 ## Test Execution Notes
 
-Neither platform's suite runs today: Android is blocked by #475, and iOS has no XCTest
-target. The notes below describe what each platform needs, not what works now.
+Android's instrumented suite runs on a connected device from the generated sherpa-voice
+project. iOS has no XCTest target. The notes below describe each platform's requirements.
 
 ### iOS Testing
 - Requires macOS with Xcode installed

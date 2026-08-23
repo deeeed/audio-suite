@@ -66,7 +66,8 @@ function mapRawDeviceToAudioDevice(rawDevice: any): AudioDevice {
  * ```
  * {
  *   reason: "userPaused" | "userResumed" | "audioFocusLoss" | "audioFocusGain" |
- *           "deviceFallback" | "deviceSwitchFailed" | "phoneCall" | "phoneCallEnded",
+ *           "deviceChanged" | "deviceFallback" | "deviceSwitchFailed" | "phoneCall" |
+ *           "phoneCallEnded",
  *   isPaused: boolean,
  *   timestamp: number
  * }
