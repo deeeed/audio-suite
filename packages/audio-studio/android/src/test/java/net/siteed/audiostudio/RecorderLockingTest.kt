@@ -138,7 +138,7 @@ class RecorderLockingTest {
     @Test
     fun `device switch failure events settle once`() {
         for (signature in listOf(
-            "fun handleDeviceChange()",
+            "internal fun handleDeviceChange(requestedSession: Long)",
             "private fun handleDeviceChangeTransition("
         )) {
             val body = bodyOf(signature)

@@ -368,11 +368,11 @@ class AudioRecorderManager(
 
     // Add a method to handle device changes
     fun handleDeviceChange(): Boolean {
-        val requestedSession = synchronized(audioRecordLock) {
-            if (_isRecording.get()) sessionId else NO_DEVICE_CHANGE_SESSION
-        }
-        if (requestedSession == NO_DEVICE_CHANGE_SESSION) return false
+        val requestedSession = activeRecordingSession() ?: return false
+        return handleDeviceChange(requestedSession)
+    }
 
+    internal fun handleDeviceChange(requestedSession: Long): Boolean {
         val transition = handleDeviceChangeTransition(requestedSession)
         if (transition is DeviceTransitionResult.Failed) {
             val eventSent = AtomicBoolean(false)
@@ -727,6 +727,29 @@ class AudioRecorderManager(
     // Public property to check if recording is active
     val isRecording: Boolean
         get() = _isRecording.get()
+
+    internal fun activeRecordingSession(): Long? = synchronized(audioRecordLock) {
+        sessionId.takeIf { _isRecording.get() }
+    }
+
+    internal fun <T> runForActiveSession(expectedSession: Long, block: () -> T): T? =
+        synchronized(audioRecordLock) {
+            if (!_isRecording.get() || sessionId != expectedSession) null else block()
+        }
+
+    internal fun pauseRecordingForSession(expectedSession: Long, promise: Promise) {
+        synchronized(audioRecordLock) {
+            if (!_isRecording.get() || sessionId != expectedSession) {
+                promise.reject(
+                    DEVICE_RECOVERY_SUPERSEDED,
+                    "Recording session changed before device-disconnection pause",
+                    null
+                )
+                return
+            }
+            pauseRecording(promise, isSystemInterruption = false)
+        }
+    }
 
     /**
      * Shared handler for call state changes, used by both the modern TelephonyCallback (API 31+)
@@ -1924,10 +1947,10 @@ class AudioRecorderManager(
             LogUtils.d(CLASS_NAME, "⏺️ Recording resumed successfully")
         } catch (e: Exception) {
             LogUtils.e(CLASS_NAME, "⏺️ Failed to resume recording: ${e.message}", e)
-            releaseWakeLock()
             synchronized(audioRecordLock) {
                 val sameSession = sessionId == resumeSession
                 if (sameSession) {
+                    releaseWakeLock()
                     try {
                         audioRecord?.stop()
                     } catch (stopError: Exception) {
@@ -2561,6 +2584,7 @@ class AudioRecorderManager(
         if (callerHoldsRecordLock) {
             // Already inside the caller's monitor; taking it again is free (reentrant).
             if (expectedSession != null && sessionId != expectedSession) return false
+            cancelMaxDurationTimer()
             wasRecording = _isRecording.getAndSet(false)
             ownedSession = sessionId
             ownedService = ::recordingConfig.isInitialized && serviceWasStartedFor(recordingConfig)
@@ -2569,6 +2593,7 @@ class AudioRecorderManager(
         } else {
             synchronized(audioRecordLock) {
                 if (expectedSession != null && sessionId != expectedSession) return false
+                cancelMaxDurationTimer()
                 wasRecording = _isRecording.getAndSet(false)
                 ownedSession = sessionId
                 ownedService = ::recordingConfig.isInitialized &&
@@ -2580,8 +2605,6 @@ class AudioRecorderManager(
                 ownedWorker = recordingThreadRef.getAndSet(null)
             }
         }
-        cancelMaxDurationTimer()
-
         // Phase 1, outside audioRecordLock: signal the worker and wait for it.
         //
         // This cannot happen under the lock. The recording loop acquires audioRecordLock

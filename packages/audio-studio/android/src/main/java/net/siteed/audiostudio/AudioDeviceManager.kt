@@ -566,7 +566,9 @@ class AudioDeviceManager(
     /**
      * Selects a specific audio input device asynchronously (for internal use)
      */
-    suspend fun selectDevice(deviceId: String): Boolean {
+    suspend fun selectDevice(deviceId: String): Boolean = selectDeviceNow(deviceId)
+
+    internal fun selectDeviceNow(deviceId: String): Boolean {
         LogUtils.d(TAG, "Asynchronously selecting device with ID: $deviceId")
         lastSelectedDeviceId = deviceId
         
@@ -1738,4 +1740,4 @@ class AudioDeviceManager(
     }
     
 
-} 
+}
