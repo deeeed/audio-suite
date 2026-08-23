@@ -472,7 +472,15 @@ class AudioRecorderManager(
                         "error" to e.message
                     ))
                 }
-                override fun reject(code: String?, message: String?, cause: Throwable?) {}
+                override fun reject(code: String?, message: String?, cause: Throwable?) {
+                    // A concurrent stop can make pause reject. The switch still failed,
+                    // and the stopped state should be reported rather than dropped.
+                    eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
+                        "reason" to "deviceSwitchFailed",
+                        "isPaused" to false,
+                        "error" to e.message
+                    ))
+                }
             })
             return false
         } finally {
