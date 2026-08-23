@@ -92,16 +92,38 @@ class RecorderConcurrencyInstrumentedTest {
         assertNull("No AudioRecord should survive stop", currentAudioRecord())
         assertTrue("Stop should not exhaust its 2-second join timeout: ${stopElapsedMs}ms", stopElapsedMs < 1_500)
 
-        val fileUri = stopResult.getString("fileUri")
-        assertNotNull("Stop should return a file URI", fileUri)
-        val minimumFileBytes = WAV_HEADER_BYTES +
-            SAMPLE_RATE * BYTES_PER_SAMPLE * MINIMUM_RECORDED_MS / 1_000
-        val fileBytes = File(java.net.URI(fileUri)).length()
+        assertRecordingResult(stopResult)
+    }
+
+    @Test
+    fun pauseDuringDeviceChange_doesNotRestartPausedRecorder() {
+        startRecording()
+        Thread.sleep(150)
+        val handlerFailure = AtomicReference<Throwable?>()
+        val handler = Thread {
+            try {
+                manager.handleDeviceChange()
+            } catch (error: Throwable) {
+                handlerFailure.set(error)
+            }
+        }
+        handler.start()
+
         assertTrue(
-            "Stopped recording should contain at least ${MINIMUM_RECORDED_MS}ms of PCM: $fileBytes bytes",
-            fileBytes >= minimumFileBytes
+            "Device change should release the old recorder before reinitializing",
+            awaitRecorderState { it == null }
         )
-        assertTrue("Stopped recording should have positive duration", stopResult.getLong("durationMs") > 0)
+        pauseRecording()
+        handler.join(3_000)
+
+        assertFalse("Device-change handler should finish", handler.isAlive)
+        assertNull("Device-change handler should not throw", handlerFailure.get())
+        val status = manager.getStatus()
+        assertTrue("Manager should remain recording", status.getBoolean("isRecording"))
+        assertTrue("Manager should remain paused", status.getBoolean("isPaused"))
+        assertNull("No AudioRecord should restart while paused", currentAudioRecord())
+
+        assertRecordingResult(stopRecording())
     }
 
     private fun startRecording() {
@@ -150,6 +172,36 @@ class RecorderConcurrencyInstrumentedTest {
         assertNull("Recording stop failed", error)
         assertNotNull("Recording stop should return metadata", result)
         return result!!
+    }
+
+    private fun pauseRecording() {
+        val latch = CountDownLatch(1)
+        var error: String? = null
+        manager.pauseRecording(object : Promise {
+            override fun resolve(value: Any?) {
+                latch.countDown()
+            }
+
+            override fun reject(code: String?, message: String?, cause: Throwable?) {
+                error = "$code: $message"
+                latch.countDown()
+            }
+        })
+        assertTrue("Recording should pause", latch.await(3, TimeUnit.SECONDS))
+        assertNull("Recording pause failed", error)
+    }
+
+    private fun assertRecordingResult(result: Bundle) {
+        val fileUri = result.getString("fileUri")
+        assertNotNull("Stop should return a file URI", fileUri)
+        val minimumFileBytes = WAV_HEADER_BYTES +
+            SAMPLE_RATE * BYTES_PER_SAMPLE * MINIMUM_RECORDED_MS / 1_000
+        val fileBytes = File(java.net.URI(fileUri)).length()
+        assertTrue(
+            "Stopped recording should contain at least ${MINIMUM_RECORDED_MS}ms of PCM: $fileBytes bytes",
+            fileBytes >= minimumFileBytes
+        )
+        assertTrue("Stopped recording should have positive duration", result.getLong("durationMs") > 0)
     }
 
     private fun awaitRecorderState(predicate: (AudioRecord?) -> Boolean): Boolean {

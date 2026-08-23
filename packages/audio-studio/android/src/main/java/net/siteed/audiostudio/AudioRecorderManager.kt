@@ -428,10 +428,10 @@ class AudioRecorderManager(
             LogUtils.d(CLASS_NAME, "🔄 Waiting for device transition to complete")
             Thread.sleep(200)
 
-            // Phase 2 restarts only if no stop or new session won during the delay.
+            // Phase 2 restarts only if no stop, pause, or new session won during the delay.
             return synchronized(audioRecordLock) {
-                if (!_isRecording.get() || sessionId != deviceChangeSession) {
-                    LogUtils.d(CLASS_NAME, "🔄 Device change cancelled because the session ended")
+                if (!_isRecording.get() || isPaused.get() || sessionId != deviceChangeSession) {
+                    LogUtils.d(CLASS_NAME, "🔄 Device change cancelled because the session ended or paused")
                     return@synchronized false
                 }
 
@@ -473,11 +473,11 @@ class AudioRecorderManager(
                     ))
                 }
                 override fun reject(code: String?, message: String?, cause: Throwable?) {
-                    // A concurrent stop can make pause reject. The switch still failed,
-                    // and the stopped state should be reported rather than dropped.
+                    // A concurrent stop or pause can make this pause reject. The switch
+                    // still failed, so report the state that won instead of dropping it.
                     eventSender.sendExpoEvent(Constants.RECORDING_INTERRUPTED_EVENT_NAME, bundleOf(
                         "reason" to "deviceSwitchFailed",
-                        "isPaused" to false,
+                        "isPaused" to isPaused.get(),
                         "error" to e.message
                     ))
                 }

@@ -96,8 +96,10 @@ class RecorderLockingTest {
         )
         val restart = body.substring(restartAt)
         assertTrue(
-            restart.contains("!_isRecording.get() || sessionId != deviceChangeSession"),
-            "Device change must not restart after stop or a new session wins during the delay"
+            restart.contains(
+                "!_isRecording.get() || isPaused.get() || sessionId != deviceChangeSession"
+            ),
+            "Device change must not restart after stop, pause, or a new session wins during the delay"
         )
         assertTrue(
             body.contains("isChangingDevice.set(false)"),
