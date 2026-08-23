@@ -97,7 +97,8 @@ class RecorderConcurrencyInstrumentedTest {
 
     @Test
     fun pauseDuringDeviceChange_doesNotRestartPausedRecorder() {
-        startRecording(compressed = true)
+        val compressed = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q
+        startRecording(compressed = compressed)
         Thread.sleep(150)
         val handlerFailure = AtomicReference<Throwable?>()
         val handler = Thread {
@@ -125,7 +126,9 @@ class RecorderConcurrencyInstrumentedTest {
 
         val result = stopRecording()
         assertRecordingResult(result)
-        assertCompressedRecordingResult(result)
+        if (compressed) {
+            assertCompressedRecordingResult(result)
+        }
     }
 
     private fun startRecording(compressed: Boolean = false) {
