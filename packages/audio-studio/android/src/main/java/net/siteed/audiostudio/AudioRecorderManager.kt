@@ -419,31 +419,32 @@ class AudioRecorderManager(
         promise: Promise
     ) {
         var recoveryFailure: Exception? = null
-        synchronized(audioRecordLock) {
+        val ownsSession = synchronized(audioRecordLock) {
             if (sessionId != claimedSession) {
                 promise.reject(
                     DEVICE_RECOVERY_SUPERSEDED,
                     "Recording session changed before device-switch recovery",
                     null
                 )
-                return
-            }
-            if (!_isRecording.get()) {
+                false
+            } else if (!_isRecording.get()) {
                 promise.reject(
                     DEVICE_RECOVERY_NOT_RECORDING,
                     "Recording stopped before device-switch recovery",
                     null
                 )
-                return
+                false
+            } else {
+                true
             }
-            try {
-                suppressRecordingStoppedEvent = true
-                stopRecording(promise)
-            } catch (recoveryError: Exception) {
-                recoveryFailure = recoveryError
-            } finally {
-                suppressRecordingStoppedEvent = false
-            }
+        }
+        if (!ownsSession) return
+        try {
+            // This overload rechecks claimedSession when it claims the recording, then
+            // joins the worker without audioRecordLock held.
+            stopRecording(claimedSession, promise, suppressStoppedEvent = true)
+        } catch (recoveryError: Exception) {
+            recoveryFailure = recoveryError
         }
         recoveryFailure?.let { failDeviceChangeRecovery(claimedSession, it, promise) }
     }
@@ -1722,7 +1723,11 @@ class AudioRecorderManager(
     fun stopRecording(promise: Promise) =
         stopRecording(expectedSession = null, promise = promise)
 
-    private fun stopRecording(expectedSession: Long?, promise: Promise) {
+    private fun stopRecording(
+        expectedSession: Long?,
+        promise: Promise,
+        suppressStoppedEvent: Boolean = false
+    ) {
         val stopStartTime = System.currentTimeMillis()
         val claim = synchronized(audioRecordLock) {
             if (
@@ -1843,9 +1848,11 @@ class AudioRecorderManager(
                 // here cannot strand the flag and disable reclamation for every later
                 // caller (#446).
                 compressedFinalizationPending = true
+                suppressRecordingStoppedEvent = suppressStoppedEvent
                 try {
                     cleanup(callerHoldsRecordLock = true)
                 } finally {
+                    suppressRecordingStoppedEvent = false
                     compressedFinalizationPending = false
                 }
             } catch (e: IllegalStateException) {

@@ -150,7 +150,7 @@ class AudioSourceWiringTest {
         val paired = Regex("isPrepared = false[^\\n]*\\n\\s*audioSourceLifecycle\\.onTeardown\\(\\)")
 
         for (signature in listOf(
-            "private fun stopRecording(expectedSession: Long?, promise: Promise)",
+            "private fun stopRecording(",
             "private fun cleanupInternal("
         )) {
             assertTrue(

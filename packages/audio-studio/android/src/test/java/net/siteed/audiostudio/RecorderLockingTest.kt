@@ -72,7 +72,7 @@ class RecorderLockingTest {
             "fun prepareRecording(options: Map<String, Any?>): Boolean",
             "private fun pauseRecording(promise: Promise, isSystemInterruption: Boolean)",
             "private fun resumeRecording(expectedSession: Long?, promise: Promise)",
-            "private fun stopRecording(expectedSession: Long?, promise: Promise)",
+            "private fun stopRecording(",
             "fun getStatus(): Bundle"
         )
 
@@ -172,7 +172,6 @@ class RecorderLockingTest {
         )
 
         for ((signature, expectedMutation) in listOf(
-            "private fun stopRecordingAfterDeviceChangeFailure(" to "stopRecording(promise)",
             "private fun pauseRecordingAfterDeviceChangeFailure(" to
                 "pauseRecording(promise, isSystemInterruption = false)"
         )) {
@@ -193,6 +192,23 @@ class RecorderLockingTest {
                 "$signature must settle failures from repeated recorder operations"
             )
         }
+
+        val stopRecovery = bodyOf("private fun stopRecordingAfterDeviceChangeFailure(")
+        val ownershipAt = stopRecovery.indexOf("val ownsSession = synchronized(audioRecordLock)")
+        val ownershipEndAt = stopRecovery.indexOf("if (!ownsSession) return", ownershipAt)
+        val stopAt = stopRecovery.indexOf(
+            "stopRecording(claimedSession, promise, suppressStoppedEvent = true)",
+            ownershipEndAt
+        )
+        assertTrue(
+            ownershipAt >= 0 && ownershipEndAt > ownershipAt && stopAt > ownershipEndAt,
+            "Device-failure stop must leave audioRecordLock before stop joins its worker"
+        )
+        assertTrue(
+            stopRecovery.contains("catch (recoveryError: Exception)") &&
+                stopRecovery.contains("failDeviceChangeRecovery(claimedSession, it, promise)"),
+            "Device-failure stop must settle failures from repeated recorder operations"
+        )
 
         val failedRecovery = bodyOf("private fun failDeviceChangeRecovery(")
         val cleanupAt = failedRecovery.indexOf("cleanupInternal(")
@@ -301,7 +317,7 @@ class RecorderLockingTest {
 
     @Test
     fun `stop interrupts and joins its worker outside audioRecordLock`() {
-        val stop = bodyOf("private fun stopRecording(expectedSession: Long?, promise: Promise)")
+        val stop = bodyOf("private fun stopRecording(")
         val claimLockAt = stop.indexOf("val claim = synchronized(audioRecordLock)")
         val interruptAt = stop.indexOf("claim.worker?.interrupt()", claimLockAt)
         val joinAt = stop.indexOf("claim.worker?.join(", interruptAt)
@@ -410,7 +426,7 @@ class RecorderLockingTest {
         // Each of these runs inside a synchronized(audioRecordLock) block, so passing the
         // default would make cleanup try to join while the lock is held.
         for (signature in listOf(
-            "private fun stopRecording(expectedSession: Long?, promise: Promise)",
+            "private fun stopRecording(",
             "fun getStatus(): Bundle",
             "fun prepareRecording(options: Map<String, Any?>): Boolean"
         )) {
