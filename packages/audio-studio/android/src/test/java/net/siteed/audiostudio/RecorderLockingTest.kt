@@ -129,11 +129,14 @@ class RecorderLockingTest {
             "private fun handleDeviceChangeTransition(): Boolean"
         )) {
             val body = bodyOf(signature)
-            val guardAt = body.indexOf("eventSent.compareAndSet(false, true)")
+            val guardPattern = Regex(
+                """eventSent\s*\.\s*compareAndSet\s*\(\s*false\s*,\s*true\s*\)"""
+            )
+            val guardAt = guardPattern.find(body)?.range?.first ?: -1
             val eventAt = body.indexOf("eventSender.sendExpoEvent", guardAt)
             assertEquals(
                 1,
-                Regex("""eventSent\.compareAndSet\(false,\s*true\)""").findAll(body).count(),
+                guardPattern.findAll(body).count(),
                 "$signature must have one settle-once guard"
             )
             assertTrue(
