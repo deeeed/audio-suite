@@ -223,6 +223,70 @@ class RecorderConcurrencyInstrumentedTest {
         stopRecording()
     }
 
+    @Test
+    fun statusDuringStop_doesNotReleaseTeardownForSuccessor() {
+        startRecording()
+        Thread.sleep(200)
+
+        val releaseWorker = CountDownLatch(1)
+        val workerInterrupted = CountDownLatch(1)
+        val blockedWorker = Thread {
+            while (releaseWorker.count > 0) {
+                try {
+                    releaseWorker.await()
+                } catch (_: InterruptedException) {
+                    workerInterrupted.countDown()
+                }
+            }
+        }.apply { start() }
+        val originalWorker = replaceRecordingWorker(blockedWorker)
+
+        val stopSettled = CountDownLatch(1)
+        var stopError: String? = null
+        Thread {
+            manager.stopRecording(object : Promise {
+                override fun resolve(value: Any?) {
+                    stopSettled.countDown()
+                }
+
+                override fun reject(code: String?, message: String?, cause: Throwable?) {
+                    stopError = "$code: $message"
+                    stopSettled.countDown()
+                }
+            })
+        }.start()
+
+        assertTrue("Stop should reach its unlocked join", workerInterrupted.await(2, TimeUnit.SECONDS))
+        try {
+            originalWorker?.join(1_000)
+            assertFalse("Status should report the stopping recording as inactive", manager.getStatus().getBoolean("isRecording"))
+            assertTrue(
+                "Status must preserve teardown ownership",
+                (recorderStateField("tearingDownSession") as Long) >= 0L
+            )
+
+            val startSettled = CountDownLatch(1)
+            var startCode: String? = null
+            manager.startRecording(recordingOptions(), object : Promise {
+                override fun resolve(value: Any?) {
+                    startSettled.countDown()
+                }
+
+                override fun reject(code: String?, message: String?, cause: Throwable?) {
+                    startCode = code
+                    startSettled.countDown()
+                }
+            })
+            assertTrue("Overlapping start should settle", startSettled.await(2, TimeUnit.SECONDS))
+            assertEquals("Successor must wait for stop teardown", "RECORDING_STOPPING", startCode)
+        } finally {
+            releaseWorker.countDown()
+        }
+        assertTrue("Stop should settle after worker exits", stopSettled.await(3, TimeUnit.SECONDS))
+        assertNull("Stop failed", stopError)
+        blockedWorker.join(1_000)
+    }
+
     private fun startRecording(
         compressed: Boolean = false,
         maxDurationMs: Long = 0L,
@@ -231,29 +295,7 @@ class RecorderConcurrencyInstrumentedTest {
         val latch = CountDownLatch(1)
         var error: String? = null
         manager.startRecording(
-            buildMap {
-                put("sampleRate", SAMPLE_RATE)
-                put("channels", 1)
-                put("encoding", "pcm_16bit")
-                put("interval", 100)
-                put("enableProcessing", false)
-                // This test targets recorder ownership, not the foreground-service contract.
-                put("keepAwake", false)
-                put("filename", "device_change_race")
-                if (maxDurationMs > 0L) {
-                    put("maxDurationMs", maxDurationMs)
-                    put("autoStopOnMaxDuration", autoStopOnMaxDuration)
-                }
-                if (compressed) {
-                    put("output", mapOf(
-                        "compressed" to mapOf(
-                            "enabled" to true,
-                            "format" to "aac",
-                            "bitrate" to 128_000
-                        )
-                    ))
-                }
-            },
+            recordingOptions(compressed, maxDurationMs, autoStopOnMaxDuration),
             object : Promise {
                 override fun resolve(value: Any?) {
                     latch.countDown()
@@ -267,6 +309,33 @@ class RecorderConcurrencyInstrumentedTest {
         )
         assertTrue("Recording should start", latch.await(3, TimeUnit.SECONDS))
         assertNull("Recording start failed", error)
+    }
+
+    private fun recordingOptions(
+        compressed: Boolean = false,
+        maxDurationMs: Long = 0L,
+        autoStopOnMaxDuration: Boolean = false
+    ): Map<String, Any?> = buildMap {
+        put("sampleRate", SAMPLE_RATE)
+        put("channels", 1)
+        put("encoding", "pcm_16bit")
+        put("interval", 100)
+        put("enableProcessing", false)
+        put("keepAwake", false)
+        put("filename", "device_change_race")
+        if (maxDurationMs > 0L) {
+            put("maxDurationMs", maxDurationMs)
+            put("autoStopOnMaxDuration", autoStopOnMaxDuration)
+        }
+        if (compressed) {
+            put("output", mapOf(
+                "compressed" to mapOf(
+                    "enabled" to true,
+                    "format" to "aac",
+                    "bitrate" to 128_000
+                )
+            ))
+        }
     }
 
     private fun stopRecording(): Bundle {
@@ -417,6 +486,14 @@ class RecorderConcurrencyInstrumentedTest {
         return synchronized(lock) {
             field.get(manager)
         }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun replaceRecordingWorker(worker: Thread): Thread? {
+        val field = AudioRecorderManager::class.java.getDeclaredField("recordingThreadRef")
+        field.isAccessible = true
+        val ref = field.get(manager) as AtomicReference<Thread?>
+        return ref.getAndSet(worker)
     }
 
     companion object {

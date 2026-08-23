@@ -19,6 +19,20 @@ import java.io.File
  */
 class ForegroundServiceLifecycleTest {
 
+    @Test
+    fun teardownServiceIsNotMisclassifiedAsOrphaned() {
+        assertFalse(AudioRecorderManager.shouldCleanupOrphanService(
+            isServiceRunning = true,
+            isRecording = false,
+            teardownInProgress = true
+        ))
+        assertTrue(AudioRecorderManager.shouldCleanupOrphanService(
+            isServiceRunning = true,
+            isRecording = false,
+            teardownInProgress = false
+        ))
+    }
+
     private fun configOf(showNotification: Boolean, keepAwake: Boolean): RecordingConfig {
         val result = RecordingConfig.fromMap(
             mapOf(

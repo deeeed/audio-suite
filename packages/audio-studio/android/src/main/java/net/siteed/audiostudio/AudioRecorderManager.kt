@@ -100,6 +100,12 @@ class AudioRecorderManager(
             config: RecordingConfig,
             enableBackgroundAudio: Boolean
         ): Boolean = (config.showNotification || config.keepAwake) && enableBackgroundAudio
+
+        internal fun shouldCleanupOrphanService(
+            isServiceRunning: Boolean,
+            isRecording: Boolean,
+            teardownInProgress: Boolean
+        ): Boolean = isServiceRunning && !isRecording && !teardownInProgress
         
         @SuppressLint("StaticFieldLeak")
         @Volatile
@@ -2128,7 +2134,12 @@ class AudioRecorderManager(
             } ?: false
 
             // If service is running but we think we're not recording, clean up
-            if (isServiceRunning && !_isRecording.get()) {
+            if (shouldCleanupOrphanService(
+                    isServiceRunning = isServiceRunning,
+                    isRecording = _isRecording.get(),
+                    teardownInProgress = tearingDownSession != NO_DEVICE_CHANGE_SESSION
+                )
+            ) {
                 LogUtils.d(CLASS_NAME, "Detected orphaned recording service, cleaning up...")
                 // The recording is already gone — that is what makes the service orphaned —
                 // so there is no thread to join, and this caller holds audioRecordLock.
