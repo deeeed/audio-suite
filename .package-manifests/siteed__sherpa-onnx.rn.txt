@@ -5,12 +5,14 @@ android/build.gradle
 android/proguard-rules.pro
 android/scripts/copy-libs.sh
 android/scripts/sync-kotlin-api.sh
+android/src/androidTest/AndroidManifest.xml
 android/src/androidTest/java/net/siteed/sherpaonnx/AudioTrackPrefillTest.kt
 android/src/androidTest/java/net/siteed/sherpaonnx/BasicIntegrationTest.kt
 android/src/androidTest/java/net/siteed/sherpaonnx/ComprehensiveIntegrationTestSuite.kt
 android/src/androidTest/java/net/siteed/sherpaonnx/MemoryAndPerformanceProfilerTest.kt
 android/src/androidTest/java/net/siteed/sherpaonnx/RealAsrFunctionalityTest.kt
 android/src/androidTest/java/net/siteed/sherpaonnx/RealTtsFunctionalityTest.kt
+android/src/androidTest/java/net/siteed/sherpaonnx/SherpaTestRunner.kt
 android/src/androidTest/java/net/siteed/sherpaonnx/SystemInfoTest.kt
 android/src/androidTest/java/net/siteed/sherpaonnx/TestModelManagementTest.kt
 android/src/androidTest/java/net/siteed/sherpaonnx/TestReactContextDispatchTest.kt
