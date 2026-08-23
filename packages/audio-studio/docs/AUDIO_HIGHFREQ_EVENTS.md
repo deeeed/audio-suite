@@ -123,8 +123,7 @@ const config = {
 ### CDP Bridge Validation
 ```bash
 # Test high-frequency capabilities via CDP bridge
-# Recording via CDP must be fire-and-store: an eval that leaves a recording promise outstanding as audio starts
-# flowing crashes the app (#436). See CLAUDE.md "Recording via CDP".
+# Hermes CDP does not await promises. Store async recording results and poll them separately.
 # Measure the analysis-point RATE: points produced over the recording's own duration.
 #
 # This is not the callback frequency. One callback can carry several data points, so a

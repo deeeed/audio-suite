@@ -44,8 +44,8 @@ All agent commands run from `apps/playground/`. See `apps/playground/docs/AGENT_
 node scripts/agentic/cdp-bridge.mjs list-devices     # List connected devices
 scripts/agentic/app-navigate.sh "/(tabs)/record"      # Navigate
 scripts/agentic/app-state.sh state                    # Query state
-# Recording: NEVER call startRecording in a bare eval — see the fire-and-store
-# recipe under "Recording via CDP" below (#436). Non-audio evals are fine:
+# Use eval-async for a Promise-returning expression, or the fire-and-store
+# recipe below when the workflow needs intermediate state and a stored outcome:
 scripts/agentic/app-state.sh eval "__AGENTIC__.getState()"
 scripts/agentic/screenshot.sh my-label                # Screenshot
 scripts/agentic/reload-metro.sh                       # Hot reload after edits
@@ -286,52 +286,39 @@ Before merging a covered change:
 5. `.task.md` status stays `needs-validation` until this is done, and nothing merges in
    that state
 
-If validation seems impossible, that conclusion is probably wrong. I declared it blocked
-by #436 for an entire session; the workaround took four minutes to find once I tried.
+If validation seems impossible, that conclusion is probably wrong. #436 was first treated
+as an audio validation blocker, then reproduced and fixed at the runtime dependency.
 
-### Recording via CDP: fire-and-store only
+### Recording via CDP
 
-The Hermes SIGSEGV in #436 is *not* caused by recording. The precise mechanism is not
-known — see that issue — so what follows is what has been measured, not a theory.
+The Hermes SIGSEGV in #436 was a debugger use-after-free in Hermes V1
+`250829098.0.16`. `Runtime.evaluate` compiled transient source while full debug info was
+enabled, but the runtime borrowed the CDP request buffer after the request released it.
+Later debugger work crashed in `CodeBlock::getDebugSourceLocationsOffset()` during a
+microtask checkpoint. Hermes `250829098.0.17` copies retained eval source. The root Yarn
+patch pins the runtime, and a version-scoped resolution pins the matching compiler.
 
-Nothing here is a CDP request staying open: `cdp-bridge.mjs` passes `awaitPromise: false`
-on every `Runtime.evaluate`, and `eval-async` is itself fire-and-store internally (it kicks
-off, returns `'started'`, and polls). Earlier revisions of this section claimed a
-"held-open evaluation" was the trigger. That was wrong, and it caused a reviewer to flag
-safe polling as a bug.
+Validation on the fixed runtime used `record-max-duration-validation.json`, which performs
+continuous CDP polling, two starts, a manual stop, and an auto-stop. It passed 5/5 runs on
+Pixel 6a and 3/3 on the `audiolab-1` iOS simulator. Base commit `c24d420d` with
+Hermes `0.16` crashed on its first Android run with the symbolicated stack above.
 
-What is measured, on a Pixel 6a:
+The root `scripts/agentic/cdp-bridge.mjs` passes `awaitPromise: false` because Hermes CDP
+does not implement promise awaiting. `app-state.sh eval-async` is valid; it implements
+fire-and-store internally. A workflow that needs intermediate state can do the same
+explicitly: schedule the call, stash success or failure in a global, and poll it with
+short evals. This is result handling, not a crash workaround.
 
-- **Safe.** 20 `getState()` evals at ~250ms during a live 6-second recording. Same pid
-  throughout; recording completed at 527476 bytes / 5979ms. A single mid-recording `state`
-  call is likewise fine.
-- **Crashes.** An evaluation whose expression leaves a JS promise from
-  `startRecording()` outstanding while audio starts flowing — the app dies in ~90ms,
-  `mqt_v_js`, `libhermesvm.so`, SIGSEGV at null.
-- **Still crashes, intermittently.** The `validate-recipe.js` path passed 12/12 with one
-  pid at `5962eda1`, so it is not reproducible any more. It is not fixed either: on
-  2026-08-22 the max-duration recipe died three runs in a row at the same node
-  (`wait-notify-only-event`, the first step that starts audio), signal 11 in
-  `libhermesvm.so`, with `AudioRecordingService` restarted by ActivityManager afterwards.
-  Treat a recipe run that dies at a recording step as #436 until proven otherwise, and
-  check `adb logcat` for `libhermesvm.so` before blaming the recipe.
-
-So fire-and-store is what to write. Polling is not the thing to avoid.
-
-So for anything that starts audio flowing:
-
-- ❌ `scripts/agentic/app-state.sh eval "__AGENTIC__.startRecording(...).then(...)"`
-- ❌ `scripts/agentic/app-state.sh eval-async "..."` around recording — the expression it
-  wraps still leaves a recording promise outstanding
-- ✅ fire-and-store: schedule the call so the eval returns first, stash results in a
-  global, poll in separate short evals
+The runtime patch and compiler override are scoped to the versions shipped by React Native
+0.86.2. When bumping React Native, remove or refresh both together and rerun the Android
+and iOS max-duration recipe matrix. `yarn check:deps` fails if the fixed Hermes pin is
+missing or if the selected runtime, tag, and compiler versions differ.
 
 Working recipe, exactly as run (from `apps/playground/`). Substitute a real device
 name — `--device <name>` unquoted is shell redirection, not a placeholder:
 
 ```bash
-# 1. Fire. The eval returns "scheduled" immediately; recording starts 1.5s later
-#    with no CDP evaluation in flight.
+# 1. Fire. The eval returns "scheduled" immediately and stores the async outcome.
 scripts/agentic/app-state.sh --device "Pixel 6a" eval "(() => { globalThis.__V = {}; setTimeout(async () => { try { const r = await __AGENTIC__.startRecording({ sampleRate: 44100, channels: 1 }); if (r && r.error) { globalThis.__V = { err: r.error }; return } await new Promise(r2 => setTimeout(r2, 3000)); const s = await __AGENTIC__.stopRecording(); globalThis.__V = (s && s.error) ? { err: s.error } : { uri: s.fileUri, size: s.size, dur: s.durationMs } } catch (e) { globalThis.__V = { err: String(e) } } }, 1500); return 'scheduled' })()"
 
 # 2. Wait past the scheduled work, then poll with fresh, short evals.
@@ -349,8 +336,8 @@ terminal value; repeat the poll if it still reads `{}`. For the built-in extract
 helpers use their fire-and-store form: `__AGENTIC__.test*()` then poll
 `__AGENTIC__.getLastResult()` until `status` is not `pending`.
 
-Verified with this pattern on Pixel 6a: 39s recording, 3.48 MB WAV, zero crashes — where
-the held-open form dies in ~90ms.
+The max-duration recipe is the regression check for #436. A lost inspector target during
+audio delivery is a failure even if Android restarts the foreground service afterward.
 
 Canonical agentic-loop documentation lives in `apps/playground/docs/AGENTIC_FEEDBACK_LOOPS.md`;
 if that file and this section disagree, fix the disagreement rather than picking one.

@@ -276,8 +276,7 @@ if [[ "$SKIP_RECORDING" == "true" ]]; then
     echo "[BENCH] Skipping recording (idle baseline mode)"
 else
     echo "[BENCH] Starting recording with config: $CONFIG"
-    # Fire-and-store: an eval that leaves a recording promise outstanding as audio starts flowing crashes the app
-    # (#436). Schedule the call so the eval returns before the first buffer lands.
+    # Store the async result because Hermes CDP evaluates with awaitPromise=false.
     START_DISPATCH=$("$SCRIPT_DIR/app-state.sh" eval "(() => { const t = '$RUN_TOKEN'; const prev = globalThis.__BENCH_RUN; if (prev && prev !== t && (globalThis.__BENCH_PENDING || globalThis.__BENCH_OWNED || globalThis.__BENCH_STOPPING)) { return 'busy' } globalThis.__BENCH = null; globalThis.__BENCH_RUN = t; globalThis.__BENCH_PENDING = true; globalThis.__BENCH_OWNED = false; globalThis.__BENCH_STOPPING = false; globalThis.__BENCH_ABANDONED = false; setTimeout(async () => { if (globalThis.__BENCH_RUN !== t) { return } let r; try { r = await __AGENTIC__.startRecording($CONFIG) } catch (e) { if (globalThis.__BENCH_RUN === t) { globalThis.__BENCH_PENDING = false; globalThis.__BENCH = { err: String(e), phase: 'start' } } return } if (globalThis.__BENCH_RUN !== t) { return } if (r && r.error) { globalThis.__BENCH_PENDING = false; globalThis.__BENCH = { err: String(r.error), phase: 'start' }; return } globalThis.__BENCH_OWNED = true; if (globalThis.__BENCH_ABANDONED) { try { await __AGENTIC__.stopRecording() } catch (e2) {} globalThis.__BENCH_OWNED = false; globalThis.__BENCH_PENDING = false; globalThis.__BENCH = { err: 'abandoned before confirmation', phase: 'start' }; return } globalThis.__BENCH_PENDING = false; globalThis.__BENCH = { started: true, phase: 'start' } }, 500); return 'scheduled' })()" "${DEVICE_ARGS[@]:1}") || {
         echo "[BENCH] FATAL: could not dispatch startRecording." >&2
         exit 1
@@ -340,7 +339,7 @@ if [[ "$SKIP_RECORDING" == "true" ]]; then
     echo "[BENCH] Idle baseline complete, no recording to stop"
 else
     echo "[BENCH] Stopping recording..."
-    # Fire-and-store, same reason as the start above (#436).
+    # Store the async result, as in the start path above.
     STOP_DISPATCH=$("$SCRIPT_DIR/app-state.sh" eval "(() => { const t = '$RUN_TOKEN'; if (globalThis.__BENCH_RUN !== t) { return 'not-ours' } globalThis.__BENCH = null; setTimeout(async () => { if (globalThis.__BENCH_RUN !== t) { return } globalThis.__BENCH_OWNED = false; try { const s = await __AGENTIC__.stopRecording(); if (globalThis.__BENCH_RUN !== t) { return } globalThis.__BENCH = (s && s.error) ? { err: String(s.error), phase: 'stop' } : { uri: s.fileUri, size: s.size, dur: s.durationMs, phase: 'stop' } } catch (e) { if (globalThis.__BENCH_RUN === t) { globalThis.__BENCH = { err: String(e) } } } }, 500); return 'scheduled' })()" "${DEVICE_ARGS[@]:1}") || {
         echo "[BENCH] FATAL: could not dispatch stopRecording." >&2
         exit 1

@@ -52,9 +52,8 @@ Read file before editing. Minimal diff. After each edit: `scripts/agentic/reload
 ## Step 5 — Validate
 
 ```bash
-# Recording — fire-and-store ONLY. An eval that leaves a recording promise outstanding as audio starts
-# flowing crashes the app (#436, Hermes SIGSEGV). Schedule the work so the eval
-# returns first, stash results in a global, poll separately:
+# Hermes CDP does not await promises. Schedule async recording work, stash the
+# result in a global, and poll it separately:
 # The bridge RETURNS { error } rather than rejecting, so catch alone never fires —
 # both return values have to be checked or a failure lands as { uri: undefined }
 # and reads as success.
