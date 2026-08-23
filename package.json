@@ -10,7 +10,7 @@
         "format": "prettier --write .",
         "android:ort:check": "bash scripts/check-android-ort-compat.sh",
         "check:deps": "bash scripts/check-runtime-deps.sh && node scripts/check-hermes-version.mjs",
-        "check": "yarn check:deps && yarn workspace @siteed/audio-studio typecheck && yarn exec tsc --noEmit -p packages/audio-studio/plugin/tsconfig.json && yarn workspace @siteed/audio-studio lint && yarn workspace @siteed/audio-studio test && scripts/package-manifest.sh"
+        "check": "bash scripts/check.sh"
     },
     "nohoist": [
         "**/react-native",
