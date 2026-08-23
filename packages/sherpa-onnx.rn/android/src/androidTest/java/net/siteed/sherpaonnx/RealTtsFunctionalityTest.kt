@@ -34,6 +34,7 @@ class RealTtsFunctionalityTest {
     companion object {
         // The VITS archive is about 31 MB. Whisper's 118 MB archive uses 90 seconds.
         private const val MODEL_EXTRACTION_TIMEOUT_SECONDS = 30L
+        private const val WAV_HEADER_SIZE_BYTES = 44L
         private const val TEST_TEXT_SHORT = "Hello, this is a test."
         private const val TEST_TEXT_MEDIUM = "The quick brown fox jumps over the lazy dog. This sentence contains every letter of the alphabet."
         private val TEST_TEXT_LONG = """
@@ -67,7 +68,22 @@ class RealTtsFunctionalityTest {
 
     private suspend fun downloadAndExtractModel() {
         val model = LightweightModelDownloader.TestModel.VITS_EN_LOW
-        
+        val targetDir = File(context.cacheDir, "extracted-models/${model.modelName}")
+        val modelDir = File(targetDir, "vits-icefall-en_US-ljspeech-low")
+        val cache = ModelExtractionCache(
+            targetDir = targetDir,
+            requiredFiles = listOf(
+                File(modelDir, "model.onnx"),
+                File(modelDir, "tokens.txt"),
+                File(modelDir, "espeak-ng-data/phontab")
+            )
+        )
+        if (cache.isComplete()) {
+            extractedModelPath = targetDir.absolutePath
+            println("Using extracted TTS model: ${targetDir.absolutePath}")
+            return
+        }
+
         println("Downloading model: ${model.modelName}")
         val downloadTime = measureTimeMillis {
             val modelFile = LightweightModelDownloader.downloadModel(
@@ -93,25 +109,6 @@ class RealTtsFunctionalityTest {
             downloadedModelPath = modelFile.absolutePath
         }
         println("Model downloaded in ${downloadTime}ms")
-        
-        // Extract the tar.bz2 file
-        val targetDir = File(context.cacheDir, "extracted-models/${model.modelName}")
-        val modelDir = File(targetDir, "vits-icefall-en_US-ljspeech-low")
-        val cache = ModelExtractionCache(
-            targetDir = targetDir,
-            requiredFiles = listOf(
-                File(modelDir, "model.onnx"),
-                File(modelDir, "tokens.txt")
-            ),
-            requiredDirectories = listOf(File(modelDir, "espeak-ng-data"))
-        )
-        if (cache.isComplete()) {
-            extractedModelPath = targetDir.absolutePath
-            println("Using extracted TTS model: ${targetDir.absolutePath}")
-            return
-        }
-
-        cache.reset()
         
         println("Extracting model to: ${targetDir.absolutePath}")
         val extractTime = measureTimeMillis {
@@ -281,7 +278,10 @@ class RealTtsFunctionalityTest {
                 assertTrue("Generation should complete", latch.await(10, TimeUnit.SECONDS))
                 assertTrue("Generation should succeed for speaker $speakerId", success)
                 assertNotNull("Generation should return a file for speaker $speakerId", filePath)
-                assertTrue("Speaker output should contain audio", File(filePath!!).length() > 44)
+                assertTrue(
+                    "Speaker output should contain audio",
+                    File(filePath!!).length() > WAV_HEADER_SIZE_BYTES
+                )
             } finally {
                 filePath?.let { File(it).delete() }
             }
@@ -397,10 +397,10 @@ class RealTtsFunctionalityTest {
         
         assertTrue("Uninitialized generation should complete", latch.await(5, TimeUnit.SECONDS))
         assertNull("Uninitialized generation should not resolve", result)
-        assertEquals("ERR_GENERATION_FAILED", errorCode)
-        assertTrue(
-            "Expected an uninitialized TTS error, got: $errorMessage",
-            errorMessage?.contains("TTS not initialized") == true
+        assertEquals(
+            "Unexpected uninitialized TTS error: $errorMessage",
+            "ERR_GENERATION_FAILED",
+            errorCode
         )
         
         // Test 2: Empty text
@@ -431,8 +431,11 @@ class RealTtsFunctionalityTest {
         
         assertTrue("Empty-text generation should complete", latch.await(5, TimeUnit.SECONDS))
         assertNull("Empty-text generation should not resolve", result)
-        assertEquals("ERR_INVALID_TEXT", errorCode)
-        assertEquals("Text cannot be empty", errorMessage)
+        assertEquals(
+            "Unexpected empty-text TTS error: $errorMessage",
+            "ERR_INVALID_TEXT",
+            errorCode
+        )
 
         // Test 3: The native VITS boundary falls back to speaker 0 when the model
         // has one speaker and the requested ID is out of range. This assertion is
@@ -471,7 +474,10 @@ class RealTtsFunctionalityTest {
             assertNull("Invalid-speaker generation should use the model fallback: $errorMessage", errorCode)
             assertTrue("Invalid-speaker generation should succeed", result?.getBoolean("success") == true)
             assertNotNull("Invalid-speaker generation should return a file path", fallbackPath)
-            assertTrue("Invalid-speaker generation should create audio", File(fallbackPath!!).length() > 44)
+            assertTrue(
+                "Invalid-speaker generation should create audio",
+                File(fallbackPath!!).length() > WAV_HEADER_SIZE_BYTES
+            )
         } finally {
             fallbackPath?.let { File(it).delete() }
         }

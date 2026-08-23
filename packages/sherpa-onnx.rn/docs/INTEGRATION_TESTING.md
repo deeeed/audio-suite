@@ -154,7 +154,7 @@ Use an `en_US` name. If a download 404s, that is the likely reason.
 ### Android (Real Device - Pixel 6a)
 
 These full-suite results are historical. Current validation covers the four focused paths
-listed above, not all 26 tests.
+listed above and a later run of all six `RealTtsFunctionalityTest` cases, not all 26 tests.
 
 ```
 System Information: ✅ PASS

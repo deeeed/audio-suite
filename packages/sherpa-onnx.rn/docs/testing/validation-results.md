@@ -1,9 +1,8 @@
 # Native Integration Testing Validation Results
 
-> **Historical.** This is the record of a run from when the Android suites were
-> runnable. They do not run today: the instrumentation APK is missing the React Native
-> libraries and the test manifest lacks `INTERNET` (#475). Every result below describes
-> that past run, not current state.
+> **Historical.** This page records an older Android run. The harness now initializes
+> React Native's merged library mapping and declares `INTERNET`; see
+> `../INTEGRATION_TESTING.md` for current Pixel 6a validation.
 
 ## Final Test Results Summary
 
@@ -162,7 +161,8 @@ After building native libraries + model strategy:
 - Safe for CI environments where actual model files aren't available
 
 ### 5. **Cross-Platform Considerations**
-- Android: instrumented tests are wired to gradle, but do not run today (#475)
+- Android: instrumented tests run on a connected device from the generated sherpa-voice
+  project
 - iOS: Requires Xcode for actual device/simulator testing
 - Different testing strategies needed per platform
 

@@ -20,6 +20,7 @@ android/src/androidTest/java/net/siteed/sherpaonnx/TtsIntegrationTest.kt
 android/src/androidTest/java/net/siteed/sherpaonnx/WaveReaderJniTest.kt
 android/src/androidTest/java/net/siteed/sherpaonnx/utils/LightweightModelDownloader.kt
 android/src/androidTest/java/net/siteed/sherpaonnx/utils/ModelExtractionCache.kt
+android/src/androidTest/java/net/siteed/sherpaonnx/utils/ModelExtractionCacheTest.kt
 android/src/androidTest/java/net/siteed/sherpaonnx/utils/TestModelManager.kt
 android/src/androidTest/java/net/siteed/sherpaonnx/utils/TestPromise.kt
 android/src/main/AndroidManifest.xml

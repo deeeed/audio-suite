@@ -184,17 +184,8 @@ class TtsIntegrationTest {
     @Test
     fun testNativeLibraryIntegration() {
         assertTrue("Sherpa ONNX JNI library should load", SherpaOnnxImpl.isLibraryLoaded)
-        assertNotNull(
-            "OfflineTts class should be available when the library is loaded",
-            Class.forName("com.k2fsa.sherpa.onnx.OfflineTts")
-        )
-        assertNotNull(
-            "OnlineStream class should be available",
-            Class.forName("com.k2fsa.sherpa.onnx.OnlineStream")
-        )
-        assertNotNull(
-            "TtsHandler should be available",
-            Class.forName("net.siteed.sherpaonnx.handlers.TtsHandler")
-        )
+        Class.forName("com.k2fsa.sherpa.onnx.OfflineTts")
+        Class.forName("com.k2fsa.sherpa.onnx.OnlineStream")
+        Class.forName("net.siteed.sherpaonnx.handlers.TtsHandler")
     }
 }

@@ -51,7 +51,7 @@ Day 5: Memory and threading tests
 - [ ] Link Sherpa-ONNX framework to test target - Requires actual framework
 
 ### Android
-- [x] Add androidTest source set - source files exist, but `androidTest/assets` does not and the suites cannot run (#475)
+- [x] Add androidTest source set - real-model suites download their fixtures at runtime
 - [ ] Include test models in assets - `androidTest/assets` does not exist; models are downloaded at runtime
 - [x] Add test dependencies in build.gradle - Added JUnit and AndroidX test deps
 
@@ -62,4 +62,4 @@ Each test should:
 - Have clear pass/fail result
 - Log platform-specific behavior
 - Not depend on other tests
-- Clean up after itself 
+- Clean up after itself

@@ -9,7 +9,9 @@ class SherpaTestRunner : AndroidJUnitRunner() {
     override fun onCreate(arguments: Bundle?) {
         try {
             SoLoader.init(targetContext, OpenSourceMergedSoMapping)
-        } catch (error: Throwable) {
+        } catch (error: Exception) {
+            throw IllegalStateException("SoLoader initialization failed for the sherpa test APK", error)
+        } catch (error: LinkageError) {
             throw IllegalStateException("SoLoader initialization failed for the sherpa test APK", error)
         }
         super.onCreate(arguments)

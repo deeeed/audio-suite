@@ -189,7 +189,8 @@ The native integration testing framework has been implemented with the following
 - Updated `android/build.gradle` with test dependencies and instrumentation runner
 
 ### Test Execution
-- Android: `yarn test:android` - wired to gradle, but the suites currently fail to run (#475)
+- Android: `yarn test:android` - runs the instrumented suites from the generated
+  sherpa-voice project
 - iOS: `yarn test:ios:info` - prints guidance only; there is no XCTest target to run
 
 ### Documentation ✅
@@ -205,5 +206,5 @@ The native integration testing framework has been implemented with the following
 4. **Run Initial Tests**: Execute `yarn test:android` to validate framework on Android
 5. **Implement Real Validation**: Replace placeholder assertions with actual library validation
 
-The framework is not ready to run: Android is blocked by #475 and iOS has no XCTest
-target. Clearing those is the prerequisite for the steps above.
+Android is runnable on a connected device. iOS still needs an XCTest target before its
+sources can run.
