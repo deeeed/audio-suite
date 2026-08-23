@@ -90,10 +90,16 @@ class RecorderLockingTest {
     fun `device change rechecks session after its unlocked transition`() {
         val body = bodyOf("private fun handleDeviceChangeTransition(")
         val claimAt = body.indexOf("val deviceChangeSession = synchronized(audioRecordLock)")
+        val expectedAt = body.indexOf("sessionId != expectedSession", claimAt)
+        val firstMutationAt = body.indexOf("audioRecord?.stop()", claimAt)
         val delayAt = body.indexOf("Thread.sleep(200)")
         val restartAt = body.indexOf("return synchronized(audioRecordLock)", delayAt)
 
         assertTrue(claimAt >= 0, "Device change must claim its session under audioRecordLock")
+        assertTrue(
+            expectedAt > claimAt && firstMutationAt > expectedAt,
+            "Device change must reject a replaced session before its first recorder mutation"
+        )
         assertTrue(
             claimAt < delayAt && delayAt < restartAt,
             "Device change must release audioRecordLock for the transition delay, then retake it"
@@ -107,14 +113,14 @@ class RecorderLockingTest {
         )
         assertTrue(
             body.contains("changingDeviceSession.compareAndSet(") &&
-                body.contains("claimedSession"),
+                body.contains("DeviceTransitionResult.Cancelled"),
             "Device-change ownership must be claimed and cleared for the same session"
         )
         val pausedAt = body.indexOf("if (isPaused.get())")
-        val pausedClaimAt = body.indexOf("claimedSession = sessionId", pausedAt)
+        val pausedClaimAt = body.indexOf("var claimedSession = expectedSession")
         val pausedReleaseAt = body.indexOf("audioRecord?.release()", pausedAt)
         assertTrue(
-            pausedAt >= 0 && pausedClaimAt > pausedAt && pausedReleaseAt > pausedClaimAt,
+            pausedClaimAt >= 0 && pausedAt > pausedClaimAt && pausedReleaseAt > pausedAt,
             "Paused device changes must capture their session before a throwing release"
         )
         assertTrue(
@@ -157,7 +163,7 @@ class RecorderLockingTest {
     fun `device switch recovery cannot mutate a successor session`() {
         val transition = bodyOf("private fun handleDeviceChangeTransition(")
         assertTrue(
-            transition.contains("return@synchronized deviceChangeSession"),
+            transition.contains("DeviceTransitionResult.Failed(deviceChangeSession)"),
             "A failed transition must return the session it claimed"
         )
 
@@ -356,23 +362,23 @@ class RecorderLockingTest {
         // resolve success on a recording nothing is reading from.
         val body = bodyOf("fun resumeRecording(promise: Promise)")
         assertTrue(
-            body.contains("if (!_isRecording.get())"),
-            "resumeRecording must reject when _isRecording is false. That flag is the " +
-                "ownership claim cleanup makes before it releases the lock to join."
+            body.contains("val resumeSession = synchronized(audioRecordLock)") &&
+                body.contains("if (!_isRecording.get())"),
+            "resumeRecording must capture its session and reject after teardown claims it."
         )
 
         // Presence alone is not enough. A guard outside the lock is a TOCTOU check:
         // cleanup can claim the session between it and the restart. The check that counts
         // is the one inside the lock that does the restarting, before any mutation.
-        val lockAt = body.lastIndexOf("synchronized(audioRecordLock)")
-        val restartAt = body.indexOf("audioRecord?.startRecording()", lockAt)
-        val guardInLock = body.indexOf("if (!_isRecording.get())", lockAt)
+        val restartAt = body.indexOf("audioRecord?.startRecording()")
+        val lockAt = body.lastIndexOf("synchronized(audioRecordLock)", restartAt)
+        val guardInLock = body.indexOf("sessionId != resumeSession", lockAt)
+        val initializeAt = body.indexOf("initializeAudioRecord", lockAt)
         assertTrue(restartAt > lockAt, "resume must restart AudioRecord under the lock")
         assertTrue(
-            guardInLock in (lockAt + 1) until restartAt,
-            "resumeRecording must revalidate _isRecording INSIDE the lock that restarts " +
-                "the recorders, before doing so. A guard only at entry lets a teardown " +
-                "claim the session in the window between them."
+            guardInLock in (lockAt + 1) until restartAt && initializeAt in guardInLock until restartAt,
+            "resumeRecording must revalidate and rebuild its original session inside the " +
+                "same lock that restarts the recorders."
         )
 
         // isPaused must not clear before that recheck, or a resume that loses the race
