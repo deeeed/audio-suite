@@ -70,6 +70,9 @@ TTS error handling, ASR file recognition, and ASR error handling all reached the
 assertions and passed. The Whisper extraction took about 59 seconds on that device, so
 the ASR setup allows 90 seconds and reuses only a completed extraction.
 
+Repository CI does not run `connectedAndroidTest`; the generated Android project and
+physical-device run remain manual validation (#449).
+
 Then the package ships a script that already has the right app directory and module name:
 
 ```bash

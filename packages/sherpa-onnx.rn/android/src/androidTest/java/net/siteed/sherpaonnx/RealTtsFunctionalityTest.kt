@@ -30,6 +30,8 @@ class RealTtsFunctionalityTest {
     private var extractedModelPath: String? = null
 
     companion object {
+        // The VITS archive is about 31 MB. Whisper's 118 MB archive uses 90 seconds.
+        private const val MODEL_EXTRACTION_TIMEOUT_SECONDS = 30L
         private const val TEST_TEXT_SHORT = "Hello, this is a test."
         private const val TEST_TEXT_MEDIUM = "The quick brown fox jumps over the lazy dog. This sentence contains every letter of the alphabet."
         private val TEST_TEXT_LONG = """
@@ -92,6 +94,19 @@ class RealTtsFunctionalityTest {
         
         // Extract the tar.bz2 file
         val targetDir = File(context.cacheDir, "extracted-models/${model.modelName}")
+        val completionMarker = File(targetDir, ".extraction-complete")
+        val modelDir = File(targetDir, "vits-icefall-en_US-ljspeech-low")
+        val requiredFiles = listOf(
+            File(modelDir, "model.onnx"),
+            File(modelDir, "tokens.txt")
+        )
+        if (completionMarker.isFile && requiredFiles.all { it.isFile && it.length() > 0 }) {
+            extractedModelPath = targetDir.absolutePath
+            println("Using extracted TTS model: ${targetDir.absolutePath}")
+            return
+        }
+
+        targetDir.deleteRecursively()
         targetDir.mkdirs()
         
         println("Extracting model to: ${targetDir.absolutePath}")
@@ -107,6 +122,7 @@ class RealTtsFunctionalityTest {
                         val map = result as? ReadableMap
                         extractionSuccess = map?.getBoolean("success") ?: false
                         if (extractionSuccess) {
+                            completionMarker.writeText("complete")
                             extractedModelPath = targetDir.absolutePath
                             println("Extraction successful")
                         }
@@ -119,7 +135,10 @@ class RealTtsFunctionalityTest {
                 )
             )
             
-            assertTrue("Extraction should complete", latch.await(30, TimeUnit.SECONDS))
+            assertTrue(
+                "Extraction should complete",
+                latch.await(MODEL_EXTRACTION_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            )
             assertTrue("Extraction should succeed", extractionSuccess)
         }
         println("Model extracted in ${extractTime}ms")
@@ -249,6 +268,7 @@ class RealTtsFunctionalityTest {
             
             val latch = CountDownLatch(1)
             var success = false
+            var filePath: String? = null
             
             val config = Arguments.createMap().apply {
                 putString("text", "Testing speaker $speakerId")
@@ -262,6 +282,7 @@ class RealTtsFunctionalityTest {
                 onResolve = { result ->
                     val map = result as? ReadableMap
                     success = map?.getBoolean("success") ?: false
+                    filePath = map?.getString("filePath")
                     latch.countDown()
                 },
                 onReject = { _, _, _ ->
@@ -269,8 +290,14 @@ class RealTtsFunctionalityTest {
                 }
             ))
             
-            assertTrue("Generation should complete", latch.await(10, TimeUnit.SECONDS))
-            assertTrue("Generation should succeed for speaker $speakerId", success)
+            try {
+                assertTrue("Generation should complete", latch.await(10, TimeUnit.SECONDS))
+                assertTrue("Generation should succeed for speaker $speakerId", success)
+                assertNotNull("Generation should return a file for speaker $speakerId", filePath)
+                assertTrue("Speaker output should contain audio", File(filePath!!).length() > 44)
+            } finally {
+                filePath?.let { File(it).delete() }
+            }
         }
     }
 
@@ -421,7 +448,8 @@ class RealTtsFunctionalityTest {
         assertEquals("Text cannot be empty", errorMessage)
 
         // Test 3: The native VITS boundary falls back to speaker 0 when the model
-        // has one speaker and the requested ID is out of range.
+        // has one speaker and the requested ID is out of range. This assertion is
+        // intentionally fixture-specific because multi-speaker fallback may differ.
         val numSpeakers = initializeTts()
         assertEquals("Fallback test requires the single-speaker LJSpeech fixture", 1, numSpeakers)
         println("\nTest 3: Invalid speaker ID falls back to speaker 0")

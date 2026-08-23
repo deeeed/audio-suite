@@ -7,7 +7,11 @@ import com.facebook.soloader.SoLoader
 
 class SherpaTestRunner : AndroidJUnitRunner() {
     override fun onCreate(arguments: Bundle?) {
-        SoLoader.init(targetContext, OpenSourceMergedSoMapping)
+        try {
+            SoLoader.init(targetContext, OpenSourceMergedSoMapping)
+        } catch (error: java.io.IOException) {
+            throw IllegalStateException("SoLoader initialization failed for the sherpa test APK", error)
+        }
         super.onCreate(arguments)
     }
 }
