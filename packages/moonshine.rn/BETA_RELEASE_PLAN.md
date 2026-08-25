@@ -17,12 +17,15 @@ that a consumer **outside this monorepo** can:
 
 Use a prerelease tag instead of publishing straight to `latest`.
 
-Recommended first beta:
+Before each release, check the published versions and increment the current
+prerelease:
 
-- `0.2.0-beta.0`
+```bash
+npm view @siteed/moonshine.rn versions --json
+npm view @siteed/moonshine.rn dist-tags --json
+```
 
-That gives room to iterate on docs/setup/API ergonomics without implying
-stability yet.
+Keep `latest` on the last stable version until the exit criteria below pass.
 
 ## Package-size risk to validate before publish
 
@@ -49,7 +52,8 @@ This checks that the public npm tarball excludes heavyweight iOS and Android bin
 
 ## Beta publish flow
 
-From `packages/moonshine.rn/`:
+First merge a release PR that updates `package.json` and moves the relevant
+changelog entries out of `Unreleased`. From `packages/moonshine.rn/`, run:
 
 ```bash
 yarn release:beta:preflight
@@ -59,13 +63,33 @@ This runs:
 
 - `yarn typecheck`
 - `yarn test`
-- `npm pack --json --dry-run`
+- iOS artifact installer tests
+- native release validation, including `npm pack --json --dry-run` and Android
+  private-SONAME inspection
 
-Then publish under the beta tag:
+After the release PR merges:
+
+Create the `@siteed/moonshine.rn@<version>` GitHub prerelease at the merge
+commit. Upload `Moonshine-Android-isolated.aar` and
+`Moonshine.xcframework.zip`. Reuse an earlier asset only when its SHA-256
+matches the value pinned in `package.json`; do not rebuild unchanged assets.
+
+Run the remote artifact checks. They must fail before upload and pass after:
+
+```bash
+yarn validate:android-release-artifact
+yarn validate:ios-release-artifact
+```
+
+Publish under the beta tag:
 
 ```bash
 npm publish --tag beta
 ```
+
+`prepublishOnly` reruns the package and remote artifact gates, so publishing is
+blocked until both assets exist under the new release tag with the pinned
+checksums.
 
 If you want to inspect the final tarball contents first:
 
