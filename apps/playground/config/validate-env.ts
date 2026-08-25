@@ -1,0 +1,40 @@
+import Joi from 'joi'
+
+export type PlaygroundEnvironment = Record<string, string | undefined> & {
+    APP_VARIANT: 'development' | 'staging' | 'production'
+    EAS_PROJECT_ID: string
+}
+
+const envSchema = Joi.object({
+    EAS_PROJECT_ID: Joi.string().required(),
+    APPLE_TEAM_ID: Joi.string().optional(),
+    APP_VARIANT: Joi.string()
+        .valid('development', 'staging', 'production')
+        .default('production'),
+}).unknown()
+
+export function validatePlaygroundEnvironment(
+    input: Record<string, string | undefined>
+): PlaygroundEnvironment {
+    const { error, value } = envSchema.validate(input, {
+        abortEarly: false,
+        stripUnknown: false,
+    })
+
+    if (error) {
+        const invalidKeys = [
+            ...new Set(
+                error.details.map((detail) =>
+                    detail.path.length > 0
+                        ? detail.path.join('.')
+                        : 'environment'
+                )
+            ),
+        ].sort()
+        throw new Error(
+            `Invalid environment variables: ${invalidKeys.join(', ')}`
+        )
+    }
+
+    return value as PlaygroundEnvironment
+}

@@ -38,6 +38,7 @@ run_check "lint (at most $MAX_WARNINGS warnings)" \
   yarn workspace @siteed/audio-studio lint --max-warnings="$MAX_WARNINGS"
 
 run_check "JavaScript tests" yarn workspace @siteed/audio-studio test
+run_check "playground config tests" yarn workspace audio-playground test:config
 
 # What each package publishes is otherwise invisible until someone runs `npm pack`.
 # In #455 a public CocoaPods header shipped in 1.3.1, and only a reviewer running

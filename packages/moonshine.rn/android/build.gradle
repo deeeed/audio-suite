@@ -41,6 +41,14 @@ def moonshineAndroidSourceAar = getEnvOrProp(
   'siteedMoonshineAndroidSourceAar',
   new File(projectDir, '../prebuilt/android/moonshine-voice-source-release.aar').absolutePath
 )
+def moonshineAndroidIsolatedAar = new File(
+  projectDir,
+  '../prebuilt/android/moonshine-voice-isolated.aar'
+)
+def ensureMoonshineAndroidArtifactScript = new File(
+  projectDir,
+  '../scripts/ensure-android-artifacts.sh'
+)
 def moonshineAndroidUseMavenOverride = getEnvOrProp(
   'SITEED_MOONSHINE_ANDROID_USE_MAVEN',
   'siteedMoonshineAndroidUseMaven',
@@ -55,7 +63,7 @@ def moonshineAndroidUseSourceOverride = getEnvOrProp(
 def moonshineAndroidUseMaven = isTruthy(moonshineAndroidUseMavenOverride)
 def moonshineAndroidUseSource = moonshineAndroidUseSourceOverride != null
   ? isTruthy(moonshineAndroidUseSourceOverride)
-  : (!moonshineAndroidUseMaven && file(moonshineAndroidSourceAar).exists())
+  : false
 if (moonshineAndroidUseMaven && moonshineAndroidUseSource) {
   throw new GradleException(
     'Conflicting Moonshine Android dependency settings: SITEED_MOONSHINE_ANDROID_USE_MAVEN and ' +
@@ -73,6 +81,21 @@ def moonshineAndroidMavenRepo = getEnvOrProp(
   null
 )
 
+def prepareMoonshineAndroidArtifact = tasks.register('prepareMoonshineAndroidArtifact', Exec) {
+  inputs.file(ensureMoonshineAndroidArtifactScript)
+  inputs.file(new File(projectDir, '../package.json'))
+  inputs.property(
+    'artifactUrlOverride',
+    System.getenv('SITEED_MOONSHINE_ANDROID_ISOLATED_AAR_URL') ?: ''
+  )
+  inputs.property(
+    'artifactShaOverride',
+    System.getenv('SITEED_MOONSHINE_ANDROID_ISOLATED_AAR_SHA256') ?: ''
+  )
+  outputs.file(moonshineAndroidIsolatedAar)
+  commandLine 'bash', ensureMoonshineAndroidArtifactScript.absolutePath
+}
+
 android {
   namespace "net.siteed.moonshine"
   compileSdkVersion getExtOrDefault('compileSdkVersion', 36)
@@ -82,6 +105,7 @@ android {
     targetSdkVersion getExtOrDefault('targetSdkVersion', 36)
     versionCode 1
     versionName "0.1.0"
+    testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
   }
 
   compileOptions {
@@ -98,6 +122,10 @@ android {
       minifyEnabled false
     }
   }
+
+  testOptions {
+    unitTests.returnDefaultValues = true
+  }
 }
 
 repositories {
@@ -113,6 +141,12 @@ dependencies {
   implementation "com.facebook.react:react-android"
   implementation "org.jetbrains.kotlin:kotlin-stdlib:${getExtOrDefault('kotlinVersion', '2.0.21')}"
   implementation "androidx.core:core-ktx:1.13.1"
+  testImplementation "junit:junit:4.13.2"
+  androidTestImplementation "androidx.test.ext:junit:1.1.5"
+  androidTestImplementation "androidx.test:runner:1.5.2"
+  if (findProject(':siteed_sherpa-onnx.rn') != null) {
+    androidTestImplementation project(':siteed_sherpa-onnx.rn')
+  }
 
   if (moonshineAndroidAar != null) {
     println("Using Moonshine Android AAR override: ${moonshineAndroidAar}")
@@ -124,19 +158,21 @@ dependencies {
         "Moonshine source-built Android AAR is missing: ${sourceAarFile}. " +
         "Run `bash packages/moonshine.rn/setup.sh && bash packages/moonshine.rn/build-moonshine-android.sh` " +
         "or set SITEED_MOONSHINE_ANDROID_AAR. Public npm installs do not ship this AAR; " +
-        "leave source usage unset to use the Maven dependency."
+        "leave source usage unset to use the isolated release artifact."
       )
     }
     println("Using Moonshine Android source-built AAR: ${sourceAarFile}")
     implementation files(sourceAarFile)
   } else {
-    if (!moonshineAndroidUseMaven) {
-      println('Using Moonshine Android Maven dependency because no source-built AAR is packaged.')
+    if (moonshineAndroidUseMaven) {
+      if (moonshineAndroidMavenRepo != null) {
+        println("Using Moonshine Android Maven repo override: ${moonshineAndroidMavenRepo}")
+      }
+      println("Using explicit Moonshine Android Maven dependency: ${moonshineAndroidMavenCoord}")
+      implementation moonshineAndroidMavenCoord
+    } else {
+      println('Using checksum-pinned isolated Moonshine Android artifact.')
+      implementation files(prepareMoonshineAndroidArtifact)
     }
-    if (moonshineAndroidMavenRepo != null) {
-      println("Using Moonshine Android Maven repo override: ${moonshineAndroidMavenRepo}")
-    }
-    println("Using Moonshine Android Maven dependency: ${moonshineAndroidMavenCoord}")
-    implementation moonshineAndroidMavenCoord
   }
 }

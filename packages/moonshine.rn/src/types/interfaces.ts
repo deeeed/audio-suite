@@ -118,6 +118,7 @@ export interface MoonshineTranscriptLine {
   completedAtMs?: number;
   durationMs?: number;
   hasTextChanged?: boolean;
+  haveSpeakersChanged?: boolean;
   lastTranscriptionLatencyMs?: number;
   speakerId?: string;
   speakerIndex?: number;

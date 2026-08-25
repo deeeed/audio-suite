@@ -27,9 +27,11 @@
     "!prebuilt/ios/Moonshine.xcframework/**",
     "!prebuilt/ios/current/**",
     "!prebuilt/android/moonshine-voice-source-release.aar",
+    "!prebuilt/android/moonshine-voice-isolated.aar",
     "!prebuilt/web/model/**",
     "patches",
     "scripts/ensure-ios-artifacts.sh",
+    "scripts/ensure-android-artifacts.sh",
     "*.podspec",
     "apply-upstream-patches.sh",
     "build-moonshine-android.sh",
@@ -39,6 +41,8 @@
     "setup.sh",
     "!ios/build",
     "!android/build",
+    "!android/src/test/**",
+    "!android/src/androidTest/**",
     "!**/__tests__",
     "!**/__fixtures__",
     "!**/__mocks__",
@@ -58,8 +62,9 @@
     "release:beta:preflight": "yarn release:preflight",
     "validate:offline:contract": "node ./scripts/validate-offline-contract.mjs",
     "validate:native-release": "node ./scripts/validate-native-release.mjs",
+    "validate:android-release-artifact": "node ./scripts/validate-android-release-artifact.mjs",
     "validate:ios-release-artifact": "node ./scripts/validate-ios-release-artifact.mjs",
-    "prepublishOnly": "yarn release:preflight && yarn validate:ios-release-artifact",
+    "prepublishOnly": "yarn release:preflight && yarn validate:android-release-artifact && yarn validate:ios-release-artifact",
     "test:ios-artifacts-script": "node ./scripts/test-ios-artifacts-script.mjs"
   },
   "keywords": [
@@ -108,9 +113,13 @@
   },
   "packageManager": "yarn@4.2.2",
   "moonshineVersion": "v0.0.59",
+  "moonshineAndroidVersion": "0.1.5",
   "_moonshineCommit": "The exact upstream commit the submodule gitlink pins. The tag's tree is NOT the same: core/speaker-embedding-model-data.cpp, which core/CMakeLists.txt lists unconditionally, is absent at v0.0.59 (#442). moonshineVersion is for display only.",
   "moonshineCommit": "520ba083085a14efcb77d701b35544f81d7b1acf",
   "moonshineArtifacts": {
+    "android": {
+      "isolatedAarSha256": "c83f8bc94cccc42e7d89fce0d3b74df83c50d789641281ddd430bdb51f36b5dc"
+    },
     "ios": {
       "xcframeworkSha256": "06a7cd98e6a479f3ed919d16d54675a86d3f86bc7ab4bb5e32dc9ba58cdd24fe"
     }

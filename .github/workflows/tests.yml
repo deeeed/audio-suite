@@ -56,6 +56,45 @@ jobs:
       - name: Check
         run: yarn check
 
+  android:
+    name: Android Moonshine unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install
+        run: yarn install --immutable --mode=skip-build
+
+      - name: Generate Android project
+        run: yarn workspace audio-playground exec expo prebuild --platform android --no-install
+        env:
+          APP_VARIANT: development
+          EAS_PROJECT_ID: ci-placeholder
+
+      - name: Test Moonshine Android bridge
+        working-directory: apps/playground/android
+        run: ./gradlew :siteed_moonshine.rn:testDebugUnitTest
+        env:
+          APP_VARIANT: development
+
   ios:
     name: iOS unit tests
     # macOS minutes bill at a multiple of Linux, so this job is deliberately

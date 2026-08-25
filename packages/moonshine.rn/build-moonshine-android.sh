@@ -57,12 +57,9 @@ decouple_bundled_ort_in_aar() {
   # against); older runtimes hand back an API table missing entries
   # libmoonshine.so will dereference.
   #
-  # The AAR keeps shipping its own libonnxruntime.so so standalone consumers
-  # (apps that pull in only moonshine.rn) still load successfully. Apps that
-  # also include sherpa-onnx.rn typically rely on AGP's default duplicate-lib
-  # handling; if a build fails on duplicate libonnxruntime.so, the consumer
-  # can add `packagingOptions.pickFirst "**/libonnxruntime.so"` in app
-  # build.gradle.
+  # The source AAR keeps shipping its own libonnxruntime.so for standalone
+  # development. Multi-engine consumers should use the release artifact built
+  # by scripts/build-isolated-android-aar.sh instead.
   local aar_path="$1"
   if ! command -v patchelf >/dev/null 2>&1; then
     echo -e "${RED}Error: patchelf is required to clear the ONNX Runtime symbol version.${NC}" >&2

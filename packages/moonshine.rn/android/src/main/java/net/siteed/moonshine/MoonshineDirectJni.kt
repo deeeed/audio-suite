@@ -1,11 +1,8 @@
 package net.siteed.moonshine
 
-import ai.moonshine.voice.EmbeddingModel
 import ai.moonshine.voice.JNI
 import ai.moonshine.voice.Transcript
 import ai.moonshine.voice.TranscriberOption
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicInteger
 
 internal data class MoonshineIntentMatchNative(
   val triggerPhrase: String,
@@ -13,73 +10,7 @@ internal data class MoonshineIntentMatchNative(
 )
 
 internal object MoonshineDirectJni {
-  private class IntentRecognizerState(val model: EmbeddingModel) {
-    private val phrases = LinkedHashMap<String, FloatArray>()
-
-    @Synchronized
-    fun register(triggerPhrase: String): Int {
-      return try {
-        phrases[triggerPhrase] = model.calculateEmbedding(triggerPhrase)
-        JNI.MOONSHINE_ERROR_NONE
-      } catch (_: RuntimeException) {
-        JNI.MOONSHINE_ERROR_INVALID_ARGUMENT
-      }
-    }
-
-    @Synchronized
-    fun unregister(triggerPhrase: String): Int {
-      phrases.remove(triggerPhrase)
-      return JNI.MOONSHINE_ERROR_NONE
-    }
-
-    @Synchronized
-    fun clear(): Int {
-      phrases.clear()
-      return JNI.MOONSHINE_ERROR_NONE
-    }
-
-    @Synchronized
-    fun count(): Int = phrases.size
-
-    @Synchronized
-    fun closest(utterance: String, threshold: Float): MoonshineIntentMatchNative? {
-      if (phrases.isEmpty()) {
-        return null
-      }
-      val utteranceEmbedding = try {
-        model.calculateEmbedding(utterance)
-      } catch (_: RuntimeException) {
-        throw RuntimeException("moonshineCalculateEmbedding failed")
-      }
-      var bestPhrase: String? = null
-      var bestScore = Float.NEGATIVE_INFINITY
-      for ((phrase, embedding) in phrases) {
-        val score = try {
-          model.distance(utteranceEmbedding, embedding)
-        } catch (_: RuntimeException) {
-          continue
-        }
-        if (score > bestScore) {
-          bestScore = score
-          bestPhrase = phrase
-        }
-      }
-      if (bestPhrase == null || bestScore < threshold) {
-        return null
-      }
-      return MoonshineIntentMatchNative(
-        triggerPhrase = bestPhrase,
-        similarity = bestScore
-      )
-    }
-
-    fun close() {
-      model.close()
-    }
-  }
-
-  private val intentRecognizers = ConcurrentHashMap<Int, IntentRecognizerState>()
-  private val nextIntentHandle = AtomicInteger(1)
+  private val intentRecognizers = MoonshineIntentRecognizerStore()
 
   fun addAudioToStream(
     transcriberHandle: Int,
@@ -99,9 +30,7 @@ internal object MoonshineDirectJni {
 
   fun clearIntents(intentRecognizerHandle: Int): Int {
     ensureLoaded()
-    val state = intentRecognizers[intentRecognizerHandle]
-      ?: return JNI.MOONSHINE_ERROR_INVALID_HANDLE
-    return state.clear()
+    return intentRecognizers.clear(intentRecognizerHandle)
   }
 
   fun createIntentRecognizer(
@@ -110,14 +39,7 @@ internal object MoonshineDirectJni {
     modelVariant: String?
   ): Int {
     ensureLoaded()
-    return try {
-      val model = EmbeddingModel(modelPath, modelArch, modelVariant)
-      val handle = nextIntentHandle.getAndIncrement()
-      intentRecognizers[handle] = IntentRecognizerState(model)
-      handle
-    } catch (_: RuntimeException) {
-      JNI.MOONSHINE_ERROR_INVALID_ARGUMENT
-    }
+    return intentRecognizers.create(modelPath, modelArch, modelVariant)
   }
 
   fun createStream(transcriberHandle: Int): Int {
@@ -132,7 +54,7 @@ internal object MoonshineDirectJni {
 
   fun freeIntentRecognizer(intentRecognizerHandle: Int) {
     ensureLoaded()
-    intentRecognizers.remove(intentRecognizerHandle)?.close()
+    intentRecognizers.release(intentRecognizerHandle)
   }
 
   fun freeStream(transcriberHandle: Int, streamHandle: Int) {
@@ -151,18 +73,12 @@ internal object MoonshineDirectJni {
     threshold: Float
   ): MoonshineIntentMatchNative? {
     ensureLoaded()
-    val state = intentRecognizers[intentRecognizerHandle]
-      ?: throw RuntimeException(
-        "Failed to get closest intent: ${JNI.moonshineErrorToString(JNI.MOONSHINE_ERROR_INVALID_HANDLE)}"
-      )
-    return state.closest(utterance, threshold)
+    return intentRecognizers.closest(intentRecognizerHandle, utterance, threshold)
   }
 
   fun getIntentCount(intentRecognizerHandle: Int): Int {
     ensureLoaded()
-    val state = intentRecognizers[intentRecognizerHandle]
-      ?: return JNI.MOONSHINE_ERROR_INVALID_HANDLE
-    return state.count()
+    return intentRecognizers.count(intentRecognizerHandle)
   }
 
   fun getVersion(): Int {
@@ -199,9 +115,7 @@ internal object MoonshineDirectJni {
 
   fun registerIntent(intentRecognizerHandle: Int, triggerPhrase: String): Int {
     ensureLoaded()
-    val state = intentRecognizers[intentRecognizerHandle]
-      ?: return JNI.MOONSHINE_ERROR_INVALID_HANDLE
-    return state.register(triggerPhrase)
+    return intentRecognizers.register(intentRecognizerHandle, triggerPhrase)
   }
 
   fun startStream(transcriberHandle: Int, streamHandle: Int): Int {
@@ -236,9 +150,7 @@ internal object MoonshineDirectJni {
 
   fun unregisterIntent(intentRecognizerHandle: Int, triggerPhrase: String): Int {
     ensureLoaded()
-    val state = intentRecognizers[intentRecognizerHandle]
-      ?: return JNI.MOONSHINE_ERROR_INVALID_HANDLE
-    return state.unregister(triggerPhrase)
+    return intentRecognizers.unregister(intentRecognizerHandle, triggerPhrase)
   }
 
   private fun ensureLoaded() {

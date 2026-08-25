@@ -4,9 +4,9 @@ import 'ts-node/register'
 // Deps
 import { ConfigContext, ExpoConfig } from '@expo/config'
 import { config as dotenvConfig } from 'dotenv-flow'
-import Joi from 'joi'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { validatePlaygroundEnvironment } from './config/validate-env'
 import { version as packageVersion } from './package.json'
 
 dotenvConfig({
@@ -14,33 +14,7 @@ dotenvConfig({
     node_env: process.env.APP_VARIANT || "production", // This will use APP_VARIANT for env file selection
 }) // Load variables from .env* files
 
-// Define a schema for the environment variables
-const envSchema = Joi.object({
-    EAS_PROJECT_ID: Joi.string().required(),
-    APPLE_TEAM_ID: Joi.string().optional(),
-    APP_VARIANT: Joi.string()
-        .valid('development', 'staging', 'production')
-        .default('production')
-        .required(),
-}).unknown() // Allow other environment variables
-
-// Validate and get environment variables
-const { error, value: env } = envSchema.validate(process.env, {
-    abortEarly: true,
-    debug: true,
-    presence: 'required', // This ensures defaults are applied
-    stripUnknown: false,
-})
-
-if (error) {
-    console.error('Environment validation error:', error.message)
-    throw error
-}
-
-// Add type assertion to ensure APP_VARIANT is typed correctly
-const validatedEnv = env as typeof env & {
-    APP_VARIANT: 'development' | 'staging' | 'production'
-}
+const validatedEnv = validatePlaygroundEnvironment(process.env)
 
 try {
     const ortPackageJsonPath = join(__dirname, 'node_modules/onnxruntime-web/package.json')

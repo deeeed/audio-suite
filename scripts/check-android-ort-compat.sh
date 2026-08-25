@@ -19,6 +19,8 @@ SHERPA_ORT_LIB="${SITEED_SHERPA_ANDROID_ORT_LIB:-$ROOT_DIR/packages/sherpa-onnx.
 MOONSHINE_USE_MAVEN="${SITEED_MOONSHINE_ANDROID_USE_MAVEN:-0}"
 MOONSHINE_USE_SOURCE_OVERRIDE="${SITEED_MOONSHINE_ANDROID_USE_SOURCE:-${SITEED_MOONSHINE_ANDROID_USE_PACKAGED_AAR:-}}"
 MOONSHINE_SOURCE_AAR="${SITEED_MOONSHINE_ANDROID_SOURCE_AAR:-$ROOT_DIR/packages/moonshine.rn/prebuilt/android/moonshine-voice-source-release.aar}"
+MOONSHINE_ISOLATED_AAR="$ROOT_DIR/packages/moonshine.rn/prebuilt/android/moonshine-voice-isolated.aar"
+MOONSHINE_ENSURE_SCRIPT="$ROOT_DIR/packages/moonshine.rn/scripts/ensure-android-artifacts.sh"
 MOONSHINE_COORD="${SITEED_MOONSHINE_ANDROID_MAVEN_COORD:-ai.moonshine:moonshine-voice:0.1.5}"
 MOONSHINE_REPO="${SITEED_MOONSHINE_ANDROID_MAVEN_REPO:-}"
 MOONSHINE_AAR="${SITEED_MOONSHINE_ANDROID_AAR:-}"
@@ -83,8 +85,13 @@ resolve_moonshine_aar() {
       echo "$MOONSHINE_SOURCE_AAR"
       return
     fi
-  elif ! is_truthy "$MOONSHINE_USE_MAVEN" && [ -f "$MOONSHINE_SOURCE_AAR" ]; then
-    echo "$MOONSHINE_SOURCE_AAR"
+  fi
+
+  if ! is_truthy "$MOONSHINE_USE_MAVEN"; then
+    if [ ! -f "$MOONSHINE_ISOLATED_AAR" ]; then
+      bash "$MOONSHINE_ENSURE_SCRIPT" >&2
+    fi
+    echo "$MOONSHINE_ISOLATED_AAR"
     return
   fi
 
@@ -135,6 +142,46 @@ TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 unzip -p "$MOONSHINE_AAR_PATH" jni/arm64-v8a/libmoonshine.so > "$TMP_DIR/libmoonshine.so"
+unzip -p "$MOONSHINE_AAR_PATH" jni/arm64-v8a/libmoonshine-jni.so > "$TMP_DIR/libmoonshine-jni.so"
+
+MOONSHINE_PRIVATE_ORT_ENTRY="jni/arm64-v8a/libmoonshine_onnxruntime.so"
+if unzip -Z1 "$MOONSHINE_AAR_PATH" | rg -qx "$MOONSHINE_PRIVATE_ORT_ENTRY"; then
+  unzip -p "$MOONSHINE_AAR_PATH" "$MOONSHINE_PRIVATE_ORT_ENTRY" > "$TMP_DIR/libmoonshine_onnxruntime.so"
+
+  for consumer in "$TMP_DIR/libmoonshine.so" "$TMP_DIR/libmoonshine-jni.so"; do
+    needed="$(llvm-readobj --needed-libs "$consumer" 2>/dev/null)"
+    if ! printf '%s\n' "$needed" | rg -q 'libmoonshine_onnxruntime\.so'; then
+      echo "Error: $(basename "$consumer") does not depend on the private Moonshine ONNX Runtime." >&2
+      exit 1
+    fi
+    if printf '%s\n' "$needed" | rg -q '(^|[^_])libonnxruntime\.so'; then
+      echo "Error: $(basename "$consumer") still depends on the shared libonnxruntime.so name." >&2
+      exit 1
+    fi
+  done
+
+  private_dynamic="$(llvm-readobj --dynamic-table "$TMP_DIR/libmoonshine_onnxruntime.so" 2>/dev/null)"
+  if ! printf '%s\n' "$private_dynamic" | rg -q 'SONAME.*libmoonshine_onnxruntime\.so'; then
+    echo "Error: private Moonshine ONNX Runtime has the wrong SONAME." >&2
+    exit 1
+  fi
+
+  SHERPA_IMPORTED_SYMBOL="$(extract_ort_symbol_name "$SHERPA_JNI_LIB")"
+  SHERPA_EXPORTED_SYMBOL="$(extract_ort_symbol_name "$SHERPA_ORT_LIB")"
+  SHERPA_IMPORTED_VERSION="$(extract_ort_symbol_version "$SHERPA_IMPORTED_SYMBOL")"
+  SHERPA_EXPORTED_VERSION="$(extract_ort_symbol_version "$SHERPA_EXPORTED_SYMBOL")"
+  if [ -z "$SHERPA_IMPORTED_VERSION" ] || [ "$SHERPA_IMPORTED_VERSION" != "$SHERPA_EXPORTED_VERSION" ]; then
+    echo "Error: Sherpa JNI and packaged ONNX Runtime do not match." >&2
+    exit 1
+  fi
+
+  echo "Sherpa JNI and libonnxruntime.so use ORT ${SHERPA_EXPORTED_VERSION}."
+  echo "Moonshine uses private libmoonshine_onnxruntime.so."
+  echo "Moonshine artifact: $MOONSHINE_AAR_PATH"
+  echo "Compatible: Sherpa and Moonshine ONNX Runtime libraries are isolated by SONAME."
+  exit 0
+fi
+
 unzip -p "$MOONSHINE_AAR_PATH" jni/arm64-v8a/libonnxruntime.so > "$TMP_DIR/libonnxruntime.so"
 
 SHERPA_IMPORTED_SYMBOL="$(extract_ort_symbol_name "$SHERPA_JNI_LIB")"
@@ -185,8 +232,9 @@ if ! is_unversioned_ort_symbol "$MOONSHINE_IMPORTED_SYMBOL"; then
 fi
 
 if [ "$SHERPA_ORT_SHA" != "$MOONSHINE_ORT_SHA" ]; then
-  echo "Warning: Sherpa and Moonshine package different libonnxruntime.so binaries." >&2
-  echo "Gradle pickFirst will choose one; symbol compatibility above is the required runtime check." >&2
+  echo "Error: Sherpa and Moonshine package different shared libonnxruntime.so binaries." >&2
+  echo "Use the isolated Moonshine Android artifact instead of pickFirst." >&2
+  exit 1
 fi
 
 if is_unversioned_ort_symbol "$MOONSHINE_IMPORTED_SYMBOL"; then

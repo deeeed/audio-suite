@@ -9,7 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Android Maven consumers now resolve `ai.moonshine:moonshine-voice:0.1.5` (minSdk 26). Intent matching uses the public `EmbeddingModel` API; per-line `speakerId` is derived from `speakerSpans`. iOS remains on the pinned v0.0.59 xcframework.
+- Android now uses upstream Moonshine 0.1.5 at minSdk 26. Intent matching uses the public `EmbeddingModel` API, and speaker attribution uses `speakerSpans`. iOS remains on the pinned v0.0.59 xcframework.
+- Default Android installs download a checksum-pinned AAR whose ONNX Runtime has a private SONAME, allowing Moonshine and Sherpa to load their own runtime versions without `pickFirst`.
+
+### Fixed
+
+- Emit completed-line speaker attribution revisions and update cached transcription results when upstream diarization changes `speakerSpans` retroactively.
 
 ## [0.4.1-beta.1] - 2026-08-24
 
