@@ -106,8 +106,8 @@ yarn validate:android-release-artifact
 yarn validate:ios-release-artifact
 ```
 
-Publish without a prerelease tag, then verify `latest` moved while `beta`
-still identifies the validated beta:
+Publish under `latest`, then verify it moved while `beta` still identifies the
+validated beta:
 
 ```bash
 npm publish --tag latest
