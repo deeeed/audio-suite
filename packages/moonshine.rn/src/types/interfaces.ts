@@ -21,6 +21,7 @@ export const MOONSHINE_TRANSCRIPTION_CANCELLED_CODE =
   'MOONSHINE_TRANSCRIPTION_CANCELLED';
 
 export interface MoonshineModelOptions {
+  diarizationModelDir?: string;
   identifySpeakers?: boolean;
   logApiCalls?: boolean;
   logOrtRuns?: boolean;

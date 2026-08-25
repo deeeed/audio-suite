@@ -29,7 +29,11 @@ const TIMEOUT_MS = 10 * 60 * 1000;
 const STATE_TIMEOUT_MS = 90 * 1000;
 const POLL_INTERVAL_MS = 1000;
 
-const WORDS_ROOT = '/Volumes/c910ssd/datasets/ami_public_manual_1.6.2/words';
+const WORDS_ROOT =
+  process.env.AMI_WORDS_ROOT ||
+  '/Volumes/c910ssd/datasets/ami_public_manual_1.6.2/words';
+const AUDIO_ROOT =
+  process.env.AMI_AUDIO_ROOT || '/Volumes/c910ssd/datasets/amicorpus';
 const MODELS = [
   { id: 'moonshine-small-streaming-en', label: 'Moonshine Small Streaming' },
   { id: 'moonshine-medium-streaming-en', label: 'Moonshine Medium Streaming' },
@@ -204,7 +208,12 @@ function getClipInfo(windowSpec) {
     ...windowSpec,
     clipId,
     durationS: windowSpec.endS - windowSpec.startS,
-    hostAudio: `/Volumes/c910ssd/datasets/amicorpus/${windowSpec.meetingId}/audio/${windowSpec.meetingId}.Mix-Headset.wav`,
+    hostAudio: path.join(
+      AUDIO_ROOT,
+      windowSpec.meetingId,
+      'audio',
+      `${windowSpec.meetingId}.Mix-Headset.wav`
+    ),
     hostClip: `/tmp/${clipId}.wav`,
     deviceClip: `/data/user/0/${PKG}/files/benchmarks/${clipId}.wav`,
   };

@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Android now uses upstream Moonshine 0.1.5 at minSdk 26. Intent matching uses the public `EmbeddingModel` API, and speaker attribution uses `speakerSpans`. iOS remains on the pinned v0.0.59 xcframework.
 - Default Android installs download a checksum-pinned AAR whose ONNX Runtime has a private SONAME, allowing Moonshine and Sherpa to load their own runtime versions without `pickFirst`.
+- Expose `diarizationModelDir` so `identifySpeakers` can load the `segmentation.ort` and `embedding.ort` files required by Moonshine 0.1.5.
 
 ### Fixed
 

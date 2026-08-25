@@ -731,6 +731,11 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
     if (config.hasKey("options") && !config.isNull("options")) {
       val nativeOptions = config.getMap("options")
       nativeOptions?.let {
+        if (it.hasKey("diarizationModelDir") && !it.isNull("diarizationModelDir")) {
+          options.add(
+            TranscriberOption("diarization_model_dir", it.getString("diarizationModelDir"))
+          )
+        }
         if (it.hasKey("identifySpeakers") && !it.isNull("identifySpeakers")) {
           options.add(
             TranscriberOption(

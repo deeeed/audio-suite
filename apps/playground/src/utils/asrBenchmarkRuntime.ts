@@ -27,6 +27,10 @@ import { pcm16ToArrayBuffer, readMonoPcm16Wav } from './wav'
 const logger = baseLogger.extend('AsrBenchmarkRuntime')
 
 const moonshineModelRoot = `${FileSystem.documentDirectory ?? ''}moonshine-models/`
+const moonshineDiarizationRoot = `${moonshineModelRoot}diarization-community1`
+const moonshineDiarizationBaseUrl =
+    'https://download.moonshine.ai/model/diarization-community1'
+const moonshineDiarizationFiles = ['segmentation.ort', 'embedding.ort']
 const whisperModelRoot = `${FileSystem.documentDirectory ?? ''}whisper-models/`
 // Match the live Moonshine RN transport: the recorder can emit smaller waveform
 // chunks, but ASR bridge calls are coalesced to reduce JS/native copies.
@@ -208,6 +212,30 @@ async function downloadToFile(
     if (!result) {
         throw new Error(`Download failed for ${url}`)
     }
+}
+
+export async function prepareMoonshineDiarizationModels(
+    onStatus?: (message: string) => void,
+): Promise<string> {
+    if (Platform.OS === 'web') {
+        throw new Error('Moonshine native diarization models are unavailable on web')
+    }
+
+    await FileSystem.makeDirectoryAsync(moonshineDiarizationRoot, {
+        intermediates: true,
+    }).catch(() => {})
+    for (const fileName of moonshineDiarizationFiles) {
+        const targetPath = `${moonshineDiarizationRoot}/${fileName}`
+        const existing = await FileSystem.getInfoAsync(targetPath)
+        if (!existing.exists) {
+            await downloadToFile(
+                `${moonshineDiarizationBaseUrl}/${fileName}`,
+                targetPath,
+                onStatus,
+            )
+        }
+    }
+    return toNativePath(moonshineDiarizationRoot)
 }
 
 async function getValidatedMoonshineFileInfo(
@@ -425,11 +453,16 @@ export async function createMoonshineBenchmarkTranscriber(
     transcriber: MoonshineTranscriber
 }> {
     const config = await getMoonshineRuntimeConfig(modelId, onStatus)
+    const diarizationModelDir =
+        optionsOverride?.identifySpeakers === true && Platform.OS !== 'web'
+            ? await prepareMoonshineDiarizationModels(onStatus)
+            : undefined
     const transcriber = await Moonshine.createTranscriberFromFiles({
         ...config,
         options: {
             ...config.options,
             ...optionsOverride,
+            ...(diarizationModelDir ? { diarizationModelDir } : {}),
         },
     })
     return { config, transcriber }

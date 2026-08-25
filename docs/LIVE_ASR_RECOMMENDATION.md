@@ -42,6 +42,20 @@ A model is eligible as the default true-live engine only if it sustains:
 
 Device: Pixel 6a (`<adb-serial>`, Android 16 / API 36). Harness: Audio Playground `/asr-benchmark` through `direct-asr-benchmark.mjs`. Memory delta is app PSS from `adb shell dumpsys meminfo` before/after each run; it is a stability signal, not a precise retained-heap measurement.
 
+### Moonshine native speaker identification
+
+Fresh Moonshine 0.1.5 validation on the Pixel 6a shows why speaker identification remains opt-in:
+
+| Fixture | Model | Detected speakers | Reference speakers | Detected changes | Reference changes on predicted lines | Collapsed clips | Label accuracy when assigned |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Four clean synthetic turns (`A → B → A → B`) | Small | 2 | 2 | 3 | 3 | 0/1 | 100% |
+| Three AMI meeting windows | Small | 1.7 avg | 3.3 avg | 1.0 avg | 3.0 avg | 1/3 | 84.1% |
+| Three AMI meeting windows | Medium | 1.7 avg | 3.3 avg | 0.7 avg | 2.7 avg | 1/3 | 88.9% |
+
+Moonshine correctly separates clean, well-spaced turns but under-detects speakers and rapid turn changes in real meeting audio. The label-accuracy column excludes lines without a speaker ID, so it must not be read as full diarization accuracy. Keep Sherpa VAD + Speaker ID for tentative live turns and offline diarization for final labels.
+
+AMI artifact: `apps/playground/.agent/reports/moonshine-speaker-turn-validation-2026-08-25T04-04-17-654Z.{json,md}`. The scorer accepts `AMI_AUDIO_ROOT` and `AMI_WORDS_ROOT` overrides when the dataset is mounted on another machine or copied to a temporary directory.
+
 ### JFK 11s reference clip
 
 | Model                                                | Runtime         |  WER | First partial | First commit | Wall RTF | Processing RTF | Max backlog | Memory delta | Result                                                                    |
