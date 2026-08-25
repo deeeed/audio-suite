@@ -162,7 +162,8 @@ def main() -> None:
         "peakRssBytes": peak_rss_bytes(),
         "segments": segments,
     }
-    out.write_text(  # NOSONAR: resolve_output validated the canonical parent.
+    # resolve_output validated the canonical parent against the allowed roots.
+    out.write_text(  # NOSONAR
         json.dumps(output, indent=2) + "\n"
     )
     print(json.dumps({"out": str(out), **output["timing"]}, indent=2))
