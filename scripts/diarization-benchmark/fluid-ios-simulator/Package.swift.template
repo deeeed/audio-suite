@@ -1,0 +1,27 @@
+// swift-tools-version: 6.1
+import PackageDescription
+
+let package = Package(
+  name: "FluidIOSBenchmark",
+  platforms: [.iOS(.v17)],
+  products: [
+    .library(name: "FluidIOSBenchmark", targets: ["FluidIOSBenchmark"])
+  ],
+  dependencies: [
+    .package(
+      url: "https://github.com/FluidInference/FluidAudio.git",
+      exact: "__FLUID_AUDIO_VERSION__"
+    )
+  ],
+  targets: [
+    .target(name: "FluidIOSBenchmark"),
+    .testTarget(
+      name: "FluidIOSBenchmarkTests",
+      dependencies: [
+        "FluidIOSBenchmark",
+        .product(name: "FluidAudio", package: "FluidAudio"),
+      ],
+      resources: [.copy("Fixtures")]
+    ),
+  ]
+)

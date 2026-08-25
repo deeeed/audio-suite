@@ -1,0 +1,318 @@
+{
+    "schemaVersion": 1,
+    "benchmarkId": "ami-test-diarization-2026-08-25",
+    "benchmarkVersion": "2026-08-25.1",
+    "createdAt": "2026-08-25T05:12:28.901Z",
+    "reference": {
+        "setup": "BUTSpeechFIT/AMI-diarization-setup only_words",
+        "commit": "2509d8933721023fab4def2618aabd5c28eb82e9",
+        "meetingId": "ES2004a",
+        "durationSeconds": 1049.354688,
+        "audioSha256": "3e2560b19bee6952c7c7ce041b0f1ea8a7ea9468044c4eea79d2a2c67e24ab0f",
+        "speakerCount": 4
+    },
+    "scoring": {
+        "implementation": "pyannote.metrics 4.0.0",
+        "standard": {
+            "collarSeconds": 0.25,
+            "skipOverlap": true,
+            "uem": "full"
+        },
+        "strict": {
+            "collarSeconds": 0,
+            "skipOverlap": false,
+            "uem": "full"
+        }
+    },
+    "results": [
+        {
+            "system": "FluidAudio offline Community-1/VBx",
+            "version": "0.15.6",
+            "commit": "4dbf4f9f9a5ff3a53ade848d7ba4e3df13db859b",
+            "platform": "macOS 26, M5 Max",
+            "speakerCountMode": "automatic",
+            "threshold": 0.6,
+            "detectedSpeakerCount": 4,
+            "standardDerPercent": 8.973082287537704,
+            "standardJerPercent": 11.400747118608676,
+            "strictDerPercent": 23.913266408931964,
+            "strictJerPercent": 27.34245389420298,
+            "rawResultSha256": "5492a0c805d06a0db4b84fe59593226f461c194344ffc8667324ac74aab74b18"
+        },
+        {
+            "system": "Sherpa ONNX Pyannote 3.0 + TitaNet small",
+            "version": "audiolab 1296499dd27e53bea99ec146dafdad75fc3333c7",
+            "platform": "Pixel 6a, Android 17",
+            "speakerCountMode": "supplied",
+            "requestedSpeakerCount": 4,
+            "detectedSpeakerCount": 4,
+            "standardDerPercent": 11.300414326053778,
+            "standardJerPercent": 15.030985752953246,
+            "strictDerPercent": 22.71326651522112,
+            "strictJerPercent": 29.32245784291932,
+            "rawResultSha256": "b8a6e15daa7f4018d0cead4c12b3b22dbfd8559bbe24c981603d82875a09e8e0"
+        },
+        {
+            "system": "Sherpa ONNX Pyannote 3.0 + ERes2Net",
+            "version": "audiolab 1296499dd27e53bea99ec146dafdad75fc3333c7",
+            "platform": "Pixel 6a, Android 17",
+            "speakerCountMode": "automatic",
+            "threshold": 0.5,
+            "detectedSpeakerCount": 68,
+            "standardDerPercent": 67.88930641189003,
+            "standardJerPercent": 60.650223169190696,
+            "strictDerPercent": 75.71288880157282,
+            "strictJerPercent": 69.80533883382449,
+            "rawResultSha256": "7d2edb0489a57bbb2cea98384e311152742830e8aa83741fa7b9a7c73e20772c"
+        },
+        {
+            "system": "Sherpa ONNX Pyannote 3.0 + ERes2Net",
+            "version": "audiolab 1296499dd27e53bea99ec146dafdad75fc3333c7",
+            "platform": "Pixel 6a, Android 17",
+            "speakerCountMode": "automatic",
+            "threshold": 0.8,
+            "detectedSpeakerCount": 37,
+            "standardDerPercent": 42.91621914219548,
+            "standardJerPercent": 39.07981060468323,
+            "strictDerPercent": 50.07511869402268,
+            "strictJerPercent": 49.283593435132865,
+            "rawResultSha256": "038bdd724590f624e3ca4d927750b50a06d981c644ffd3016c80fd6685e8a792"
+        }
+    ],
+    "upstreamSherpaParity": {
+        "runtime": "sherpa-onnx Python 1.13.0 on macOS",
+        "hostHardware": "Apple M5 Max",
+        "summarySha256": "1d79bb65df12d0baccde22cd3b7e7a8ce3160cce64dfcc0f0001e4e7d9e0e944",
+        "cases": [
+            {
+                "mode": "known count, TitaNet small",
+                "detectedSpeakerCount": 4,
+                "standardDerPercent": 11.300414326053778,
+                "standardJerPercent": 15.030985752953246,
+                "processSeconds": 56.5111103329109,
+                "rtfx": 18.568997880561504,
+                "matchesPixel": true
+            },
+            {
+                "mode": "automatic ERes2Net, threshold 0.5",
+                "detectedSpeakerCount": 68,
+                "standardDerPercent": 67.88930641189003,
+                "standardJerPercent": 60.650223169190696,
+                "processSeconds": 135.84791700006463,
+                "rtfx": 7.724481252071762,
+                "matchesPixel": true
+            },
+            {
+                "mode": "automatic ERes2Net, threshold 0.8",
+                "detectedSpeakerCount": 37,
+                "standardDerPercent": 42.91621914219548,
+                "standardJerPercent": 39.07981060468323,
+                "processSeconds": 134.3408948329743,
+                "rtfx": 7.811133678279127,
+                "matchesPixel": true
+            }
+        ]
+    },
+    "transcriptQuality": {
+        "sharedAsr": {
+            "system": "FluidAudio Parakeet TDT v3 native",
+            "meetingId": "ES2004a",
+            "referenceWordCount": 2971,
+            "hypothesisWordCount": 2276,
+            "chronologicalWerPercent": 32.07674183776506,
+            "rawResultSha256": "690acb468944cf12afd37c587ce22ade2ed36fb794192bc6aeacbbaa6d11342f"
+        },
+        "cpwer": [
+            {
+                "diarizer": "FluidAudio offline VBx",
+                "speakerCountMode": "automatic",
+                "sharedAsrCpwerPercent": 39.145069000336585,
+                "oracleWordCpwerPercent": 28.2059912487378
+            },
+            {
+                "diarizer": "Sherpa ONNX TitaNet small",
+                "speakerCountMode": "supplied",
+                "sharedAsrCpwerPercent": 41.063614944463145,
+                "oracleWordCpwerPercent": 29.283069673510603
+            },
+            {
+                "diarizer": "Sherpa ONNX ERes2Net",
+                "speakerCountMode": "automatic",
+                "threshold": 0.8,
+                "sharedAsrCpwerPercent": 82.66576910131269,
+                "oracleWordCpwerPercent": 84.75260854930999
+            },
+            {
+                "diarizer": "Sherpa ONNX ERes2Net",
+                "speakerCountMode": "automatic",
+                "threshold": 0.5,
+                "sharedAsrCpwerPercent": 126.28744530461125,
+                "oracleWordCpwerPercent": 136.82261864692022
+            }
+        ],
+        "nativeMoonshineSwift": {
+            "version": "0.1.5",
+            "dataset": "Three IS1001a stress windows, 205 reference words",
+            "small": {
+                "weightedWerPercent": 75.1219512195122,
+                "weightedCpwerPercent": 87.8048780487805,
+                "detectedSpeakersByClip": [1, 2, 2],
+                "referenceSpeakersByClip": [3, 4, 3],
+                "rawResultSha256ByClip": [
+                    "f6e9de9ae77b09f37e351c2e24570d248fa21ac30ff2c275035aab28722bd8fe",
+                    "ef142c721cd42684d9e79d6534850d7bfb6f23008c14a0ef9170cadf45937356",
+                    "de210cb3b9d0cddd3e45d7a3a7a46985619d6d330d4a5af4472c6abf9a1172b3"
+                ]
+            },
+            "medium": {
+                "weightedWerPercent": 69.7560975609756,
+                "weightedCpwerPercent": 87.8048780487805,
+                "detectedSpeakersByClip": [1, 2, 2],
+                "referenceSpeakersByClip": [3, 4, 3],
+                "rawResultSha256ByClip": [
+                    "4dc3505beff52c45e080cc53c3b12a5125fbc371126097df5f2d5ff41fadd3f8",
+                    "b0c4e51b33cfb9fd9ecb2c50b50d8f8462b1f339b55eaea9fafd4368ff651761",
+                    "dbb6f5a78d907994b242abb38e0d82f1e1dd7bc43b7f11c3f26ceefa1e57832f"
+                ]
+            }
+        }
+    },
+    "fluidAudioFullAmiTest": {
+        "meetingCount": 16,
+        "speakerCountExactMeetings": 13,
+        "standardDerPercent": 9.009765751674303,
+        "standardJerPercent": 14.155345945826413,
+        "strictDerPercent": 23.349358046567048,
+        "strictJerPercent": 29.70112760786549,
+        "reportSha256": "9499a14cb620ad1943c687f6663ddab52c81d255c6acf12c4a562f190e03f804",
+        "meetings": [
+            {
+                "id": "EN2002a",
+                "speakers": "4/4",
+                "derPercent": 9.951300766919463
+            },
+            {
+                "id": "EN2002b",
+                "speakers": "5/4",
+                "derPercent": 9.391445763653785
+            },
+            {
+                "id": "EN2002c",
+                "speakers": "3/3",
+                "derPercent": 7.976698824386388
+            },
+            {
+                "id": "EN2002d",
+                "speakers": "4/4",
+                "derPercent": 9.623154306042817
+            },
+            {
+                "id": "ES2004a",
+                "speakers": "4/4",
+                "derPercent": 8.973082287537704
+            },
+            {
+                "id": "ES2004b",
+                "speakers": "4/4",
+                "derPercent": 5.495077722630621
+            },
+            {
+                "id": "ES2004c",
+                "speakers": "4/4",
+                "derPercent": 5.818727503078538
+            },
+            {
+                "id": "ES2004d",
+                "speakers": "5/4",
+                "derPercent": 10.424667112319671
+            },
+            {
+                "id": "IS1009a",
+                "speakers": "4/4",
+                "derPercent": 10.149104710733543
+            },
+            {
+                "id": "IS1009b",
+                "speakers": "4/4",
+                "derPercent": 5.184286552328692
+            },
+            {
+                "id": "IS1009c",
+                "speakers": "4/4",
+                "derPercent": 4.905747312025286
+            },
+            {
+                "id": "IS1009d",
+                "speakers": "4/4",
+                "derPercent": 8.191526791574208
+            },
+            {
+                "id": "TS3003a",
+                "speakers": "2/4",
+                "derPercent": 16.08354749895714
+            },
+            {
+                "id": "TS3003b",
+                "speakers": "4/4",
+                "derPercent": 7.485089811004385
+            },
+            {
+                "id": "TS3003c",
+                "speakers": "4/4",
+                "derPercent": 9.203402214544763
+            },
+            {
+                "id": "TS3003d",
+                "speakers": "4/4",
+                "derPercent": 15.299392849051852
+            }
+        ]
+    },
+    "fluidAudioParityMeeting": {
+        "meetingId": "ES2004a",
+        "hostHardware": "Apple M5 Max",
+        "macosNative": {
+            "processSeconds": 4.075622916221619,
+            "processSecondsByIteration": [
+                4.119874000549316, 3.9556310176849365, 4.075622916221619
+            ],
+            "rtfx": 257.4709950038321,
+            "segmentCount": 95,
+            "detectedSpeakerCount": 4,
+            "standardDerPercent": 8.973082287537704,
+            "standardJerPercent": 11.400747118608676,
+            "summarySha256": "c2cb3f32bf731449bf672ab7edf25602c8444a58836cc93685aa344757a69c83"
+        },
+        "iosSimulator": {
+            "simulator": "audiolab-1, iOS 26.5",
+            "processSeconds": 46.68182897567749,
+            "processSecondsByIteration": [
+                46.68182897567749, 46.512457966804504, 47.176604986190796
+            ],
+            "rtfx": 22.47886835253911,
+            "segmentCount": 95,
+            "detectedSpeakerCount": 4,
+            "standardDerPercent": 8.973082287537704,
+            "standardJerPercent": 11.400747118608676,
+            "strictDerPercent": 23.913266408931964,
+            "strictJerPercent": 27.34245389420298,
+            "exactMacosSegmentParity": true,
+            "scoredReportSha256": "104f0d46b09ee888c04fbc874926432f7a3fa8ef647e151e2863a785a1456edc"
+        }
+    },
+    "screening": {
+        "dataset": "Three short IS1001a windows, 80 seconds total",
+        "moonshineSmall": {
+            "meanReferenceSpeakerCount": 3.3333333333333335,
+            "meanDetectedSpeakerCount": 1.6666666666666667,
+            "standardDerPercent": 60.076987573653206,
+            "standardJerPercent": 71.13360831572756
+        },
+        "moonshineMedium": {
+            "meanReferenceSpeakerCount": 3.3333333333333335,
+            "meanDetectedSpeakerCount": 1.6666666666666667,
+            "standardDerPercent": 63.48866353238363,
+            "standardJerPercent": 71.0779150349219
+        }
+    }
+}

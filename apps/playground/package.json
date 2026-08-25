@@ -26,6 +26,7 @@
         "recipe:preconditions": "bash scripts/agentic/validate-pre-conditions.sh",
         "recipe:v1": "node scripts/agentic/recipe-v1/run-recipe-v1.mjs",
         "benchmark:moonshine:longform": "BENCHMARK_PRESET=moonshine-longform node scripts/agentic/direct-asr-benchmark.mjs",
+        "benchmark:moonshine:diarization": "node scripts/agentic/moonshine-speaker-turn-validation.mjs",
         "reload": "bash scripts/agentic/device-cmd.sh reload",
         "wake": "bash scripts/agentic/wake-devices.sh",
         "debug": "bash scripts/agentic/device-cmd.sh debug",

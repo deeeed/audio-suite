@@ -1,0 +1,183 @@
+{
+    "schemaVersion": 1,
+    "benchmarkVersion": "2026-08-25.1",
+    "dataset": {
+        "name": "AMI Meeting Corpus",
+        "annotationVersion": "1.6.2",
+        "audioVariant": "Mix-Headset",
+        "sampleRate": 16000,
+        "channels": 1,
+        "reference": {
+            "repository": "BUTSpeechFIT/AMI-diarization-setup",
+            "commit": "2509d8933721023fab4def2618aabd5c28eb82e9",
+            "profile": "only_words"
+        },
+        "testMeetings": [
+            "EN2002a",
+            "EN2002b",
+            "EN2002c",
+            "EN2002d",
+            "ES2004a",
+            "ES2004b",
+            "ES2004c",
+            "ES2004d",
+            "IS1009a",
+            "IS1009b",
+            "IS1009c",
+            "IS1009d",
+            "TS3003a",
+            "TS3003b",
+            "TS3003c",
+            "TS3003d"
+        ],
+        "parityMeeting": {
+            "id": "ES2004a",
+            "durationSeconds": 1049.354688,
+            "audioSha256": "3e2560b19bee6952c7c7ce041b0f1ea8a7ea9468044c4eea79d2a2c67e24ab0f",
+            "referenceSpeakerCount": 4
+        },
+        "liveStressWindows": [
+            { "meetingId": "IS1001a", "startS": 230, "endS": 250 },
+            { "meetingId": "IS1001a", "startS": 340, "endS": 380 },
+            { "meetingId": "IS1001a", "startS": 530, "endS": 550 }
+        ]
+    },
+    "scoring": {
+        "implementation": "pyannote.metrics==4.0.0",
+        "strict": {
+            "collarSeconds": 0,
+            "skipOverlap": false,
+            "uem": "full"
+        },
+        "standard": {
+            "collarSeconds": 0.25,
+            "skipOverlap": true,
+            "uem": "full"
+        },
+        "transcript": {
+            "wer": "chronological single stream",
+            "speakerAttributedWer": "cpWER"
+        }
+    },
+    "qualityGates": {
+        "automaticCount": {
+            "maxMacroDerPercent": 15,
+            "maxMacroJerPercent": 25,
+            "minExactSpeakerCountMeetings": 12,
+            "requiredMeetingCount": 16
+        },
+        "nativeParity": {
+            "maxDerDeltaPercent": 0.05,
+            "maxJerDeltaPercent": 0.05,
+            "requireExactSegmentsWhenRuntimeIsShared": true
+        }
+    },
+    "systems": {
+        "fluidAudio": {
+            "repository": "FluidInference/FluidAudio",
+            "version": "0.15.6",
+            "commit": "4dbf4f9f9a5ff3a53ade848d7ba4e3df13db859b",
+            "modelRepository": "FluidInference/speaker-diarization-coreml",
+            "modelRevision": "1ed7a662fdc7109e36d822db793ee6eebdaf8594",
+            "mode": "offline-vbx",
+            "config": {
+                "threshold": 0.6,
+                "stepRatio": 0.2,
+                "minSegmentDurationSeconds": 1.0,
+                "speakerCount": "automatic"
+            }
+        },
+        "sherpaOnnx": {
+            "repository": "k2-fsa/sherpa-onnx",
+            "version": "1.13.0",
+            "segmentation": {
+                "id": "pyannote-segmentation-3-0",
+                "file": "model.onnx",
+                "sizeBytes": 5992913,
+                "sha256": "220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079"
+            },
+            "embeddings": [
+                {
+                    "id": "speaker-id-nemo-titanet-small",
+                    "label": "TitaNet small",
+                    "file": "nemo_en_titanet_small.onnx",
+                    "sizeBytes": 40257283,
+                    "sha256": "ad4a1802485d8b34c722d2a9d04249662f2ece5d28a7a039063ca22f515a789e",
+                    "role": "known-count upper bound"
+                },
+                {
+                    "id": "speaker-id-3dspeaker-eres2net-en",
+                    "label": "ERes2Net English",
+                    "file": "3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx",
+                    "sizeBytes": 26485263,
+                    "sha256": "c59158379255ad66e161679cca6af8d52d51e389e3224ab7d7a7baae295c2db5",
+                    "role": "automatic-count candidate"
+                },
+                {
+                    "id": "speaker-id-nemo-titanet-large",
+                    "label": "TitaNet large",
+                    "file": "nemo_en_titanet_large.onnx",
+                    "sizeBytes": 101405493,
+                    "sha256": "d51abcf31717ef28162f26acb9d44dd4127c3d44c9b8624f699f3425daca8e77",
+                    "role": "quality sweep"
+                },
+                {
+                    "id": "speaker-id-en-voxceleb",
+                    "label": "CAM++ English",
+                    "file": "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx",
+                    "sizeBytes": 29596978,
+                    "sha256": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+                    "role": "quality sweep"
+                },
+                {
+                    "id": "speaker-id-zh-en-advanced",
+                    "label": "CAM++ multilingual",
+                    "file": "3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx",
+                    "sizeBytes": 28281164,
+                    "sha256": "aa3cfc16963a10586a9393f5035d6d6b57e98d358b347f80c2a30bf4f00ceba2",
+                    "role": "quality sweep"
+                }
+            ],
+            "automaticThresholds": [0.5, 0.8],
+            "oracleEmbeddingId": "speaker-id-nemo-titanet-small",
+            "automaticEmbeddingId": "speaker-id-3dspeaker-eres2net-en",
+            "finalistEmbeddingIds": [
+                "speaker-id-3dspeaker-eres2net-en",
+                "speaker-id-nemo-titanet-small",
+                "speaker-id-zh-en-advanced"
+            ],
+            "numThreads": 2
+        },
+        "moonshine": {
+            "repository": "moonshine-ai/moonshine",
+            "version": "0.1.5",
+            "commit": "520ba083085a14efcb77d701b35544f81d7b1acf",
+            "swiftPackage": "moonshine-ai/moonshine-swift@0.1.5",
+            "models": ["small-streaming-en", "medium-streaming-en"],
+            "options": {
+                "identifySpeakers": true,
+                "wordTimestamps": true
+            }
+        },
+        "pythonReference": {
+            "pipeline": "pyannote/speaker-diarization-community-1",
+            "purpose": "quality and efficiency reference, never a mobile runtime"
+        }
+    },
+    "requiredResultFields": [
+        "gitCommit",
+        "runtimeVersion",
+        "modelRevisionOrHashes",
+        "hostHardware",
+        "platform",
+        "audioSha256",
+        "speakerCountMode",
+        "detectedSpeakerCount",
+        "processSeconds",
+        "rtfx",
+        "standardDerPercent",
+        "standardJerPercent",
+        "strictDerPercent",
+        "strictJerPercent"
+    ]
+}
