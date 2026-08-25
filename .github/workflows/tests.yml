@@ -59,6 +59,10 @@ jobs:
   android:
     name: Android Moonshine unit tests
     runs-on: ubuntu-latest
+    env:
+      # Release PRs bump package.json before the matching GitHub release can exist.
+      # This immutable fixture is accepted only while it matches the package SHA-256.
+      SITEED_MOONSHINE_ANDROID_ISOLATED_AAR_URL: https://github.com/deeeed/audiolab/releases/download/%40siteed%2Fmoonshine.rn%400.4.1-beta.1/Moonshine-Android-isolated.aar
     steps:
       - uses: actions/checkout@v4
         with:
