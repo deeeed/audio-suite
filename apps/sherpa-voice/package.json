@@ -74,6 +74,7 @@
         "android:device": "APP_VARIANT=development PLATFORM=android ANDROID_DEVICE= EMULATOR_PORT= REBUILD=1 bash scripts/agentic/preflight.sh",
         "android:device:launch": "APP_VARIANT=development PLATFORM=android ANDROID_DEVICE= EMULATOR_PORT= SKIP_BUILD=1 bash scripts/agentic/preflight.sh",
         "diarization:ios:physical": "node scripts/agentic/run-ios-physical-diarization-global-reid.mjs",
+        "diarization:benchmark:android": "node scripts/agentic/run-ami-diarization-benchmark.mjs",
         "diarization:ios:physical:dry-run": "DRY_RUN=1 node scripts/agentic/run-ios-physical-diarization-global-reid.mjs",
         "ios:device:launch": "APP_VARIANT=development IOS_SIMULATOR= PLATFORM=ios HEADLESS=0 SKIP_BUILD=1 bash scripts/agentic/preflight.sh",
         "ios:device:eas-build-install": "node scripts/agentic/eas-ios-dev-client-build-install.mjs",

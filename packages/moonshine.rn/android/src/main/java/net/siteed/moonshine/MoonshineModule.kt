@@ -668,10 +668,12 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
       )
     }
     result.putBoolean("hasTextChanged", line.hasTextChanged)
-    result.putBoolean("hasSpeakerId", line.hasSpeakerId)
-    if (line.hasSpeakerId) {
-      result.putString("speakerId", line.speakerId.toString())
-      result.putInt("speakerIndex", line.speakerIndex)
+    result.putBoolean("haveSpeakersChanged", line.haveSpeakersChanged)
+    val speaker = MoonshineTranscriptPolicy.dominantSpeakerSpan(line)
+    result.putBoolean("hasSpeakerId", speaker != null)
+    if (speaker != null) {
+      result.putString("speakerId", speaker.speakerId.toString())
+      result.putInt("speakerIndex", speaker.speakerIndex)
     }
     result.putInt("lastTranscriptionLatencyMs", line.lastTranscriptionLatencyMs)
     if (includeAudioDataInLines && line.audioData != null) {
@@ -729,6 +731,11 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
     if (config.hasKey("options") && !config.isNull("options")) {
       val nativeOptions = config.getMap("options")
       nativeOptions?.let {
+        if (it.hasKey("diarizationModelDir") && !it.isNull("diarizationModelDir")) {
+          options.add(
+            TranscriberOption("diarization_model_dir", it.getString("diarizationModelDir"))
+          )
+        }
         if (it.hasKey("identifySpeakers") && !it.isNull("identifySpeakers")) {
           options.add(
             TranscriberOption(
@@ -1000,18 +1007,10 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
     streamHandle: Int
   ) {
     val completedForStream = state.completedLineIds.getOrPut(streamHandle) { mutableSetOf() }
+    val linesForStream = state.streamLines.getOrPut(streamHandle) { LinkedHashMap() }
     transcript.lines.orEmpty().forEach { line ->
-      if (line.isNew) {
-        onTranscriptLineEvent("lineStarted", transcriberId, state, streamHandle, line)
-      }
-      if (line.isUpdated && !line.isNew && !line.isComplete) {
-        onTranscriptLineEvent("lineUpdated", transcriberId, state, streamHandle, line)
-      }
-      if (line.hasTextChanged) {
-        onTranscriptLineEvent("lineTextChanged", transcriberId, state, streamHandle, line)
-      }
-      if (line.isComplete && line.isUpdated && completedForStream.add(line.id)) {
-        onTranscriptLineEvent("lineCompleted", transcriberId, state, streamHandle, line)
+      MoonshineTranscriptPolicy.applyLine(line, linesForStream, completedForStream).forEach { eventType ->
+        onTranscriptLineEvent(eventType, transcriberId, state, streamHandle, line)
       }
     }
   }
@@ -1023,8 +1022,6 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
     streamHandle: Int,
     line: TranscriptLine
   ) {
-    val linesForStream = state.streamLines.getOrPut(streamHandle) { LinkedHashMap() }
-    linesForStream[line.id] = line
     emitEvent(type, transcriberId, streamHandle, state.includeAudioDataInLines, line)
   }
 
@@ -1357,7 +1354,6 @@ class MoonshineModule(reactContext: ReactApplicationContext) :
       val progressIntervalMs =
         if (
           progressEnabled &&
-          progressOptions != null &&
           progressOptions.hasKey("intervalMs") &&
           !progressOptions.isNull("intervalMs")
         ) {

@@ -1,0 +1,21 @@
+// swift-tools-version: 6.1
+import PackageDescription
+
+let package = Package(
+  name: "FluidMacOSBenchmark",
+  platforms: [.macOS(.v14)],
+  dependencies: [
+    .package(
+      url: "https://github.com/FluidInference/FluidAudio.git",
+      exact: "__FLUID_AUDIO_VERSION__"
+    )
+  ],
+  targets: [
+    .executableTarget(
+      name: "FluidMacOSBenchmark",
+      dependencies: [
+        .product(name: "FluidAudio", package: "FluidAudio")
+      ]
+    )
+  ]
+)

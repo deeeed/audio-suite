@@ -36,7 +36,7 @@ nodeLinker: node-modules
 
 ## Platform requirements
 
-- **Android:** `minSdkVersion 35`
+- **Android:** `minSdkVersion 26`
 - **iOS:** native rebuild required after installing or upgrading the package
 - **Web:** `window.ort` must be available before creating a transcriber
 
@@ -45,7 +45,7 @@ nodeLinker: node-modules
 | Platform | What consumers do | What the package does | Customization hooks |
 | --- | --- | --- | --- |
 | iOS | Install the package, then run `pod install` / rebuild the native app. | Downloads the checksum-pinned `Moonshine.xcframework.zip` for the installed package version and caches it outside `node_modules`. | `SITEED_MOONSHINE_IOS_XCFRAMEWORK_URL`, `SITEED_MOONSHINE_IOS_XCFRAMEWORK_SHA256`, `SITEED_MOONSHINE_IOS_CACHE_DIR`. |
-| Android | Install the package and rebuild the app. | Resolves `ai.moonshine:moonshine-voice` from Maven by default; the heavy AAR is not shipped in npm. | `SITEED_MOONSHINE_ANDROID_MAVEN_COORD`, `SITEED_MOONSHINE_ANDROID_MAVEN_REPO`, `SITEED_MOONSHINE_ANDROID_AAR`, `SITEED_MOONSHINE_ANDROID_USE_MAVEN`. |
+| Android | Install the package and rebuild the app. | Downloads a checksum-pinned isolated AAR from the matching GitHub release; the heavy AAR is not shipped in npm. | `SITEED_MOONSHINE_ANDROID_ISOLATED_AAR_URL`, `SITEED_MOONSHINE_ANDROID_AAR`, `SITEED_MOONSHINE_ANDROID_USE_MAVEN`. |
 | Web | Load `onnxruntime-web`, configure asset URLs if needed, then create a transcriber. | Uses the package web backend and fetches model assets from the configured CDN/base path. | `configureMoonshineWeb()`, `webEncoderUrl`, `webDecoderUrl`, `webProgressModelBasePath`. |
 
 Most apps do not need native customization. Use the override hooks only for
@@ -229,38 +229,32 @@ const transcriber = await Moonshine.createTranscriberFromFiles({
 | Android | `SITEED_MOONSHINE_ANDROID_MAVEN_COORD` / `siteedMoonshineAndroidMavenCoord` | Use a different Maven coordinate. |
 | Android | `SITEED_MOONSHINE_ANDROID_MAVEN_REPO` / `siteedMoonshineAndroidMavenRepo` | Use an internal Maven repository. |
 | Android | `SITEED_MOONSHINE_ANDROID_AAR` / `siteedMoonshineAndroidAar` | Use a custom source-built AAR. |
-| Android | `SITEED_MOONSHINE_ANDROID_USE_MAVEN` / `siteedMoonshineAndroidUseMaven` | Force Maven even when a local source AAR exists. |
+| Android | `SITEED_MOONSHINE_ANDROID_USE_MAVEN` / `siteedMoonshineAndroidUseMaven` | Use the upstream Maven AAR instead of the isolated release artifact. Intended for standalone Moonshine apps. |
 
 ## Platform notes
 
 ### Android
 
 The public npm package does not ship the Android AAR so installs stay small.
-Published consumers resolve Moonshine dynamically from Maven by default:
-`ai.moonshine:moonshine-voice`.
+Gradle downloads a checksum-pinned isolated AAR from the matching GitHub
+release. It uses upstream Moonshine 0.1.5 and gives its bundled ONNX Runtime the
+private `libmoonshine_onnxruntime.so` SONAME.
 
-For repo-local source builds, Gradle automatically uses
-`prebuilt/android/moonshine-voice-source-release.aar` when that file exists.
-You can also set `SITEED_MOONSHINE_ANDROID_AAR` /
+Set `SITEED_MOONSHINE_ANDROID_USE_SOURCE=1` to use the repo-local
+`prebuilt/android/moonshine-voice-source-release.aar`. You can also set
+`SITEED_MOONSHINE_ANDROID_AAR` /
 `siteedMoonshineAndroidAar` to point at a custom AAR.
 
-To force Maven even when a local source AAR exists, set
+Standalone Moonshine apps can opt into the unmodified upstream Maven AAR with
 `SITEED_MOONSHINE_ANDROID_USE_MAVEN=1` or
 `siteedMoonshineAndroidUseMaven=true`.
 
 #### Using Moonshine with Sherpa or another ONNX Runtime package
 
-Android apps can package only one `libonnxruntime.so` per ABI. If the app also
-installs `@siteed/sherpa-onnx.rn` or another ONNX Runtime provider, do not rely
-on file presence or `pickFirst` alone. Moonshine is safest when
-`libmoonshine.so` imports unversioned `UND OrtGetApiBase`; a versioned import
-such as `OrtGetApiBase@VERS_...` must match the selected `libonnxruntime.so`.
-
-The current default Maven artifact (`ai.moonshine:moonshine-voice:0.0.59`) has
-been observed with `OrtGetApiBase@VERS_1.23.0`, which is risky beside
-`@siteed/sherpa-onnx.rn@1.3.0`'s `VERS_1.24.3` runtime. Use a compatible custom
-or source Moonshine AAR, align the other runtime provider, or patch after
-Android native libraries are merged and stripped. See
+The default isolated artifact can coexist with Sherpa without `pickFirst`.
+Moonshine loads `libmoonshine_onnxruntime.so`; Sherpa keeps
+`libonnxruntime.so`. The upstream Maven escape hatch keeps the shared runtime
+name and is incompatible with the current Sherpa runtime. See
 [Android ONNX Runtime coexistence](../../docs/ANDROID_ORT_ALIGNMENT.md).
 
 ### iOS
@@ -411,5 +405,3 @@ SHA-256 before npm publish.
 - Android apps that combine Moonshine with Sherpa or another ONNX Runtime
   provider must verify ONNX Runtime symbol compatibility; see
   [Android ONNX Runtime coexistence](../../docs/ANDROID_ORT_ALIGNMENT.md).
-- External Android consumers still need an app configuration compatible with
-  `minSdkVersion 35`.

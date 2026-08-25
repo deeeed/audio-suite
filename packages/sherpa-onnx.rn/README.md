@@ -267,20 +267,11 @@ yarn install
 ### Using Sherpa with Moonshine or another ONNX Runtime package
 
 If your Expo Android app installs both `@siteed/sherpa-onnx.rn` and
-`@siteed/moonshine.rn`, keep the Sherpa config plugin enabled so prebuild can
-add the `libonnxruntime.so` `pickFirst` packaging rule. That rule only resolves
-duplicate files; it does not prove that Moonshine, Sherpa, and the selected
-ONNX Runtime binary are symbol-compatible.
-
-`@siteed/sherpa-onnx.rn@1.3.0` Android prebuilts import/export
-`OrtGetApiBase` with `VERS_1.24.3`. The default
-`@siteed/moonshine.rn@0.3.3` Maven artifact has been observed importing
-`OrtGetApiBase@VERS_1.23.0`, which is risky when both packages are shipped in
-the same app. Use a compatible Moonshine artifact, rebuild Sherpa against the
-same ONNX Runtime, or patch Moonshine after Android native libraries are merged
-and stripped. See
-[Android ONNX Runtime coexistence](../../docs/ANDROID_ORT_ALIGNMENT.md) for the
-single troubleshooting workflow and commands.
+`@siteed/moonshine.rn`, use Moonshine's default isolated Android artifact.
+Sherpa keeps `libonnxruntime.so`, while Moonshine loads
+`libmoonshine_onnxruntime.so`. No `pickFirst` rule is required. The Sherpa config
+plugin removes its obsolete ONNX Runtime `pickFirst` property during prebuild.
+See [Android ONNX Runtime coexistence](../../docs/ANDROID_ORT_ALIGNMENT.md).
 
 ## API Reference
 

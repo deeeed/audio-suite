@@ -134,29 +134,6 @@ ${newConfigurations}
         return config;
     });
 
-    config = withAppBuildGradle(config, (config) => {
-        const contents = config.modResults.contents
-        if (contents.includes("pickFirst 'lib/arm64-v8a/libonnxruntime.so'")) {
-            return config
-        }
-
-        const marker = "pickFirst 'lib/x86_64/libc++_shared.so'"
-        if (!contents.includes(marker)) {
-            return config
-        }
-
-        config.modResults.contents = contents.replace(
-            marker,
-            `${marker}
-        pickFirst 'lib/arm64-v8a/libonnxruntime.so'
-        pickFirst 'lib/armeabi-v7a/libonnxruntime.so'
-        pickFirst 'lib/x86/libonnxruntime.so'
-        pickFirst 'lib/x86_64/libonnxruntime.so'`
-        )
-
-        return config
-    })
-
     // Keep Android debug-only manifest tweaks in one durable place so prebuild
     // regeneration doesn't wipe them.
     config = withDangerousMod(config, [

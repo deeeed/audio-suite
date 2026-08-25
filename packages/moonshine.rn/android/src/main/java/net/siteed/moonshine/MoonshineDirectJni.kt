@@ -1,6 +1,5 @@
 package net.siteed.moonshine
 
-import ai.moonshine.voice.IntentMatch
 import ai.moonshine.voice.JNI
 import ai.moonshine.voice.Transcript
 import ai.moonshine.voice.TranscriberOption
@@ -11,6 +10,8 @@ internal data class MoonshineIntentMatchNative(
 )
 
 internal object MoonshineDirectJni {
+  private val intentRecognizers = MoonshineIntentRecognizerStore()
+
   fun addAudioToStream(
     transcriberHandle: Int,
     streamHandle: Int,
@@ -22,13 +23,14 @@ internal object MoonshineDirectJni {
       transcriberHandle,
       streamHandle,
       audioData,
-      sampleRate
+      sampleRate,
+      0
     )
   }
 
   fun clearIntents(intentRecognizerHandle: Int): Int {
     ensureLoaded()
-    return JNI.moonshineClearIntents(intentRecognizerHandle)
+    return intentRecognizers.clear(intentRecognizerHandle)
   }
 
   fun createIntentRecognizer(
@@ -37,7 +39,7 @@ internal object MoonshineDirectJni {
     modelVariant: String?
   ): Int {
     ensureLoaded()
-    return JNI.moonshineCreateIntentRecognizer(modelPath, modelArch, modelVariant)
+    return intentRecognizers.create(modelPath, modelArch, modelVariant)
   }
 
   fun createStream(transcriberHandle: Int): Int {
@@ -52,7 +54,7 @@ internal object MoonshineDirectJni {
 
   fun freeIntentRecognizer(intentRecognizerHandle: Int) {
     ensureLoaded()
-    JNI.moonshineFreeIntentRecognizer(intentRecognizerHandle)
+    intentRecognizers.release(intentRecognizerHandle)
   }
 
   fun freeStream(transcriberHandle: Int, streamHandle: Int) {
@@ -71,26 +73,12 @@ internal object MoonshineDirectJni {
     threshold: Float
   ): MoonshineIntentMatchNative? {
     ensureLoaded()
-    val matches: Array<IntentMatch>? =
-      JNI.moonshineGetClosestIntents(intentRecognizerHandle, utterance, threshold)
-    if (matches == null) {
-      throw RuntimeException("moonshineGetClosestIntents failed")
-    }
-    if (matches.isEmpty()) {
-      return null
-    }
-    // Upstream contract (core/moonshine-c-api.h: moonshine_get_closest_intents):
-    // returned array is sorted by descending similarity, so index 0 is the top.
-    val top = matches[0]
-    return MoonshineIntentMatchNative(
-      triggerPhrase = top.canonicalPhrase ?: "",
-      similarity = top.similarity
-    )
+    return intentRecognizers.closest(intentRecognizerHandle, utterance, threshold)
   }
 
   fun getIntentCount(intentRecognizerHandle: Int): Int {
     ensureLoaded()
-    return JNI.moonshineGetIntentCount(intentRecognizerHandle)
+    return intentRecognizers.count(intentRecognizerHandle)
   }
 
   fun getVersion(): Int {
@@ -119,6 +107,7 @@ internal object MoonshineDirectJni {
       encoderModelData,
       decoderModelData,
       tokenizerData,
+      null,
       modelArch,
       options
     )
@@ -126,8 +115,7 @@ internal object MoonshineDirectJni {
 
   fun registerIntent(intentRecognizerHandle: Int, triggerPhrase: String): Int {
     ensureLoaded()
-    // (handle, canonicalPhrase, embedding=null → auto-compute, priority=0).
-    return JNI.moonshineRegisterIntent(intentRecognizerHandle, triggerPhrase, null, 0)
+    return intentRecognizers.register(intentRecognizerHandle, triggerPhrase)
   }
 
   fun startStream(transcriberHandle: Int, streamHandle: Int): Int {
@@ -162,7 +150,7 @@ internal object MoonshineDirectJni {
 
   fun unregisterIntent(intentRecognizerHandle: Int, triggerPhrase: String): Int {
     ensureLoaded()
-    return JNI.moonshineUnregisterIntent(intentRecognizerHandle, triggerPhrase)
+    return intentRecognizers.unregister(intentRecognizerHandle, triggerPhrase)
   }
 
   private fun ensureLoaded() {

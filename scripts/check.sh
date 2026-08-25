@@ -38,6 +38,11 @@ run_check "lint (at most $MAX_WARNINGS warnings)" \
   yarn workspace @siteed/audio-studio lint --max-warnings="$MAX_WARNINGS"
 
 run_check "JavaScript tests" yarn workspace @siteed/audio-studio test
+run_check "playground config tests" yarn workspace audio-playground test:config
+run_check "Moonshine TypeScript" yarn workspace @siteed/moonshine.rn typecheck
+run_check "Moonshine JavaScript tests" yarn workspace @siteed/moonshine.rn test --runInBand
+run_check "Sherpa TypeScript" yarn workspace @siteed/sherpa-onnx.rn typecheck
+run_check "Sherpa JavaScript tests" yarn workspace @siteed/sherpa-onnx.rn test --runInBand
 
 # What each package publishes is otherwise invisible until someone runs `npm pack`.
 # In #455 a public CocoaPods header shipped in 1.3.1, and only a reviewer running

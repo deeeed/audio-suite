@@ -34,6 +34,6 @@
             "rootDir": "../.."
         }
     },
-    "include": ["src", "app.config.ts"],
+    "include": ["src", "config", "app.config.ts"],
     "exclude": ["node_modules", "build", "node_modules/@storybook", ".rnstorybook"]
 }

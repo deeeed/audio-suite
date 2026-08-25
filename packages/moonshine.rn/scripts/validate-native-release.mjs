@@ -8,7 +8,9 @@ import { fileURLToPath } from 'node:url'
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
 const PACKAGE_ROOT = path.resolve(SCRIPT_DIR, '..')
-const ANDROID_AAR = 'prebuilt/android/moonshine-voice-source-release.aar'
+const ANDROID_AAR = 'prebuilt/android/moonshine-voice-isolated.aar'
+const LEGACY_SOURCE_ANDROID_AAR = 'prebuilt/android/moonshine-voice-source-release.aar'
+const PRIVATE_ANDROID_ORT = 'libmoonshine_onnxruntime.so'
 const READ_ELF_CANDIDATES = [
   '/opt/homebrew/opt/llvm/bin/llvm-readelf',
   '/opt/homebrew/bin/llvm-readelf',
@@ -19,7 +21,6 @@ const READ_ELF_CANDIDATES = [
   '/usr/bin/readelf',
   '/bin/readelf',
 ]
-const ORT_VERSIONED_IMPORT_PATTERN = /OrtGetApiBase@@?VERS_/
 
 function androidNdkReadelfCandidates(sdkRoot) {
   if (!sdkRoot) return []
@@ -136,8 +137,8 @@ function listZipEntries(zipPath) {
     .filter(Boolean)
 }
 
-function inspectSymbols(readelfCommand, soPath) {
-  return run(readelfCommand, ['--dyn-symbols', '--wide', soPath], { cwd: PACKAGE_ROOT })
+function inspectDynamic(readelfCommand, soPath) {
+  return run(readelfCommand, ['--dynamic', '--wide', soPath], { cwd: PACKAGE_ROOT })
 }
 
 function inspectAndroidAar(aarPath) {
@@ -178,18 +179,34 @@ function inspectAndroidAar(aarPath) {
         )
       }
 
+      const privateOrtEntry = `jni/${abi}/${PRIVATE_ANDROID_ORT}`
+      if (!aarEntries.includes(privateOrtEntry)) {
+        throw new Error(`${aarPath} is missing ${privateOrtEntry}`)
+      }
+      if (aarEntries.includes(`jni/${abi}/libonnxruntime.so`)) {
+        throw new Error(`${aarPath} must not package the shared libonnxruntime.so name`)
+      }
+
       for (const lib of requiredLibs) {
-        const symbols = inspectSymbols(readelfCommand, path.join(aarExtractDir, 'jni', abi, lib))
-        if (ORT_VERSIONED_IMPORT_PATTERN.test(symbols)) {
+        const dynamic = inspectDynamic(
+          readelfCommand,
+          path.join(aarExtractDir, 'jni', abi, lib)
+        )
+        if (!dynamic.includes(PRIVATE_ANDROID_ORT) || dynamic.includes('[libonnxruntime.so]')) {
           throw new Error(
-            `${aarPath} ${abi}/${lib} imports a versioned OrtGetApiBase symbol; ` +
-              'expected no OrtGetApiBase@VERS_ imports'
+            `${aarPath} ${abi}/${lib} must depend only on ${PRIVATE_ANDROID_ORT}`
           )
         }
       }
 
-      const bundlesOnnxRuntime = aarEntries.includes(`jni/${abi}/libonnxruntime.so`)
-      abiReports.push({ abi, bundlesOnnxRuntime })
+      const privateOrtDynamic = inspectDynamic(
+        readelfCommand,
+        path.join(aarExtractDir, privateOrtEntry)
+      )
+      if (!privateOrtDynamic.includes(`Library soname: [${PRIVATE_ANDROID_ORT}]`)) {
+        throw new Error(`${aarPath} ${abi}/${PRIVATE_ANDROID_ORT} has the wrong SONAME`)
+      }
+      abiReports.push({ abi })
     }
 
     return abiReports
@@ -208,19 +225,9 @@ const iosDynamicArtifacts = [
   'prebuilt/ios/Moonshine.xcframework/ios-arm64_x86_64-simulator/Headers/module.modulemap',
 ]
 
-if (!ORT_VERSIONED_IMPORT_PATTERN.test('OrtGetApiBase@@VERS_1.22')) {
-  throw new Error('OrtGetApiBase default-version import regex must match @@VERS_ symbols')
-}
-if (!ORT_VERSIONED_IMPORT_PATTERN.test('OrtGetApiBase@VERS_1.22')) {
-  throw new Error('OrtGetApiBase non-default-version import regex must match @VERS_ symbols')
-}
-if (ORT_VERSIONED_IMPORT_PATTERN.test('OrtGetApiBase')) {
-  throw new Error('OrtGetApiBase versioned import regex must not match unversioned symbols')
-}
-
 const androidGradle = fs.readFileSync(path.join(PACKAGE_ROOT, 'android/build.gradle'), 'utf8')
 const podspec = fs.readFileSync(path.join(PACKAGE_ROOT, 'Moonshine.podspec'), 'utf8')
-const expectedMoonshineVersion = packageJson.moonshineVersion.replace(/^v/, '')
+const expectedMoonshineVersion = packageJson.moonshineAndroidVersion
 const expectedMavenCoord = `ai.moonshine:moonshine-voice:${expectedMoonshineVersion}`
 if (!androidGradle.includes(expectedMavenCoord)) {
   throw new Error(
@@ -230,11 +237,17 @@ if (!androidGradle.includes(expectedMavenCoord)) {
 if (!androidGradle.includes('SITEED_MOONSHINE_ANDROID_USE_MAVEN')) {
   throw new Error('Moonshine Android Maven override must remain explicit in build.gradle')
 }
-if (!androidGradle.includes('file(moonshineAndroidSourceAar).exists()')) {
-  throw new Error('Moonshine Android Gradle must dynamically use a source AAR only when it exists')
+if (!androidGradle.includes('prepareMoonshineAndroidArtifact')) {
+  throw new Error('Moonshine Android Gradle must prepare the checksum-pinned isolated AAR')
 }
 if (!packageJson.files.includes(`!${ANDROID_AAR}`)) {
   throw new Error(`Public npm package must exclude heavyweight Android AAR: ${ANDROID_AAR}`)
+}
+if (!packageJson.files.includes(`!${LEGACY_SOURCE_ANDROID_AAR}`)) {
+  throw new Error(`Public npm package must exclude heavyweight Android AAR: ${LEGACY_SOURCE_ANDROID_AAR}`)
+}
+if (!packageJson.files.includes('scripts/ensure-android-artifacts.sh')) {
+  throw new Error('Public npm package must include the Android artifact downloader script')
 }
 if (!packageJson.files.includes('!prebuilt/ios/Moonshine.xcframework/**')) {
   throw new Error('Public npm package must exclude heavyweight iOS xcframework binaries')
@@ -248,9 +261,17 @@ if (!podspec.includes('scripts/ensure-ios-artifacts.sh')) {
 if (!packageJson.scripts?.prepublishOnly?.includes('validate:ios-release-artifact')) {
   throw new Error('npm publish must be gated on the iOS release artifact URL')
 }
+if (!packageJson.scripts?.prepublishOnly?.includes('validate:android-release-artifact')) {
+  throw new Error('npm publish must be gated on the Android release artifact URL')
+}
 if (!/^[a-f0-9]{64}$/i.test(packageJson.moonshineArtifacts?.ios?.xcframeworkSha256 || '')) {
   throw new Error(
     'package.json must pin moonshineArtifacts.ios.xcframeworkSha256 for default iOS install integrity'
+  )
+}
+if (!/^[a-f0-9]{64}$/i.test(packageJson.moonshineArtifacts?.android?.isolatedAarSha256 || '')) {
+  throw new Error(
+    'package.json must pin moonshineArtifacts.android.isolatedAarSha256 for default Android install integrity'
   )
 }
 if (!podspec.includes('prepare_command')) {
@@ -262,38 +283,28 @@ const packInfo = parsePackOutput(packOutput)
 const packedFiles = new Set(packInfo.files.map((file) => file.path))
 
 assertPacked(packedFiles, 'scripts/ensure-ios-artifacts.sh')
+assertPacked(packedFiles, 'scripts/ensure-android-artifacts.sh')
 for (const file of iosDynamicArtifacts) assertNotPacked(packedFiles, file)
 assertNotPacked(packedFiles, 'prebuilt/ios/current/libmoonshine_core.a')
 assertNotPacked(packedFiles, ANDROID_AAR)
+assertNotPacked(packedFiles, LEGACY_SOURCE_ANDROID_AAR)
 
 console.log('Moonshine native release validation passed.')
 console.log('iOS xcframework binaries are excluded from npm and prepared dynamically by CocoaPods.')
 console.log(`Android public npm tarball excludes heavyweight AAR: ${ANDROID_AAR}`)
-console.log(`Android published consumers resolve Moonshine dynamically from Maven: ${expectedMavenCoord}`)
+console.log('Android published consumers download a checksum-pinned isolated AAR.')
 console.log('Repo-local generated prebuilt/ios/current/ artifacts are intentionally excluded from npm.')
 
 const localAarPath = path.join(PACKAGE_ROOT, ANDROID_AAR)
 if (fs.existsSync(localAarPath)) {
-  const metadataPath = path.join(PACKAGE_ROOT, 'prebuilt/android/build-metadata.json')
-  const androidMetadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'))
-  if (!/^[a-f0-9]{64}$/i.test(androidMetadata.aarSha256 || '')) {
-    throw new Error('Android build metadata must include aarSha256 for repo-local AAR reproducibility')
-  }
   const actualAarSha256 = sha256File(localAarPath)
-  if (androidMetadata.aarSha256 !== actualAarSha256) {
+  if (packageJson.moonshineArtifacts.android.isolatedAarSha256 !== actualAarSha256) {
     throw new Error(
-      `Android AAR sha256 mismatch. metadata=${androidMetadata.aarSha256} actual=${actualAarSha256}`
+      `Android AAR sha256 mismatch. package=${packageJson.moonshineArtifacts.android.isolatedAarSha256} actual=${actualAarSha256}`
     )
   }
 
   const androidAbiReports = inspectAndroidAar(localAarPath)
-  const bundledOnnxAbis = androidAbiReports
-    .filter((report) => report.bundlesOnnxRuntime)
-    .map((report) => report.abi)
-  const externalOnnxAbis = androidAbiReports
-    .filter((report) => !report.bundlesOnnxRuntime)
-    .map((report) => report.abi)
-
   console.log(`Repo-local Android AAR sha256 verified: ${actualAarSha256}`)
   console.log(
     `Repo-local Android AAR ABIs inspected: ${androidAbiReports
@@ -301,20 +312,8 @@ if (fs.existsSync(localAarPath)) {
       .join(', ')}`
   )
   console.log(
-    'Android libmoonshine.so and libmoonshine-jni.so have no OrtGetApiBase@VERS_ imports.'
+    `Android libmoonshine.so and libmoonshine-jni.so depend on ${PRIVATE_ANDROID_ORT}.`
   )
-  if (bundledOnnxAbis.length > 0) {
-    console.log(
-      `Android AAR bundles libonnxruntime.so for: ${bundledOnnxAbis.join(', ')}. ` +
-        'Do not also package a conflicting app-level ONNX Runtime for those ABIs.'
-    )
-  }
-  if (externalOnnxAbis.length > 0) {
-    console.log(
-      `Android AAR does not bundle libonnxruntime.so for: ${externalOnnxAbis.join(', ')}. ` +
-        'A source-AAR consumer must provide a compatible ONNX Runtime for those ABIs.'
-    )
-  }
 } else {
-  console.log('Repo-local Android AAR is absent; skipped optional source-AAR symbol inspection.')
+  console.log('Repo-local Android AAR is absent; skipped optional isolated-AAR inspection.')
 }

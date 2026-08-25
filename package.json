@@ -10,6 +10,15 @@
         "format": "prettier --write .",
         "android:ort:check": "bash scripts/check-android-ort-compat.sh",
         "check:deps": "bash scripts/check-runtime-deps.sh && node scripts/check-hermes-version.mjs",
+        "test:diarization-reference": "node --test scripts/diarization-benchmark/ami-reference.test.mjs scripts/diarization-benchmark/cpwer.test.mjs scripts/diarization-benchmark/path-policy.test.mjs",
+        "score:diarization-report": "node scripts/diarization-benchmark/score-report.mjs",
+        "score:cpwer": "node scripts/diarization-benchmark/cpwer.mjs",
+        "benchmark:moonshine:native": "swift run -c release --package-path scripts/diarization-benchmark/moonshine-native MoonshineNativeBenchmark",
+        "benchmark:diarization:ios-simulator": "node scripts/diarization-benchmark/run-fluid-ios-simulator.mjs",
+        "benchmark:diarization:macos": "node scripts/diarization-benchmark/run-fluid-macos.mjs",
+        "benchmark:diarization:sherpa-python": "node scripts/diarization-benchmark/run-sherpa-python.mjs",
+        "verify:diarization-benchmark": "node scripts/diarization-benchmark/verify-contract.mjs",
+        "doctor:diarization-benchmark": "node scripts/diarization-benchmark/doctor.mjs",
         "check": "bash scripts/check.sh"
     },
     "nohoist": [

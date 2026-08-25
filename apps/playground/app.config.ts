@@ -4,9 +4,9 @@ import 'ts-node/register'
 // Deps
 import { ConfigContext, ExpoConfig } from '@expo/config'
 import { config as dotenvConfig } from 'dotenv-flow'
-import Joi from 'joi'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { validatePlaygroundEnvironment } from './config/validate-env'
 import { version as packageVersion } from './package.json'
 
 dotenvConfig({
@@ -14,33 +14,7 @@ dotenvConfig({
     node_env: process.env.APP_VARIANT || "production", // This will use APP_VARIANT for env file selection
 }) // Load variables from .env* files
 
-// Define a schema for the environment variables
-const envSchema = Joi.object({
-    EAS_PROJECT_ID: Joi.string().required(),
-    APPLE_TEAM_ID: Joi.string().optional(),
-    APP_VARIANT: Joi.string()
-        .valid('development', 'staging', 'production')
-        .default('production')
-        .required(),
-}).unknown() // Allow other environment variables
-
-// Validate and get environment variables
-const { error, value: env } = envSchema.validate(process.env, {
-    abortEarly: true,
-    debug: true,
-    presence: 'required', // This ensures defaults are applied
-    stripUnknown: false,
-})
-
-if (error) {
-    console.error('Environment validation error:', error.message)
-    throw error
-}
-
-// Add type assertion to ensure APP_VARIANT is typed correctly
-const validatedEnv = env as typeof env & {
-    APP_VARIANT: 'development' | 'staging' | 'production'
-}
+const validatedEnv = validatePlaygroundEnvironment(process.env)
 
 try {
     const ortPackageJsonPath = join(__dirname, 'node_modules/onnxruntime-web/package.json')
@@ -212,8 +186,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
                         }
                     },
                     android: {
-                        // Moonshine's Android AAR declares minSdk 35; keep the app aligned so release manifest merging succeeds.
-                        minSdkVersion: 35,
+                        // Moonshine Maven AAR 0.1.5 declares minSdk 26. Source-built AARs pinned
+                        // to v0.0.59 still declare 35 and will raise the merged floor.
+                        minSdkVersion: 26,
                         // Keep .so files uncompressed so AGP 8.5+ can zipalign them at 16KB boundaries
                         // Required for Google Play's 16KB page size alignment check (Android 15+)
                         useLegacyPackaging: false,

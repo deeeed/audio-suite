@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Remove the obsolete Android ONNX Runtime `pickFirst` rule. Moonshine now isolates its runtime under a private SONAME, so selecting an arbitrary shared library is unnecessary and unsafe.
+
 ## [1.3.2-beta.0] - 2026-08-24
 
 ### Fixed

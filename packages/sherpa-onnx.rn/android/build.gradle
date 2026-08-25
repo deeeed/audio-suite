@@ -87,11 +87,6 @@ android {
         jvmTarget = '17'
     }
 
-    // This ensures the library is compiled as an AAR with the JNI libraries included
-    packagingOptions {
-        pickFirst '**/*.so'
-    }
-    
     // Add local project sources for Sherpa ONNX Kotlin classes
     externalNativeBuild {
         cmake {

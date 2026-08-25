@@ -15,8 +15,10 @@ import {
     getMoonshineRuntimeConfig,
     getBenchmarkModelStatus,
     prepareBenchmarkModel,
+    prepareMoonshineDiarizationModels,
     safeReleaseMoonshineTranscriber,
 } from '../utils/asrBenchmarkRuntime'
+import { supportsExternalMoonshineDiarizationModels } from '../utils/moonshineDiarizationRuntime'
 
 const logger = baseLogger.extend('MoonshineLiveSession')
 
@@ -348,6 +350,10 @@ export function useMoonshineLiveSession(
                 await releaseLiveTranscriber()
                 const initStartedAt = Date.now()
                 const config = await getMoonshineRuntimeConfig(liveModelId, setStatusMessage)
+                const diarizationModelDir =
+                    identifySpeakers && supportsExternalMoonshineDiarizationModels(Platform.OS)
+                        ? await prepareMoonshineDiarizationModels(setStatusMessage)
+                        : undefined
                 // Speaker attribution in the recommendation workflow comes from
                 // Sherpa VAD + Speaker ID. Keep Moonshine speaker identification
                 // opt-in so Android does not run two independent speaker trackers
@@ -355,6 +361,7 @@ export function useMoonshineLiveSession(
                 const transcriberOptions = identifySpeakers
                     ? {
                           ...config.options,
+                          diarizationModelDir,
                           identifySpeakers: true,
                       }
                     : config.options

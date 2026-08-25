@@ -76,15 +76,9 @@ If you have build errors in a New Architecture app, check that:
 1. Codegen has run for the consuming app.
 2. Your app's Gradle and React Native versions are compatible with the module's configuration.
 
-### Duplicate `libonnxruntime.so`
-If an Expo Android app installs both `@siteed/sherpa-onnx.rn` and `@siteed/moonshine.rn`, add the Sherpa config plugin in the app config:
+### ONNX Runtime coexistence
 
-```json
-{
-  "expo": {
-    "plugins": ["@siteed/sherpa-onnx.rn"]
-  }
-}
-```
-
-The plugin adds `android.packagingOptions.pickFirsts=**/libonnxruntime.so`. This only resolves duplicate packaging once both native engines are using a compatible ONNX Runtime ABI.
+Moonshine's default Android artifact uses the private
+`libmoonshine_onnxruntime.so` SONAME. Sherpa keeps `libonnxruntime.so`, so both
+engines can load their matching runtime without a duplicate-library
+`pickFirst` rule. See [Android ONNX Runtime coexistence](../../../docs/ANDROID_ORT_ALIGNMENT.md).
