@@ -107,7 +107,7 @@ export function loadAmiWords({ meetingId, startS, endS, wordsRoot }) {
         'directory'
     )
     const files = fs
-        .readdirSync(resolvedWordsRoot)
+        .readdirSync(resolvedWordsRoot) // NOSONAR: canonical allowed-root path.
         .filter(
             (name) =>
                 name.startsWith(`${meetingId}.`) && name.endsWith('.words.xml')

@@ -1,5 +1,4 @@
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 
 function canonicalDirectory(directory) {
@@ -14,15 +13,7 @@ export function benchmarkAllowedRoots(repoRoot, extraRoots = []) {
     const configured = String(process.env.BENCHMARK_ALLOWED_ROOTS || '')
         .split(path.delimiter)
         .filter(Boolean)
-    return [
-        ...new Set([
-            repoRoot,
-            os.tmpdir(),
-            '/tmp',
-            ...extraRoots,
-            ...configured,
-        ]),
-    ]
+    return [...new Set([repoRoot, ...extraRoots, ...configured])]
         .filter((root) => fs.existsSync(root))
         .map(canonicalDirectory)
 }
@@ -52,7 +43,7 @@ function requireAllowed(candidate, roots) {
 export function resolveAllowedExistingPath(candidate, roots, kind = 'any') {
     const resolved = fs.realpathSync(path.resolve(candidate))
     requireAllowed(resolved, roots)
-    const stat = fs.statSync(resolved)
+    const stat = fs.statSync(resolved) // NOSONAR: canonical path passed requireAllowed containment.
     if (kind === 'file' && !stat.isFile()) {
         throw new TypeError(`Expected a file: ${resolved}`)
     }

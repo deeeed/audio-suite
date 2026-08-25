@@ -46,7 +46,10 @@ test('oracle cpWER measures speaker attribution while WER stays zero', () => {
                 '--words-root',
                 wordsRoot,
             ],
-            { encoding: 'utf8' }
+            {
+                encoding: 'utf8',
+                env: { ...process.env, BENCHMARK_ALLOWED_ROOTS: root },
+            }
         )
         assert.equal(result.status, 0, result.stderr)
         const score = JSON.parse(result.stdout)

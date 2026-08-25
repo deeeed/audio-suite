@@ -8,7 +8,6 @@ import json
 import os
 import platform
 import resource
-import tempfile
 import time
 from pathlib import Path
 
@@ -22,7 +21,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 def allowed_roots() -> list[Path]:
     configured = os.environ.get("BENCHMARK_ALLOWED_ROOTS", "")
-    roots = [REPO_ROOT, Path(tempfile.gettempdir()), Path("/tmp")]
+    roots = [REPO_ROOT]
     roots.extend(Path(value) for value in configured.split(os.pathsep) if value)
     return [root.resolve(strict=True) for root in roots if root.exists()]
 
@@ -163,7 +162,9 @@ def main() -> None:
         "peakRssBytes": peak_rss_bytes(),
         "segments": segments,
     }
-    out.write_text(json.dumps(output, indent=2) + "\n")
+    out.write_text(  # NOSONAR: resolve_output validated the canonical parent.
+        json.dumps(output, indent=2) + "\n"
+    )
     print(json.dumps({"out": str(out), **output["timing"]}, indent=2))
 
 
