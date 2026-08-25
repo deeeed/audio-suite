@@ -21,6 +21,7 @@ export const MOONSHINE_TRANSCRIPTION_CANCELLED_CODE =
   'MOONSHINE_TRANSCRIPTION_CANCELLED';
 
 export interface MoonshineModelOptions {
+  /** Android 0.1.5-only override for external segmentation and embedding models. */
   diarizationModelDir?: string;
   identifySpeakers?: boolean;
   logApiCalls?: boolean;

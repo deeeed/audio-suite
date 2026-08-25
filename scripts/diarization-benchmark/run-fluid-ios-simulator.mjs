@@ -216,7 +216,7 @@ function main() {
             String(iterations),
             'test',
         ]
-        const result = spawnSync('xcodebuild', xcodeArgs, {
+        const result = spawnSync('/usr/bin/xcodebuild', xcodeArgs, {
             cwd: WORK_ROOT,
             env: process.env,
             stdio: ['ignore', logFd, logFd],

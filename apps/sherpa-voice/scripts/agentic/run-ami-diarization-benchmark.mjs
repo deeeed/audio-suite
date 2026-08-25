@@ -390,6 +390,46 @@ function getScoreMap(scores) {
     )
 }
 
+function formatScore(value) {
+    return value == null ? 'n/a' : `${value.toFixed(2)}%`
+}
+
+function renderResultRow(row) {
+    const automatic = row.case.numClusters <= 0
+    const mode = automatic ? `auto ${row.case.threshold}` : 'known count'
+    const requested = automatic ? 'auto' : row.case.numClusters
+    const cells = [
+        mode,
+        row.case.embeddingModelId,
+        requested,
+        row.result.numSpeakers,
+        formatScore(row.score.standardDerPercent),
+        formatScore(row.score.standardJerPercent),
+        formatScore(row.score.strictDerPercent),
+        formatScore(row.score.strictJerPercent),
+    ]
+    return `| ${cells.join(' | ')} |`
+}
+
+function renderClipMarkdown(clip) {
+    const rows = clip.rows.map(renderResultRow)
+    const failures = (clip.errors || []).flatMap((failure) => [
+        `Failed case \`${failure.case.label}\`: ${failure.error}`,
+        '',
+    ])
+    return [
+        `## ${clip.id}`,
+        '',
+        `Reference: ${clip.reference.speakerCount} speakers, ${clip.reference.segmentCount} official AMI speech segments.`,
+        '',
+        '| Mode | Embedding | Requested | Detected | Standard DER | Standard JER | Strict DER | Strict JER |',
+        '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |',
+        ...rows,
+        '',
+        ...failures,
+    ]
+}
+
 function renderMarkdown(report) {
     const lines = [
         '# AMI on-device diarization benchmark',
@@ -402,31 +442,7 @@ function renderMarkdown(report) {
     ]
 
     for (const clip of report.clips) {
-        lines.push(`## ${clip.id}`, '')
-        lines.push(
-            `Reference: ${clip.reference.speakerCount} speakers, ${clip.reference.segmentCount} official AMI speech segments.`,
-            ''
-        )
-        lines.push(
-            '| Mode | Embedding | Requested | Detected | Standard DER | Standard JER | Strict DER | Strict JER |',
-            '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |'
-        )
-        for (const row of clip.rows) {
-            const mode =
-                row.case.numClusters > 0
-                    ? 'known count'
-                    : `auto ${row.case.threshold}`
-            lines.push(
-                `| ${mode} | ${row.case.embeddingModelId} | ${row.case.numClusters > 0 ? row.case.numClusters : 'auto'} | ${row.result.numSpeakers} | ${row.score.standardDerPercent == null ? 'n/a' : `${row.score.standardDerPercent.toFixed(2)}%`} | ${row.score.standardJerPercent == null ? 'n/a' : `${row.score.standardJerPercent.toFixed(2)}%`} | ${row.score.strictDerPercent.toFixed(2)}% | ${row.score.strictJerPercent == null ? 'n/a' : `${row.score.strictJerPercent.toFixed(2)}%`} |`
-            )
-        }
-        lines.push('')
-        for (const failure of clip.errors || []) {
-            lines.push(
-                `Failed case \`${failure.case.label}\`: ${failure.error}`,
-                ''
-            )
-        }
+        lines.push(...renderClipMarkdown(clip))
     }
     return `${lines.join('\n')}\n`
 }

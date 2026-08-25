@@ -22,6 +22,7 @@ import {
     type AsrBenchmarkModel,
 } from './asrBenchmarkModels'
 import { toNativePath } from './fileUtils'
+import { supportsExternalMoonshineDiarizationModels } from './moonshineDiarizationRuntime'
 import { pcm16ToArrayBuffer, readMonoPcm16Wav } from './wav'
 
 const logger = baseLogger.extend('AsrBenchmarkRuntime')
@@ -217,8 +218,8 @@ async function downloadToFile(
 export async function prepareMoonshineDiarizationModels(
     onStatus?: (message: string) => void,
 ): Promise<string> {
-    if (Platform.OS === 'web') {
-        throw new Error('Moonshine native diarization models are unavailable on web')
+    if (!supportsExternalMoonshineDiarizationModels(Platform.OS)) {
+        throw new Error('External Moonshine diarization models require Android 0.1.5')
     }
 
     await FileSystem.makeDirectoryAsync(moonshineDiarizationRoot, {
@@ -454,7 +455,8 @@ export async function createMoonshineBenchmarkTranscriber(
 }> {
     const config = await getMoonshineRuntimeConfig(modelId, onStatus)
     const diarizationModelDir =
-        optionsOverride?.identifySpeakers === true && Platform.OS !== 'web'
+        optionsOverride?.identifySpeakers === true &&
+        supportsExternalMoonshineDiarizationModels(Platform.OS)
             ? await prepareMoonshineDiarizationModels(onStatus)
             : undefined
     const transcriber = await Moonshine.createTranscriberFromFiles({

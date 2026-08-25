@@ -14,6 +14,10 @@ function readJson(relativePath) {
     )
 }
 
+function readText(relativePath) {
+    return fs.readFileSync(path.join(REPO_ROOT, relativePath), 'utf8')
+}
+
 function assert(condition, message) {
     if (!condition) throw new Error(message)
 }
@@ -24,6 +28,11 @@ function main() {
         'apps/sherpa-voice/benchmarks/results/2026-08-25-ami-diarization.json'
     )
     const sherpaPackage = readJson('packages/sherpa-onnx.rn/package.json')
+    const moonshinePackage = readJson('packages/moonshine.rn/package.json')
+    const moonshineAndroid = readText(
+        'packages/moonshine.rn/android/src/main/java/net/siteed/moonshine/MoonshineModule.kt'
+    )
+    const moonshineIos = readText('packages/moonshine.rn/ios/Moonshine.mm')
 
     assert(
         manifest.schemaVersion === 1,
@@ -40,6 +49,24 @@ function main() {
     assert(
         sherpaPackage.sherpaOnnxVersion === manifest.systems.sherpaOnnx.version,
         'Sherpa package and benchmark runtime versions differ'
+    )
+    assert(
+        moonshinePackage.moonshineAndroidVersion ===
+            manifest.systems.moonshine.androidVersion,
+        'Moonshine Android package and benchmark runtime versions differ'
+    )
+    assert(
+        moonshinePackage.moonshineVersion ===
+            manifest.systems.moonshine.iosVersion,
+        'Moonshine iOS package and benchmark runtime versions differ'
+    )
+    assert(
+        moonshineAndroid.includes('TranscriberOption("diarization_model_dir"'),
+        'Android 0.1.5 must forward the external diarization model directory'
+    )
+    assert(
+        !moonshineIos.includes('addOption(@"diarization_model_dir"'),
+        'Pinned iOS v0.0.59 must not receive the unsupported diarization_model_dir option'
     )
     assert(
         result.benchmarkVersion === manifest.benchmarkVersion,

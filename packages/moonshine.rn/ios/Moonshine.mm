@@ -1282,9 +1282,8 @@ RCT_EXPORT_METHOD(unregisterIntent:(NSString *)intentRecognizerId
   // aligned with the JS contract and default it off for long sessions.
   NSDictionary *nativeOptions = [config[@"options"] isKindOfClass:NSDictionary.class] ? config[@"options"] : nil;
   if (nativeOptions != nil) {
-    if (StringFromValue(nativeOptions[@"diarizationModelDir"]).length > 0) {
-      addOption(@"diarization_model_dir", StringFromValue(nativeOptions[@"diarizationModelDir"]));
-    }
+    // Android 0.1.5 accepts `diarization_model_dir`. The pinned iOS v0.0.59
+    // runtime rejects unknown options, so the Android-only override is omitted.
     if (nativeOptions[@"identifySpeakers"] != nil && nativeOptions[@"identifySpeakers"] != (id)kCFNull) {
       addOption(@"identify_speakers", BoolFromValue(nativeOptions[@"identifySpeakers"]) ? @"true" : @"false");
     }

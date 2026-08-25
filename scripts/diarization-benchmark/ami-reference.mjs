@@ -1,6 +1,16 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+import {
+    benchmarkAllowedRoots,
+    resolveAllowedDirectoryPath,
+    resolveAllowedExistingPath,
+} from './path-policy.mjs'
+
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
+const REPO_ROOT = path.resolve(SCRIPT_DIR, '..', '..')
+const ALLOWED_ROOTS = benchmarkAllowedRoots(REPO_ROOT)
 
 export const AMI_DIARIZATION_SETUP_COMMIT =
     '2509d8933721023fab4def2618aabd5c28eb82e9'
@@ -9,6 +19,12 @@ const AMI_SETUP_RAW_ROOT =
     `https://raw.githubusercontent.com/BUTSpeechFIT/AMI-diarization-setup/` +
     AMI_DIARIZATION_SETUP_COMMIT
 const SPLITS = ['train', 'dev', 'test']
+
+function assertMeetingId(meetingId) {
+    if (!/^[A-Za-z0-9_-]+$/.test(meetingId)) {
+        throw new TypeError(`Invalid AMI meeting id: ${meetingId}`)
+    }
+}
 
 export function parseAmiRttm(text, meetingId, startS, endS) {
     const durationS = endS - startS
@@ -43,11 +59,11 @@ export function parseAmiRttm(text, meetingId, startS, endS) {
 
 function decodeXmlText(value) {
     return value
-        .replace(/&apos;/g, "'")
-        .replace(/&quot;/g, '"')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
+        .replaceAll('&apos;', "'")
+        .replaceAll('&quot;', '"')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
 }
 
 export function parseAmiWordsXml(text, speaker, startS, endS) {
@@ -84,8 +100,14 @@ export function parseAmiWordsXml(text, speaker, startS, endS) {
 
 export function loadAmiWords({ meetingId, startS, endS, wordsRoot }) {
     if (!wordsRoot) throw new Error('AMI words root is required')
+    assertMeetingId(meetingId)
+    const resolvedWordsRoot = resolveAllowedExistingPath(
+        wordsRoot,
+        ALLOWED_ROOTS,
+        'directory'
+    )
     const files = fs
-        .readdirSync(wordsRoot)
+        .readdirSync(resolvedWordsRoot)
         .filter(
             (name) =>
                 name.startsWith(`${meetingId}.`) && name.endsWith('.words.xml')
@@ -99,7 +121,7 @@ export function loadAmiWords({ meetingId, startS, endS, wordsRoot }) {
     return files
         .flatMap((name) =>
             parseAmiWordsXml(
-                fs.readFileSync(path.join(wordsRoot, name), 'utf8'),
+                fs.readFileSync(path.join(resolvedWordsRoot, name), 'utf8'),
                 name.split('.')[1],
                 startS,
                 endS
@@ -110,25 +132,38 @@ export function loadAmiWords({ meetingId, startS, endS, wordsRoot }) {
 
 function findLocalRttm(rttmRoot, meetingId) {
     if (!rttmRoot) return null
+    assertMeetingId(meetingId)
+    const resolvedRoot = resolveAllowedExistingPath(
+        rttmRoot,
+        ALLOWED_ROOTS,
+        'directory'
+    )
     const candidates = [
-        path.join(rttmRoot, `${meetingId}.rttm`),
+        path.join(resolvedRoot, `${meetingId}.rttm`),
         ...SPLITS.map((split) =>
-            path.join(rttmRoot, split, `${meetingId}.rttm`)
+            path.join(resolvedRoot, split, `${meetingId}.rttm`)
         ),
     ]
     return candidates.find((candidate) => fs.existsSync(candidate)) || null
 }
 
 function downloadOfficialRttm(meetingId, cacheDir) {
-    fs.mkdirSync(cacheDir, { recursive: true })
+    assertMeetingId(meetingId)
+    const resolvedCacheDir = resolveAllowedDirectoryPath(
+        path.join(cacheDir, AMI_DIARIZATION_SETUP_COMMIT),
+        ALLOWED_ROOTS
+    )
+    fs.mkdirSync(resolvedCacheDir, { recursive: true })
     for (const split of SPLITS) {
         const url =
             `${AMI_SETUP_RAW_ROOT}/only_words/rttms/${split}/` +
             `${meetingId}.rttm`
-        const destination = path.join(cacheDir, `${meetingId}.rttm`)
-        const result = spawnSync('curl', ['-fsSL', url, '-o', destination], {
-            encoding: 'utf8',
-        })
+        const destination = path.join(resolvedCacheDir, `${meetingId}.rttm`)
+        const result = spawnSync(
+            '/usr/bin/curl',
+            ['-fsSL', url, '-o', destination],
+            { encoding: 'utf8' }
+        )
         if (result.status === 0) {
             return { path: destination, split, url }
         }

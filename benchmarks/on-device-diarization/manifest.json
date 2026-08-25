@@ -151,6 +151,8 @@
         "moonshine": {
             "repository": "moonshine-ai/moonshine",
             "version": "0.1.5",
+            "androidVersion": "0.1.5",
+            "iosVersion": "v0.0.59",
             "commit": "520ba083085a14efcb77d701b35544f81d7b1acf",
             "swiftPackage": "moonshine-ai/moonshine-swift@0.1.5",
             "models": ["small-streaming-en", "medium-streaming-en"],

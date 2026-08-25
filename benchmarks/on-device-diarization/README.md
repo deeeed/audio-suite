@@ -15,6 +15,13 @@ You need the AMI audio tree and manual word annotations. Audio paths follow:
 $AMI_AUDIO_ROOT/ES2004a/audio/ES2004a.Mix-Headset.wav
 ```
 
+Benchmark CLIs accept paths under the repository and system temporary directory.
+For datasets elsewhere, authorize their common parent explicitly:
+
+```bash
+export BENCHMARK_ALLOWED_ROOTS=/Volumes/c910ssd/datasets
+```
+
 Create the scorer environment:
 
 ```bash
@@ -90,6 +97,8 @@ yarn score:cpwer \
 
 Without `--asr-words`, the scorer assigns official words to predicted speakers.
 That produces zero WER and oracle-word cpWER, which isolates attribution.
+The exact bitmask scorer supports at most 20 reference speakers and is intended
+for meeting-sized speaker sets such as AMI.
 
 ## Python Pyannote reference
 

@@ -6,9 +6,15 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { loadOfficialAmiReference } from './ami-reference.mjs'
+import {
+    benchmarkAllowedRoots,
+    resolveAllowedExistingPath,
+    resolveAllowedOutputPath,
+} from './path-policy.mjs'
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '..', '..')
+const ALLOWED_ROOTS = benchmarkAllowedRoots(REPO_ROOT)
 const SCORER = path.join(
     REPO_ROOT,
     'apps',
@@ -88,7 +94,7 @@ function getCandidates(clip) {
             target: result,
         }))
     }
-    throw new Error(`Unsupported clip result shape: ${clip.id}`)
+    throw new TypeError(`Unsupported clip result shape: ${clip.id}`)
 }
 
 function readReport(inputPath) {
@@ -101,15 +107,21 @@ function readReport(inputPath) {
         .filter((name) => name.endsWith('.json'))
         .sort()
     const clips = files.map((name) => {
-        const raw = JSON.parse(
-            fs.readFileSync(path.join(inputPath, name), 'utf8')
+        if (name !== path.basename(name)) {
+            throw new TypeError(`Invalid report file name: ${name}`)
+        }
+        const reportPath = resolveAllowedExistingPath(
+            path.join(inputPath, name),
+            ALLOWED_ROOTS,
+            'file'
         )
+        const raw = JSON.parse(fs.readFileSync(reportPath, 'utf8'))
         const meetingId = path.basename(name, '.json')
         if (
             !Array.isArray(raw.segments) ||
             !Number.isFinite(raw.durationSeconds)
         ) {
-            throw new Error(`${name} is not a FluidAudio process result`)
+            throw new TypeError(`${name} is not a FluidAudio process result`)
         }
         const segments = raw.segments.map((segment) => ({
             start: segment.start ?? segment.startTimeSeconds,
@@ -140,7 +152,7 @@ function readReport(inputPath) {
                         },
                         segments,
                     },
-                    sourceResult: path.join(inputPath, name),
+                    sourceResult: reportPath,
                 },
             ],
         }
@@ -154,10 +166,13 @@ function readReport(inputPath) {
 
 function main() {
     const args = parseArgs(process.argv)
-    const inputPath = path.resolve(args.input)
+    const inputPath = resolveAllowedExistingPath(args.input, ALLOWED_ROOTS)
+    const outputPath = args.out
+        ? resolveAllowedOutputPath(args.out, ALLOWED_ROOTS)
+        : null
     const report = readReport(inputPath)
     if (!Array.isArray(report.clips)) {
-        throw new Error('Input report does not contain clips')
+        throw new TypeError('Input report does not contain clips')
     }
     const temporaryDir = fs.mkdtempSync(
         path.join(os.tmpdir(), 'audiolab-diarization-score-')
@@ -194,7 +209,7 @@ function main() {
 
             for (const candidate of getCandidates(clip)) {
                 if (!Array.isArray(candidate.segments)) {
-                    throw new Error(
+                    throw new TypeError(
                         `${clip.id} ${candidate.label} has no segments`
                     )
                 }
@@ -227,7 +242,7 @@ function main() {
     }
 
     const rendered = `${JSON.stringify(report, null, 2)}\n`
-    if (args.out) fs.writeFileSync(path.resolve(args.out), rendered)
+    if (outputPath) fs.writeFileSync(outputPath, rendered)
     else process.stdout.write(rendered)
 }
 

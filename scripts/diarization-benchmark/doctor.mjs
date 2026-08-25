@@ -19,13 +19,19 @@ const MANIFEST = JSON.parse(
         'utf8'
     )
 )
+const COMMAND_PATHS = {
+    node: process.execPath,
+    yarn: process.env.npm_execpath,
+    git: '/usr/bin/git',
+    curl: '/usr/bin/curl',
+    swift: '/usr/bin/swift',
+    xcodebuild: '/usr/bin/xcodebuild',
+    xcrun: '/usr/bin/xcrun',
+}
 
 function commandExists(command) {
-    return (
-        spawnSync('sh', ['-c', `command -v ${command}`], {
-            stdio: 'ignore',
-        }).status === 0
-    )
+    const commandPath = COMMAND_PATHS[command]
+    return Boolean(commandPath && fs.existsSync(commandPath))
 }
 
 function pythonHas(python, module, version) {
@@ -44,9 +50,11 @@ function sha256(filePath) {
 }
 
 function simulatorAvailable(name) {
-    const result = spawnSync('xcrun', ['simctl', 'list', 'devices', '-j'], {
-        encoding: 'utf8',
-    })
+    const result = spawnSync(
+        '/usr/bin/xcrun',
+        ['simctl', 'list', 'devices', '-j'],
+        { encoding: 'utf8' }
+    )
     if (result.status !== 0) return false
     const value = JSON.parse(result.stdout)
     return Object.values(value.devices || {})

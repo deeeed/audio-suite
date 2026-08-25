@@ -133,6 +133,12 @@ function summarize(scored) {
     }
 }
 
+function selectMeetings(scope) {
+    if (scope === 'full') return MANIFEST.dataset.testMeetings
+    if (scope === 'parity') return [MANIFEST.dataset.parityMeeting.id]
+    throw new Error('BENCHMARK_SCOPE must be parity or full')
+}
+
 function main() {
     const releaseHostLock = acquireBenchmarkHostLock(AGENT_ROOT, 'fluid-macos')
     try {
@@ -141,16 +147,7 @@ function main() {
         if (!audioRoot) throw new Error('AMI_AUDIO_ROOT is required')
         if (!python) throw new Error('PYANNOTE_PYTHON is required')
         const scope = process.env.BENCHMARK_SCOPE || 'parity'
-        const meetings =
-            scope === 'full'
-                ? MANIFEST.dataset.testMeetings
-                : scope === 'parity'
-                  ? [MANIFEST.dataset.parityMeeting.id]
-                  : (() => {
-                        throw new Error(
-                            'BENCHMARK_SCOPE must be parity or full'
-                        )
-                    })()
+        const meetings = selectMeetings(scope)
         const iterations = Number(
             process.env.BENCHMARK_ITERATIONS || (scope === 'parity' ? 3 : 1)
         )

@@ -193,6 +193,9 @@ python3 -m venv /tmp/audiolab-pyannote
   -r scripts/diarization-benchmark/requirements.txt
 ```
 
+If the dataset is outside the repository or system temporary directory, set
+`BENCHMARK_ALLOWED_ROOTS` to its trusted parent. The CLIs reject other paths.
+
 Run the native macOS FluidAudio parity meeting, or set
 `BENCHMARK_SCOPE=full` for all 16 test meetings:
 

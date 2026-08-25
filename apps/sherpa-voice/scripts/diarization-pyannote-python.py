@@ -8,12 +8,55 @@ import json
 import os
 import platform
 import resource
+import tempfile
 import time
 from pathlib import Path
 
 import soundfile as sf
 import torch
 from pyannote.audio import Pipeline
+
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+def allowed_roots() -> list[Path]:
+    configured = os.environ.get("BENCHMARK_ALLOWED_ROOTS", "")
+    roots = [REPO_ROOT, Path(tempfile.gettempdir()), Path("/tmp")]
+    roots.extend(Path(value) for value in configured.split(os.pathsep) if value)
+    return [root.resolve(strict=True) for root in roots if root.exists()]
+
+
+def within(candidate: Path, root: Path) -> bool:
+    try:
+        candidate.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def require_allowed(candidate: Path, roots: list[Path]) -> Path:
+    if not any(within(candidate, root) for root in roots):
+        raise ValueError(
+            f"Path is outside benchmark roots: {candidate}. "
+            "Set BENCHMARK_ALLOWED_ROOTS to an explicit trusted directory."
+        )
+    return candidate
+
+
+def resolve_input(value: str, roots: list[Path]) -> Path:
+    candidate = Path(value).resolve(strict=True)
+    require_allowed(candidate, roots)
+    if not candidate.is_file():
+        raise ValueError(f"Expected an input file: {candidate}")
+    return candidate
+
+
+def resolve_output(value: str, roots: list[Path]) -> Path:
+    candidate = Path(value).expanduser().absolute()
+    parent = candidate.parent.resolve(strict=True)
+    require_allowed(parent, roots)
+    return parent / candidate.name
 
 
 def parse_args() -> argparse.Namespace:
@@ -49,6 +92,14 @@ def peak_rss_bytes() -> int:
     return int(value if platform.system() == "Darwin" else value * 1024)
 
 
+def speaker_count_mode(args: argparse.Namespace) -> str:
+    if args.num_speakers is not None:
+        return "exact"
+    if args.min_speakers is not None or args.max_speakers is not None:
+        return "bounded"
+    return "automatic"
+
+
 def main() -> None:
     args = parse_args()
     token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN")
@@ -57,7 +108,9 @@ def main() -> None:
             "HF_TOKEN is required. Accept the Community-1 model terms first; the token is never written to the report."
         )
     device = resolve_device(args.device)
-    wav = Path(args.wav).resolve()
+    roots = allowed_roots()
+    wav = resolve_input(args.wav, roots)
+    out = resolve_output(args.out, roots)
     audio_info = sf.info(wav)
 
     init_started = time.perf_counter()
@@ -99,13 +152,7 @@ def main() -> None:
         },
         "filePath": str(wav),
         "audioDurationSeconds": float(audio_info.duration),
-        "speakerCountMode": (
-            "exact"
-            if args.num_speakers is not None
-            else "bounded"
-            if args.min_speakers is not None or args.max_speakers is not None
-            else "automatic"
-        ),
+        "speakerCountMode": speaker_count_mode(args),
         "numSpeakers": len({segment["speaker"] for segment in segments}),
         "segmentCount": len(segments),
         "timing": {
@@ -116,8 +163,6 @@ def main() -> None:
         "peakRssBytes": peak_rss_bytes(),
         "segments": segments,
     }
-    out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(output, indent=2) + "\n")
     print(json.dumps({"out": str(out), **output["timing"]}, indent=2))
 

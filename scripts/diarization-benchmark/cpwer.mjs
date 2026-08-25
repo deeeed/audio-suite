@@ -2,7 +2,17 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { loadAmiWords } from './ami-reference.mjs'
+import {
+    benchmarkAllowedRoots,
+    resolveAllowedExistingPath,
+    resolveAllowedOutputPath,
+} from './path-policy.mjs'
+
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
+const REPO_ROOT = path.resolve(SCRIPT_DIR, '..', '..')
+const ALLOWED_ROOTS = benchmarkAllowedRoots(REPO_ROOT)
 
 function parseArgs(argv) {
     const args = {}
@@ -156,6 +166,53 @@ function groupTokens(words, speakerKey) {
     return groups
 }
 
+function assignmentCandidates(
+    mask,
+    state,
+    hypothesisSpeaker,
+    hypothesisWords,
+    references
+) {
+    const candidates = [
+        {
+            mask,
+            errors: state.errors + hypothesisWords.length,
+            mapping: [...state.mapping, [hypothesisSpeaker, null]],
+        },
+    ]
+    for (let index = 0; index < references.length; index += 1) {
+        if (mask & (1 << index)) continue
+        candidates.push({
+            mask: mask | (1 << index),
+            errors:
+                state.errors +
+                levenshtein(references[index][1], hypothesisWords),
+            mapping: [
+                ...state.mapping,
+                [hypothesisSpeaker, references[index][0]],
+            ],
+        })
+    }
+    return candidates
+}
+
+function retainLowestError(next, candidates) {
+    for (const candidate of candidates) {
+        const current = next.get(candidate.mask)
+        if (!current || candidate.errors < current.errors) {
+            next.set(candidate.mask, candidate)
+        }
+    }
+}
+
+function addUnmappedReferenceErrors(mask, state, references) {
+    let errors = state.errors
+    for (let index = 0; index < references.length; index += 1) {
+        if (!(mask & (1 << index))) errors += references[index][1].length
+    }
+    return { ...state, errors, mask }
+}
+
 function cpwer(referenceGroups, hypothesisGroups) {
     const references = [...referenceGroups.entries()]
     const hypotheses = [...hypothesisGroups.entries()]
@@ -168,43 +225,24 @@ function cpwer(referenceGroups, hypothesisGroups) {
     for (const [hypothesisSpeaker, hypothesisWords] of hypotheses) {
         const next = new Map()
         for (const [mask, state] of states) {
-            const candidates = [
-                {
+            retainLowestError(
+                next,
+                assignmentCandidates(
                     mask,
-                    errors: state.errors + hypothesisWords.length,
-                    mapping: [...state.mapping, [hypothesisSpeaker, null]],
-                },
-            ]
-            for (let index = 0; index < references.length; index += 1) {
-                if (mask & (1 << index)) continue
-                candidates.push({
-                    mask: mask | (1 << index),
-                    errors:
-                        state.errors +
-                        levenshtein(references[index][1], hypothesisWords),
-                    mapping: [
-                        ...state.mapping,
-                        [hypothesisSpeaker, references[index][0]],
-                    ],
-                })
-            }
-            for (const candidate of candidates) {
-                const current = next.get(candidate.mask)
-                if (!current || candidate.errors < current.errors) {
-                    next.set(candidate.mask, candidate)
-                }
-            }
+                    state,
+                    hypothesisSpeaker,
+                    hypothesisWords,
+                    references
+                )
+            )
         }
         states = next
     }
 
     let best = null
     for (const [mask, state] of states) {
-        let errors = state.errors
-        for (let index = 0; index < references.length; index += 1) {
-            if (!(mask & (1 << index))) errors += references[index][1].length
-        }
-        if (!best || errors < best.errors) best = { ...state, errors, mask }
+        const candidate = addUnmappedReferenceErrors(mask, state, references)
+        if (!best || candidate.errors < best.errors) best = candidate
     }
     const referenceWordCount = references.reduce(
         (sum, entry) => sum + entry[1].length,
@@ -224,18 +262,31 @@ function cpwer(referenceGroups, hypothesisGroups) {
 
 function main() {
     const args = parseArgs(process.argv)
-    const diarization = loadDiarization(
-        path.resolve(args.diarization),
-        args.meetingId
+    const diarizationPath = resolveAllowedExistingPath(
+        args.diarization,
+        ALLOWED_ROOTS,
+        'file'
     )
+    const wordsRoot = resolveAllowedExistingPath(
+        args.wordsRoot,
+        ALLOWED_ROOTS,
+        'directory'
+    )
+    const asrWordsPath = args.asrWords
+        ? resolveAllowedExistingPath(args.asrWords, ALLOWED_ROOTS, 'file')
+        : null
+    const outputPath = args.out
+        ? resolveAllowedOutputPath(args.out, ALLOWED_ROOTS)
+        : null
+    const diarization = loadDiarization(diarizationPath, args.meetingId)
     const referenceWords = loadAmiWords({
         meetingId: args.meetingId,
         startS: args.startS,
         endS: args.endS,
-        wordsRoot: path.resolve(args.wordsRoot),
+        wordsRoot,
     })
-    const hypothesisWords = args.asrWords
-        ? loadAsrWords(path.resolve(args.asrWords))
+    const hypothesisWords = asrWordsPath
+        ? loadAsrWords(asrWordsPath)
         : referenceWords.map(({ word, start, end }) => ({ word, start, end }))
     const attributedWords = hypothesisWords.map((word) => ({
         ...word,
@@ -269,7 +320,7 @@ function main() {
         mapping: speakerScore.mapping,
     }
     const rendered = `${JSON.stringify(output, null, 2)}\n`
-    if (args.out) fs.writeFileSync(path.resolve(args.out), rendered)
+    if (outputPath) fs.writeFileSync(outputPath, rendered)
     else process.stdout.write(rendered)
 }
 
