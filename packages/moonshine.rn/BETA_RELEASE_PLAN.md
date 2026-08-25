@@ -63,23 +63,25 @@ This runs:
 
 - `yarn typecheck`
 - `yarn test`
-- `npm pack --json --dry-run`
+- iOS artifact installer tests
+- native release validation, including `npm pack --json --dry-run` and Android
+  private-SONAME inspection
 
 After the release PR merges:
 
-1. Create the `@siteed/moonshine.rn@<version>` GitHub prerelease at the merge
-   commit.
-2. Upload `Moonshine-Android-isolated.aar` and
-   `Moonshine.xcframework.zip`. Reuse an earlier asset only when its SHA-256
-   matches the value pinned in `package.json`; do not rebuild unchanged assets.
-3. Run the remote artifact checks. They must fail before upload and pass after:
+Create the `@siteed/moonshine.rn@<version>` GitHub prerelease at the merge
+commit. Upload `Moonshine-Android-isolated.aar` and
+`Moonshine.xcframework.zip`. Reuse an earlier asset only when its SHA-256
+matches the value pinned in `package.json`; do not rebuild unchanged assets.
+
+Run the remote artifact checks. They must fail before upload and pass after:
 
 ```bash
 yarn validate:android-release-artifact
 yarn validate:ios-release-artifact
 ```
 
-4. Publish under the beta tag:
+Publish under the beta tag:
 
 ```bash
 npm publish --tag beta
