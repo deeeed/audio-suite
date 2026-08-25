@@ -1,6 +1,6 @@
 {
   "title": "Playground Moonshine intent validation",
-  "description": "Drives the Moonshine intent demo screen end-to-end (download model, create recognizer with synced intents, process the default utterance) so the synchronous moonshine_get_closest_intents() pipeline is exercised on-device.",
+  "description": "Drives the Moonshine intent demo screen end-to-end (download model, create recognizer with synced intents, process the default utterance) so the Android EmbeddingModel intent pipeline is exercised on-device.",
   "validate": {
     "workflow": {
       "entry": "intent-screen-smoke",

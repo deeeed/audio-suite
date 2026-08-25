@@ -2,6 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy'
 import { Platform } from 'react-native'
 
 import { toNativePath } from './fileUtils'
+import { getMoonshineIntentFiles } from './moonshineIntentModelFiles'
 
 const moonshineIntentModelRoot =
     `${FileSystem.documentDirectory ?? ''}moonshine-intent-models/`
@@ -17,14 +18,6 @@ export interface MoonshineIntentModelStatus {
 export interface MoonshineIntentDownloadOptions {
     onStatus?: (message: string) => void
     variant?: string
-}
-
-function getIntentFiles(variant: string): string[] {
-    if (variant === 'fp32') {
-        return ['model.onnx', 'model.onnx_data', 'tokenizer.bin']
-    }
-
-    return [`model_${variant}.onnx`, `model_${variant}.onnx_data`, 'tokenizer.bin']
 }
 
 function getModelDirectoryUri(variant: string): string {
@@ -56,7 +49,7 @@ export async function getMoonshineIntentModelStatus(
     }
 
     const dirUri = getModelDirectoryUri(variant)
-    const files = getIntentFiles(variant)
+    const files = getMoonshineIntentFiles(variant)
     const statuses = await Promise.all(
         files.map((fileName) => FileSystem.getInfoAsync(`${dirUri}/${fileName}`))
     )
@@ -87,7 +80,7 @@ export async function prepareMoonshineIntentModel(
     }).catch(() => {})
 
     const baseUrl = 'https://download.moonshine.ai/model/embeddinggemma-300m'
-    for (const fileName of getIntentFiles(variant)) {
+    for (const fileName of getMoonshineIntentFiles(variant)) {
         const targetPath = `${dirUri}/${fileName}`
         const existing = await FileSystem.getInfoAsync(targetPath)
         if (existing.exists) continue
