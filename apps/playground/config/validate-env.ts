@@ -30,7 +30,7 @@ export function validatePlaygroundEnvironment(
                         : 'environment'
                 )
             ),
-        ].sort()
+        ].sort((left, right) => left.localeCompare(right))
         throw new Error(
             `Invalid environment variables: ${invalidKeys.join(', ')}`
         )

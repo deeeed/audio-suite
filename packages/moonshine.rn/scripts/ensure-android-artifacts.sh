@@ -30,10 +30,11 @@ if [[ ! "$ARTIFACT_SHA256" =~ ^[a-fA-F0-9]{64}$ ]]; then
 fi
 
 hash_file() {
+  local file_path="$1"
   if command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 "$1" | awk '{print $1}'
+    shasum -a 256 "$file_path" | awk '{print $1}'
   else
-    sha256sum "$1" | awk '{print $1}'
+    sha256sum "$file_path" | awk '{print $1}'
   fi
 }
 

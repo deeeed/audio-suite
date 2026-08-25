@@ -76,19 +76,17 @@ resolve_moonshine_aar() {
     exit 2
   fi
 
-  if [ -n "$MOONSHINE_USE_SOURCE_OVERRIDE" ]; then
-    if is_truthy "$MOONSHINE_USE_SOURCE_OVERRIDE"; then
-      if [ ! -f "$MOONSHINE_SOURCE_AAR" ]; then
-        echo "Error: SITEED_MOONSHINE_ANDROID_USE_SOURCE=1 but the source-built AAR is missing: $MOONSHINE_SOURCE_AAR" >&2
-        exit 2
-      fi
-      echo "$MOONSHINE_SOURCE_AAR"
-      return
+  if [[ -n "$MOONSHINE_USE_SOURCE_OVERRIDE" ]] && is_truthy "$MOONSHINE_USE_SOURCE_OVERRIDE"; then
+    if [[ ! -f "$MOONSHINE_SOURCE_AAR" ]]; then
+      echo "Error: SITEED_MOONSHINE_ANDROID_USE_SOURCE=1 but the source-built AAR is missing: $MOONSHINE_SOURCE_AAR" >&2
+      exit 2
     fi
+    echo "$MOONSHINE_SOURCE_AAR"
+    return
   fi
 
   if ! is_truthy "$MOONSHINE_USE_MAVEN"; then
-    if [ ! -f "$MOONSHINE_ISOLATED_AAR" ]; then
+    if [[ ! -f "$MOONSHINE_ISOLATED_AAR" ]]; then
       bash "$MOONSHINE_ENSURE_SCRIPT" >&2
     fi
     echo "$MOONSHINE_ISOLATED_AAR"
@@ -96,7 +94,7 @@ resolve_moonshine_aar() {
   fi
 
   IFS=':' read -r group artifact version <<< "$MOONSHINE_COORD"
-  if [ -z "${group:-}" ] || [ -z "${artifact:-}" ] || [ -z "${version:-}" ]; then
+  if [[ -z "${group:-}" || -z "${artifact:-}" || -z "${version:-}" ]]; then
     echo "Error: invalid Moonshine Maven coordinate: $MOONSHINE_COORD" >&2
     exit 2
   fi
@@ -170,7 +168,7 @@ if unzip -Z1 "$MOONSHINE_AAR_PATH" | rg -qx "$MOONSHINE_PRIVATE_ORT_ENTRY"; then
   SHERPA_EXPORTED_SYMBOL="$(extract_ort_symbol_name "$SHERPA_ORT_LIB")"
   SHERPA_IMPORTED_VERSION="$(extract_ort_symbol_version "$SHERPA_IMPORTED_SYMBOL")"
   SHERPA_EXPORTED_VERSION="$(extract_ort_symbol_version "$SHERPA_EXPORTED_SYMBOL")"
-  if [ -z "$SHERPA_IMPORTED_VERSION" ] || [ "$SHERPA_IMPORTED_VERSION" != "$SHERPA_EXPORTED_VERSION" ]; then
+  if [[ -z "$SHERPA_IMPORTED_VERSION" || "$SHERPA_IMPORTED_VERSION" != "$SHERPA_EXPORTED_VERSION" ]]; then
     echo "Error: Sherpa JNI and packaged ONNX Runtime do not match." >&2
     exit 1
   fi

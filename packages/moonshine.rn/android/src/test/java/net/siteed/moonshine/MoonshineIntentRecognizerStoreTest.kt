@@ -9,6 +9,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MoonshineIntentRecognizerStoreTest {
+  companion object {
+    private const val MODEL_PATH = "/model"
+    private const val PLEASE_STOP = "please stop"
+    private const val STOP_MUSIC = "stop music"
+  }
+
   private class FakeModel : MoonshineEmbeddingModel {
     var closed = false
     var failEmbeddingFor: String? = null
@@ -16,12 +22,12 @@ class MoonshineIntentRecognizerStoreTest {
     val embeddings = mutableMapOf<String, FloatArray>()
 
     override fun calculateEmbedding(text: String): FloatArray {
-      if (text == failEmbeddingFor) throw IllegalArgumentException("embedding failed")
+      require(text != failEmbeddingFor) { "embedding failed" }
       return embeddings[text] ?: error("Missing fake embedding for $text")
     }
 
     override fun distance(left: FloatArray, right: FloatArray): Float {
-      if (right.first() == failDistanceForValue) throw IllegalStateException("distance failed")
+      check(right.first() != failDistanceForValue) { "distance failed" }
       return right.first()
     }
 
@@ -34,24 +40,24 @@ class MoonshineIntentRecognizerStoreTest {
   fun registersMatchesUnregistersAndClearsIntents() {
     val model = FakeModel().apply {
       embeddings["play music"] = floatArrayOf(0.85f)
-      embeddings["stop music"] = floatArrayOf(0.95f)
-      embeddings["please stop"] = floatArrayOf(0.1f)
+      embeddings[STOP_MUSIC] = floatArrayOf(0.95f)
+      embeddings[PLEASE_STOP] = floatArrayOf(0.1f)
     }
     val store = MoonshineIntentRecognizerStore { _, _, _ -> model }
-    val handle = store.create("/model", 1, null)
+    val handle = store.create(MODEL_PATH, 1, null)
 
     assertTrue(handle > 0)
     assertEquals(JNI.MOONSHINE_ERROR_NONE, store.register(handle, "play music"))
-    assertEquals(JNI.MOONSHINE_ERROR_NONE, store.register(handle, "stop music"))
+    assertEquals(JNI.MOONSHINE_ERROR_NONE, store.register(handle, STOP_MUSIC))
     assertEquals(2, store.count(handle))
-    assertEquals("stop music", store.closest(handle, "please stop", 0.9f)?.triggerPhrase)
-    assertNull(store.closest(handle, "please stop", 0.96f))
+    assertEquals(STOP_MUSIC, store.closest(handle, PLEASE_STOP, 0.9f)?.triggerPhrase)
+    assertNull(store.closest(handle, PLEASE_STOP, 0.96f))
 
-    assertEquals(JNI.MOONSHINE_ERROR_NONE, store.unregister(handle, "stop music"))
+    assertEquals(JNI.MOONSHINE_ERROR_NONE, store.unregister(handle, STOP_MUSIC))
     assertEquals(1, store.count(handle))
     assertEquals(JNI.MOONSHINE_ERROR_NONE, store.clear(handle))
     assertEquals(0, store.count(handle))
-    assertNull(store.closest(handle, "please stop", 0f))
+    assertNull(store.closest(handle, PLEASE_STOP, 0f))
 
     store.release(handle)
     assertTrue(model.closed)
@@ -71,7 +77,7 @@ class MoonshineIntentRecognizerStoreTest {
       failEmbeddingFor = "invalid"
     }
     val store = MoonshineIntentRecognizerStore { _, _, _ -> model }
-    val handle = store.create("/model", 1, null)
+    val handle = store.create(MODEL_PATH, 1, null)
 
     assertEquals(JNI.MOONSHINE_ERROR_INVALID_HANDLE, store.register(-1, "valid"))
     assertEquals(JNI.MOONSHINE_ERROR_INVALID_HANDLE, store.unregister(-1, "valid"))
@@ -95,7 +101,7 @@ class MoonshineIntentRecognizerStoreTest {
       failDistanceForValue = 0.7f
     }
     val store = MoonshineIntentRecognizerStore { _, _, _ -> model }
-    val handle = store.create("/model", 1, null)
+    val handle = store.create(MODEL_PATH, 1, null)
     store.register(handle, "broken")
     store.register(handle, "first")
     store.register(handle, "second")
