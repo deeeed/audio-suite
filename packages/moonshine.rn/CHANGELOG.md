@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-25
+
+### Changed
+
+- Promoted the validated 0.4.1 beta after clean registry installation, checksum-pinned native asset retrieval, iOS simulator validation, Android API 26 runtime coexistence testing, and Pixel on-device benchmarks.
+
 ## [0.4.1-beta.2] - 2026-08-25
 
 ### Changed
@@ -103,7 +109,8 @@ Long-streaming release focused on keeping Moonshine transcription memory bounded
 - Moonshine RN package with iOS, Android, and web transcription support, source-built native tooling, offline progress events, and word timestamp parity fixes.
 - Beta release plan and external consumer validation checklist.
 
-[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.4.1-beta.2...HEAD
+[unreleased]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.4.1...HEAD
+[0.4.1]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.4.1-beta.2...@siteed/moonshine.rn@0.4.1
 [0.4.1-beta.2]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.4.1-beta.1...@siteed/moonshine.rn@0.4.1-beta.2
 [0.4.1-beta.1]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.4.1-beta.0...@siteed/moonshine.rn@0.4.1-beta.1
 [0.4.0]: https://github.com/deeeed/audiolab/compare/@siteed/moonshine.rn@0.3.3...@siteed/moonshine.rn@0.4.0

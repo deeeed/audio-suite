@@ -91,6 +91,32 @@ npm publish --tag beta
 blocked until both assets exist under the new release tag with the pinned
 checksums.
 
+## Stable promotion flow
+
+Promote only after the published beta passes the exit criteria below. Open and
+merge a release PR that changes the package version to the stable version and
+adds its changelog section. Then create the matching stable GitHub release at
+the merge commit and upload the checksum-pinned Android and iOS assets before
+publishing.
+
+Run the stable release URLs through the same remote artifact checks:
+
+```bash
+yarn validate:android-release-artifact
+yarn validate:ios-release-artifact
+```
+
+Publish under `latest`, then verify it moved while `beta` still identifies the
+validated beta:
+
+```bash
+npm publish --tag latest
+npm view @siteed/moonshine.rn dist-tags --json
+```
+
+Do not rebuild an unchanged native asset during promotion. Copy the validated
+beta bytes and require their SHA-256 values to match `package.json`.
+
 If you want to inspect the final tarball contents first:
 
 ```bash
