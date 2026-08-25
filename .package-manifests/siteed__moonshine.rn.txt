@@ -3,8 +3,10 @@ README.md
 android/build.gradle
 android/src/main/AndroidManifest.xml
 android/src/main/java/net/siteed/moonshine/MoonshineDirectJni.kt
+android/src/main/java/net/siteed/moonshine/MoonshineIntentRecognizerStore.kt
 android/src/main/java/net/siteed/moonshine/MoonshineModule.kt
 android/src/main/java/net/siteed/moonshine/MoonshinePackage.kt
+android/src/main/java/net/siteed/moonshine/MoonshineTranscriptPolicy.kt
 apply-upstream-patches.sh
 build-moonshine-android.sh
 build-moonshine-ios.sh
@@ -138,6 +140,7 @@ prebuilt/android/build-metadata.json
 prebuilt/ios/build-metadata.json
 prebuilt/web/build-metadata.json
 react-native.config.js
+scripts/ensure-android-artifacts.sh
 scripts/ensure-ios-artifacts.sh
 setup.sh
 src/NativeMoonshine.ts

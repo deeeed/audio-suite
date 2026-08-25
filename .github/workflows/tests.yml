@@ -95,6 +95,17 @@ jobs:
         env:
           APP_VARIANT: development
 
+      - name: Test runtime coexistence on API 26
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 26
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: cd apps/playground/android && ./gradlew :siteed_moonshine.rn:connectedDebugAndroidTest
+        env:
+          APP_VARIANT: development
+
   ios:
     name: iOS unit tests
     # macOS minutes bill at a multiple of Linux, so this job is deliberately

@@ -271,8 +271,7 @@ If your Expo Android app installs both `@siteed/sherpa-onnx.rn` and
 Sherpa keeps `libonnxruntime.so`, while Moonshine loads
 `libmoonshine_onnxruntime.so`. No `pickFirst` rule is required. The Sherpa config
 plugin removes its obsolete ONNX Runtime `pickFirst` property during prebuild.
-See
-[Android ONNX Runtime coexistence](../../docs/ANDROID_ORT_ALIGNMENT.md) for the
+See [Android ONNX Runtime coexistence](../../docs/ANDROID_ORT_ALIGNMENT.md).
 
 ## API Reference
 
